@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
     WorkShift, AppConstraints, Employee, AbsenteeismEvent, 
-    ProcessType, NotificationMessage, ProductionLine, WorkstationDefinition 
+    ProcessType, NotificationMessage 
 } from '@/types/types';
 import { WorkShiftIcon, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -53,7 +53,9 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
         relevantLines.forEach(line => {
             line.assignedWorkstations.forEach(ws => workstationIds.add(ws.definitionId));
         });
-        return constraints.workstationDefinitions.filter(wd => workstationIds.has(wd.id));
+        return constraints.workstationDefinitions
+            .filter(wd => workstationIds.has(wd.id))
+            .sort((a,b) => a.name.localeCompare(b.name));
     }, [relevantLines, constraints.workstationDefinitions]);
 
 
@@ -67,7 +69,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
         });
     };
 
-    const handleShiftChange = (date: Date, lineId: string, workstationDefId: string, shiftType: 'day' | 'night', employeeId: string | null) => {
+    const handleShiftChange = (date: Date, lineId: string, workstationDefId: string, shiftType: 'day' | 'night', employeeId: string | null, assignmentIndex: number) => {
         const dateString = date.toISOString().split('T')[0];
 
         if (employeeId && isEmployeeAbsent(employeeId, date)) {
@@ -76,29 +78,39 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
         }
         
         const shiftId = `${dateString}-${lineId}-${workstationDefId}-${shiftType}`;
-        const existingShiftIndex = shifts.findIndex(s => s.id === shiftId);
+        const existingShift = shifts.find(s => s.id === shiftId);
 
         let newShifts = [...shifts];
 
-        if (existingShiftIndex !== -1) {
-            if (employeeId) {
-                newShifts[existingShiftIndex] = { ...newShifts[existingShiftIndex], employeeId };
+        if (existingShift) {
+            const updatedEmployeeIds = [...existingShift.employeeIds];
+            updatedEmployeeIds[assignmentIndex] = employeeId;
+            
+            // Filter out nulls and empty strings to keep the array clean
+            const finalEmployeeIds = updatedEmployeeIds.filter(id => id);
+
+            if(finalEmployeeIds.length === 0) {
+                 newShifts = newShifts.filter(s => s.id !== shiftId);
             } else {
-                newShifts.splice(existingShiftIndex, 1); // Remove if employee is unassigned
+                 const shiftIndex = newShifts.findIndex(s => s.id === shiftId);
+                 newShifts[shiftIndex] = { ...existingShift, employeeIds: finalEmployeeIds };
             }
+
         } else if (employeeId) {
-            newShifts.push({ id: shiftId, date: dateString, lineId, workstationDefId, shiftType, employeeId });
+            const newEmployeeIds = [];
+            newEmployeeIds[assignmentIndex] = employeeId;
+            newShifts.push({ id: shiftId, date: dateString, lineId, workstationDefId, shiftType, employeeIds: newEmployeeIds.filter(id => id) as string[] });
         }
 
         setShifts(newShifts);
     };
     
-    const getShiftAssignment = (date: Date, lineId: string, workstationDefId: string, shiftType: 'day' | 'night'): string | null => {
+    const getShiftAssignment = (date: Date, lineId: string, workstationDefId: string, shiftType: 'day' | 'night'): (string | null)[] => {
         const dateString = date.toISOString().split('T')[0];
         const shift = shifts.find(
             s => s.date === dateString && s.lineId === lineId && s.workstationDefId === workstationDefId && s.shiftType === shiftType
         );
-        return shift?.employeeId || null;
+        return shift?.employeeIds || [];
     };
 
     const renderWeekControls = () => (
@@ -143,9 +155,9 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
 
                 <div className="overflow-x-auto">
                     <table className="min-w-full border-collapse border border-gray-300">
-                        <thead>
-                            <tr className="bg-gray-100">
-                                <th className="border border-gray-300 p-2 font-semibold text-gray-700">Puesto / Línea</th>
+                        <thead className="bg-gray-100 sticky top-0 z-20">
+                            <tr>
+                                <th className="border border-gray-300 p-2 font-semibold text-gray-700 sticky left-0 bg-gray-100 z-30">Puesto / Línea</th>
                                 {weekDates.map(date => (
                                     <th key={date.toISOString()} className="border border-gray-300 p-2 font-semibold text-gray-700">
                                         {date.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit' })}
@@ -154,56 +166,70 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
                             </tr>
                         </thead>
                         <tbody>
-                            {relevantWorkstations.map(ws => (
-                                relevantLines.filter(line => line.assignedWorkstations.some(as => as.definitionId === ws.id)).map(line => (
-                                    <React.Fragment key={`${ws.id}-${line.id}`}>
+                            {relevantLines.map(line => (
+                                relevantWorkstations.filter(ws => line.assignedWorkstations.some(as => as.definitionId === ws.id))
+                                .map(ws => {
+                                    const assignedWs = line.assignedWorkstations.find(as => as.definitionId === ws.id);
+                                    const employeesRequired = assignedWs?.quantity || 1;
+                                    const dayAssignments = getShiftAssignment(new Date(), line.id, ws.id, 'day');
+                                    const nightAssignments = getShiftAssignment(new Date(), line.id, ws.id, 'night');
+
+                                    return (
+                                    <React.Fragment key={`${line.id}-${ws.id}`}>
                                         <tr className="bg-gray-50">
                                             <td className="border border-gray-300 p-2 font-medium text-gray-800 sticky left-0 bg-gray-50 z-10">
-                                                {ws.name}
+                                                {ws.name} (Req: {employeesRequired})
                                                 <span className="block text-xs text-gray-500">{line.name}</span>
                                             </td>
                                             <td colSpan={7} className="p-0 border-transparent"></td>
                                         </tr>
                                         <tr>
-                                            <td className="border border-gray-300 p-2 text-right text-sm font-medium text-gray-600">Día</td>
+                                            <td className="border border-gray-300 p-2 text-right text-sm font-medium text-gray-600 align-top sticky left-0 bg-white z-10">Día</td>
                                             {weekDates.map(date => (
-                                                <td key={`${date.toISOString()}-day`} className="border border-gray-300 p-1 align-top">
-                                                    <select 
-                                                        value={getShiftAssignment(date, line.id, ws.id, 'day') || ''}
-                                                        onChange={(e) => handleShiftChange(date, line.id, ws.id, 'day', e.target.value || null)}
-                                                        className="w-full text-xs p-1 border-gray-200 rounded"
-                                                    >
-                                                        <option value="">-- Asignar --</option>
-                                                        {employees.map(emp => (
-                                                             <option key={emp.id} value={emp.id} disabled={isEmployeeAbsent(emp.id, date)}>
-                                                                {emp.name} {isEmployeeAbsent(emp.id, date) ? '(Ausente)' : ''}
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                <td key={`${date.toISOString()}-day`} className="border border-gray-300 p-1 align-top space-y-1">
+                                                    {Array.from({ length: employeesRequired }).map((_, i) => (
+                                                        <select 
+                                                            key={i}
+                                                            value={getShiftAssignment(date, line.id, ws.id, 'day')[i] || ''}
+                                                            onChange={(e) => handleShiftChange(date, line.id, ws.id, 'day', e.target.value || null, i)}
+                                                            className="w-full text-xs p-1 border-gray-200 rounded"
+                                                        >
+                                                            <option value="">-- Asignar --</option>
+                                                            {employees.map(emp => (
+                                                                <option key={emp.id} value={emp.id} disabled={isEmployeeAbsent(emp.id, date)}>
+                                                                    {emp.name} {isEmployeeAbsent(emp.id, date) ? '(Ausente)' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    ))}
                                                 </td>
                                             ))}
                                         </tr>
                                         <tr>
-                                            <td className="border border-gray-300 p-2 text-right text-sm font-medium text-gray-600">Noche</td>
+                                            <td className="border border-gray-300 p-2 text-right text-sm font-medium text-gray-600 align-top sticky left-0 bg-white z-10">Noche</td>
                                             {weekDates.map(date => (
-                                                <td key={`${date.toISOString()}-night`} className="border border-gray-300 p-1 align-top">
-                                                    <select 
-                                                        value={getShiftAssignment(date, line.id, ws.id, 'night') || ''}
-                                                        onChange={(e) => handleShiftChange(date, line.id, ws.id, 'night', e.target.value || null)}
-                                                        className="w-full text-xs p-1 border-gray-200 rounded"
-                                                    >
-                                                        <option value="">-- Asignar --</option>
-                                                        {employees.map(emp => (
-                                                           <option key={emp.id} value={emp.id} disabled={isEmployeeAbsent(emp.id, date)}>
-                                                                {emp.name} {isEmployeeAbsent(emp.id, date) ? '(Ausente)' : ''}
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                <td key={`${date.toISOString()}-night`} className="border border-gray-300 p-1 align-top space-y-1">
+                                                    {Array.from({ length: employeesRequired }).map((_, i) => (
+                                                        <select 
+                                                            key={i}
+                                                            value={getShiftAssignment(date, line.id, ws.id, 'night')[i] || ''}
+                                                            onChange={(e) => handleShiftChange(date, line.id, ws.id, 'night', e.target.value || null, i)}
+                                                            className="w-full text-xs p-1 border-gray-200 rounded"
+                                                        >
+                                                            <option value="">-- Asignar --</option>
+                                                            {employees.map(emp => (
+                                                               <option key={emp.id} value={emp.id} disabled={isEmployeeAbsent(emp.id, date)}>
+                                                                    {emp.name} {isEmployeeAbsent(emp.id, date) ? '(Ausente)' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    ))}
                                                 </td>
                                             ))}
                                         </tr>
                                     </React.Fragment>
-                                ))
+                                    )
+                                })
                             ))}
                             {selectedProcessType && relevantLines.length === 0 && (
                                 <tr>

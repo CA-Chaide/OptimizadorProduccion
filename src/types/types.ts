@@ -3,6 +3,7 @@
 
 
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -333,5 +334,5 @@ export interface WorkShift {
   lineId: string;
   workstationDefId: string;
   shiftType: 'day' | 'night';
-  employeeId: string | null; // null if unassigned
+  employeeIds: string[]; // Can contain multiple employees
 }
