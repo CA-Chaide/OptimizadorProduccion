@@ -132,7 +132,7 @@ export default function ProductionOptimizerPage() {
   return (
     <div className="flex h-screen bg-background text-foreground print:bg-white print:text-black">
       <nav className="w-64 bg-primary p-4 space-y-2 flex flex-col shadow-lg print:hidden">
-        <div className="mb-4 mt-2 px-2">
+        <div className="mb-2 mt-4 px-2">
             <Image 
                 src="/logo.png" 
                 alt="Logo de la Compañía"
@@ -149,11 +149,11 @@ export default function ProductionOptimizerPage() {
             <button
               key={view}
               onClick={() => setActiveView(view)}
-              className={`flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-all duration-200 ease-in-out text-sm
+              className={`flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-all duration-200 ease-in-out text-sm text-primary-foreground
                         ${
                           activeView === view
-                            ? 'bg-primary-foreground/20 text-primary-foreground shadow-md font-semibold'
-                            : 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
+                            ? 'bg-primary-foreground/20 shadow-md font-semibold'
+                            : 'hover:bg-primary-foreground/10'
                         }`}
             >
               <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center">{viewInfo.icon}</span>
