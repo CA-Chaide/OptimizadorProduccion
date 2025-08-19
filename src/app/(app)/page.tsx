@@ -2,18 +2,18 @@
 
 import React, { useState, useCallback } from 'react';
 import {
-  AbsenteeismSection,
-  ConstraintConfigurationSection,
   DataImportSection,
+  ConstraintConfigurationSection,
+  ProductionPlanSection,
   MaintenanceSection,
   PersonnelManagementSection,
-  ProductionPlanSection,
   TacticalSchedulingSection,
+  AbsenteeismSection,
 } from '@/components';
+import DashboardPage from '@/app/page';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import type { SalesDataRow, AppConstraints, ProductionPlanItem } from '@/types/types';
 import { generateProductionPlan } from '@/services/OptimizationService';
-import { MainLayout } from '@/components/main-layout';
 
 /**
  * Componente principal de la aplicación.
@@ -55,6 +55,8 @@ export default function ProductionOptimizerPage() {
   // Renderiza el componente de la vista activa
   const renderActiveView = () => {
     switch (activeView) {
+      case ActiveView.DASHBOARD:
+        return <DashboardPage />;
       case ActiveView.DATA_IMPORT:
         return <DataImportSection onDataLoaded={handleDataLoaded} />;
       case ActiveView.CONSTRAINTS:
@@ -75,8 +77,7 @@ export default function ProductionOptimizerPage() {
   };
 
   return (
-    <MainLayout>
-        <div className="flex h-screen bg-gray-900 text-white print:bg-white print:text-black">
+    <div className="flex h-screen bg-gray-900 text-white print:bg-white print:text-black">
       {/* Sidebar */}
       <nav className="w-64 bg-gray-800 p-4 space-y-2 flex flex-col shadow-lg print:hidden">
         <div className="text-2xl font-bold mb-6 text-center text-indigo-400">Production Optimizer</div>
@@ -109,6 +110,5 @@ export default function ProductionOptimizerPage() {
         {renderActiveView()}
       </main>
     </div>
-    </MainLayout>
   );
 }
