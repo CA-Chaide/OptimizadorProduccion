@@ -1,113 +1,196 @@
+
 'use client';
 
-// 1. Importaciones de React y hooks.
-import React, { useState, useCallback, useEffect } from 'react';
-
-// 2. Importaciones de los componentes de las secciones.
-import { DashboardSection } from '@/components/DashboardSection';
-import { DataImportSection } from '@/components/DataImportSection';
-import { ConstraintConfigurationSection } from '@/components/ConstraintConfigurationSection';
-import { PersonnelManagementSection } from '@/components/PersonnelManagementSection';
-import { AbsenteeismSection } from '@/components/AbsenteeismSection';
-import { ProductionPlanSection } from '@/components/ProductionPlanSection';
-import { MaintenanceSection } from '@/components/MaintenanceSection';
-import { TacticalSchedulingSection } from '@/components/TacticalSchedulingSection';
-import { MainNav } from '@/components/main-nav';
-
-// 3. Importaciones de tipos de datos.
-import type { SalesDataRow, AppConstraints, ProductionPlanItem } from '@/types/types';
-
-// 4. Importaciones de constantes y enumeraciones.
-import { ActiveView, viewConfig } from '@/constants/constants';
-
-// 5. Importaciones de servicios de lógica de negocio.
-import { generateProductionPlan } from '@/services/OptimizationService';
-
-/**
- * Componente principal de la aplicación.
- * Reemplaza al antiguo App.tsx. Es un Componente de Cliente porque maneja
- * el estado interactivo, como la vista activa y los datos.
- */
-export default function DashboardPage() {
-  // Estado para controlar la vista activa.
-  const [activeView, setActiveView] = useState<ActiveView>(ActiveView.DASHBOARD);
-
-  // Estados para manejar los datos de la aplicación.
-  const [salesData, setSalesData] = useState<SalesDataRow[]>([]);
-  const [constraints, setConstraints] = useState<AppConstraints | null>(null);
-  const [productionPlan, setProductionPlan] = useState<ProductionPlanItem[]>([]);
-
-  // Función para cambiar la vista, envuelta en useCallback para optimización.
-  const handleViewChange = useCallback((view: ActiveView) => {
-    setActiveView(view);
-  }, []);
-
-  // Función para manejar la generación del plan de producción.
-  const onGeneratePlan = () => {
-    if (salesData.length > 0 && constraints) {
-      const plan = generateProductionPlan(salesData, constraints);
-      setProductionPlan(plan);
-      setActiveView(ActiveView.PRODUCTION_PLAN); // Cambia a la vista del plan después de generarlo.
-    } else {
-      alert('Por favor, carga datos de ventas y configura las restricciones primero.');
-    }
-  };
+import {
+    Activity,
+    ArrowUpRight,
+    CreditCard,
+    DollarSign,
+    Users,
+  } from 'lucide-react';
   
-  // Lógica para renderizar el componente de la vista activa.
-  const renderActiveView = () => {
-    switch (activeView) {
-      case ActiveView.DASHBOARD:
-        return <DashboardSection />;
-      case ActiveView.DATA_IMPORT:
-        return <DataImportSection onDataLoaded={setSalesData} />;
-      case ActiveView.CONSTRAINTS:
-        return <ConstraintConfigurationSection onConstraintsChanged={setConstraints} />;
-      case ActiveView.PERSONNEL:
-        return <PersonnelManagementSection />;
-      case ActiveView.ABSENTEEISM:
-        return <AbsenteeismSection />;
-      case ActiveView.PRODUCTION_PLAN:
-        return <ProductionPlanSection plan={productionPlan} onGenerate={onGeneratePlan} />;
-      case ActiveView.MAINTENANCE:
-        return <MaintenanceSection />;
-      case ActiveView.TACTICAL_SCHEDULING:
-        return <TacticalSchedulingSection />;
-      default:
-        return <DashboardSection />;
-    }
-  };
-
-  return (
-    <div className="flex h-screen">
-      {/* La navegación lateral se podría mover a un componente Layout si se comparte en más páginas */}
-      <aside className="w-64 bg-gray-800 text-white p-4">
-        <h1 className="text-2xl font-bold mb-6">Prod-Opt</h1>
-        <nav>
-          <ul>
-            {Object.values(ActiveView).map((view) => {
-              const config = viewConfig[view];
-              return (
-                <li key={view} className="mb-2">
-                  <button
-                    onClick={() => handleViewChange(view)}
-                    className={`flex items-center w-full text-left p-2 rounded-lg ${
-                      activeView === view ? 'bg-gray-700' : 'hover:bg-gray-700'
-                    }`}
-                  >
-                    <span className="mr-3">{config.icon}</span>
-                    {config.title}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-      </aside>
-      
-      {/* Área de contenido principal donde se renderiza la vista activa */}
-      <main className="flex-1 p-6 bg-gray-100 overflow-auto">
-        {renderActiveView()}
-      </main>
-    </div>
-  );
-}
+  import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+  import { Badge } from '@/components/ui/badge';
+  import { Button } from '@/components/ui/button';
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from '@/components/ui/card';
+  import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+  } from '@/components/ui/table';
+  import {
+    ChartTooltip,
+    ChartTooltipContent,
+    ChartContainer,
+    ChartLegend,
+    ChartLegendContent,
+  } from '@/components/ui/chart';
+  import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+  import type { ChartConfig } from '@/components/ui/chart';
+  
+  const chartData = [
+    { month: 'January', desktop: 186, mobile: 80 },
+    { month: 'February', desktop: 305, mobile: 200 },
+    { month: 'March', desktop: 237, mobile: 120 },
+    { month: 'April', desktop: 73, mobile: 190 },
+    { month: 'May', desktop: 209, mobile: 130 },
+    { month: 'June', desktop: 214, mobile: 140 },
+  ];
+  
+  const chartConfig = {
+    desktop: {
+      label: 'Desktop',
+      color: 'hsl(var(--chart-1))',
+    },
+    mobile: {
+      label: 'Mobile',
+      color: 'hsl(var(--chart-2))',
+    },
+  } satisfies ChartConfig;
+  
+  export default function DashboardPage() {
+    return (
+      <div className="flex flex-col gap-6">
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Overall Equipment Effectiveness
+              </CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">85.2%</div>
+              <p className="text-xs text-muted-foreground">
+                +2.1% from last month
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Production Volume
+              </CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">+2350</div>
+              <p className="text-xs text-muted-foreground">
+                +180.1% from last month
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">On-Time Delivery</CardTitle>
+              <CreditCard className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">98.5%</div>
+              <p className="text-xs text-muted-foreground">
+                +1.5% from last month
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">First Pass Yield</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">92.8%</div>
+              <p className="text-xs text-muted-foreground">
+                -0.5% from last month
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+          <Card className="col-span-4">
+            <CardHeader>
+              <CardTitle>Production Output</CardTitle>
+            </CardHeader>
+            <CardContent className="pl-2">
+            <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                <BarChart data={chartData}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="month" tickLine={false} tickMargin={10} axisLine={false} />
+                    <YAxis />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartLegend content={<ChartLegendContent />} />
+                    <Bar dataKey="desktop" fill="var(--color-desktop)" radius={4} />
+                    <Bar dataKey="mobile" fill="var(--color-mobile)" radius={4} />
+                </BarChart>
+            </ChartContainer>
+            </CardContent>
+          </Card>
+          <Card className="col-span-3">
+            <CardHeader>
+              <CardTitle>Recent Activity</CardTitle>
+              <CardDescription>
+                You have 265 alerts in the last 7 days.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-8">
+                <div className="flex items-center">
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src="https://placehold.co/36x36.png" alt="Avatar" data-ai-hint="male avatar" />
+                    <AvatarFallback>OM</AvatarFallback>
+                  </Avatar>
+                  <div className="ml-4 space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      Olivia Martin
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      olivia.martin@email.com
+                    </p>
+                  </div>
+                  <div className="ml-auto font-medium">+$1,999.00</div>
+                </div>
+                <div className="flex items-center">
+                  <Avatar className="flex h-9 w-9 items-center justify-center space-y-0 border">
+                    <AvatarImage src="https://placehold.co/36x36.png" alt="Avatar" data-ai-hint="female avatar" />
+                    <AvatarFallback>JL</AvatarFallback>
+                  </Avatar>
+                  <div className="ml-4 space-y-1">
+                    <p className="text-sm font-medium leading-none">Jackson Lee</p>
+                    <p className="text-sm text-muted-foreground">
+                      jackson.lee@email.com
+                    </p>
+                  </div>
+                  <div className="ml-auto font-medium">+39.00</div>
+                </div>
+                <div className="flex items-center">
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src="https://placehold.co/36x36.png" alt="Avatar" data-ai-hint="female avatar" />
+                    <AvatarFallback>IN</AvatarFallback>
+                  </Avatar>
+                  <div className="ml-4 space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      Isabella Nguyen
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      isabella.nguyen@email.com
+                    </p>
+                  </div>
+                  <div className="ml-auto font-medium">+$299.00</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+  

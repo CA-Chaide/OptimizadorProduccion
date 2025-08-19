@@ -1,4 +1,4 @@
-import DashboardPage from './(app)/page';
+import DashboardPage from '@/app/(app)/page';
 
 export default function Home() {
   return <DashboardPage />;
