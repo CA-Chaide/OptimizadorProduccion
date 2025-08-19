@@ -1,3 +1,5 @@
+'use client';
+
 import * as React from 'react';
 import {
   Sidebar,
@@ -15,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Bell, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <Sidebar>

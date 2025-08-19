@@ -32,13 +32,16 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
     <nav className={cn('flex flex-col', className)} {...props}>
       {navItems.map((item) => (
         <SidebarMenuItem key={item.href}>
-          <Link href={item.href} legacyBehavior passHref>
+          <Link href={item.href}>
             <SidebarMenuButton
               isActive={pathname === item.href}
               tooltip={item.label}
+              asChild
             >
-              <item.icon className="h-4 w-4" />
-              <span>{item.label}</span>
+              <div>
+                <item.icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </div>
             </SidebarMenuButton>
           </Link>
         </SidebarMenuItem>

@@ -1,0 +1,33 @@
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import Script from 'next/script';
+import { Toaster } from '@/components/ui/toaster';
+import { MainLayout } from '@/components/main-layout';
+
+import '@/app/globals.css';
+
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+
+export const metadata: Metadata = {
+  title: 'Production Optimizer Next',
+  description: 'Application for optimizing production planning.',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className}>
+        <MainLayout>{children}</MainLayout>
+        <Toaster />
+        <Script
+          src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+          strategy="beforeInteractive"
+        />
+      </body>
+    </html>
+  );
+}

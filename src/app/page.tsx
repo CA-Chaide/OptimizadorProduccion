@@ -15,7 +15,7 @@ import {
   ChartLegendContent,
 } from '@/components/ui/chart';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-import { Activity, ArrowUpRight, DollarSign, Users } from 'lucide-react';
+import { Activity, CreditCard, DollarSign, Users } from 'lucide-react';
 import type { ChartConfig } from '@/components/ui/chart';
 
 const chartData = [
