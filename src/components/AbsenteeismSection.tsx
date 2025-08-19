@@ -105,6 +105,8 @@ export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, 
       return names.join(', ');
   }
 
+  const isMultipleSelect = formState.reason === 'Capacitaciones';
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-3">
@@ -128,16 +130,16 @@ export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, 
               <select 
                 name="employeeIds" 
                 id="employeeIds" 
-                multiple={formState.reason === 'Capacitaciones'} 
-                value={formState.employeeIds}
+                multiple={isMultipleSelect} 
+                value={isMultipleSelect ? formState.employeeIds : (formState.employeeIds[0] || '')}
                 onChange={handleEmployeeSelectionChange} 
                 className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 sm:text-sm"
-                size={formState.reason === 'Capacitaciones' ? 5 : 1}
+                size={isMultipleSelect ? 5 : 1}
               >
-                {formState.reason !== 'Capacitaciones' && <option value="">-- Seleccionar --</option>}
+                {!isMultipleSelect && <option value="">-- Seleccionar --</option>}
                 {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
               </select>
-              {formState.reason === 'Capacitaciones' && <p className="text-xs text-gray-500 mt-1">Mantenga presionado Ctrl (o Cmd en Mac) para seleccionar múltiples empleados.</p>}
+              {isMultipleSelect && <p className="text-xs text-gray-500 mt-1">Mantenga presionado Ctrl (o Cmd en Mac) para seleccionar múltiples empleados.</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -217,6 +219,3 @@ export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, 
     </div>
   );
 };
-
-// No longer default export
-// export default AbsenteeismSection;
