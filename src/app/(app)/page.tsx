@@ -149,15 +149,15 @@ export default function ProductionOptimizerPage() {
             <button
               key={view}
               onClick={() => setActiveView(view)}
-              className={`flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-all duration-200 ease-in-out
+              className={`flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-all duration-200 ease-in-out text-sm
                         ${
                           activeView === view
-                            ? 'bg-primary-foreground/20 text-white shadow-md'
+                            ? 'bg-primary-foreground/20 text-primary-foreground shadow-md font-semibold'
                             : 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
                         }`}
             >
-              <span className="text-primary-foreground">{viewInfo.icon}</span>
-              <span className="text-primary-foreground">{viewInfo.title}</span>
+              <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center">{viewInfo.icon}</span>
+              <span>{viewInfo.title}</span>
             </button>
           );
         })}
