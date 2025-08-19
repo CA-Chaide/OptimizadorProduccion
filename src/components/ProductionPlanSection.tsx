@@ -75,6 +75,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         <thead className="bg-gray-50 sticky top-0">
           <tr>
             <th className="px-2 py-2 text-left font-semibold text-gray-600">Mes</th>
+            <th className="px-2 py-2 text-left font-semibold text-gray-600">Código Material</th>
             <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto</th>
             <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
             <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción Total</th>
@@ -86,6 +87,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
           {monthlyPlan.map(item => (
             <tr key={item.id} className="hover:bg-gray-50">
               <td className="px-2 py-1 whitespace-nowrap">{`${MONTH_NAMES[item.month-1]} ${item.year}`}</td>
+              <td className="px-2 py-1 whitespace-nowrap font-mono text-gray-600">{item.productId}</td>
               <td className="px-2 py-1 whitespace-normal font-medium text-gray-800">{item.productName}</td>
               <td className="px-2 py-1 whitespace-nowrap">{item.producingCenterId}</td>
               <td className="px-2 py-1 text-right font-bold">{Math.round(item.totalQuantityToProduce)}</td>
