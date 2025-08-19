@@ -14,7 +14,7 @@ interface PersonnelManagementSectionProps {
 const MACHINE_OPTIONS = ['Maq1', 'Maq2', 'M3'];
 const ROLE_OPTIONS: Array<Employee['role']> = ['Operador', 'Ayudante'];
 
-const PersonnelManagementSection: React.FC<PersonnelManagementSectionProps> = ({
+export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProps> = ({
   employees,
   setEmployees,
   skills,
@@ -245,5 +245,3 @@ const PersonnelManagementSection: React.FC<PersonnelManagementSectionProps> = ({
     </div>
   );
 };
-
-export default PersonnelManagementSection;

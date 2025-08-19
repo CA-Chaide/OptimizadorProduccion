@@ -24,7 +24,7 @@ const getStatusCellStyle = (status: ProductionPlanItem['status']): string => {
   }
 };
 
-const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ plan, onGeneratePlan, isLoading, constraints }) => {
+export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ plan, onGeneratePlan, isLoading, constraints }) => {
   const [activeTab, setActiveTab] = useState<'daily' | 'monthly' | 'log'>('daily');
 
   const { dailyPlan = [], monthlyPlan = [], auditLog = [] } = plan || {};
@@ -168,5 +168,3 @@ const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ plan, onG
     </div>
   );
 };
-
-export default ProductionPlanSection;

@@ -9,7 +9,7 @@ interface MaintenanceSectionProps {
   addNotification: (type: NotificationMessage['type'], text: string) => void;
 }
 
-const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({ events, setEvents, productionLines, addNotification }) => {
+export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({ events, setEvents, productionLines, addNotification }) => {
   const [formState, setFormState] = useState<Omit<MaintenanceEvent, 'id'>>({
     title: '',
     productionLineId: '',
@@ -185,5 +185,3 @@ const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({ events, setEven
     </div>
   );
 };
-
-export default MaintenanceSection;
