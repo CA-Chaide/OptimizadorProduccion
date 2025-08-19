@@ -1,5 +1,6 @@
 
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -285,11 +286,12 @@ export interface ShiftProportions {
 // --- Tactical Scheduling Types ---
 export interface ProvisionalOrder {
     rowIndex: number;
-    FECHA_ORDEN: string; // YYYY-MM-DD
-    CENTRO: string;
+    ORDENPREVISIONAL: string;
     MATERIAL: string;
+    NOMBRE: string;
     CANTIDAD: number;
-    HORA_ORDEN: string;
+    FECHAINICIO: string; // YYYY-MM-DD
+    CENTRO: string;
 }
 
 export interface TacticalRequest {

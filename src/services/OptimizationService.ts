@@ -472,8 +472,8 @@ export const generateProductionPlan = (
     const center = workCenters.find(wc => normalizeCenterName(wc.name) === centerName);
     if (!center) continue;
 
-    const hasProcessInfo = productProcessInfos.some(ppi => ppi.productId === productId);
-    if (!hasProcessInfo) continue;
+    const ppiOptions = getPpiOptionsForPair(pair, productProcessInfos, workCenters, activeLines);
+    if (ppiOptions.length === 0) continue;
 
     const demands = planningHorizon.map(({ year, month }) => 
         salesData
@@ -728,7 +728,7 @@ export const generateProductionPlan = (
     const mp = monthlyPlanMap.get(key)!;
     mp.totalQuantityToProduce += dp.quantityToProduce;
     mp.totalHoursWorked += dp.hoursWorked;
-    mp.totalEstimatedLaborCost += dp.totalEstimatedLaborCost;
+    mp.totalEstimatedLaborCost += dp.estimatedLaborCost;
   });
 
   // --- 8. FINAL AUDIT SUMMARY ---
@@ -1001,6 +1001,27 @@ export function processImportedProductionData(
 
 
 // --- Tactical Scheduling ---
+const parseDateFromExcel = (dateValue: any): string | null => {
+    if (typeof dateValue === 'number') {
+        // Handle Excel serial number dates
+        const date = new Date(Date.UTC(1899, 11, 30 + dateValue));
+        return date.toISOString().split('T')[0];
+    }
+    if (typeof dateValue === 'string') {
+        // Handle string dates like 'D/M/YYYY'
+        const parts = dateValue.split('/');
+        if (parts.length === 3) {
+            const [day, month, year] = parts.map(Number);
+            if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                 // Handle 2-digit years
+                const fullYear = year < 100 ? 2000 + year : year;
+                return `${fullYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            }
+        }
+    }
+    return null; // Return null if format is not recognized
+};
+
 
 export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]> => {
   return new Promise((resolve, reject) => {
@@ -1023,19 +1044,41 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
           return;
         }
         
+        // Map headers to indices
+        const headers = jsonData[0].map(h => String(h).trim().toUpperCase());
+        const headerMap: { [key: string]: number } = {
+            ORDENPREVISIONAL: headers.indexOf('ORDENPREVISIONAL'),
+            MATERIAL: headers.indexOf('MATERIAL'),
+            NOMBRE: headers.indexOf('NOMBRE'),
+            CANTIDAD: headers.indexOf('CANTIDAD'),
+            FECHAINICIO: headers.indexOf('FECHAINICIO'),
+            FECHAFIN: headers.indexOf('FECHAFIN'),
+            CENTRO: headers.indexOf('CENTRO'),
+            MAQUINA: headers.indexOf('MAQUINA')
+        };
+        
+        const requiredHeaders = ['MATERIAL', 'CANTIDAD', 'FECHAINICIO', 'CENTRO'];
+        for (const h of requiredHeaders) {
+            if (headerMap[h] === -1) {
+                reject(new Error(`El archivo de órdenes previsionales debe contener la columna '${h}'.`));
+                return;
+            }
+        }
+
         const orders: ProvisionalOrder[] = jsonData.slice(1).map((row, index) => {
           if(row.filter(cell => cell !== null && cell !== undefined && cell !== '').length === 0) return null; 
 
-          const excelDateSerialNumber = parseFloat(String(row[0]));
-          const date = new Date(Date.UTC(1899, 11, 30 + excelDateSerialNumber));
+          const orderDate = parseDateFromExcel(row[headerMap.FECHAINICIO]);
+          if (!orderDate) return null; // Skip rows with invalid date formats
 
           return {
             rowIndex: index + 2,
-            FECHA_ORDEN: date.toISOString().split('T')[0], // YYYY-MM-DD
-            CENTRO: String(row[1] || '').trim(),
-            MATERIAL: String(row[2] || '').trim(),
-            CANTIDAD: parseFloat(String(row[3])) || 0,
-            HORA_ORDEN: String(row[4] || ''),
+            ORDENPREVISIONAL: String(row[headerMap.ORDENPREVISIONAL] || ''),
+            MATERIAL: String(row[headerMap.MATERIAL] || '').trim(),
+            NOMBRE: String(row[headerMap.NOMBRE] || ''),
+            CANTIDAD: parseFloat(String(row[headerMap.CANTIDAD])) || 0,
+            FECHAINICIO: orderDate,
+            CENTRO: String(row[headerMap.CENTRO] || '').trim(),
           };
         }).filter((row): row is ProvisionalOrder => row !== null && !!row.MATERIAL && !!row.CENTRO && row.CANTIDAD > 0); 
 
@@ -1110,7 +1153,7 @@ export const generateTacticalPlan = (
 
     // From provisional orders file
     provisionalOrders.forEach(order => {
-        if (order.FECHA_ORDEN === targetDate) {
+        if (order.FECHAINICIO === targetDate) {
             const key = `${order.MATERIAL}-${normalizeCenterName(order.CENTRO)}`;
             const currentDemand = tacticalDemand.get(key) || 0;
             tacticalDemand.set(key, Math.max(currentDemand, order.CANTIDAD));
