@@ -7,23 +7,12 @@ export enum ActiveView {
   DATA_IMPORT = 'DATA_IMPORT',
   CONSTRAINTS = 'CONSTRAINTS',
   MAINTENANCE = 'MAINTENANCE',
-  PERSONNEL_MANAGEMENT = 'PERSONNEL_MANAGEMENT',
-  ABSENTEEISM_MANAGEMENT = 'ABSENTEEISM_MANAGEMENT',
-  MEDIUM_TERM_PLAN = 'MEDIUM_TERM_PLAN',
+  PERSONNEL = 'PERSONNEL_MANAGEMENT',
+  ABSENTEEISM = 'ABSENTEEISM_MANAGEMENT',
+  PRODUCTION_PLAN = 'MEDIUM_TERM_PLAN',
   TACTICAL_SCHEDULING = 'TACTICAL_SCHEDULING',
   DASHBOARD = 'DASHBOARD',
 }
-
-export const NAVIGATION_ITEMS = [
-  { id: ActiveView.DATA_IMPORT, label: 'Importar Datos Ventas', icon: <DataImportIcon /> },
-  { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
-  { id: ActiveView.MAINTENANCE, label: 'Mantenimiento Programado', icon: <MaintenanceIcon /> },
-  { id: ActiveView.PERSONNEL_MANAGEMENT, label: 'Calificación Técnica Personal', icon: <PersonnelIcon /> },
-  { id: ActiveView.ABSENTEEISM_MANAGEMENT, label: 'Gestión de Ausentismos', icon: <AbsenteeismIcon /> },
-  { id: ActiveView.MEDIUM_TERM_PLAN, label: 'Plan de Producción Mediano Plazo', icon: <PlanIcon /> },
-  { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon /> },
-  { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon /> },
-];
 
 // SVG Icons (simple examples)
 export function DataImportIcon() {
@@ -138,3 +127,14 @@ export const HOLIDAY_APPLIES_TO_OPTIONS: Array<{ value: Holiday['appliesTo'], la
 
 export const MAX_FILE_SIZE_MB = 10;
 export const APP_VERSION = '1.0.0-next';
+
+export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element }> = {
+  [ActiveView.DASHBOARD]: { title: 'Dashboard', icon: <DashboardIcon /> },
+  [ActiveView.DATA_IMPORT]: { title: 'Importar Datos', icon: <DataImportIcon /> },
+  [ActiveView.CONSTRAINTS]: { title: 'Restricciones', icon: <ConstraintsIcon /> },
+  [ActiveView.PRODUCTION_PLAN]: { title: 'Plan de Producción', icon: <PlanIcon /> },
+  [ActiveView.PERSONNEL]: { title: 'Personal', icon: <PersonnelIcon /> },
+  [ActiveView.MAINTENANCE]: { title: 'Mantenimiento', icon: <MaintenanceIcon /> },
+  [ActiveView.ABSENTEEISM]: { title: 'Ausentismo', icon: <AbsenteeismIcon /> },
+  [ActiveView.TACTICAL_SCHEDULING]: { title: 'Programación Táctica', icon: <TacticalSchedulingIcon /> },
+};

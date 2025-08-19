@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
     ProductionPlanItem, AppConstraints, MaintenanceEvent, 
@@ -22,7 +23,7 @@ const getTodayString = () => {
     return `${year}-${month}-${day}`;
 };
 
-const TacticalSchedulingSection: React.FC<TacticalSchedulingSectionProps> = ({
+export const TacticalSchedulingSection: React.FC<TacticalSchedulingSectionProps> = ({
   dailyPlan,
   constraints,
   maintenanceEvents,
@@ -159,5 +160,3 @@ const TacticalSchedulingSection: React.FC<TacticalSchedulingSectionProps> = ({
     </div>
   );
 };
-
-export default TacticalSchedulingSection;
