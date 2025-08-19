@@ -12,10 +12,12 @@ import {
   CalendarDays,
   Users,
   Settings2,
+  LayoutDashboard, // Import dashboard icon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard }, // Added dashboard
   { href: '/data-import', label: 'Data Import', icon: Upload },
   { href: '/production-plan', label: 'Production Plan', icon: ClipboardList },
   { href: '/absenteeism', label: 'Absenteeism', icon: CalendarDays },
