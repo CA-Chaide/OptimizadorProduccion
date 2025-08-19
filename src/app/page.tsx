@@ -1,3 +1,5 @@
+import DashboardPage from './(app)/page';
+
 export default function Home() {
-  return <></>;
+  return <DashboardPage />;
 }
