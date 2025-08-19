@@ -7,7 +7,6 @@ import {
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
 import {
-  LayoutDashboard,
   Upload,
   ClipboardList,
   CalendarDays,
@@ -17,7 +16,6 @@ import {
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/data-import', label: 'Data Import', icon: Upload },
   { href: '/production-plan', label: 'Production Plan', icon: ClipboardList },
   { href: '/absenteeism', label: 'Absenteeism', icon: CalendarDays },

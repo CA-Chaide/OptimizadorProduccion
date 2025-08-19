@@ -1,127 +1,112 @@
 'use client';
 
+import React, { useState, useCallback } from 'react';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-} from '@/components/ui/chart';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-import { Activity, ArrowUpRight, DollarSign, Users } from 'lucide-react';
-import type { ChartConfig } from '@/components/ui/chart';
+  AbsenteeismSection,
+  ConstraintConfigurationSection,
+  DataImportSection,
+  MaintenanceSection,
+  PersonnelManagementSection,
+  ProductionPlanSection,
+  TacticalSchedulingSection,
+} from '@/components';
+import { ActiveView, viewConfig } from '@/constants/constants';
+import type { SalesDataRow, AppConstraints, ProductionPlanItem } from '@/types/types';
+import { generateProductionPlan } from '@/services/OptimizationService';
 
-const chartData = [
-  { month: 'January', desktop: 186, mobile: 80 },
-  { month: 'February', desktop: 305, mobile: 200 },
-  { month: 'March', desktop: 237, mobile: 120 },
-  { month: 'April', desktop: 73, mobile: 190 },
-  { month: 'May', desktop: 209, mobile: 130 },
-  { month: 'June', desktop: 214, mobile: 140 },
-];
+/**
+ * Componente principal de la aplicación.
+ * Reemplaza al antiguo App.tsx y gestiona el estado principal.
+ */
+export default function ProductionOptimizerPage() {
+  const [activeView, setActiveView] = useState<ActiveView>(ActiveView.DATA_IMPORT);
+  const [salesData, setSalesData] = useState<SalesDataRow[]>([]);
+  const [constraints, setConstraints] = useState<AppConstraints>({
+    maxShiftHours: 8,
+    minProductionSpeed: 100,
+    maxOvertime: 4,
+  });
+  const [productionPlan, setProductionPlan] = useState<ProductionPlanItem[]>([]);
 
-const chartConfig = {
-  desktop: {
-    label: 'Desktop',
-    color: '#2563eb',
-  },
-  mobile: {
-    label: 'Mobile',
-    color: '#60a5fa',
-  },
-} satisfies ChartConfig;
+  // Callback para manejar los datos cargados desde DataImportSection
+  const handleDataLoaded = (data: SalesDataRow[]) => {
+    setSalesData(data);
+    // Opcionalmente, cambiar a la vista de restricciones después de cargar datos.
+    setActiveView(ActiveView.CONSTRAINTS);
+  };
 
-export default function DashboardPage() {
+  // Callback para manejar el cambio de restricciones
+  const handleConstraintsChanged = (newConstraints: AppConstraints) => {
+    setConstraints(newConstraints);
+  };
+
+  // Callback para generar el plan de producción
+  const handleGeneratePlan = useCallback(() => {
+    if (salesData.length === 0) {
+      alert('Por favor, carga primero los datos de ventas.');
+      return;
+    }
+    const plan = generateProductionPlan(salesData, constraints);
+    setProductionPlan(plan);
+    setActiveView(ActiveView.PRODUCTION_PLAN);
+  }, [salesData, constraints]);
+
+  // Renderiza el componente de la vista activa
+  const renderActiveView = () => {
+    switch (activeView) {
+      case ActiveView.DATA_IMPORT:
+        return <DataImportSection onDataLoaded={handleDataLoaded} />;
+      case ActiveView.CONSTRAINTS:
+        return <ConstraintConfigurationSection onConstraintsChanged={handleConstraintsChanged} />;
+      case ActiveView.PERSONNEL:
+        return <PersonnelManagementSection />;
+      case ActiveView.ABSENTEEISM:
+        return <AbsenteeismSection />;
+      case ActiveView.PRODUCTION_PLAN:
+        return <ProductionPlanSection plan={productionPlan} onGenerate={handleGeneratePlan} />;
+      case ActiveView.MAINTENANCE:
+        return <MaintenanceSection />;
+      case ActiveView.TACTICAL_SCHEDULING:
+        return <TacticalSchedulingSection />;
+      default:
+        return <DataImportSection onDataLoaded={handleDataLoaded} />;
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Overall Equipment Effectiveness
-            </CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">85.2%</div>
-            <p className="text-xs text-muted-foreground">
-              +2.1% from last month
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Production Volume
-            </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">12,540 Units</div>
-            <p className="text-xs text-muted-foreground">
-              +180 units from last month
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Downtime</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">3h 45m</div>
-            <p className="text-xs text-muted-foreground">
-              -30m from last month
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              First Pass Yield
-            </CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">98.9%</div>
-            <p className="text-xs text-muted-foreground">
-              +0.5% from last month
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Production Output</CardTitle>
-          <CardDescription>January - June 2024</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-            <BarChart accessibilityLayer data={chartData}>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                    dataKey="month"
-                    tickLine={false}
-                    tickMargin={10}
-                    axisLine={false}
-                    tickFormatter={(value) => value.slice(0, 3)}
-                />
-                <YAxis />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Bar dataKey="desktop" fill="var(--color-desktop)" radius={4} />
-                <Bar dataKey="mobile" fill="var(--color-mobile)" radius={4} />
-            </BarChart>
-          </ChartContainer>
-        </CardContent>
-      </Card>
+    <div className="flex h-screen bg-gray-100">
+      {/* Barra de Navegación Lateral */}
+      <aside className="w-64 bg-white shadow-md">
+        <div className="p-4">
+          <h1 className="text-2xl font-bold text-gray-800">Prod-Opt</h1>
+        </div>
+        <nav>
+          <ul>
+            {Object.values(ActiveView).map((view) => (
+              <li key={view}>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setActiveView(view);
+                  }}
+                  className={`flex items-center p-4 text-gray-600 hover:bg-gray-200 ${
+                    activeView === view ? 'bg-blue-500 text-white' : ''
+                  }`}
+                >
+                  {viewConfig[view].icon}
+                  <span className="ml-3">{viewConfig[view].title}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </aside>
+
+      {/* Contenido Principal */}
+      <main className="flex-1 p-8 overflow-auto">
+        {renderActiveView()}
+      </main>
     </div>
   );
 }
