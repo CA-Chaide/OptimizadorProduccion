@@ -1,47 +1,282 @@
-/**
- * @file Archivo centralizado para todas las definiciones de tipos e interfaces de TypeScript.
- * No cambia su propósito respecto a la aplicación original.
- * Será importado por la mayoría de archivos .tsx y .ts que manejen datos.
- */
 
-// Ejemplo: Tipo para una fila de datos de ventas extraída del Excel.
-export interface SalesDataRow {
-  'Product ID': string;
-  'Product Name': string;
-  'Sales Volume': number;
-  'Date': string;
-  [key: string]: any; // Permite otras columnas no definidas explícitamente.
-}
-
-// Ejemplo: Tipo para las restricciones de la aplicación.
-export interface AppConstraints {
-  maxShiftHours: number;
-  minProductionSpeed: number;
-  maxOvertime: number;
-}
-
-// Ejemplo: Tipo para un ítem en el plan de producción generado.
-export interface ProductionPlanItem {
+export type AbsenteeismEvent = {
   id: string;
-  taskName: string;
-  quantity: number;
-  startDate: string;
-  endDate: string;
-  assignedTo: string;
-}
+  reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
+  startDate: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endDate: string;   // YYYY-MM-DD
+  endTime: string;   // HH:MM
+  employeeIds: string[]; // Can contain one or more employee IDs
+  notes?: string;
+};
 
-// Ejemplo: Tipo para un registro de ausentismo.
-export interface AbsenteeismRecord {
-  employeeId: string;
-  startDate: string;
-  endDate: string;
-  reason: 'sick' | 'vacation' | 'personal';
-}
+export type MaintenanceEvent = {
+  id: string;
+  title: string;
+  productionLineId: string;
+  startDate: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endDate: string;   // YYYY-MM-DD
+  endTime: string;   // HH:MM
+};
 
-// Ejemplo: Tipo para un miembro del personal.
-export interface Personnel {
+export type Employee = {
   id: string;
   name: string;
-  role: string;
-  skills: string[];
+  employeeCode: string;
+  machine?: string;
+  role?: 'Operador' | 'Ayudante';
+  isActive?: boolean;
+};
+
+export type EmployeeSkill = {
+  employeeId: string;
+  workstationDefinitionId: string;
+  skillLevel: number; // 1-100
+};
+
+export type ProcessType = 'Colchones' | 'Forros' | 'Bases' | 'Paneles' | 'Espuma' | 'Muebles';
+
+export interface SalesDataRow {
+  id: string; // Unique ID for the row, can be generated on import
+  año: number;
+  mes: number;
+  sector: string; // Describes the market or customer segment
+  etiqueta: string; // Additional categorization for sales data
+  código: string; // Product code
+  centro: string; // Work center name where DEMAND originates (from import)
+  unidadesProyectado: number;
+  dolaresProyectado: number;
+  descripciónMaterial: string; // Used for material requirements planning
+  familia: string;
+  marca: string;
+  lineaProduccion: string; // Suggested production line name (from import, map to ID)
+}
+
+// New: Global definition for a type of workstation
+export interface WorkstationDefinition {
+  id:string;
+  name: string; // Unique name for the workstation type, e.g., "Cerrador"
+  employeesPerWorkstation: number; // How many employees operate ONE such workstation
+  isActive?: boolean;
+}
+
+export interface ProductProcessInfo {
+  id: string; // Unique ID for this process info
+  productId: string; // Links to SalesDataRow.código
+  productName?: string; // For easier display
+  productionLineId: string; // The line where this process happens
+  workstationTimes: Array<{ workstationDefinitionId: string; timeHours: number }>; // Time in hours per unit, links to WorkstationDefinition
+  totalManufacturingTimeHours: number; // Sum of workstationTimes per unit
+  aprovisionamientoEspecial?: 'E' | 'X' | 'F'; // E=Mismo centro, X=Aprovisionable 1000/2000, F=Solo traslado
+}
+
+export interface ProductionLine {
+  id: string;
+  name: string;
+  workCenterId: string; // The WorkCenter this line belongs to
+  processType: ProcessType; // Type of process this line is for
+  assignedWorkstations: Array<{ // New: Replaces inline workstations
+    definitionId: string; // ID of the WorkstationDefinition
+    quantity: number;     // How many of this type of workstation are on this line
+  }>;
+  capacity: { // General capacity, more specific calculation will use workstation times
+    maxUnitsPerHour: number;
+    normalUnitsPerHour: number;
+    minUnitsPerHour: number;
+  };
+  materialsHandled: string[];
+  isActive?: boolean;
+}
+
+export interface WorkCenter {
+  id: string;
+  name: string; // e.g., "Centro 1000", "Centro 2000"
+  productionLineIds: string[];
+  isActive?: boolean;
+}
+
+// New structure for Labor Cost Settings
+export interface LaborCostSettings {
+  // id: string; // No longer needed if it's a single object in AppConstraints
+  factorAdicionalDiurno: number; // Percentage, e.g., 50 for 50% extra on base for these hours
+  factorRecargoNocturno: number; // Percentage, e.g., 25 for 25% extra on base for night hours
+  factorFinSemanaFeriado: number; // Percentage, e.g., 100 for 100% extra on base for weekend/holiday hours
+}
+
+export interface InventorySetting {
+  id: string;
+  itemId: string; // Product code (código)
+  itemName: string;
+  centerId: string; // WorkCenter ID where this inventory is located
+  isRawMaterial: boolean; // Not used in current logic, but kept for future
+  minStock: number;
+  maxStock: number;
+  currentStock: number; // Initial stock level at the beginning of planning
+}
+
+export interface Bottleneck { // Kept for future, not used in current optimization
+  id: string;
+  description: string;
+  location: string;
+  estimatedImpactHours: number;
+  isActive?: boolean;
+}
+
+export interface SupplierDeliveryTime { // Kept for future
+  id: string;
+  materialId: string;
+  materialName: string;
+  supplierName: string;
+  leadTimeDays: number;
+  isActive?: boolean;
+}
+
+export interface QualityParameter { // Kept for future
+  id: string;
+  name: string;
+  description: string;
+  impactOnTimePercent?: number;
+  impactOnCostPercent?: number;
+  isActive?: boolean;
+}
+
+export interface ProductionTimeImportRow {
+  rowIndex: number;
+  códigoMaterial: string;
+  centro: string; // Production center name
+  linea: string;
+  puestoTrabajo: string; // Name of the WorkstationDefinition
+  tiempo: number; // Time in MINUTES from excel, to be converted to hours
+  saldoInicial: number; 
+  stockSeguridad: number;
+  stockMaximo: number;
+}
+
+export interface SupplyInfo {
+  código: string;
+  centro: string;
+  aprovisionamiento: 'E' | 'X' | 'F';
+}
+
+export interface ParsedProductionData {
+  times: ProductionTimeImportRow[];
+  supplyInfos: SupplyInfo[];
+}
+
+export interface Holiday {
+  id: string;
+  date: string; // YYYY-MM-DD
+  name: string;
+  appliesTo: 'Produccion' | 'Distribucion' | 'Ambos';
+  isProductionAllowed: boolean; // New: To allow production on certain holidays
+}
+
+export interface ProductionPlanItem {
+  id: string;
+  productId: string;
+  productName: string;
+  year: number;
+  month: number;
+  week: number;
+  day: number; // New: Specific day of the month
+  quantityToProduce: number;
+  demandOnDay: number; // New: To show daily sales demand
+  initialStockOnDay: number; // New: Stock at the beginning of the day
+  finalStockOnDay: number; // New: Stock at the end of the day
+  assignedLineId?: string; 
+  producingCenterId?: string; 
+  shiftId?: string; 
+  estimatedLaborCost: number;
+  hoursWorked: number; // Renamed from estimatedManufacturingTimeHours for clarity
+  status: 'Planificado' | 'En Progreso' | 'Completado' | 'Retrasado' | 'Factibilidad Baja' | 'Error en Datos' | 'Transferencia';
+  notes?: string;
+  isTransfer?: boolean;
+  transferDestinationCenterId?: string; 
+  transferSourceCenterId?: string; 
+}
+
+export interface MonthlyProductionPlanItem {
+    id: string; // YYYY-MM-ProductId-CenterId
+    year: number;
+    month: number;
+    productId: string;
+    productName: string;
+    producingCenterId?: string;
+    totalQuantityToProduce: number;
+    totalHoursWorked: number;
+    totalEstimatedLaborCost: number;
+}
+
+export interface ProductionPlan {
+    dailyPlan: ProductionPlanItem[];
+    monthlyPlan: MonthlyProductionPlanItem[];
+    auditLog: string[];
+}
+
+// New: Type for the summary sheet in Excel export
+export interface LineMonthlySummary {
+  lineId: string;
+  lineName: string;
+  centerName: string;
+  year: number;
+  month: string;
+  initialStock: number;
+  minStock: number;
+  demand: number;
+  production: number;
+  finalStock: number;
+  workingDays: number;
+  avgWeekdayHours: number;
+  saturdaysWorked: number;
+  avgSaturdayHours: number;
+  holidaysWorked: number;
+  holidayHours: number;
+}
+
+
+export interface AppConstraints {
+  workstationDefinitions: WorkstationDefinition[]; // New: Global workstation definitions
+  workCenters: WorkCenter[];
+  productionLines: ProductionLine[];
+  productProcessInfos: ProductProcessInfo[];
+  globalBaseCostPerHour: number | null; 
+  laborCostFactors: LaborCostSettings | null; 
+  inventorySettings: InventorySetting[];
+  bottlenecks: Bottleneck[];
+  contingencyFundPercentage: number;
+  supplierDeliveryTimes: SupplierDeliveryTime[];
+  qualityParameters: QualityParameter[];
+  holidays: Holiday[];
+}
+
+export interface NotificationMessage {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  text: string;
+  errors?: string[]; // Optional: For displaying a list of detailed error messages
+}
+
+export interface ChartDataItem {
+  name: string;
+  value?: number;
+  [key: string]: any;
+}
+
+export interface MonthlyInventoryState {
+  [centerId: string]: {
+    [productId: string]: {
+      initialStock: number;
+      produced: number;
+      receivedViaTransfer: number;
+      salesDemandFulfilled: number;
+      transferredOut: number;
+      finalStock: number;
+    };
+  };
+}
+
+export interface ShiftProportions {
+  daytimeProportion: number;
+  nighttimeProportion: number;
 }

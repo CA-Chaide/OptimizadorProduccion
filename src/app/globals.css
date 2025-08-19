@@ -86,3 +86,42 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #1a202c;
+}
+::-webkit-scrollbar-thumb {
+  background: #4a5568;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #718096;
+}
+
+/* Custom animation for notifications */
+@keyframes fadeInOut {
+  0% { 
+    opacity: 0; 
+    transform: translateY(20px) scale(0.95);
+  }
+  10% { 
+    opacity: 1; 
+    transform: translateY(0) scale(1);
+  }
+  90% { 
+    opacity: 1; 
+    transform: translateY(0) scale(1);
+  }
+  100% { 
+    opacity: 0; 
+    transform: translateY(20px) scale(0.95);
+  }
+}
+.notification-fade-in-out {
+  animation: fadeInOut 5s ease-in-out forwards;
+}

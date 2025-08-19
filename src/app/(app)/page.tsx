@@ -23,9 +23,18 @@ export default function ProductionOptimizerPage() {
   const [activeView, setActiveView] = useState<ActiveView>(ActiveView.DATA_IMPORT);
   const [salesData, setSalesData] = useState<SalesDataRow[]>([]);
   const [constraints, setConstraints] = useState<AppConstraints>({
-    maxShiftHours: 8,
-    minProductionSpeed: 100,
-    maxOvertime: 4,
+    workstationDefinitions: [],
+    workCenters: [],
+    productionLines: [],
+    productProcessInfos: [],
+    globalBaseCostPerHour: null,
+    laborCostFactors: null,
+    inventorySettings: [],
+    bottlenecks: [],
+    contingencyFundPercentage: 5,
+    supplierDeliveryTimes: [],
+    qualityParameters: [],
+    holidays: [],
   });
   const [productionPlan, setProductionPlan] = useState<ProductionPlanItem[]>([]);
 
@@ -47,8 +56,8 @@ export default function ProductionOptimizerPage() {
       alert('Por favor, carga primero los datos de ventas.');
       return;
     }
-    const plan = generateProductionPlan(salesData, constraints);
-    setProductionPlan(plan);
+    // const plan = generateProductionPlan(salesData, constraints);
+    // setProductionPlan(plan);
     setActiveView(ActiveView.PRODUCTION_PLAN);
   }, [salesData, constraints]);
 

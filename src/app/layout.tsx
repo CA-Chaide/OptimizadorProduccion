@@ -8,8 +8,8 @@ import '@/app/globals.css';
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: 'Production Optimizer Next',
-  description: 'Application for optimizing production planning.',
+  title: 'Optimizador de Producción',
+  description: 'Una aplicación web para optimizar planes de producción basados en datos de ventas y restricciones configurables, con visualizaciones de dashboard. Permite importar datos de ventas, definir restricciones operativas, generar planes de producción y visualizar métricas clave.',
 };
 
 export default function RootLayout({
