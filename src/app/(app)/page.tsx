@@ -24,7 +24,7 @@ import { NotificationMessage } from '@/types/types';
 export default function ProductionOptimizerPage() {
   const { toast } = useToast();
 
-  const [activeView, setActiveView] = useState<ActiveView>(ActiveView.DATA_IMPORT);
+  const [activeView, setActiveView] = useState<ActiveView>(ActiveView.DASHBOARD);
   const [salesData, setSalesData] = useState<SalesDataRow[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [productionPlan, setProductionPlan] = useState<ProductionPlan>({ dailyPlan: [], monthlyPlan: [], auditLog: [] });
@@ -142,6 +142,7 @@ export default function ProductionOptimizerPage() {
                 data-ai-hint="company logo"
             />
         </div>
+        <div className="border-t border-primary-foreground/20 my-4"></div>
         {Object.values(ActiveView).map((view) => {
           const viewInfo = viewConfig[view];
           if (!viewInfo) return null;
@@ -162,7 +163,7 @@ export default function ProductionOptimizerPage() {
           );
         })}
         <div className="mt-auto pt-4 border-t border-primary-foreground/20">
-          <p className="text-xs text-primary-foreground/50 text-center">&copy; {new Date().getFullYear()} Optimizador IA</p>
+          <p className="text-xs text-primary-foreground/50 text-center">&copy; {new Date().getFullYear()} Chaide IA</p>
         </div>
       </nav>
 
