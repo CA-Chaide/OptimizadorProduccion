@@ -193,6 +193,114 @@ type HourType = 'regular' | 'extra' | 'holiday';
 type LineHourAvailability = Record<HourType, number>;
 const HOUR_COST_ORDER: HourType[] = ['regular', 'extra', 'holiday'];
 
+
+/**
+ * Calculates the total labor cost for a given production task.
+ * This function encapsulates the "Total Labor-Hours" logic.
+ */
+function calculateLaborCost(
+    consumedHours: LineHourAvailability,
+    ppi: ProductProcessInfo,
+    baseCostPerHour: number | null,
+    costFactors: LaborCostSettings | null,
+    workstationDefs: WorkstationDefinition[]
+): number {
+    if (!baseCostPerHour || !costFactors || !ppi.workstationTimes) return 0;
+
+    // 1. Sum up all employees involved in making this specific product on this line.
+    const totalEmployees = ppi.workstationTimes.reduce((sum, wt) => {
+        const def = workstationDefs.find(d => d.id === wt.workstationDefinitionId);
+        return sum + (def?.employeesPerWorkstation || 1);
+    }, 0);
+
+    // 2. Calculate cost for each type of hour worked, factoring in the total employees.
+    const regularHoursCost = (consumedHours.regular * totalEmployees) * baseCostPerHour;
+    const extraHoursCost = (consumedHours.extra * totalEmployees) * baseCostPerHour * (1 + (costFactors.factorAdicionalDiurno / 100));
+    const holidayHoursCost = (consumedHours.holiday * totalEmployees) * baseCostPerHour * (1 + (costFactors.factorFinSemanaFeriado / 100));
+
+    return regularHoursCost + extraHoursCost + holidayHoursCost;
+}
+
+/**
+ * Generates summary data aggregated by production line and month.
+ */
+function generateLineSummaryData(plan: ProductionPlanItem[], constraints: AppConstraints): LineMonthlySummary[] {
+    const summaryMap = new Map<string, LineMonthlySummary>(); // key: `${year}-${month}-${lineId}`
+
+    plan.forEach(item => {
+        if (!item.assignedLineId || !item.producingCenterId) return;
+
+        const lineNames = item.assignedLineId.split(', ');
+        for (const lineName of lineNames) {
+            const line = constraints.productionLines.find(l => l.name === lineName && l.workCenterId === constraints.workCenters.find(c => c.name === item.producingCenterId)?.id);
+            if (!line) continue;
+    
+            const key = `${item.year}-${item.month}-${line.id}`;
+            if (!summaryMap.has(key)) {
+                summaryMap.set(key, {
+                    lineId: line.id, lineName: line.name, centerName: item.producingCenterId,
+                    year: item.year, month: MONTH_NAMES[item.month - 1],
+                    initialStock: 0, minStock: 0, demand: 0, production: 0, finalStock: 0, // These are harder to aggregate by line
+                    workingDays: 0,
+                    avgWeekdayHours: 0, saturdaysWorked: 0, avgSaturdayHours: 0,
+                    holidaysWorked: 0, holidayHours: 0,
+                });
+            }
+        }
+    });
+
+    for (const [key, summary] of summaryMap.entries()) {
+        const [yearStr, monthStr, lineId] = key.split('-');
+        const year = parseInt(yearStr);
+        const monthNum = MONTH_NAMES.indexOf(summary.month) + 1;
+        
+        const dailyItemsForLineMonth = plan.filter(p => 
+            p.year === year && 
+            p.month === monthNum && 
+            p.assignedLineId?.split(', ').includes(summary.lineName)
+        );
+
+        let weekdayHours = 0, saturdayHours = 0, holidayHours = 0;
+        const weekdaysWorked = new Set<number>(), saturdaysWorked = new Set<number>(), holidaysWorked = new Set<number>();
+        
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        summary.workingDays = Array.from({length: daysInMonth}, (_, i) => getDayTypeForProduction(new Date(year, monthNum-1, i+1), constraints.holidays))
+                                .filter(d => d === 'Weekday' || d === 'Saturday' || d === 'ProductiveHoliday').length;
+
+        dailyItemsForLineMonth.forEach(item => {
+            const hoursPerLine = item.assignedLineId!.split(', ').length;
+            const hoursOnThisLine = item.hoursWorked / hoursPerLine; // Approximate distribution
+
+            summary.production += item.quantityToProduce / hoursPerLine; // Apportion production
+            summary.demand += item.demandOnDay; // Note: Demand is center-based, this is an approximation
+            
+            const currentDate = new Date(item.year, item.month - 1, item.day);
+            const dayType = getDayTypeForProduction(currentDate, constraints.holidays);
+            
+            if (hoursOnThisLine > 0) {
+                 if (dayType === 'Weekday') {
+                    weekdayHours += hoursOnThisLine;
+                    weekdaysWorked.add(item.day);
+                } else if (dayType === 'Saturday') {
+                    saturdayHours += hoursOnThisLine;
+                    saturdaysWorked.add(item.day);
+                } else if (dayType === 'ProductiveHoliday') {
+                    holidayHours += hoursOnThisLine;
+                    holidaysWorked.add(item.day);
+                }
+            }
+        });
+        
+        summary.saturdaysWorked = saturdaysWorked.size;
+        summary.holidaysWorked = holidaysWorked.size;
+        summary.holidayHours = parseFloat(holidayHours.toFixed(2));
+        summary.avgWeekdayHours = weekdaysWorked.size > 0 ? parseFloat((weekdayHours / weekdaysWorked.size).toFixed(2)) : 0;
+        summary.avgSaturdayHours = saturdaysWorked.size > 0 ? parseFloat((saturdayHours / saturdaysWorked.size).toFixed(2)) : 0;
+    }
+    
+    return Array.from(summaryMap.values()).sort((a,b) => a.year - b.year || MONTH_NAMES.indexOf(a.month) - MONTH_NAMES.indexOf(b.month) || a.centerName.localeCompare(b.centerName) || a.lineName.localeCompare(b.lineName));
+}
+
 /**
  * Dynamically calculates the effective manufacturing time for a given process,
  * accounting for parallel workstations (bottleneck logic).
@@ -260,14 +368,14 @@ export const generateProductionPlan = (
       const center = workCenters.find(wc => normalizeCenterName(wc.name) === centerName);
       if (!center) return [];
 
-      const ppiCandidates = productProcessInfos.filter(p =>
-          p.productId === productId &&
-          activeLines.some(l => l.id === p.productionLineId && l.workCenterId === center.id)
+      const ppiCandidates = productProcessInfos.filter(ppi =>
+          ppi.productId === productId &&
+          activeLines.some(l => l.id === ppi.productionLineId && l.workCenterId === center.id)
       );
 
       // Dynamically calculate effective manufacturing time for each candidate
       const candidatesWithEffectiveTime = ppiCandidates.map(ppi => {
-          const line = activeLines.find(l => l.id === p.productionLineId);
+          const line = activeLines.find(l => l.id === ppi.productionLineId);
           if (!line) return { ppi, effectiveTime: Infinity };
           const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
           return { ppi, effectiveTime };
@@ -396,16 +504,19 @@ export const generateProductionPlan = (
 
     for (let i = planningHorizon.length - 1; i >= 0; i--) {
       const demandThisMonth = group.demands[i];
-      const requiredStockAtStartOfMonth = stockAtEndOfMonth + demandThisMonth;
+      let projectedStockFromPrevious = (i === 0) 
+        ? group.initialStock 
+        : stockAtEndOfMonth; // Simplified start for this pass
       
-      const stockFromPreviousPeriod = (i === 0) 
-        ? group.initialStock
-        : (planningGroups.get(pair)!.demands.slice(0, i).reduce((a,b) => a+b, 0) * -1) + group.initialStock + needs.slice(0,i).reduce((a,b)=>a+b,0); // Simplified projection
-
-      const productionNeeded = Math.max(0, requiredStockAtStartOfMonth - stockFromPreviousPeriod);
-      needs[i] = productionNeeded;
-
-      stockAtEndOfMonth = stockFromPreviousPeriod + productionNeeded - demandThisMonth;
+      const productionNeeded = Math.max(0, demandThisMonth + group.minStock - projectedStockFromPrevious);
+      
+      // Cap production if it exceeds max stock
+      const cappedProduction = Math.min(productionNeeded, (group.maxStock - projectedStockFromPrevious) > 0 ? (group.maxStock - projectedStockFromPrevious) : 0);
+      
+      needs[i] = cappedProduction;
+      
+      // Update stock for PREVIOUS month's calculation
+      stockAtEndOfMonth = projectedStockFromPrevious + cappedProduction - demandThisMonth;
     }
      productionNeeds.set(pair, needs);
   }
@@ -618,7 +729,7 @@ export const generateProductionPlan = (
     const mp = monthlyPlanMap.get(key)!;
     mp.totalQuantityToProduce += dp.quantityToProduce;
     mp.totalHoursWorked += dp.hoursWorked;
-    mp.totalEstimatedLaborCost += dp.estimatedLaborCost;
+    mp.totalEstimatedLaborCost += dp.totalEstimatedLaborCost;
   });
 
   // --- 8. FINAL AUDIT SUMMARY ---
@@ -630,7 +741,7 @@ export const generateProductionPlan = (
         const [productId] = pair.split('---');
         const demand = group.demands.reduce((a, b) => a + b, 0);
         const production = Array.from(monthlyPlanMap.values())
-            .filter(p => p.productId === productId)
+            .filter(ppi => ppi.productId === productId)
             .reduce((sum, p) => sum + p.totalQuantityToProduce, 0);
         totalDemand += demand;
         totalProduction += production;
@@ -650,113 +761,6 @@ export const generateProductionPlan = (
     auditLog
   };
 };
-
-/**
- * Calculates the total labor cost for a given production task.
- * This function encapsulates the "Total Labor-Hours" logic.
- */
-function calculateLaborCost(
-    consumedHours: LineHourAvailability,
-    ppi: ProductProcessInfo,
-    baseCostPerHour: number | null,
-    costFactors: LaborCostSettings | null,
-    workstationDefs: WorkstationDefinition[]
-): number {
-    if (!baseCostPerHour || !costFactors || !ppi.workstationTimes) return 0;
-
-    // 1. Sum up all employees involved in making this specific product on this line.
-    const totalEmployees = ppi.workstationTimes.reduce((sum, wt) => {
-        const def = workstationDefs.find(d => d.id === wt.workstationDefinitionId);
-        return sum + (def?.employeesPerWorkstation || 1);
-    }, 0);
-
-    // 2. Calculate cost for each type of hour worked, factoring in the total employees.
-    const regularHoursCost = (consumedHours.regular * totalEmployees) * baseCostPerHour;
-    const extraHoursCost = (consumedHours.extra * totalEmployees) * baseCostPerHour * (1 + (costFactors.factorAdicionalDiurno / 100));
-    const holidayHoursCost = (consumedHours.holiday * totalEmployees) * baseCostPerHour * (1 + (costFactors.factorFinSemanaFeriado / 100));
-
-    return regularHoursCost + extraHoursCost + holidayHoursCost;
-}
-
-/**
- * Generates summary data aggregated by production line and month.
- */
-function generateLineSummaryData(plan: ProductionPlanItem[], constraints: AppConstraints): LineMonthlySummary[] {
-    const summaryMap = new Map<string, LineMonthlySummary>(); // key: `${year}-${month}-${lineId}`
-
-    plan.forEach(item => {
-        if (!item.assignedLineId || !item.producingCenterId) return;
-
-        const lineNames = item.assignedLineId.split(', ');
-        for (const lineName of lineNames) {
-            const line = constraints.productionLines.find(l => l.name === lineName && l.workCenterId === constraints.workCenters.find(c => c.name === item.producingCenterId)?.id);
-            if (!line) continue;
-    
-            const key = `${item.year}-${item.month}-${line.id}`;
-            if (!summaryMap.has(key)) {
-                summaryMap.set(key, {
-                    lineId: line.id, lineName: line.name, centerName: item.producingCenterId,
-                    year: item.year, month: MONTH_NAMES[item.month - 1],
-                    initialStock: 0, minStock: 0, demand: 0, production: 0, finalStock: 0, // These are harder to aggregate by line
-                    workingDays: 0,
-                    avgWeekdayHours: 0, saturdaysWorked: 0, avgSaturdayHours: 0,
-                    holidaysWorked: 0, holidayHours: 0,
-                });
-            }
-        }
-    });
-
-    for (const [key, summary] of summaryMap.entries()) {
-        const [yearStr, monthStr, lineId] = key.split('-');
-        const year = parseInt(yearStr);
-        const monthNum = MONTH_NAMES.indexOf(summary.month) + 1;
-        
-        const dailyItemsForLineMonth = plan.filter(p => 
-            p.year === year && 
-            p.month === monthNum && 
-            p.assignedLineId?.split(', ').includes(summary.lineName)
-        );
-
-        let weekdayHours = 0, saturdayHours = 0, holidayHours = 0;
-        const weekdaysWorked = new Set<number>(), saturdaysWorked = new Set<number>(), holidaysWorked = new Set<number>();
-        
-        const daysInMonth = new Date(year, monthNum, 0).getDate();
-        summary.workingDays = Array.from({length: daysInMonth}, (_, i) => getDayTypeForProduction(new Date(year, monthNum-1, i+1), constraints.holidays))
-                                .filter(d => d === 'Weekday' || d === 'Saturday' || d === 'ProductiveHoliday').length;
-
-        dailyItemsForLineMonth.forEach(item => {
-            const hoursPerLine = item.assignedLineId!.split(', ').length;
-            const hoursOnThisLine = item.hoursWorked / hoursPerLine; // Approximate distribution
-
-            summary.production += item.quantityToProduce / hoursPerLine; // Apportion production
-            summary.demand += item.demandOnDay; // Note: Demand is center-based, this is an approximation
-            
-            const currentDate = new Date(item.year, item.month - 1, item.day);
-            const dayType = getDayTypeForProduction(currentDate, constraints.holidays);
-            
-            if (hoursOnThisLine > 0) {
-                 if (dayType === 'Weekday') {
-                    weekdayHours += hoursOnThisLine;
-                    weekdaysWorked.add(item.day);
-                } else if (dayType === 'Saturday') {
-                    saturdayHours += hoursOnThisLine;
-                    saturdaysWorked.add(item.day);
-                } else if (dayType === 'ProductiveHoliday') {
-                    holidayHours += hoursOnThisLine;
-                    holidaysWorked.add(item.day);
-                }
-            }
-        });
-        
-        summary.saturdaysWorked = saturdaysWorked.size;
-        summary.holidaysWorked = holidaysWorked.size;
-        summary.holidayHours = parseFloat(holidayHours.toFixed(2));
-        summary.avgWeekdayHours = weekdaysWorked.size > 0 ? parseFloat((weekdayHours / weekdaysWorked.size).toFixed(2)) : 0;
-        summary.avgSaturdayHours = saturdaysWorked.size > 0 ? parseFloat((saturdayHours / saturdaysWorked.size).toFixed(2)) : 0;
-    }
-    
-    return Array.from(summaryMap.values()).sort((a,b) => a.year - b.year || MONTH_NAMES.indexOf(a.month) - MONTH_NAMES.indexOf(b.month) || a.centerName.localeCompare(b.centerName) || a.lineName.localeCompare(b.lineName));
-}
 
 export const exportDailyPlanToExcel = (
   plan: ProductionPlanItem[],
