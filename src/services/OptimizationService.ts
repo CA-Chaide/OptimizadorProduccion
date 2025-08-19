@@ -1,6 +1,5 @@
 
 
-
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -730,7 +729,7 @@ export const generateProductionPlan = (
     const mp = monthlyPlanMap.get(key)!;
     mp.totalQuantityToProduce += dp.quantityToProduce;
     mp.totalHoursWorked += dp.hoursWorked;
-    mp.totalEstimatedLaborCost += dp.totalEstimatedLaborCost;
+    mp.totalEstimatedLaborCost += dp.estimatedLaborCost;
   });
 
   // --- 8. FINAL AUDIT SUMMARY ---
