@@ -134,7 +134,7 @@ export default function ProductionOptimizerPage() {
       <nav className="w-64 bg-primary p-4 space-y-2 flex flex-col shadow-lg print:hidden">
         <div className="mb-6 px-2">
             <Image 
-                src="https://placehold.co/180x40.png" 
+                src="/logo.png" 
                 alt="Logo de la Compañía"
                 width={180}
                 height={40}
