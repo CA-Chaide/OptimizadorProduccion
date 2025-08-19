@@ -1,4 +1,5 @@
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -684,7 +685,7 @@ function generateLineSummaryData(plan: ProductionPlanItem[], constraints: AppCon
     const summaryMap = new Map<string, LineMonthlySummary>(); // key: `${year}-${month}-${lineId}`
 
     plan.forEach(item => {
-        if (!item.assignedLineId || item.isTransfer || !item.producingCenterId) return;
+        if (!item.assignedLineId || !item.producingCenterId) return;
 
         const lineNames = item.assignedLineId.split(', ');
         for (const lineName of lineNames) {
@@ -708,19 +709,19 @@ function generateLineSummaryData(plan: ProductionPlanItem[], constraints: AppCon
     for (const [key, summary] of summaryMap.entries()) {
         const [yearStr, monthStr, lineId] = key.split('-');
         const year = parseInt(yearStr);
-        const month = parseInt(monthStr);
+        const monthNum = MONTH_NAMES.indexOf(summary.month) + 1;
         
         const dailyItemsForLineMonth = plan.filter(p => 
             p.year === year && 
-            p.month === month && 
+            p.month === monthNum && 
             p.assignedLineId?.split(', ').includes(summary.lineName)
         );
 
         let weekdayHours = 0, saturdayHours = 0, holidayHours = 0;
         const weekdaysWorked = new Set<number>(), saturdaysWorked = new Set<number>(), holidaysWorked = new Set<number>();
         
-        const daysInMonth = new Date(year, month, 0).getDate();
-        summary.workingDays = Array.from({length: daysInMonth}, (_, i) => getDayTypeForProduction(new Date(year, month-1, i+1), constraints.holidays))
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        summary.workingDays = Array.from({length: daysInMonth}, (_, i) => getDayTypeForProduction(new Date(year, monthNum-1, i+1), constraints.holidays))
                                 .filter(d => d === 'Weekday' || d === 'Saturday' || d === 'ProductiveHoliday').length;
 
         dailyItemsForLineMonth.forEach(item => {
