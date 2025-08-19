@@ -74,37 +74,36 @@ export default function ProductionOptimizerPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Barra de Navegación Lateral */}
-      <aside className="w-64 bg-white shadow-md">
-        <div className="p-4">
-          <h1 className="text-2xl font-bold text-gray-800">Prod-Opt</h1>
+    <div className="flex h-screen bg-gray-900 text-white print:bg-white print:text-black">
+      {/* Sidebar */}
+      <nav className="w-64 bg-gray-800 p-4 space-y-2 flex flex-col shadow-lg print:hidden">
+        <div className="text-2xl font-bold mb-6 text-center text-indigo-400">Production Optimizer</div>
+        {Object.values(ActiveView).map((view) => {
+          const viewInfo = viewConfig[view];
+          if (!viewInfo) return null;
+          return (
+            <button
+              key={view}
+              onClick={() => setActiveView(view)}
+              className={`flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-all duration-200 ease-in-out
+                        ${
+                          activeView === view
+                            ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-400'
+                            : 'hover:bg-gray-700 hover:text-indigo-300 text-gray-300'
+                        }`}
+            >
+              {viewInfo.icon}
+              <span>{viewInfo.title}</span>
+            </button>
+          );
+        })}
+        <div className="mt-auto pt-4 border-t border-gray-700">
+          <p className="text-xs text-gray-500 text-center">&copy; {new Date().getFullYear()} Optimizador IA</p>
         </div>
-        <nav>
-          <ul>
-            {Object.values(ActiveView).map((view) => (
-              <li key={view}>
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setActiveView(view);
-                  }}
-                  className={`flex items-center p-4 text-gray-600 hover:bg-gray-200 ${
-                    activeView === view ? 'bg-blue-500 text-white' : ''
-                  }`}
-                >
-                  {viewConfig[view].icon}
-                  <span className="ml-3">{viewConfig[view].title}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </aside>
+      </nav>
 
-      {/* Contenido Principal */}
-      <main className="flex-1 p-8 overflow-auto">
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto bg-gray-100 text-gray-800 print:overflow-visible print:bg-white p-8">
         {renderActiveView()}
       </main>
     </div>
