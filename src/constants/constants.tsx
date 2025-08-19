@@ -128,13 +128,17 @@ export const HOLIDAY_APPLIES_TO_OPTIONS: Array<{ value: Holiday['appliesTo'], la
 export const MAX_FILE_SIZE_MB = 10;
 export const APP_VERSION = '1.0.0-next';
 
-export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element }> = {
-  [ActiveView.DASHBOARD]: { title: 'Dashboard', icon: <DashboardIcon /> },
-  [ActiveView.DATA_IMPORT]: { title: 'Importar Datos', icon: <DataImportIcon /> },
-  [ActiveView.CONSTRAINTS]: { title: 'Restricciones', icon: <ConstraintsIcon /> },
-  [ActiveView.PRODUCTION_PLAN]: { title: 'Plan de Producción', icon: <PlanIcon /> },
-  [ActiveView.PERSONNEL]: { title: 'Personal', icon: <PersonnelIcon /> },
-  [ActiveView.MAINTENANCE]: { title: 'Mantenimiento', icon: <MaintenanceIcon /> },
-  [ActiveView.ABSENTEEISM]: { title: 'Ausentismo', icon: <AbsenteeismIcon /> },
-  [ActiveView.TACTICAL_SCHEDULING]: { title: 'Programación Táctica', icon: <TacticalSchedulingIcon /> },
-};
+const NAVIGATION_ITEMS = [
+  { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon /> },
+  { id: ActiveView.DATA_IMPORT, label: 'Importar Datos Ventas', icon: <DataImportIcon /> },
+  { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
+  { id: ActiveView.PRODUCTION_PLAN, label: 'Plan de Producción', icon: <PlanIcon /> },
+  { id: ActiveView.PERSONNEL, label: 'Calificación Técnica Personal', icon: <PersonnelIcon /> },
+  { id: ActiveView.MAINTENANCE, label: 'Mantenimiento Programado', icon: <MaintenanceIcon /> },
+  { id: ActiveView.ABSENTEEISM, label: 'Gestión de Ausentismos', icon: <AbsenteeismIcon /> },
+  { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon /> },
+];
+
+
+export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element }> = 
+  Object.fromEntries(NAVIGATION_ITEMS.map(item => [item.id, { title: item.label, icon: item.icon }])) as Record<ActiveView, { title: string; icon: JSX.Element }>;
