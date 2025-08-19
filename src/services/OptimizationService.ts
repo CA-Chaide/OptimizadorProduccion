@@ -2,7 +2,7 @@ import {
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
-    ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, LineMonthlySummary, NotificationMessage
+    ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -265,7 +265,7 @@ export const generateProductionPlan = (
 
       // Dynamically calculate effective manufacturing time for each candidate
       const candidatesWithEffectiveTime = ppiCandidates.map(ppi => {
-          const line = activeLines.find(l => l.id === ppi.productionLineId);
+          const line = activeLines.find(l => l.id === p.productionLineId);
           if (!line) return { ppi, effectiveTime: Infinity };
           const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
           return { ppi, effectiveTime };
@@ -383,257 +383,109 @@ export const generateProductionPlan = (
     });
   }
 
-  // --- 4. CALCULATE MONTHLY PRODUCTION TARGETS (BASE PLAN) ---
-  const monthlyProductionTargets = new Map<string, number[]>(); // pair -> units per month
+  // --- 4. CALCULATE MONTHLY PRODUCTION TARGETS (MRP-style Backwards Pass) ---
+  const productionNeeds = new Map<string, number[]>();
+  auditLog.push('\n--- FASE DE PLANIFICACIÓN MENSUAL (Hacia Atrás - Lógica MRP) ---');
+  auditLog.push('Calcula la producción necesaria desde el último mes al primero para anticipar correctamente la capacidad.');
+
   for (const [pair, group] of planningGroups.entries()) {
-    let currentStock = group.initialStock;
-    const monthlyProductionPlan: number[] = Array(planningHorizon.length).fill(0);
-    for (let i = 0; i < planningHorizon.length; i++) {
-        const requiredForMonth = group.demands[i] + group.minStock;
-        const productionNeeded = Math.max(0, requiredForMonth - currentStock);
-        const productionThisMonth = Math.min(productionNeeded, group.maxStock - (currentStock - group.demands[i]));
-        monthlyProductionPlan[i] = Math.max(0, productionThisMonth);
-        currentStock += monthlyProductionPlan[i] - group.demands[i];
-    }
-    monthlyProductionTargets.set(pair, monthlyProductionPlan);
-  }
-  
-  // Create a mutable copy for the anticipation logic.
-  const dynamicProductionTargets = new Map<string, number[]>();
-  monthlyProductionTargets.forEach((v, k) => {
-      dynamicProductionTargets.set(k, [...v]);
-  });
+    const needs = Array(planningHorizon.length).fill(0);
+    let stockAtEndOfMonth = group.minStock; // Goal for the very end of the horizon
 
-  // --- 4.5 ANTICIPATE PRODUCTION (Backwards Pass) ---
-  auditLog.push('\n--- FASE DE ANTICIPACIÓN DE PRODUCCIÓN (Pase hacia atrás) ---');
-  auditLog.push('Revisando futuros déficits de capacidad para adelantar producción a meses con capacidad ociosa.');
-
-  const stockSimulation = new Map<string, number[]>(); // pair -> stock level at END of each month
-  for (const [pair, group] of planningGroups.entries()) {
-      let currentStock = group.initialStock;
-      const stockLevels: number[] = [];
-      const targets = dynamicProductionTargets.get(pair)!;
-      for (let i = 0; i < planningHorizon.length; i++) {
-          currentStock += targets[i] - group.demands[i];
-          stockLevels.push(currentStock);
-      }
-      stockSimulation.set(pair, stockLevels);
-  }
-
-  for (let monthIndex = planningHorizon.length - 2; monthIndex >= 0; monthIndex--) {
-      const nextMonthIndex = monthIndex + 1;
+    for (let i = planningHorizon.length - 1; i >= 0; i--) {
+      const demandThisMonth = group.demands[i];
+      const requiredStockAtStartOfMonth = stockAtEndOfMonth + demandThisMonth;
       
-      const requiredHoursPerLineCurrent = new Map<string, number>();
-      const requiredHoursPerLineNext = new Map<string, number>();
-      activeLines.forEach(l => {
-          requiredHoursPerLineCurrent.set(l.id, 0);
-          requiredHoursPerLineNext.set(l.id, 0);
-      });
+      const stockFromPreviousPeriod = (i === 0) 
+        ? group.initialStock
+        : (planningGroups.get(pair)!.demands.slice(0, i).reduce((a,b) => a+b, 0) * -1) + group.initialStock + needs.slice(0,i).reduce((a,b)=>a+b,0); // Simplified projection
 
-      for (const [pair, targets] of dynamicProductionTargets.entries()) {
-          const ppiOptions = getPpiOptionsForPair(pair, productProcessInfos, workCenters, activeLines);
-          const ppi = ppiOptions[0]; // Use the most efficient line for the heuristic
-          if (!ppi) continue;
+      const productionNeeded = Math.max(0, requiredStockAtStartOfMonth - stockFromPreviousPeriod);
+      needs[i] = productionNeeded;
 
-          if (targets[monthIndex] > 0) {
-              const currentHours = requiredHoursPerLineCurrent.get(ppi.productionLineId) || 0;
-              requiredHoursPerLineCurrent.set(ppi.productionLineId, currentHours + targets[monthIndex] * ppi.totalManufacturingTimeHours);
-          }
-          if (targets[nextMonthIndex] > 0) {
-              const nextHours = requiredHoursPerLineNext.get(ppi.productionLineId) || 0;
-              requiredHoursPerLineNext.set(ppi.productionLineId, nextHours + targets[nextMonthIndex] * ppi.totalManufacturingTimeHours);
-          }
-      }
-
-      for (const line of activeLines) {
-          const lineId = line.id;
-          const availableHoursNextMonth = (lineMonthlyHours.get(lineId)![nextMonthIndex].regular + lineMonthlyHours.get(lineId)![nextMonthIndex].extra + lineMonthlyHours.get(lineId)![nextMonthIndex].holiday);
-          const requiredNext = requiredHoursPerLineNext.get(lineId)!;
-          const deficitInNextMonth = Math.max(0, requiredNext - availableHoursNextMonth);
-
-          if (deficitInNextMonth > 0) {
-              const availableHoursCurrentMonth = (lineMonthlyHours.get(lineId)![monthIndex].regular + lineMonthlyHours.get(lineId)![monthIndex].extra + lineMonthlyHours.get(lineId)![monthIndex].holiday);
-              const requiredCurrent = requiredHoursPerLineCurrent.get(lineId)!;
-              const spareCapacityInCurrentMonth = Math.max(0, availableHoursCurrentMonth - requiredCurrent);
-
-              if (spareCapacityInCurrentMonth > 0) {
-                  const hoursToPull = Math.min(deficitInNextMonth, spareCapacityInCurrentMonth);
-                  auditLog.push(`\n  Anticipación en Línea [${line.name}]: Déficit de ${deficitInNextMonth.toFixed(1)}h en mes ${nextMonthIndex + 1}. Intentando mover ${hoursToPull.toFixed(1)}h a mes ${monthIndex + 1}.`);
-
-                  const productsOnLineNextMonth = Array.from(dynamicProductionTargets.keys()).filter(pair => {
-                      const ppi = getPpiOptionsForPair(pair, productProcessInfos, workCenters, activeLines)[0];
-                      return ppi && ppi.productionLineId === lineId && dynamicProductionTargets.get(pair)![nextMonthIndex] > 0;
-                  });
-
-                  for (const pair of productsOnLineNextMonth) {
-                      const ppi = getPpiOptionsForPair(pair, productProcessInfos, workCenters, activeLines)[0]!;
-                      const hoursForProductNextMonth = dynamicProductionTargets.get(pair)![nextMonthIndex] * ppi.totalManufacturingTimeHours;
-                      const proportion = requiredNext > 0 ? hoursForProductNextMonth / requiredNext : 0;
-                      const hoursToMoveForProduct = hoursToPull * proportion;
-                      let unitsToMove = ppi.totalManufacturingTimeHours > 0 ? hoursToMoveForProduct / ppi.totalManufacturingTimeHours : 0;
-
-                      const stockLevels = stockSimulation.get(pair)!;
-                      const { maxStock } = planningGroups.get(pair)!;
-                      const stockAtEndOfCurrentMonth = stockLevels[monthIndex];
-                      const availableStockRoom = maxStock - stockAtEndOfCurrentMonth;
-
-                      if (availableStockRoom < unitsToMove) {
-                          auditLog.push(`    - Prod [${ppi.productId}]: Movimiento limitado por Stock Máximo. Disp: ${availableStockRoom.toFixed(0)}, Req: ${unitsToMove.toFixed(0)}`);
-                          unitsToMove = Math.max(0, availableStockRoom);
-                      }
-                      
-                      if (unitsToMove > 0.1) {
-                          const currentTargets = dynamicProductionTargets.get(pair)!;
-                          currentTargets[monthIndex] += unitsToMove;
-                          currentTargets[nextMonthIndex] -= unitsToMove;
-
-                          for (let k = monthIndex; k < planningHorizon.length; k++) {
-                              stockLevels[k] += unitsToMove;
-                          }
-
-                          const hoursMoved = unitsToMove * ppi.totalManufacturingTimeHours;
-                          requiredHoursPerLineCurrent.set(lineId, requiredHoursPerLineCurrent.get(lineId)! + hoursMoved);
-                          requiredHoursPerLineNext.set(lineId, requiredHoursPerLineNext.get(lineId)! - hoursMoved);
-                          auditLog.push(`    - Prod [${ppi.productId}]: Moviendo ${unitsToMove.toFixed(0)} unid. del mes ${nextMonthIndex + 1} al ${monthIndex + 1}.`);
-                      }
-                  }
-              }
-          }
-      }
+      stockAtEndOfMonth = stockFromPreviousPeriod + productionNeeded - demandThisMonth;
+    }
+     productionNeeds.set(pair, needs);
   }
 
 
-    // --- 5. MONTHLY SCHEDULING (REVISED LOGIC WITH OVERFLOW) ---
-    auditLog.push('\n\n--- INICIO DE ASIGNACIÓN MENSUAL (con plan anticipado y desborde inteligente) ---');
-    const monthlyAssignments = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>(); // key: `${monthIndex}-${lineId}-${productId}`
+  // --- 5. MONTHLY SCHEDULING (REVISED LOGIC WITH OVERFLOW) ---
+  auditLog.push('\n\n--- INICIO DE ASIGNACIÓN MENSUAL (con plan anticipado y desborde inteligente) ---');
+  const monthlyAssignments = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>(); // key: `${monthIndex}-${lineId}-${productId}`
 
-    for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
-        const { year, month } = planningHorizon[monthIndex];
-        auditLog.push(`\n--- MES DE PLANIFICACIÓN: ${MONTH_NAMES[month - 1]} ${year} ---`);
+  // Refined Logic: This loop now also pushes unmet demand to previous months if capacity is insufficient.
+  for (let monthIndex = planningHorizon.length - 1; monthIndex >= 0; monthIndex--) {
+    const { year, month } = planningHorizon[monthIndex];
+    auditLog.push(`\n--- MES DE PLANIFICACIÓN: ${MONTH_NAMES[month - 1]} ${year} (Pasada hacia atrás) ---`);
 
-        const availableHoursThisMonth = new Map<string, LineHourAvailability>();
-        lineMonthlyHours.forEach((monthlyAvail, lineId) => { availableHoursThisMonth.set(lineId, { ...monthlyAvail[monthIndex] }); });
-
-        const productsToPlanThisMonth: { pair: string, units: number }[] = [];
-        dynamicProductionTargets.forEach((targets, pair) => { if (targets[monthIndex] > 0) { productsToPlanThisMonth.push({ pair, units: targets[monthIndex] }); } });
-        
-        const singleLineProducts: { pair: string, units: number, ppi: ProductProcessInfo }[] = [];
-        const multiLineProducts: { pair: string, units: number, ppiOptions: ProductProcessInfo[] }[] = [];
-        for (const { pair, units } of productsToPlanThisMonth) {
+    const availableHoursThisMonth = new Map<string, LineHourAvailability>();
+    lineMonthlyHours.forEach((monthlyAvail, lineId) => { 
+        availableHoursThisMonth.set(lineId, { ...monthlyAvail[monthIndex] });
+    });
+    
+    // Get all products that need production in this month
+    const productsToPlanThisMonth: { pair: string, units: number, ppiOptions: ProductProcessInfo[] }[] = [];
+    productionNeeds.forEach((needs, pair) => { 
+        if (needs[monthIndex] > 0) {
             const ppiOptions = getPpiOptionsForPair(pair, productProcessInfos, workCenters, activeLines);
-            if (ppiOptions.length === 1) { singleLineProducts.push({ pair, units, ppi: ppiOptions[0] }); } 
-            else if (ppiOptions.length > 1) { multiLineProducts.push({ pair, units, ppiOptions }); }
-        }
-        
-        auditLog.push("\n  5A: Asignando productos cautivos (1 línea posible) y manejando déficits proporcionales.");
-        const singleLineLoad = new Map<string, { requiredHours: number, products: Array<{ pair: string, units: number, ppi: ProductProcessInfo }> }>();
-        for (const prod of singleLineProducts) {
-            const lineId = prod.ppi.productionLineId;
-            if (!singleLineLoad.has(lineId)) { singleLineLoad.set(lineId, { requiredHours: 0, products: [] }); }
-            const load = singleLineLoad.get(lineId)!;
-            load.requiredHours += prod.units * prod.ppi.totalManufacturingTimeHours;
-            load.products.push(prod);
-        }
+            if(ppiOptions.length > 0) {
+                 productsToPlanThisMonth.push({ pair, units: needs[monthIndex], ppiOptions });
+            }
+        } 
+    });
 
-        singleLineLoad.forEach((load, lineId) => {
-            const lineName = activeLines.find(l => l.id === lineId)?.name || lineId;
+    // Schedule products on their most efficient lines first
+    for(const prod of productsToPlanThisMonth) {
+        let unitsLeftToPlan = prod.units;
+        const [productId] = prod.pair.split('---');
+
+        for (const ppi of prod.ppiOptions) { // Iterate through efficient lines
+            if (unitsLeftToPlan < 0.1) break;
+
+            const lineId = ppi.productionLineId;
             const lineAvailability = availableHoursThisMonth.get(lineId)!;
             const totalAvailable = lineAvailability.regular + lineAvailability.extra + lineAvailability.holiday;
-            let fulfillmentRatio = 1.0;
-
-            if (load.requiredHours > totalAvailable) {
-                fulfillmentRatio = totalAvailable > 0 ? totalAvailable / load.requiredHours : 0;
-                auditLog.push(`    - !! DÉFICIT en línea [${lineName}]: Requiere ${load.requiredHours.toFixed(1)}h, Disp ${totalAvailable.toFixed(1)}h. Ratio: ${(fulfillmentRatio * 100).toFixed(1)}%`);
+            
+            if (totalAvailable < 0.1 || ppi.totalManufacturingTimeHours < 0.001) continue;
+            
+            const maxUnitsCanMake = totalAvailable / ppi.totalManufacturingTimeHours;
+            const unitsToMake = Math.min(unitsLeftToPlan, maxUnitsCanMake);
+            
+            const hoursToConsume = unitsToMake * ppi.totalManufacturingTimeHours;
+            const consumedHours: LineHourAvailability = { regular: 0, extra: 0, holiday: 0 };
+            let remainingHoursToAssign = hoursToConsume;
+             for (const hourType of HOUR_COST_ORDER) {
+                const available = lineAvailability[hourType];
+                const consume = Math.min(remainingHoursToAssign, available);
+                consumedHours[hourType] += consume;
+                lineAvailability[hourType] -= consume;
+                remainingHoursToAssign -= consume;
+                if (remainingHoursToAssign < 0.01) break;
             }
 
-            for (const { pair, units, ppi } of load.products) {
-                const [productId] = pair.split('---');
-                const unitsToProduce = units * fulfillmentRatio;
-                const hoursToConsume = unitsToProduce * ppi.totalManufacturingTimeHours;
-                
-                const consumedHours: LineHourAvailability = { regular: 0, extra: 0, holiday: 0 };
-                let remainingHoursToAssign = hoursToConsume;
-                for (const hourType of HOUR_COST_ORDER) {
-                    const available = lineAvailability[hourType];
-                    const consume = Math.min(remainingHoursToAssign, available);
-                    consumedHours[hourType] += consume;
-                    lineAvailability[hourType] -= consume;
-                    remainingHoursToAssign -= consume;
-                    if (remainingHoursToAssign <= 0.01) break;
-                }
-                
-                // Calculate Labor Cost here, where we have context
-                const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
-
-                const assignmentKey = `${monthIndex}-${lineId}-${productId}`;
-                const assignment = monthlyAssignments.get(assignmentKey) || { units: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
-                assignment.units += unitsToProduce;
-                assignment.hours.regular += consumedHours.regular;
-                assignment.hours.extra += consumedHours.extra;
-                assignment.hours.holiday += consumedHours.holiday;
-                assignment.laborCost += laborCost;
-                monthlyAssignments.set(assignmentKey, assignment);
-                
-                if (fulfillmentRatio < 1) auditLog.push(`      - Prod [${productId}]: Producción reducida a ${unitsToProduce.toFixed(0)} unid.`);
-            }
-        });
-        
-        auditLog.push("\n  5B: Asignando productos flexibles con lógica de desborde.");
-        for (const { pair, units, ppiOptions } of multiLineProducts) {
-            let unitsLeftToPlan = units;
-            const [productId] = pair.split('---');
-            auditLog.push(`    - Planificando [${productId}], Objetivo: ${units.toFixed(0)} unid.`);
-
-            for (const ppi of ppiOptions) {
-                if (unitsLeftToPlan <= 0.1) break;
-                const lineId = ppi.productionLineId;
-                const lineName = activeLines.find(l => l.id === lineId)?.name || lineId;
-                const lineAvailability = availableHoursThisMonth.get(lineId)!;
-                const totalAvailable = lineAvailability.regular + lineAvailability.extra + lineAvailability.holiday;
-
-                if (totalAvailable <= 0.01 || ppi.totalManufacturingTimeHours <= 0) continue;
-                
-                const maxUnitsOnThisLine = totalAvailable / ppi.totalManufacturingTimeHours;
-                const unitsToMake = Math.min(unitsLeftToPlan, maxUnitsOnThisLine);
-
-                if (unitsToMake > 0.1) {
-                    const hoursToConsume = unitsToMake * ppi.totalManufacturingTimeHours;
-                    const consumedHours: LineHourAvailability = { regular: 0, extra: 0, holiday: 0 };
-                    let remainingHoursToAssign = hoursToConsume;
-                    for (const hourType of HOUR_COST_ORDER) {
-                        const available = lineAvailability[hourType];
-                        const consume = Math.min(remainingHoursToAssign, available);
-                        consumedHours[hourType] += consume;
-                        lineAvailability[hourType] -= consume;
-                        remainingHoursToAssign -= consume;
-                        if (remainingHoursToAssign <= 0.01) break;
-                    }
-                    
-                    const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
-                    const assignmentKey = `${monthIndex}-${lineId}-${productId}`;
-                    const assignment = monthlyAssignments.get(assignmentKey) || { units: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
-                    assignment.units += unitsToMake;
-                    assignment.hours.regular += consumedHours.regular;
-                    assignment.hours.extra += consumedHours.extra;
-                    assignment.hours.holiday += consumedHours.holiday;
-                    assignment.laborCost += laborCost;
-                    monthlyAssignments.set(assignmentKey, assignment);
-                    
-                    unitsLeftToPlan -= unitsToMake;
-                    auditLog.push(`      - Asignado a [${lineName}]: ${unitsToMake.toFixed(0)} unid. Restan: ${unitsLeftToPlan.toFixed(0)}.`);
-                }
-            }
-            if(unitsLeftToPlan > 0.1) auditLog.push(`    - !! ADVERTENCIA: No se pudo planificar ${unitsLeftToPlan.toFixed(0)} unid de [${productId}]. Capacidad insuficiente.`);
+            const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
+            const assignmentKey = `${monthIndex}-${lineId}-${productId}`;
+            const assignment = monthlyAssignments.get(assignmentKey) || { units: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
+            assignment.units += unitsToMake;
+            assignment.hours.regular += consumedHours.regular;
+            assignment.hours.extra += consumedHours.extra;
+            assignment.hours.holiday += consumedHours.holiday;
+            assignment.laborCost += laborCost;
+            monthlyAssignments.set(assignmentKey, assignment);
+            
+            unitsLeftToPlan -= unitsToMake;
         }
-        
-        auditLog.push("\n  5C: Resumen de capacidad del mes.");
-        availableHoursThisMonth.forEach((availability, lineId) => {
-            const lineName = activeLines.find(l => l.id === lineId)?.name || lineId;
-            const totalRemaining = availability.regular + availability.extra + availability.holiday;
-            if (totalRemaining > 0.1) auditLog.push(`    - INFO: Línea [${lineName}] finalizó con ${totalRemaining.toFixed(1)}h de capacidad ociosa.`);
-            else auditLog.push(`    - OK: Línea [${lineName}] utilizó toda su capacidad disponible.`);
-        });
+
+        // If there's still production left, push it to the previous month
+        if (unitsLeftToPlan > 0.1 && monthIndex > 0) {
+            auditLog.push(`  - Déficit para [${productId}] de ${unitsLeftToPlan.toFixed(0)} uds. Empujando al mes anterior.`);
+            productionNeeds.get(prod.pair)![monthIndex-1] += unitsLeftToPlan;
+        } else if (unitsLeftToPlan > 0.1) {
+            auditLog.push(`  - !! DÉFICIT FINAL para [${productId}] de ${unitsLeftToPlan.toFixed(0)} uds. No hay más meses para anticipar.`);
+        }
     }
+  }
+
 
   // --- 6. CREATE DAILY PLAN ITEMS (Using a sequential "mini-scheduler") ---
   let stockState = new Map<string, number>(); // key: `${productId}-${centerId}`, value: currentStock
@@ -828,7 +680,7 @@ function calculateLaborCost(
 /**
  * Generates summary data aggregated by production line and month.
  */
-const generateLineSummaryData = (plan: ProductionPlanItem[], constraints: AppConstraints): LineMonthlySummary[] => {
+function generateLineSummaryData(plan: ProductionPlanItem[], constraints: AppConstraints): LineMonthlySummary[] {
     const summaryMap = new Map<string, LineMonthlySummary>(); // key: `${year}-${month}-${lineId}`
 
     plan.forEach(item => {
