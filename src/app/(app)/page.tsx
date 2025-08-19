@@ -132,7 +132,7 @@ export default function ProductionOptimizerPage() {
   return (
     <div className="flex h-screen bg-background text-foreground print:bg-white print:text-black">
       <nav className="w-64 bg-primary p-4 space-y-2 flex flex-col shadow-lg print:hidden">
-        <div className="mb-6 px-2">
+        <div className="mb-4 mt-2 px-2">
             <Image 
                 src="/logo.png" 
                 alt="Logo de la Compañía"
@@ -142,7 +142,6 @@ export default function ProductionOptimizerPage() {
                 data-ai-hint="company logo"
             />
         </div>
-        <div className="border-t border-primary-foreground/20 my-4"></div>
         {Object.values(ActiveView).map((view) => {
           const viewInfo = viewConfig[view];
           if (!viewInfo) return null;
