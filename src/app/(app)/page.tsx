@@ -163,6 +163,7 @@ export default function ProductionOptimizerPage() {
           constraints={constraints}
           employees={employees}
           absenteeismEvents={absenteeismEvents}
+          employeeSkills={employeeSkills}
           addNotification={addNotification}
         />;
       default:

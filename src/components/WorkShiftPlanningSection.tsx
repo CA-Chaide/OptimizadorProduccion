@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
     WorkShift, AppConstraints, Employee, AbsenteeismEvent, 
-    ProcessType, NotificationMessage 
+    ProcessType, NotificationMessage, EmployeeSkill 
 } from '@/types/types';
 import { WorkShiftIcon, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -13,6 +13,7 @@ interface WorkShiftPlanningSectionProps {
   constraints: AppConstraints;
   employees: Employee[];
   absenteeismEvents: AbsenteeismEvent[];
+  employeeSkills: EmployeeSkill[];
   addNotification: (type: NotificationMessage['type'], text: string) => void;
 }
 
@@ -29,6 +30,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
     constraints,
     employees,
     absenteeismEvents,
+    employeeSkills,
     addNotification,
 }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -59,6 +61,15 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
     }, [relevantLines, constraints.workstationDefinitions]);
 
 
+    const getQualifiedEmployeesForWorkstation = (workstationDefId: string) => {
+        const qualifiedEmployeeIds = new Set(
+            employeeSkills
+                .filter(skill => skill.workstationDefinitionId === workstationDefId && skill.skillLevel > 0)
+                .map(skill => skill.employeeId)
+        );
+        return employees.filter(emp => qualifiedEmployeeIds.has(emp.id) && emp.isActive !== false);
+    };
+
     const isEmployeeAbsent = (employeeId: string, date: Date): boolean => {
         const checkTime = date.getTime();
         return absenteeismEvents.some(event => {
@@ -86,7 +97,6 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
             const updatedEmployeeIds = [...existingShift.employeeIds];
             updatedEmployeeIds[assignmentIndex] = employeeId;
             
-            // Filter out nulls and empty strings to keep the array clean
             const finalEmployeeIds = updatedEmployeeIds.filter(id => id);
 
             if(finalEmployeeIds.length === 0) {
@@ -169,10 +179,9 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
                             {relevantLines.map(line => (
                                 relevantWorkstations.filter(ws => line.assignedWorkstations.some(as => as.definitionId === ws.id))
                                 .map(ws => {
+                                    const qualifiedEmployeesForPost = getQualifiedEmployeesForWorkstation(ws.id);
                                     const assignedWs = line.assignedWorkstations.find(as => as.definitionId === ws.id);
                                     const employeesRequired = assignedWs?.quantity || 1;
-                                    const dayAssignments = getShiftAssignment(new Date(), line.id, ws.id, 'day');
-                                    const nightAssignments = getShiftAssignment(new Date(), line.id, ws.id, 'night');
 
                                     return (
                                     <React.Fragment key={`${line.id}-${ws.id}`}>
@@ -195,7 +204,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
                                                             className="w-full text-xs p-1 border-gray-200 rounded"
                                                         >
                                                             <option value="">-- Asignar --</option>
-                                                            {employees.map(emp => (
+                                                            {qualifiedEmployeesForPost.map(emp => (
                                                                 <option key={emp.id} value={emp.id} disabled={isEmployeeAbsent(emp.id, date)}>
                                                                     {emp.name} {isEmployeeAbsent(emp.id, date) ? '(Ausente)' : ''}
                                                                 </option>
@@ -217,7 +226,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
                                                             className="w-full text-xs p-1 border-gray-200 rounded"
                                                         >
                                                             <option value="">-- Asignar --</option>
-                                                            {employees.map(emp => (
+                                                            {qualifiedEmployeesForPost.map(emp => (
                                                                <option key={emp.id} value={emp.id} disabled={isEmployeeAbsent(emp.id, date)}>
                                                                     {emp.name} {isEmployeeAbsent(emp.id, date) ? '(Ausente)' : ''}
                                                                 </option>
