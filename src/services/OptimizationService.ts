@@ -1,3 +1,4 @@
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -676,7 +677,6 @@ function calculateLaborCost(
     return regularHoursCost + extraHoursCost + holidayHoursCost;
 }
 
-
 /**
  * Generates summary data aggregated by production line and month.
  */
@@ -755,8 +755,7 @@ function generateLineSummaryData(plan: ProductionPlanItem[], constraints: AppCon
     }
     
     return Array.from(summaryMap.values()).sort((a,b) => a.year - b.year || MONTH_NAMES.indexOf(a.month) - MONTH_NAMES.indexOf(b.month) || a.centerName.localeCompare(b.centerName) || a.lineName.localeCompare(b.lineName));
-};
-
+}
 
 export const exportDailyPlanToExcel = (
   plan: ProductionPlanItem[],
