@@ -9,13 +9,13 @@ import {
   ProductionPlanSection,
   MaintenanceSection,
   PersonnelManagementSection,
-  TacticalSchedulingSection,
+  TacticalPlanSection,
   AbsenteeismSection,
 } from '@/components';
 import DashboardSection from '@/components/DashboardSection';
 import { ActiveView, viewConfig } from '@/constants/constants';
-import type { SalesDataRow, AppConstraints, ProductionPlan, EmployeeSkill, Employee, AbsenteeismEvent, MaintenanceEvent } from '@/types/types';
-import { generateProductionPlan } from '@/services/OptimizationService';
+import type { SalesDataRow, AppConstraints, ProductionPlan, EmployeeSkill, Employee, AbsenteeismEvent, MaintenanceEvent, TacticalPlanResult, TacticalRequest } from '@/types/types';
+import { generateProductionPlan, generateTacticalPlan } from '@/services/OptimizationService';
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { NotificationMessage } from '@/types/types';
@@ -50,6 +50,9 @@ export default function ProductionOptimizerPage() {
   const [employeeSkills, setEmployeeSkills] = useState<EmployeeSkill[]>([]);
   const [maintenanceEvents, setMaintenanceEvents] = useState<MaintenanceEvent[]>([]);
   const [absenteeismEvents, setAbsenteeismEvents] = useState<AbsenteeismEvent[]>([]);
+
+  // State for Tactical Plan
+  const [tacticalPlanResult, setTacticalPlanResult] = useState<TacticalPlanResult | null>(null);
 
   const addNotification = (type: NotificationMessage['type'], text: string, errors: string[] = []) => {
     let description: React.ReactNode = text;
@@ -106,6 +109,33 @@ export default function ProductionOptimizerPage() {
     }, 500); // Give UI time to update
   }, [salesData, constraints]);
 
+  const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
+      addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
+      try {
+          const result = generateTacticalPlan(request, {
+              dailyPlan: productionPlan.dailyPlan,
+              constraints,
+              maintenanceEvents,
+              absenteeismEvents,
+              employees,
+              employeeSkills
+          });
+          setTacticalPlanResult(result);
+          if (result.alerts.length > 0) {
+              addNotification('warning', 'Plan táctico generado con alertas.', result.alerts);
+          } else {
+              addNotification('success', 'Plan táctico generado exitosamente sin alertas.');
+          }
+          return result;
+      } catch (error) {
+          console.error("Error generating tactical plan:", error);
+          addNotification('error', `Error al generar el plan táctico: ${(error as Error).message}`);
+          const emptyResult: TacticalPlanResult = { plan: [], alerts: [`Error al generar el plan táctico: ${(error as Error).message}`] };
+          setTacticalPlanResult(emptyResult);
+          return emptyResult;
+      }
+  }, [productionPlan.dailyPlan, constraints, maintenanceEvents, absenteeismEvents, employees, employeeSkills]);
+
   const renderActiveView = () => {
     switch (activeView) {
       case ActiveView.DASHBOARD:
@@ -123,7 +153,7 @@ export default function ProductionOptimizerPage() {
       case ActiveView.MAINTENANCE:
         return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} productionLines={constraints.productionLines} addNotification={addNotification} />;
       case ActiveView.TACTICAL_SCHEDULING:
-        return <TacticalSchedulingSection dailyPlan={productionPlan.dailyPlan} constraints={constraints} maintenanceEvents={maintenanceEvents} employees={employees} employeeSkills={employeeSkills} />;
+        return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} addNotification={addNotification} constraints={constraints} employees={employees} employeeSkills={employeeSkills} />;
       default:
         return <DataImportSection onDataImported={handleDataImported} addNotification={addNotification} />;
     }

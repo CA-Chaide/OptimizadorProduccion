@@ -1,10 +1,9 @@
-
-
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
-    ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary
+    ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
+    TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -729,7 +728,7 @@ export const generateProductionPlan = (
     const mp = monthlyPlanMap.get(key)!;
     mp.totalQuantityToProduce += dp.quantityToProduce;
     mp.totalHoursWorked += dp.hoursWorked;
-    mp.totalEstimatedLaborCost += dp.estimatedLaborCost;
+    mp.totalEstimatedLaborCost += dp.totalEstimatedLaborCost;
   });
 
   // --- 8. FINAL AUDIT SUMMARY ---
@@ -999,3 +998,217 @@ export function processImportedProductionData(
         validationErrors: [] // No errors
     };
 }
+
+
+// --- Tactical Scheduling ---
+
+export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = event.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        if (!worksheet) {
+            reject(new Error("No se encontró una hoja de cálculo válida en el archivo."));
+            return;
+        }
+
+        const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        if (jsonData.length < 2) { 
+          resolve([]);
+          return;
+        }
+        
+        const orders: ProvisionalOrder[] = jsonData.slice(1).map((row, index) => {
+          if(row.filter(cell => cell !== null && cell !== undefined && cell !== '').length === 0) return null; 
+
+          const excelDateSerialNumber = parseFloat(String(row[0]));
+          const date = new Date(Date.UTC(1899, 11, 30 + excelDateSerialNumber));
+
+          return {
+            rowIndex: index + 2,
+            FECHA_ORDEN: date.toISOString().split('T')[0], // YYYY-MM-DD
+            CENTRO: String(row[1] || '').trim(),
+            MATERIAL: String(row[2] || '').trim(),
+            CANTIDAD: parseFloat(String(row[3])) || 0,
+            HORA_ORDEN: String(row[4] || ''),
+          };
+        }).filter((row): row is ProvisionalOrder => row !== null && !!row.MATERIAL && !!row.CENTRO && row.CANTIDAD > 0); 
+
+        resolve(orders);
+      } catch (error) {
+        console.error("Error processing Tactical Orders Excel:", error);
+        reject(new Error('Formato de archivo Excel de órdenes previsionales inválido.'));
+      }
+    };
+    reader.onerror = (error) => reject(error);
+    reader.readAsBinaryString(file);
+  });
+};
+
+
+export const generateTacticalPlan = (
+    request: TacticalRequest,
+    context: {
+        dailyPlan: ProductionPlanItem[];
+        constraints: AppConstraints;
+        maintenanceEvents: MaintenanceEvent[];
+        absenteeismEvents: AbsenteeismEvent[];
+        employees: Employee[];
+        employeeSkills: EmployeeSkill[];
+    }
+): TacticalPlanResult => {
+    const alerts: string[] = [];
+    const tacticalPlan: TacticalOrderItem[] = [];
+    const { provisionalOrders, targetDate } = request;
+    const { constraints, maintenanceEvents, absenteeismEvents, employees, employeeSkills } = context;
+
+    // --- 1. Filter and Prepare Context for Target Date ---
+    const targetDateTime = new Date(targetDate + "T00:00:00").getTime();
+    
+    // Available lines (not in maintenance)
+    const linesInMaintenance = new Set<string>();
+    maintenanceEvents.forEach(event => {
+        const start = new Date(`${event.startDate}T${event.startTime}`).getTime();
+        const end = new Date(`${event.endDate}T${event.endTime}`).getTime();
+        if (targetDateTime >= start && targetDateTime <= end) {
+            linesInMaintenance.add(event.productionLineId);
+            alerts.push(`Alerta Mantenimiento: Línea '${constraints.productionLines.find(l => l.id === event.productionLineId)?.name}' no estará disponible por '${event.title}'.`);
+        }
+    });
+    const availableLines = constraints.productionLines.filter(line => !linesInMaintenance.has(line.id) && line.isActive !== false);
+
+    // Available employees (present and active)
+    const absentEmployeeIds = new Set<string>();
+    absenteeismEvents.forEach(event => {
+        const start = new Date(`${event.startDate}T${event.startTime}`).getTime();
+        const end = new Date(`${event.endDate}T${event.endTime}`).getTime();
+        if (targetDateTime >= start && targetDateTime <= end) {
+            event.employeeIds.forEach(id => absentEmployeeIds.add(id));
+        }
+    });
+    const availableEmployees = employees.filter(emp => emp.isActive !== false && !absentEmployeeIds.has(emp.id));
+    if(absentEmployeeIds.size > 0) {
+        alerts.push(`Info: ${absentEmployeeIds.size} empleado(s) no estarán disponibles por ausentismo programado.`);
+    }
+
+    // --- 2. Consolidate Tactical Demand ---
+    const tacticalDemand = new Map<string, number>(); // key: `${productId}-${centerName}`
+    
+    // From medium-term plan
+    const [tYear, tMonth, tDay] = targetDate.split('-').map(Number);
+    context.dailyPlan.forEach(item => {
+        if(item.year === tYear && item.month === tMonth && item.day === tDay && item.quantityToProduce > 0) {
+            const key = `${item.productId}-${normalizeCenterName(item.producingCenterId!)}`;
+            tacticalDemand.set(key, (tacticalDemand.get(key) || 0) + item.quantityToProduce);
+        }
+    });
+
+    // From provisional orders file
+    provisionalOrders.forEach(order => {
+        if (order.FECHA_ORDEN === targetDate) {
+            const key = `${order.MATERIAL}-${normalizeCenterName(order.CENTRO)}`;
+            const currentDemand = tacticalDemand.get(key) || 0;
+            tacticalDemand.set(key, Math.max(currentDemand, order.CANTIDAD));
+        }
+    });
+
+    // --- 3. Feasibility Analysis ---
+    const lineCapacityToday: Record<string, number> = {};
+    const dayType = getDayTypeForProduction(new Date(targetDate + "T12:00:00"), constraints.holidays);
+    const REGULAR_HOURS_PER_DAY = 8; const EXTRA_HOURS_PER_DAY = 2; const SATURDAY_HOLIDAY_HOURS = 5;
+    
+    if (dayType === 'Weekday') availableLines.forEach(l => lineCapacityToday[l.id] = REGULAR_HOURS_PER_DAY + EXTRA_HOURS_PER_DAY);
+    else if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') availableLines.forEach(l => lineCapacityToday[l.id] = SATURDAY_HOLIDAY_HOURS);
+    else {
+        alerts.push(`Alerta de Calendario: El día ${targetDate} es un ${dayType}, no se puede programar producción.`);
+        return { plan: [], alerts };
+    }
+
+
+    tacticalDemand.forEach((quantity, key) => {
+        const [productId, centerName] = key.split('-');
+        const productInfo = constraints.productProcessInfos.find(p => p.productId === productId);
+        if(!productInfo){
+            alerts.push(`Alerta de Datos: No se encontró información de proceso para el producto '${productId}'. No se puede planificar.`);
+            return;
+        }
+        
+        const center = constraints.workCenters.find(c => normalizeCenterName(c.name) === centerName);
+        if(!center) {
+            alerts.push(`Alerta de Datos: No se encontró el centro '${centerName}' para el producto '${productId}'.`);
+            return;
+        }
+
+        const possibleLines = availableLines
+            .filter(line => line.workCenterId === center.id)
+            .map(line => ({ line, time: calculateEffectiveManufacturingTime(productInfo, line) }))
+            .filter(l => l.time < Infinity)
+            .sort((a,b) => a.time - b.time);
+
+        if (possibleLines.length === 0) {
+            alerts.push(`Déficit de Línea: No hay líneas de producción disponibles o configuradas correctamente para fabricar '${productInfo.productName}' en el centro '${center.name}'.`);
+            return;
+        }
+
+        const bestLine = possibleLines[0].line;
+        const timePerUnit = possibleLines[0].time;
+        const requiredHours = quantity * timePerUnit;
+
+        if(requiredHours > lineCapacityToday[bestLine.id]) {
+            const deficit = requiredHours - lineCapacityToday[bestLine.id];
+            alerts.push(`Déficit de Capacidad: Se requieren ${requiredHours.toFixed(1)}h para '${productInfo.productName}' en la línea '${bestLine.name}', pero solo quedan ${lineCapacityToday[bestLine.id].toFixed(1)}h. Faltan ${deficit.toFixed(1)}h.`);
+            // Don't produce if capacity is insufficient
+            return;
+        }
+        lineCapacityToday[bestLine.id] -= requiredHours;
+
+        // Personnel Assignment
+        const assignedPersonnel: AssignedPersonnel[] = [];
+        let personnelOk = true;
+        const requiredWorkstations = bestLine.assignedWorkstations;
+        requiredWorkstations.forEach(reqWs => {
+            const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === reqWs.definitionId);
+            if(!workstationDef) return;
+
+            const qualifiedEmployees = availableEmployees
+                .filter(emp => employeeSkills.some(skill => skill.employeeId === emp.id && skill.workstationDefinitionId === reqWs.definitionId && skill.skillLevel > 0))
+                .sort((a, b) => {
+                    const skillA = employeeSkills.find(s => s.employeeId === a.id && s.workstationDefinitionId === reqWs.definitionId)!.skillLevel;
+                    const skillB = employeeSkills.find(s => s.employeeId === b.id && s.workstationDefinitionId === reqWs.definitionId)!.skillLevel;
+                    return skillB - skillA;
+                });
+            
+            if(qualifiedEmployees.length < reqWs.quantity) {
+                alerts.push(`Déficit de Personal: Faltan ${reqWs.quantity - qualifiedEmployees.length} empleado(s) calificado(s) para el puesto '${workstationDef.name}' en la línea '${bestLine.name}'.`);
+                personnelOk = false;
+            }
+
+            assignedPersonnel.push({
+                workstationDefinitionId: workstationDef.id,
+                workstationName: workstationDef.name,
+                required: reqWs.quantity,
+                available: qualifiedEmployees,
+            });
+        });
+
+        if (personnelOk) {
+             tacticalPlan.push({
+                id: `tactical-${key}`,
+                productId: productId,
+                productName: productInfo.productName || productId,
+                centerName: center.name,
+                quantity: Math.round(quantity),
+                assignedLineName: bestLine.name,
+                requiredHours: parseFloat(requiredHours.toFixed(2)),
+                assignedPersonnel: assignedPersonnel
+            });
+        }
+    });
+
+    return { plan: tacticalPlan.sort((a,b) => a.assignedLineName.localeCompare(b.assignedLineName) || a.productName.localeCompare(b.productName)), alerts };
+};

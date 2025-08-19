@@ -9,4 +9,4 @@ export * from './DataImportSection';
 export * from './MaintenanceSection';
 export * from './PersonnelManagementSection';
 export * from './ProductionPlanSection';
-export * from './TacticalSchedulingSection';
+export * from './TacticalPlanSection';

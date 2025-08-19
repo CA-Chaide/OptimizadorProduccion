@@ -1,4 +1,5 @@
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -279,4 +280,43 @@ export interface MonthlyInventoryState {
 export interface ShiftProportions {
   daytimeProportion: number;
   nighttimeProportion: number;
+}
+
+// --- Tactical Scheduling Types ---
+export interface ProvisionalOrder {
+    rowIndex: number;
+    FECHA_ORDEN: string; // YYYY-MM-DD
+    CENTRO: string;
+    MATERIAL: string;
+    CANTIDAD: number;
+    HORA_ORDEN: string;
+}
+
+export interface TacticalRequest {
+    executionDate: string; // YYYY-MM-DD
+    targetDate: string; // YYYY-MM-DD
+    provisionalOrders: ProvisionalOrder[];
+}
+
+export interface AssignedPersonnel {
+    workstationDefinitionId: string;
+    workstationName: string;
+    required: number;
+    available: (Employee & { skillLevel?: number })[];
+}
+
+export interface TacticalOrderItem {
+    id: string;
+    productId: string;
+    productName: string;
+    centerName: string;
+    quantity: number;
+    assignedLineName: string;
+    requiredHours: number;
+    assignedPersonnel: AssignedPersonnel[];
+}
+
+export interface TacticalPlanResult {
+    plan: TacticalOrderItem[];
+    alerts: string[];
 }
