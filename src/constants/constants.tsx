@@ -11,6 +11,7 @@ import {
     Plus,
     Pencil,
     Trash2,
+    CalendarCheck,
 } from 'lucide-react';
 import { ProcessType, Holiday } from './types'; 
 
@@ -24,6 +25,7 @@ export enum ActiveView {
   ABSENTEEISM = 'ABSENTEEISM_MANAGEMENT',
   PRODUCTION_PLAN = 'MEDIUM_TERM_PLAN',
   TACTICAL_SCHEDULING = 'TACTICAL_SCHEDULING',
+  WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DASHBOARD = 'DASHBOARD',
 }
 
@@ -36,6 +38,7 @@ export const PersonnelIcon = () => <Users className="w-5 h-5" />;
 export const AbsenteeismIcon = () => <CalendarX2 className="w-5 h-5" />;
 export const PlanIcon = () => <ListChecks className="w-5 h-5" />;
 export const TacticalSchedulingIcon = () => <CalendarClock className="w-5 h-5" />;
+export const WorkShiftIcon = () => <CalendarCheck className="w-5 h-5" />;
 
 // Common action icons
 export const PlusIcon = () => <Plus className="w-4 h-4 mr-1" />;
@@ -75,6 +78,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.MAINTENANCE, label: 'Mantenimiento Programado', icon: <MaintenanceIcon /> },
   { id: ActiveView.ABSENTEEISM, label: 'Gestión de Ausentismos', icon: <AbsenteeismIcon /> },
   { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon /> },
+  { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon /> },
 ];
 
 

@@ -11,10 +11,11 @@ import {
   PersonnelManagementSection,
   TacticalPlanSection,
   AbsenteeismSection,
+  WorkShiftPlanningSection,
 } from '@/components';
 import DashboardSection from '@/components/DashboardSection';
 import { ActiveView, viewConfig } from '@/constants/constants';
-import type { SalesDataRow, AppConstraints, ProductionPlan, EmployeeSkill, Employee, AbsenteeismEvent, MaintenanceEvent, TacticalPlanResult, TacticalRequest } from '@/types/types';
+import type { SalesDataRow, AppConstraints, ProductionPlan, EmployeeSkill, Employee, AbsenteeismEvent, MaintenanceEvent, TacticalPlanResult, TacticalRequest, WorkShift } from '@/types/types';
 import { generateProductionPlan, generateTacticalPlan } from '@/services/OptimizationService';
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
@@ -50,6 +51,7 @@ export default function ProductionOptimizerPage() {
   const [employeeSkills, setEmployeeSkills] = useState<EmployeeSkill[]>([]);
   const [maintenanceEvents, setMaintenanceEvents] = useState<MaintenanceEvent[]>([]);
   const [absenteeismEvents, setAbsenteeismEvents] = useState<AbsenteeismEvent[]>([]);
+  const [workShifts, setWorkShifts] = useState<WorkShift[]>([]);
 
   // State for Tactical Plan
   const [tacticalPlanResult, setTacticalPlanResult] = useState<TacticalPlanResult | null>(null);
@@ -154,6 +156,15 @@ export default function ProductionOptimizerPage() {
         return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} productionLines={constraints.productionLines} addNotification={addNotification} />;
       case ActiveView.TACTICAL_SCHEDULING:
         return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} addNotification={addNotification} constraints={constraints} employees={employees} employeeSkills={employeeSkills} />;
+      case ActiveView.WORK_SHIFT_PLANNING:
+        return <WorkShiftPlanningSection 
+          shifts={workShifts} 
+          setShifts={setWorkShifts}
+          constraints={constraints}
+          employees={employees}
+          absenteeismEvents={absenteeismEvents}
+          addNotification={addNotification}
+        />;
       default:
         return <DataImportSection onDataImported={handleDataImported} addNotification={addNotification} />;
     }

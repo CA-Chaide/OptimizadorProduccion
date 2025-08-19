@@ -10,3 +10,4 @@ export * from './MaintenanceSection';
 export * from './PersonnelManagementSection';
 export * from './ProductionPlanSection';
 export * from './TacticalPlanSection';
+export * from './WorkShiftPlanningSection';

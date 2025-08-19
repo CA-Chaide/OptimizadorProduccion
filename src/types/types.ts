@@ -1,6 +1,7 @@
 
 
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -321,4 +322,15 @@ export interface TacticalOrderItem {
 export interface TacticalPlanResult {
     plan: TacticalOrderItem[];
     alerts: string[];
+}
+
+
+// --- Work Shift Planning ---
+export interface WorkShift {
+  id: string; // e.g., '2023-11-20-lineId1-wsId2-day'
+  date: string; // YYYY-MM-DD
+  lineId: string;
+  workstationDefId: string;
+  shiftType: 'day' | 'night';
+  employeeId: string | null; // null if unassigned
 }
