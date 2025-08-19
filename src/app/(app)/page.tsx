@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import Image from 'next/image';
 import {
   DataImportSection,
   ConstraintConfigurationSection,
@@ -129,9 +130,18 @@ export default function ProductionOptimizerPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-900 text-white print:bg-white print:text-black">
-      <nav className="w-64 bg-gray-800 p-4 space-y-2 flex flex-col shadow-lg print:hidden">
-        <div className="text-2xl font-bold mb-6 text-center text-indigo-400">Production Optimizer</div>
+    <div className="flex h-screen bg-background text-foreground print:bg-white print:text-black">
+      <nav className="w-64 bg-primary p-4 space-y-2 flex flex-col shadow-lg print:hidden">
+        <div className="mb-6 px-2">
+            <Image 
+                src="https://placehold.co/180x40.png" 
+                alt="Logo de la Compañía"
+                width={180}
+                height={40}
+                className="mx-auto"
+                data-ai-hint="company logo"
+            />
+        </div>
         {Object.values(ActiveView).map((view) => {
           const viewInfo = viewConfig[view];
           if (!viewInfo) return null;
@@ -142,17 +152,17 @@ export default function ProductionOptimizerPage() {
               className={`flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-all duration-200 ease-in-out
                         ${
                           activeView === view
-                            ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-400'
-                            : 'hover:bg-gray-700 hover:text-indigo-300 text-gray-300'
+                            ? 'bg-primary-foreground/20 text-white shadow-md'
+                            : 'hover:bg-primary-foreground/10 text-primary-foreground/80 hover:text-primary-foreground'
                         }`}
             >
-              {viewInfo.icon}
-              <span>{viewInfo.title}</span>
+              <span className="text-primary-foreground">{viewInfo.icon}</span>
+              <span className="text-primary-foreground">{viewInfo.title}</span>
             </button>
           );
         })}
-        <div className="mt-auto pt-4 border-t border-gray-700">
-          <p className="text-xs text-gray-500 text-center">&copy; {new Date().getFullYear()} Optimizador IA</p>
+        <div className="mt-auto pt-4 border-t border-primary-foreground/20">
+          <p className="text-xs text-primary-foreground/50 text-center">&copy; {new Date().getFullYear()} Optimizador IA</p>
         </div>
       </nav>
 
