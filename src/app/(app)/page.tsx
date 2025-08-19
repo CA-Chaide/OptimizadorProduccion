@@ -157,7 +157,7 @@ export default function ProductionOptimizerPage() {
                         }`}
             >
               <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center">{viewInfo.icon}</span>
-              <span>{viewInfo.title}</span>
+              <span className="text-primary-foreground">{viewInfo.title}</span>
             </button>
           );
         })}
