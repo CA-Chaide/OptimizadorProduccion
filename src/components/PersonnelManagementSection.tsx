@@ -112,6 +112,9 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
     return skills.find(s => s.employeeId === employeeId && s.workstationDefinitionId === workstationId)?.skillLevel || 0;
   };
 
+  const activeWorkstationDefinitions = workstationDefinitions.filter(wd => wd.isActive !== false);
+
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-3">
@@ -221,7 +224,7 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                           {workstationDefinitions.map(wd => (
+                           {activeWorkstationDefinitions.map(wd => (
                                <tr key={wd.id} className="hover:bg-gray-50">
                                    <td className="px-4 py-2 font-medium text-gray-800">{wd.name}</td>
                                    <td className="px-4 py-2">
