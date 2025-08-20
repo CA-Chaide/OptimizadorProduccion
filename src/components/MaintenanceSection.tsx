@@ -31,26 +31,24 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
 }) => {
   const [formState, setFormState] = useState<Omit<MaintenanceEvent, 'id'>>(initialFormState);
   const [editingEvent, setEditingEvent] = useState<MaintenanceEvent | null>(null);
-  const [availableWorkstations, setAvailableWorkstations] = useState<WorkstationDefinition[]>([]);
   
   const { productionLines, workstationDefinitions } = constraints;
 
   const activeProductionLines = useMemo(() => productionLines.filter(l => l.isActive !== false), [productionLines]);
 
-
-  useEffect(() => {
-    if (formState.productionLineId) {
-      const selectedLine = activeProductionLines.find(line => line.id === formState.productionLineId);
-      if (selectedLine) {
-        const assignedIds = new Set(selectedLine.assignedWorkstations.map(ws => ws.definitionId));
-        setAvailableWorkstations(workstationDefinitions.filter(wd => assignedIds.has(wd.id)));
-      } else {
-        setAvailableWorkstations([]);
-      }
-    } else {
-      setAvailableWorkstations([]);
+  // DERIVED STATE: Calculate available workstations directly from the selected line
+  const availableWorkstationsForForm = useMemo(() => {
+    if (!formState.productionLineId) {
+      return [];
     }
+    const selectedLine = activeProductionLines.find(line => line.id === formState.productionLineId);
+    if (!selectedLine) {
+      return [];
+    }
+    const assignedIds = new Set(selectedLine.assignedWorkstations.map(ws => ws.definitionId));
+    return workstationDefinitions.filter(wd => assignedIds.has(wd.id));
   }, [formState.productionLineId, activeProductionLines, workstationDefinitions]);
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -214,7 +212,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                         <label htmlFor="workstationDefinitionId" className="block text-sm font-medium text-gray-700">Puesto de Trabajo</label>
                         <select name="workstationDefinitionId" id="workstationDefinitionId" value={formState.workstationDefinitionId} onChange={handleInputChange} disabled={!formState.productionLineId} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100">
                             <option value="">Seleccione un puesto</option>
-                            {availableWorkstations.map(ws => (
+                            {availableWorkstationsForForm.map(ws => (
                             <option key={ws.id} value={ws.id}>{ws.name}</option>
                             ))}
                         </select>
