@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -20,6 +14,7 @@ export type MaintenanceEvent = {
   id: string;
   title: string;
   productionLineId: string;
+  workstationDefinitionId: string; // New: To specify which workstation in the line
   startDate: string; // YYYY-MM-DD
   startTime: string; // HH:MM
   endDate: string;   // YYYY-MM-DD
@@ -64,6 +59,7 @@ export interface WorkstationDefinition {
   id:string;
   name: string; // Unique name for the workstation type, e.g., "Cerrador"
   employeesPerWorkstation: number; // How many employees operate ONE such workstation
+  machineName?: string; // New: Machine associated with this workstation
   isActive?: boolean;
 }
 
