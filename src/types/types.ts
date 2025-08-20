@@ -3,6 +3,7 @@
 
 
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -29,14 +30,13 @@ export type Employee = {
   id: string;
   name: string;
   employeeCode: string;
-  machine?: string;
-  role?: 'Operador' | 'Ayudante';
   isActive?: boolean;
 };
 
 export type EmployeeSkill = {
   employeeId: string;
   workstationDefinitionId: string;
+  role: 'Operador' | 'Ayudante';
   skillLevel: number; // 1-100
 };
 

@@ -14,7 +14,7 @@ import {
 } from '@/components';
 import DashboardSection from '@/components/DashboardSection';
 import { ActiveView, viewConfig } from '@/constants/constants';
-import type { SalesDataRow, AppConstraints, ProductionPlan, EmployeeSkill, Employee, AbsenteeismEvent, MaintenanceEvent, TacticalPlanResult, TacticalRequest, WorkShift, NotificationMessage } from '@/types/types';
+import type { SalesDataRow, AppConstraints, ProductionPlan, EmployeeSkill, Employee, AbsenteeismEvent, MaintenanceEvent, TacticalPlanResult, TacticalRequest, WorkShift, NotificationMessage, ProductionLine } from '@/types/types';
 import { generateProductionPlan, generateTacticalPlan } from '@/services/OptimizationService';
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
@@ -208,7 +208,14 @@ export default function ProductionOptimizerPage() {
       case ActiveView.CONSTRAINTS:
         return <ConstraintConfigurationSection constraints={state.constraints} onConstraintsUpdate={(c) => dispatch({type: 'SET_CONSTRAINTS', payload: c})} salesDataProducts={state.salesData} addNotification={addNotification} />;
       case ActiveView.PERSONNEL:
-        return <PersonnelManagementSection employees={state.employees} setEmployees={(e) => dispatch({ type: 'SET_EMPLOYEES', payload: e })} skills={state.employeeSkills} setSkills={(s) => dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: s })} workstationDefinitions={state.constraints.workstationDefinitions} />;
+        return <PersonnelManagementSection 
+                  employees={state.employees} 
+                  setEmployees={(e) => dispatch({ type: 'SET_EMPLOYEES', payload: e })} 
+                  skills={state.employeeSkills} 
+                  setSkills={(s) => dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: s })} 
+                  workstationDefinitions={state.constraints.workstationDefinitions}
+                  productionLines={state.constraints.productionLines}
+                />;
       case ActiveView.ABSENTEEISM:
         return <AbsenteeismSection events={state.absenteeismEvents} setEvents={(e) => dispatch({ type: 'SET_ABSENTEEISM_EVENTS', payload: e })} employees={state.employees} />;
       case ActiveView.PRODUCTION_PLAN:
