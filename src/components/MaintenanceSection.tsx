@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MaintenanceEvent, ProductionLine, WorkstationDefinition, NotificationMessage, AppConstraints, Machine } from '@/types/types';
 import { MaintenanceIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
@@ -35,9 +35,12 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   
   const { productionLines, workstationDefinitions } = constraints;
 
+  const activeProductionLines = useMemo(() => productionLines.filter(l => l.isActive !== false), [productionLines]);
+
+
   useEffect(() => {
     if (formState.productionLineId) {
-      const selectedLine = productionLines.find(line => line.id === formState.productionLineId);
+      const selectedLine = activeProductionLines.find(line => line.id === formState.productionLineId);
       if (selectedLine) {
         const assignedIds = new Set(selectedLine.assignedWorkstations.map(ws => ws.definitionId));
         setAvailableWorkstations(workstationDefinitions.filter(wd => assignedIds.has(wd.id)));
@@ -47,7 +50,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
     } else {
       setAvailableWorkstations([]);
     }
-  }, [formState.productionLineId, productionLines, workstationDefinitions]);
+  }, [formState.productionLineId, activeProductionLines, workstationDefinitions]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -131,9 +134,8 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   
   const getAvailableMachinesForWorkstation = (workstation: WorkstationDefinition): Machine[] => {
     // 1. Find which process type this workstation belongs to.
-    // A workstation definition is global, but its process type is determined by the lines it's assigned to.
-    const assignedLine = productionLines.find(line => 
-        line.isActive !== false && line.assignedWorkstations.some(as => as.definitionId === workstation.id)
+    const assignedLine = activeProductionLines.find(line => 
+        line.assignedWorkstations.some(as => as.definitionId === workstation.id)
     );
     if (!assignedLine) return []; // No active line uses this workstation
     const processType = assignedLine.processType;
@@ -202,7 +204,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                         <label htmlFor="productionLineId" className="block text-sm font-medium text-gray-700">Línea de Producción</label>
                         <select name="productionLineId" id="productionLineId" value={formState.productionLineId} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                             <option value="">Seleccione una línea</option>
-                            {productionLines.filter(l => l.isActive !== false).map(line => (
+                            {activeProductionLines.map(line => (
                             <option key={line.id} value={line.id}>{line.name}</option>
                             ))}
                         </select>
