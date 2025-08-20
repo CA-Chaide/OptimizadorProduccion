@@ -186,7 +186,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
                                     return (
                                     <React.Fragment key={`${line.id}-${ws.id}`}>
                                         <tr className="bg-gray-50">
-                                            <td className="border border-gray-300 p-2 font-medium text-gray-800 sticky left-0 bg-gray-50 z-10">
+                                            <td className="border border-gray-300 p-2 font-medium text-gray-800 sticky left-0 bg-gray-50 z-10 align-top">
                                                 {ws.name} (Req: {employeesRequired})
                                                 <span className="block text-xs text-gray-500">{line.name}</span>
                                             </td>

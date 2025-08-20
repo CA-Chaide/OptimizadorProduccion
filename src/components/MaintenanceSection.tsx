@@ -38,8 +38,12 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   useEffect(() => {
     if (formState.productionLineId) {
       const selectedLine = productionLines.find(line => line.id === formState.productionLineId);
-      const assignedIds = new Set(selectedLine?.assignedWorkstations.map(ws => ws.definitionId));
-      setAvailableWorkstations(workstationDefinitions.filter(wd => assignedIds.has(wd.id)));
+      if (selectedLine) {
+        const assignedIds = new Set(selectedLine.assignedWorkstations.map(ws => ws.definitionId));
+        setAvailableWorkstations(workstationDefinitions.filter(wd => assignedIds.has(wd.id)));
+      } else {
+        setAvailableWorkstations([]);
+      }
     } else {
       setAvailableWorkstations([]);
     }
@@ -126,24 +130,24 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   };
   
   const getAvailableMachinesForWorkstation = (workstation: WorkstationDefinition): Machine[] => {
+    // 1. Find which process type this workstation belongs to.
+    // A workstation definition is global, but its process type is determined by the lines it's assigned to.
+    const assignedLine = productionLines.find(line => 
+        line.isActive !== false && line.assignedWorkstations.some(as => as.definitionId === workstation.id)
+    );
+    if (!assignedLine) return []; // No active line uses this workstation
+    const processType = assignedLine.processType;
+
+    // 2. Find which machine codes are already in use by other workstations.
     const assignedMachineCodes = new Set(
       workstationDefinitions
         .filter(wd => wd.id !== workstation.id && wd.machineCode)
         .map(wd => wd.machineCode)
     );
-
-    const lineWithWorkstation = productionLines.find(line =>
-      line.isActive !== false && line.assignedWorkstations.some(as => as.definitionId === workstation.id)
-    );
-
-    if (!lineWithWorkstation) {
-      return [];
-    }
-
-    const processType = lineWithWorkstation.processType;
-
+    
+    // 3. Return machines that match the process type AND are not already assigned.
     return MACHINE_CATALOG.filter(machine => 
-      !assignedMachineCodes.has(machine.code) && machine.processType === processType
+        machine.processType === processType && !assignedMachineCodes.has(machine.code)
     );
   };
 
