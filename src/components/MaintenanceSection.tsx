@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { MaintenanceEvent, ProductionLine, WorkstationDefinition, NotificationMessage, AppConstraints, Machine } from '@/types/types';
-import { MaintenanceIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
+import { MaintenanceEvent, ProductionLine, WorkstationDefinition, NotificationMessage, AppConstraints, Machine, ProcessType } from '@/types/types';
+import { MaintenanceIcon, PlusIcon, EditIcon, DeleteIcon, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 
 interface MaintenanceSectionProps {
@@ -12,9 +12,9 @@ interface MaintenanceSectionProps {
   addNotification: (type: NotificationMessage['type'], text: string) => void;
 }
 
-const initialFormState: Omit<MaintenanceEvent, 'id'> = {
+const initialFormState: Partial<MaintenanceEvent> = {
   title: '',
-  productionLineId: '',
+  processType: undefined,
   workstationDefinitionId: '',
   startDate: '',
   startTime: '',
@@ -29,7 +29,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   onConstraintsUpdate,
   addNotification
 }) => {
-  const [formState, setFormState] = useState<Omit<MaintenanceEvent, 'id'>>(initialFormState);
+  const [formState, setFormState] = useState<Partial<MaintenanceEvent>>(initialFormState);
   const [editingEvent, setEditingEvent] = useState<MaintenanceEvent | null>(null);
   
   const { productionLines, workstationDefinitions } = constraints;
@@ -37,24 +37,23 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   const activeProductionLines = useMemo(() => productionLines.filter(l => l.isActive !== false), [productionLines]);
 
   const availableWorkstationsForForm = useMemo(() => {
-    if (!formState.productionLineId) {
+    if (!formState.processType) {
       return [];
     }
-    const selectedLine = activeProductionLines.find(line => line.id === formState.productionLineId);
-    if (!selectedLine) {
-      return [];
-    }
-    const assignedIds = new Set(selectedLine.assignedWorkstations.map(ws => ws.definitionId));
-    return workstationDefinitions.filter(wd => assignedIds.has(wd.id));
-  }, [formState.productionLineId, activeProductionLines, workstationDefinitions]);
+    const linesForProcess = activeProductionLines.filter(line => line.processType === formState.processType);
+    const workstationIds = new Set<string>();
+    linesForProcess.forEach(line => {
+      line.assignedWorkstations.forEach(ws => workstationIds.add(ws.definitionId));
+    });
+    return workstationDefinitions.filter(wd => workstationIds.has(wd.id));
+  }, [formState.processType, activeProductionLines, workstationDefinitions]);
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    const newState = { ...formState, [name]: value };
-    // CRITICAL FIX: If the production line changes, we must reset the selected workstation.
-    // This forces React to re-render the workstation dropdown with the new filtered options.
-    if (name === 'productionLineId') {
+    const newState: Partial<MaintenanceEvent> = { ...formState, [name]: value };
+    
+    if (name === 'processType') {
         newState.workstationDefinitionId = ''; 
     }
     setFormState(newState);
@@ -75,7 +74,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formState.title || !formState.productionLineId || !formState.workstationDefinitionId || !formState.startDate || !formState.startTime || !formState.endDate || !formState.endTime) {
+    if (!formState.title || !formState.processType || !formState.workstationDefinitionId || !formState.startDate || !formState.startTime || !formState.endDate || !formState.endTime) {
       addNotification('warning', 'Todos los campos son requeridos para crear un evento.');
       return;
     }
@@ -90,7 +89,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
 
     if (editingEvent) {
       const updatedEvents = events.map(event =>
-        event.id === editingEvent.id ? { ...editingEvent, ...formState } : event
+        event.id === editingEvent.id ? { ...event, ...formState } as MaintenanceEvent : event
       );
       setEvents(updatedEvents);
       addNotification('success', 'Evento de mantenimiento actualizado exitosamente.');
@@ -98,7 +97,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
       const newEvent: MaintenanceEvent = {
         id: Date.now().toString(),
         ...formState
-      };
+      } as MaintenanceEvent;
       setEvents([...events, newEvent]);
       addNotification('success', 'Nuevo evento de mantenimiento programado.');
     }
@@ -109,7 +108,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
     setEditingEvent(event);
     setFormState({
       title: event.title,
-      productionLineId: event.productionLineId,
+      processType: event.processType,
       workstationDefinitionId: event.workstationDefinitionId,
       startDate: event.startDate,
       startTime: event.startTime,
@@ -197,17 +196,17 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label htmlFor="productionLineId" className="block text-sm font-medium text-gray-700">Línea de Producción</label>
-                        <select name="productionLineId" id="productionLineId" value={formState.productionLineId} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                            <option value="">Seleccione una línea</option>
-                            {activeProductionLines.map(line => (
-                            <option key={line.id} value={line.id}>{line.name}</option>
+                        <label htmlFor="processType" className="block text-sm font-medium text-gray-700">Tipo de Proceso</label>
+                        <select name="processType" id="processType" value={formState.processType || ''} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            <option value="">Seleccione un proceso</option>
+                            {PROCESS_TYPE_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
                         </select>
                     </div>
                      <div>
                         <label htmlFor="workstationDefinitionId" className="block text-sm font-medium text-gray-700">Puesto de Trabajo</label>
-                        <select name="workstationDefinitionId" id="workstationDefinitionId" value={formState.workstationDefinitionId} onChange={handleInputChange} disabled={!formState.productionLineId} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100">
+                        <select name="workstationDefinitionId" id="workstationDefinitionId" value={formState.workstationDefinitionId} onChange={handleInputChange} disabled={!formState.processType} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100">
                             <option value="">Seleccione un puesto</option>
                             {availableWorkstationsForForm.map(ws => (
                             <option key={ws.id} value={ws.id}>{ws.name}</option>
@@ -252,7 +251,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
                   <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Título</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Tipo Proceso</th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Puesto/Máquina</th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Desde</th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Hasta</th>
@@ -264,12 +263,11 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                   events
                   .sort((a,b) => new Date(`${a.startDate}T${a.startTime}`).getTime() - new Date(`${b.startDate}T${b.startTime}`).getTime())
                   .map(event => {
-                    const line = productionLines.find(l => l.id === event.productionLineId);
                     const workstation = workstationDefinitions.find(wd => wd.id === event.workstationDefinitionId);
                     return (
                       <tr key={event.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">{event.title}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-gray-600">{line?.name || 'N/A'}</td>
+                        <td className="px-4 py-2 whitespace-nowrap text-gray-600">{event.processType || 'N/A'}</td>
                         <td className="px-4 py-2 whitespace-nowrap text-gray-600">{workstation?.name || 'N/A'}</td>
                         <td className="px-4 py-2 whitespace-nowrap text-gray-600">{formatDateTime(event.startDate, event.startTime)}</td>
                         <td className="px-4 py-2 whitespace-nowrap text-gray-600">{formatDateTime(event.endDate, event.endTime)}</td>

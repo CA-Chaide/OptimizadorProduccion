@@ -1,6 +1,7 @@
 
 
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -15,8 +16,9 @@ export type AbsenteeismEvent = {
 export type MaintenanceEvent = {
   id: string;
   title: string;
-  productionLineId: string;
-  workstationDefinitionId: string; // New: To specify which workstation in the line
+  processType?: ProcessType; // New: To select process type
+  productionLineId?: string; // Now optional
+  workstationDefinitionId: string; 
   startDate: string; // YYYY-MM-DD
   startTime: string; // HH:MM
   endDate: string;   // YYYY-MM-DD
