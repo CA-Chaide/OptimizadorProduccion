@@ -4,6 +4,7 @@
 
 
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -20,6 +21,7 @@ export type MaintenanceEvent = {
   title: string;
   processType: ProcessType; 
   workstationDefinitionId: string; 
+  productionLineId?: string; // Optional: May not be tied to a single line
   startDate: string; // YYYY-MM-DD
   startTime: string; // HH:MM
   endDate: string;   // YYYY-MM-DD
@@ -35,7 +37,7 @@ export type Employee = {
 
 export type EmployeeSkill = {
   employeeId: string;
-  workstationDefinitionId: string;
+  machineCode: string; // Links to Machine.code from catalog
   role: 'Operador' | 'Ayudante';
   skillLevel: number; // 1-100
 };
