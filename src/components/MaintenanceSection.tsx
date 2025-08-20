@@ -36,7 +36,6 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
 
   const activeProductionLines = useMemo(() => productionLines.filter(l => l.isActive !== false), [productionLines]);
 
-  // DERIVED STATE: Calculate available workstations directly from the selected line
   const availableWorkstationsForForm = useMemo(() => {
     if (!formState.productionLineId) {
       return [];
@@ -53,8 +52,10 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     const newState = { ...formState, [name]: value };
+    // CRITICAL FIX: If the production line changes, we must reset the selected workstation.
+    // This forces React to re-render the workstation dropdown with the new filtered options.
     if (name === 'productionLineId') {
-        newState.workstationDefinitionId = ''; // Reset workstation if line changes
+        newState.workstationDefinitionId = ''; 
     }
     setFormState(newState);
   };
@@ -131,22 +132,18 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   };
   
   const getAvailableMachinesForWorkstation = (workstation: WorkstationDefinition): Machine[] => {
-    // 1. Find which process type this workstation belongs to by looking at its assigned lines.
     const assignedLine = activeProductionLines.find(line => 
         line.assignedWorkstations.some(as => as.definitionId === workstation.id)
     );
-    // If the workstation is not assigned to any active line, it can't have machines.
     if (!assignedLine) return []; 
     const processType = assignedLine.processType;
 
-    // 2. Find which machine codes are already in use by other workstations.
     const assignedMachineCodes = new Set(
       workstationDefinitions
         .filter(wd => wd.id !== workstation.id && wd.machineCode)
         .map(wd => wd.machineCode)
     );
     
-    // 3. Return machines that match the process type AND are not already assigned.
     return MACHINE_CATALOG.filter(machine => 
         machine.processType === processType && !assignedMachineCodes.has(machine.code)
     );
