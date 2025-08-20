@@ -1,6 +1,6 @@
 
 import React, { useState, useContext, useMemo } from 'react';
-import { Employee, EmployeeSkill, NotificationMessage, Machine } from '@/types/types';
+import { Employee, EmployeeSkill, NotificationMessage, Machine, AppConstraints } from '@/types/types';
 import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon } from '@/constants/constants';
 import { NotificationContext } from '@/app/(app)/page';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
@@ -11,6 +11,7 @@ interface PersonnelManagementSectionProps {
   setEmployees: (employees: Employee[]) => void;
   skills: EmployeeSkill[];
   setSkills: (skills: EmployeeSkill[]) => void;
+  constraints: AppConstraints;
 }
 
 const ROLE_OPTIONS: Array<EmployeeSkill['role']> = ['Operador', 'Ayudante'];
@@ -102,6 +103,7 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
   setEmployees,
   skills,
   setSkills,
+  constraints,
 }) => {
   const addNotification = useContext(NotificationContext);
   
@@ -152,10 +154,6 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
       resetEmployeeForm();
 
     } else {
-      if (employees.some(emp => emp.employeeCode === trimmedCode)) {
-        addNotification('error', `El código de empleado '${trimmedCode}' ya existe.`);
-        return;
-      }
       const newEmployee: Employee = { id: Date.now().toString(), ...employeeForm, employeeCode: trimmedCode, isActive: true };
       const updatedEmployees = [...employees, newEmployee];
       setEmployees(updatedEmployees);
@@ -212,7 +210,7 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
   };
 
   const handleExport = () => {
-    exportSkillsToExcel(employees, skills, MACHINE_CATALOG);
+    exportSkillsToExcel(employees, skills, MACHINE_CATALOG, constraints);
     addNotification('success', 'Exportando tabla de calificaciones...');
   };
   

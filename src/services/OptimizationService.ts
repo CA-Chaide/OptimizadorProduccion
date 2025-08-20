@@ -1280,34 +1280,78 @@ export const generateTacticalPlan = (
 export const exportSkillsToExcel = (
   employees: Employee[],
   skills: EmployeeSkill[],
-  machines: Machine[]
+  machines: Machine[],
+  constraints: AppConstraints
 ): void => {
   if (!skills || skills.length === 0) {
     alert('No hay calificaciones para exportar.');
     return;
   }
 
-  const dataToExport = skills.map(skill => {
+  const dataToExport: any[] = [];
+
+  skills.forEach(skill => {
     const employee = employees.find(e => e.id === skill.employeeId);
     const machine = machines.find(m => m.code === skill.machineCode);
-    return {
-      'Código Empleado': employee?.employeeCode || 'N/A',
-      'Nombre Empleado': employee?.name || 'N/A',
-      'Código Máquina': skill.machineCode,
-      'Nombre Máquina': machine?.name || 'N/A',
-      'Tipo Proceso': machine?.processType || 'N/A',
-      'Rol': skill.role,
-      'Calificación (%)': skill.skillLevel,
-    };
+    if (!employee || !machine) return;
+
+    // Find all centers where this machine's process type is used
+    const relevantLines = constraints.productionLines.filter(
+      line => line.processType === machine.processType
+    );
+    const centerIds = new Set(relevantLines.map(line => line.workCenterId));
+
+    if (centerIds.size > 0) {
+      centerIds.forEach(centerId => {
+        const center = constraints.workCenters.find(c => c.id === centerId);
+        dataToExport.push({
+          'CODIGO': employee.employeeCode,
+          'NOMBRE': employee.name,
+          'CENTRO': center ? center.name.replace(/Centro\s*/, '') : 'N/A', // Extract number from "Centro XXXX"
+          'MÁQUINA': machine.code,
+          'Rol': skill.role === 'Operador' ? 'Op. Principal' : skill.role,
+          '% Calificación': skill.skillLevel
+        });
+      });
+    } else {
+      // Handle cases where a machine might not be on any active line yet
+       dataToExport.push({
+          'CODIGO': employee.employeeCode,
+          'NOMBRE': employee.name,
+          'CENTRO': 'N/A',
+          'MÁQUINA': machine.code,
+          'Rol': skill.role === 'Operador' ? 'Op. Principal' : skill.role,
+          '% Calificación': skill.skillLevel,
+        });
+    }
   });
+
 
   const worksheet = XLSX.utils.json_to_sheet(dataToExport);
 
+  // Set column widths to match the desired format
   const colWidths = [
-    { wch: 18 }, { wch: 30 }, { wch: 15 }, { wch: 30 },
-    { wch: 15 }, { wch: 15 }, { wch: 18 },
+    { wch: 8 },  // CODIGO
+    { wch: 25 }, // NOMBRE
+    { wch: 8 },  // CENTRO
+    { wch: 10 }, // MÁQUINA
+    { wch: 15 }, // Rol
+    { wch: 15 }, // % Calificación
   ];
   worksheet['!cols'] = colWidths;
+  
+  // Set number format for percentage column
+  const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+  for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+    const cell_address = {c:5, r:R}; // 5 is the index for '% Calificación' (F column)
+    const cell = XLSX.utils.encode_cell(cell_address);
+    if(worksheet[cell]) {
+      worksheet[cell].t = 'n';
+      worksheet[cell].v = worksheet[cell].v / 100;
+      worksheet[cell].z = '0%';
+    }
+  }
+
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Calificaciones Técnicas');

@@ -212,9 +212,8 @@ export default function ProductionOptimizerPage() {
                   employees={state.employees} 
                   setEmployees={(e) => dispatch({ type: 'SET_EMPLOYEES', payload: e })} 
                   skills={state.employeeSkills} 
-                  setSkills={(s) => dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: s })} 
-                  workstationDefinitions={state.constraints.workstationDefinitions}
-                  productionLines={state.constraints.productionLines}
+                  setSkills={(s) => dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: s })}
+                  constraints={state.constraints}
                 />;
       case ActiveView.ABSENTEEISM:
         return <AbsenteeismSection events={state.absenteeismEvents} setEvents={(e) => dispatch({ type: 'SET_ABSENTEEISM_EVENTS', payload: e })} employees={state.employees} />;
