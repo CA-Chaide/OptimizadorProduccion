@@ -1,9 +1,10 @@
 
 import React, { useState, useContext, useMemo } from 'react';
 import { Employee, EmployeeSkill, NotificationMessage, Machine } from '@/types/types';
-import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
+import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon } from '@/constants/constants';
 import { NotificationContext } from '@/app/(app)/page';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
+import { exportSkillsToExcel } from '@/services/OptimizationService';
 
 interface PersonnelManagementSectionProps {
   employees: Employee[];
@@ -107,9 +108,20 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
   const [employeeForm, setEmployeeForm] = useState<Omit<Employee, 'id' | 'isActive'>>({ name: '', employeeCode: '' });
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
   const [skillToEdit, setSkillToEdit] = useState<{ machineCode: string } | undefined>(undefined);
+
+  const filteredEmployees = useMemo(() => {
+    if (!searchQuery) {
+      return employees;
+    }
+    return employees.filter(emp =>
+      emp.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [employees, searchQuery]);
+
 
   const resetEmployeeForm = () => {
     setEmployeeForm({ name: '', employeeCode: '' });
@@ -198,6 +210,11 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
     }
     setIsSkillModalOpen(true);
   };
+
+  const handleExport = () => {
+    exportSkillsToExcel(employees, skills, MACHINE_CATALOG);
+    addNotification('success', 'Exportando tabla de calificaciones...');
+  };
   
   const employeeSkills = useMemo(() => {
       if (!selectedEmployee) return [];
@@ -228,18 +245,35 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
           initialSkillToEdit={skillToEdit}
         />
       )}
-      <div className="flex items-center space-x-3">
-        <PersonnelIcon />
-        <h2 className="text-2xl font-semibold text-gray-700">Calificación Técnica del Personal</h2>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center space-x-3">
+            <PersonnelIcon />
+            <h2 className="text-2xl font-semibold text-gray-700">Calificación Técnica del Personal</h2>
+        </div>
+        <button
+            onClick={handleExport}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
+            disabled={skills.length === 0}
+        >
+            <DataImportIcon /> Exportar a Excel
+        </button>
       </div>
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Employee List and Form */}
         <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg space-y-6">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Lista de Empleados ({employees.length})</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Lista de Empleados ({filteredEmployees.length})</h3>
+            <input
+                type="text"
+                placeholder="Buscar empleado por nombre..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm mb-4"
+            />
             <div className="max-h-[40vh] overflow-y-auto border rounded-md">
-                {employees.sort((a,b) => a.name.localeCompare(b.name)).map(emp => (
+                {filteredEmployees.sort((a,b) => a.name.localeCompare(b.name)).map(emp => (
                     <div key={emp.id} 
                          className={`p-3 cursor-pointer border-b last:border-b-0 ${selectedEmployee?.id === emp.id ? 'bg-indigo-100' : 'hover:bg-gray-50'}`}
                          onClick={() => setSelectedEmployee(emp)}>
@@ -282,7 +316,7 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
             <>
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold text-gray-800">Competencias por Máquina de: <span className="text-indigo-600">{selectedEmployee.name}</span></h3>
-                <button onClick={() => handleOpenSkillModal()} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center">
+                <button onClick={() => handleOpenSkillModal()} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
                   <PlusIcon /> Añadir Competencia
                 </button>
               </div>

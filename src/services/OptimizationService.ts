@@ -4,7 +4,8 @@ import {
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
-    TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters
+    TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
+    Machine
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -76,7 +77,7 @@ export const parseExcelData = (file: File): Promise<SalesDataRow[]> => {
             descripciónMaterial: String(row[8] || ''),
             familia: String(row[9] || ''),
             marca: String(row[10] || ''),
-            lineaProduccion: String(row[11] || '').trim(), // Suggested Production Line
+            lineaProduccion: String(row[11] || '').trim(), // Suggested Production Line name (from import, map to ID)
           };
         }).filter(row => row !== null && row.unidadesProyectado >= 0 && row.código) as SalesDataRow[]; 
 
@@ -1273,4 +1274,42 @@ export const generateTacticalPlan = (
     });
 
     return { plan: tacticalPlan.sort((a,b) => a.assignedLineName.localeCompare(b.assignedLineName) || a.productName.localeCompare(b.productName)), alerts };
+};
+
+
+export const exportSkillsToExcel = (
+  employees: Employee[],
+  skills: EmployeeSkill[],
+  machines: Machine[]
+): void => {
+  if (!skills || skills.length === 0) {
+    alert('No hay calificaciones para exportar.');
+    return;
+  }
+
+  const dataToExport = skills.map(skill => {
+    const employee = employees.find(e => e.id === skill.employeeId);
+    const machine = machines.find(m => m.code === skill.machineCode);
+    return {
+      'Código Empleado': employee?.employeeCode || 'N/A',
+      'Nombre Empleado': employee?.name || 'N/A',
+      'Código Máquina': skill.machineCode,
+      'Nombre Máquina': machine?.name || 'N/A',
+      'Tipo Proceso': machine?.processType || 'N/A',
+      'Rol': skill.role,
+      'Calificación (%)': skill.skillLevel,
+    };
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+
+  const colWidths = [
+    { wch: 18 }, { wch: 30 }, { wch: 15 }, { wch: 30 },
+    { wch: 15 }, { wch: 15 }, { wch: 18 },
+  ];
+  worksheet['!cols'] = colWidths;
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Calificaciones Técnicas');
+  XLSX.writeFile(workbook, 'Calificaciones_Tecnicas_Personal.xlsx');
 };
