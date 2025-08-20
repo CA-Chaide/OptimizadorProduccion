@@ -133,11 +133,12 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   };
   
   const getAvailableMachinesForWorkstation = (workstation: WorkstationDefinition): Machine[] => {
-    // 1. Find which process type this workstation belongs to.
+    // 1. Find which process type this workstation belongs to by looking at its assigned lines.
     const assignedLine = activeProductionLines.find(line => 
         line.assignedWorkstations.some(as => as.definitionId === workstation.id)
     );
-    if (!assignedLine) return []; // No active line uses this workstation
+    // If the workstation is not assigned to any active line, it can't have machines.
+    if (!assignedLine) return []; 
     const processType = assignedLine.processType;
 
     // 2. Find which machine codes are already in use by other workstations.
