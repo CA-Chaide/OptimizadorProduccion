@@ -2,6 +2,7 @@
 
 
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -16,8 +17,7 @@ export type AbsenteeismEvent = {
 export type MaintenanceEvent = {
   id: string;
   title: string;
-  processType?: ProcessType; // New: To select process type
-  productionLineId?: string; // Now optional
+  processType: ProcessType; 
   workstationDefinitionId: string; 
   startDate: string; // YYYY-MM-DD
   startTime: string; // HH:MM
@@ -109,6 +109,13 @@ export interface LaborCostSettings {
   factorRecargoNocturno: number; // Percentage, e.g., 25 for 25% extra on night hours
   factorFinSemanaFeriado: number; // Percentage, e.g., 100 for 100% extra on base for weekend/holiday hours
 }
+
+export interface ShiftParameters {
+  regularHoursPerDay: number;
+  extraHoursPerDay: number;
+  saturdayAndHolidayHours: number;
+}
+
 
 export interface InventorySetting {
   id: string;
@@ -248,6 +255,7 @@ export interface AppConstraints {
   productProcessInfos: ProductProcessInfo[];
   globalBaseCostPerHour: number | null; 
   laborCostFactors: LaborCostSettings | null; 
+  shiftParameters: ShiftParameters;
   inventorySettings: InventorySetting[];
   bottlenecks: Bottleneck[];
   contingencyFundPercentage: number;

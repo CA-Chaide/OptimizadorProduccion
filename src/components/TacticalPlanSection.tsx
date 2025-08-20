@@ -1,14 +1,15 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useContext } from 'react';
 import { 
     TacticalRequest, TacticalPlanResult, NotificationMessage, ProvisionalOrder, TacticalOrderItem 
 } from '@/types/types';
 import { parseTacticalOrdersExcel } from '@/services/OptimizationService';
 import { TacticalSchedulingIcon, DataImportIcon } from '@/constants/constants';
+import { NotificationContext } from '@/app/(app)/page';
+
 
 interface TacticalPlanSectionProps {
   onGeneratePlan: (request: TacticalRequest) => TacticalPlanResult;
-  addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
 }
 
 const getTodayString = () => {
@@ -25,14 +26,14 @@ const getTargetDateString = (executionDate: string): string => {
 
 
 export const TacticalPlanSection: React.FC<TacticalPlanSectionProps> = ({ 
-    onGeneratePlan, 
-    addNotification
+    onGeneratePlan,
 }) => {
   const [executionDate, setExecutionDate] = useState<string>(getTodayString());
   const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [tacticalPlanResult, setTacticalPlanResult] = useState<TacticalPlanResult | null>(null);
+  const addNotification = useContext(NotificationContext);
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

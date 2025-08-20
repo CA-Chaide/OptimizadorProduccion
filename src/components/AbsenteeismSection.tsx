@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+
+import React, { useState, useContext } from 'react';
 import { AbsenteeismEvent, Employee, NotificationMessage } from '@/types/types';
 import { AbsenteeismIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
+import { NotificationContext } from '@/app/(app)/page';
+
 
 interface AbsenteeismSectionProps {
   events: AbsenteeismEvent[];
   setEvents: (events: AbsenteeismEvent[]) => void;
   employees: Employee[];
-  addNotification: (type: NotificationMessage['type'], text: string) => void;
 }
 
 const REASON_OPTIONS: Array<AbsenteeismEvent['reason']> = ['Vacaciones', 'Cita Médica', 'Capacitaciones'];
@@ -21,9 +23,10 @@ const initialFormState: Omit<AbsenteeismEvent, 'id'> = {
   notes: '',
 };
 
-export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, setEvents, employees, addNotification }) => {
+export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, setEvents, employees }) => {
   const [formState, setFormState] = useState(initialFormState);
   const [editingEvent, setEditingEvent] = useState<AbsenteeismEvent | null>(null);
+  const addNotification = useContext(NotificationContext);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

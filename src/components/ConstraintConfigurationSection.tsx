@@ -1,8 +1,9 @@
+
 import React, { useState, useCallback, useMemo, ChangeEvent, useEffect, useRef } from 'react';
 import { 
     AppConstraints, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, 
     Bottleneck, SupplierDeliveryTime, QualityParameter, SalesDataRow, ProductProcessInfo, 
-    NotificationMessage, ProductionTimeImportRow, Holiday, ProcessType, WorkstationDefinition
+    NotificationMessage, ProductionTimeImportRow, Holiday, ProcessType, WorkstationDefinition, ShiftParameters
 } from '@/types/types';
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { parseProductionTimesExcel, processImportedProductionData } from '@/services/OptimizationService';
@@ -83,6 +84,12 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     factorFinSemanaFeriado: '',
   });
   
+  const [shiftParamsDisplay, setShiftParamsDisplay] = useState({
+    regularHoursPerDay: '',
+    extraHoursPerDay: '',
+    saturdayAndHolidayHours: '',
+  });
+
   useEffect(() => {
     // When the expanded line changes, reset the assignment form state for a clean slate.
     setAssignedWsDefId('');
@@ -108,7 +115,20 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
         factorFinSemanaFeriado: '',
       });
     }
-  }, [constraints.globalBaseCostPerHour, constraints.laborCostFactors]);
+    if (constraints.shiftParameters) {
+      setShiftParamsDisplay({
+        regularHoursPerDay: String(constraints.shiftParameters.regularHoursPerDay),
+        extraHoursPerDay: String(constraints.shiftParameters.extraHoursPerDay),
+        saturdayAndHolidayHours: String(constraints.shiftParameters.saturdayAndHolidayHours),
+      });
+    } else {
+      setShiftParamsDisplay({
+        regularHoursPerDay: '',
+        extraHoursPerDay: '',
+        saturdayAndHolidayHours: '',
+      });
+    }
+  }, [constraints.globalBaseCostPerHour, constraints.laborCostFactors, constraints.shiftParameters]);
 
   const [holidayForm, setHolidayForm] = useState<Omit<Holiday, 'id'>>({ date: '', name: '', appliesTo: 'Ambos', isProductionAllowed: false });
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
@@ -141,7 +161,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
             return;
         }
         const updatedWds = constraints.workstationDefinitions.map(wd => 
-            wd.id === editingWd.id ? { ...wd, name: trimmedWdName, employeesPerWorkstation: wdEmployees, isActive: editingWd.isActive } : wd
+            wd.id === editingWd.id ? { ...wd, name: trimmedWdName, employeesPerWorkstation: wdEmployees, isActive: editingWd.isActive, machineCode: wd.machineCode } : wd
         );
         onConstraintsUpdate({ ...constraints, workstationDefinitions: updatedWds });
         addNotification('success', `Definición '${trimmedWdName}' actualizada.`);
@@ -150,7 +170,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
             addNotification('error', `Definición de puesto '${trimmedWdName}' ya existe.`);
             return;
         }
-        const newWd: WorkstationDefinition = { id: Date.now().toString(), name: trimmedWdName, employeesPerWorkstation: wdEmployees, isActive: true };
+        const newWd: WorkstationDefinition = { id: Date.now().toString(), name: trimmedWdName, employeesPerWorkstation: wdEmployees, isActive: true, machineCode: null };
         onConstraintsUpdate({ ...constraints, workstationDefinitions: [...constraints.workstationDefinitions, newWd] });
         addNotification('success', `Definición '${trimmedWdName}' agregada.`);
     }
@@ -379,6 +399,22 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     addNotification('success', 'Costos globales actualizados.');
   };
 
+  const handleSaveShiftParams = () => {
+    const params: ShiftParameters = {
+        regularHoursPerDay: parseFloat(shiftParamsDisplay.regularHoursPerDay),
+        extraHoursPerDay: parseFloat(shiftParamsDisplay.extraHoursPerDay),
+        saturdayAndHolidayHours: parseFloat(shiftParamsDisplay.saturdayAndHolidayHours),
+    };
+    if (isNaN(params.regularHoursPerDay) || isNaN(params.extraHoursPerDay) || isNaN(params.saturdayAndHolidayHours)) {
+        addNotification('warning', 'Todos los parámetros de turno deben ser números válidos.'); return;
+    }
+    if (params.regularHoursPerDay < 0 || params.extraHoursPerDay < 0 || params.saturdayAndHolidayHours < 0) {
+        addNotification('warning', 'Los valores de horas no pueden ser negativos.'); return;
+    }
+    onConstraintsUpdate({ ...constraints, shiftParameters: params });
+    addNotification('success', 'Parámetros de turno actualizados.');
+  };
+
   // --- Holidays Handlers ---
   const handleSaveHoliday = () => {
     if (!holidayForm.name.trim() || !holidayForm.date || !holidayForm.appliesTo) { addNotification('warning', 'Nombre, fecha y a qué aplica el feriado son requeridos.'); return; }
@@ -403,7 +439,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     { id: 'workstationDefs', label: '1. Puestos Trabajo (Global)' },
     { id: 'workCentersAndLines', label: '2. Centros y Líneas' },
     { id: 'productionTimes', label: '3. Importar Tiempos' },
-    { id: 'costs', label: '4. Costos' },
+    { id: 'costsAndShifts', label: '4. Costos y Turnos' },
     { id: 'holidays', label: '5. Feriados' },
   ];
   
@@ -600,11 +636,24 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                   </div>
               </div>
             )}
-            {activeTab === 'costs' && (
+            {activeTab === 'costsAndShifts' && (
               <div className="space-y-8">
                  <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Parámetros de Turnos de Trabajo</h3>
+                     <p className="text-sm text-gray-600">Define las horas base para cada tipo de día. Estos valores serán usados por el planificador de producción.</p>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <InputField label="Horas Jornada Normal (L-V)" id="regularHours" type="number" placeholder="8" value={shiftParamsDisplay.regularHoursPerDay} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, regularHoursPerDay: e.target.value})} />
+                        <InputField label="Horas Extra Máximas (L-V)" id="extraHours" type="number" placeholder="2" value={shiftParamsDisplay.extraHoursPerDay} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, extraHoursPerDay: e.target.value})} />
+                        <InputField label="Horas en Sábado/Feriado" id="holidayHours" type="number" placeholder="5" value={shiftParamsDisplay.saturdayAndHolidayHours} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, saturdayAndHolidayHours: e.target.value})} />
+                     </div>
+                      <div className="flex justify-end">
+                      <button onClick={handleSaveShiftParams} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Guardar Parámetros de Turno</button>
+                    </div>
+                 </div>
+
+                 <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
                     <h3 className="text-lg font-semibold text-gray-800">Costos Laborales Globales</h3>
-                    <p className="text-sm text-gray-600">Estos factores se aplicarán sobre los horarios de trabajo predefinidos (normal y extra) para calcular el costo del plan.</p>
+                    <p className="text-sm text-gray-600">Estos factores se aplicarán sobre los horarios de trabajo para calcular el costo del plan.</p>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <InputField label="Costo Base Global por Hora ($)" id="globalBaseCost" type="number" placeholder="10.00" value={globalBaseCostDisplay} onChange={e => setGlobalBaseCostDisplay(e.target.value)} />
                         <InputField label="Factor Recargo Extra (%)" id="factorDiurno" type="number" placeholder="25" title="Recargo para horas extra de Lunes a Viernes." value={laborFactorsDisplay.factorAdicionalDiurno} onChange={e => setLaborFactorsDisplay({...laborFactorsDisplay, factorAdicionalDiurno: e.target.value})} />

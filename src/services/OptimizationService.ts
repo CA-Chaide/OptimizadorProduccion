@@ -1,9 +1,10 @@
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
-    TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel
+    TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -340,7 +341,7 @@ export const generateProductionPlan = (
   const auditLog: string[] = [];
   if (!salesData || salesData.length === 0) return { dailyPlan: [], monthlyPlan: [], auditLog: ['No sales data provided.'] };
 
-  const { inventorySettings, holidays, productProcessInfos, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions } = constraints;
+  const { inventorySettings, holidays, productProcessInfos, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
   
   auditLog.push('--- INICIO DE PLANIFICACIÓN ---');
   
@@ -417,13 +418,10 @@ export const generateProductionPlan = (
   auditLog.push(`\nHorizonte de planificación: ${planningHorizon.length} meses, desde ${firstSaleDate.toLocaleDateString()} hasta ${lastSaleDate.toLocaleDateString()}`);
 
   // --- 2. CALCULATE LINE AVAILABILITY ---
-  const REGULAR_HOURS_PER_DAY = 8;
-  const EXTRA_HOURS_PER_DAY = 2;
-  const SATURDAY_HOLIDAY_HOURS = 5; // User defined hours for Sat/Hol
-  auditLog.push(`\n--- SUPUESTOS DE HORAS DISPONIBLES POR DÍA ---`);
-  auditLog.push(`- Horas Regulares (L-V): ${REGULAR_HOURS_PER_DAY}h (Jornada base en días laborables)`);
-  auditLog.push(`- Horas Extra (L-V): ${EXTRA_HOURS_PER_DAY}h (costo: +${laborCostFactors?.factorAdicionalDiurno || 0}%)`);
-  auditLog.push(`- Horas Sábado/Feriado Productivo: ${SATURDAY_HOLIDAY_HOURS}h (costo: +${laborCostFactors?.factorFinSemanaFeriado || 0}%)`);
+  auditLog.push(`\n--- SUPUESTOS DE HORAS DISPONIBLES POR DÍA (desde configuración) ---`);
+  auditLog.push(`- Horas Regulares (L-V): ${shiftParameters.regularHoursPerDay}h`);
+  auditLog.push(`- Horas Extra (L-V): ${shiftParameters.extraHoursPerDay}h (costo: +${laborCostFactors?.factorAdicionalDiurno || 0}%)`);
+  auditLog.push(`- Horas Sábado/Feriado Productivo: ${shiftParameters.saturdayAndHolidayHours}h (costo: +${laborCostFactors?.factorFinSemanaFeriado || 0}%)`);
 
   const lineMonthlyHours = new Map<string, LineHourAvailability[]>(); // lineId -> monthIndex -> {regular, extra, holiday}
   const activeLines = productionLines.filter(l => l.isActive !== false);
@@ -436,10 +434,10 @@ export const generateProductionPlan = (
         const d = new Date(year, month - 1, day);
         const dayType = getDayTypeForProduction(d, holidays);
         if (dayType === 'Weekday') {
-          availability.regular += REGULAR_HOURS_PER_DAY;
-          availability.extra += EXTRA_HOURS_PER_DAY;
+          availability.regular += shiftParameters.regularHoursPerDay;
+          availability.extra += shiftParameters.extraHoursPerDay;
         } else if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') {
-          availability.holiday += SATURDAY_HOLIDAY_HOURS;
+          availability.holiday += shiftParameters.saturdayAndHolidayHours;
         }
       }
       return availability;
@@ -656,8 +654,8 @@ export const generateProductionPlan = (
       // B: Process production for the day by filling its capacity
       const dayType = getDayTypeForProduction(currentDate, holidays);
       const capacityForDay: Record<string, number> = {}; // lineId -> hours
-      if (dayType === 'Weekday') activeLines.forEach(l => capacityForDay[l.id] = REGULAR_HOURS_PER_DAY + EXTRA_HOURS_PER_DAY);
-      if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') activeLines.forEach(l => capacityForDay[l.id] = SATURDAY_HOLIDAY_HOURS);
+      if (dayType === 'Weekday') activeLines.forEach(l => capacityForDay[l.id] = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay);
+      if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') activeLines.forEach(l => capacityForDay[l.id] = shiftParameters.saturdayAndHolidayHours);
       
       for (const [bucketKey, bucket] of monthlyProductionBucket.entries()) {
         const [lineId, productId, centerId] = bucketKey.split('-');
@@ -1121,6 +1119,7 @@ export const generateTacticalPlan = (
     const tacticalPlan: TacticalOrderItem[] = [];
     const { provisionalOrders, targetDate } = request;
     const { constraints, maintenanceEvents, absenteeismEvents, employees, employeeSkills } = context;
+    const { shiftParameters } = constraints;
 
     // --- 1. Filter and Prepare Context for Target Date ---
     const targetDateTime = new Date(targetDate + "T00:00:00").getTime();
@@ -1131,8 +1130,17 @@ export const generateTacticalPlan = (
         const start = new Date(`${event.startDate}T${event.startTime}`).getTime();
         const end = new Date(`${event.endDate}T${event.endTime}`).getTime();
         if (targetDateTime >= start && targetDateTime <= end) {
-            linesInMaintenance.add(event.productionLineId);
-            alerts.push(`Alerta Mantenimiento: Línea '${constraints.productionLines.find(l => l.id === event.productionLineId)?.name}' no estará disponible por '${event.title}'.`);
+            const wd = constraints.workstationDefinitions.find(w => w.id === event.workstationDefinitionId);
+            const process = event.processType;
+            alerts.push(`Alerta Mantenimiento: El puesto '${wd?.name}' para procesos de '${process}' no estará disponible por '${event.title}'.`);
+            
+            // Find all lines that use this workstation in this process and mark them as unavailable
+             constraints.productionLines.forEach(line => {
+                if(line.processType === process && line.assignedWorkstations.some(as => as.definitionId === event.workstationDefinitionId)){
+                    linesInMaintenance.add(line.id);
+                }
+             })
+
         }
     });
     const availableLines = constraints.productionLines.filter(line => !linesInMaintenance.has(line.id) && line.isActive !== false);
@@ -1175,10 +1183,9 @@ export const generateTacticalPlan = (
     // --- 3. Feasibility Analysis ---
     const lineCapacityToday: Record<string, number> = {};
     const dayType = getDayTypeForProduction(new Date(targetDate + "T12:00:00"), constraints.holidays);
-    const REGULAR_HOURS_PER_DAY = 8; const EXTRA_HOURS_PER_DAY = 2; const SATURDAY_HOLIDAY_HOURS = 5;
     
-    if (dayType === 'Weekday') availableLines.forEach(l => lineCapacityToday[l.id] = REGULAR_HOURS_PER_DAY + EXTRA_HOURS_PER_DAY);
-    else if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') availableLines.forEach(l => lineCapacityToday[l.id] = SATURDAY_HOLIDAY_HOURS);
+    if (dayType === 'Weekday') availableLines.forEach(l => lineCapacityToday[l.id] = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay);
+    else if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') availableLines.forEach(l => lineCapacityToday[l.id] = shiftParameters.saturdayAndHolidayHours);
     else {
         alerts.push(`Alerta de Calendario: El día ${targetDate} es un ${dayType}, no se puede programar producción.`);
         return { plan: [], alerts };

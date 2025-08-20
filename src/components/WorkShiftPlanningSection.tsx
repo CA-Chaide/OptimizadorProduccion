@@ -1,11 +1,13 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext } from 'react';
 import { 
     WorkShift, AppConstraints, Employee, AbsenteeismEvent, 
     ProcessType, NotificationMessage, EmployeeSkill 
 } from '@/types/types';
 import { WorkShiftIcon, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { NotificationContext } from '@/app/(app)/page';
+
 
 interface WorkShiftPlanningSectionProps {
   shifts: WorkShift[];
@@ -14,7 +16,6 @@ interface WorkShiftPlanningSectionProps {
   employees: Employee[];
   absenteeismEvents: AbsenteeismEvent[];
   employeeSkills: EmployeeSkill[];
-  addNotification: (type: NotificationMessage['type'], text: string) => void;
 }
 
 const getWeekStart = (date: Date) => {
@@ -31,10 +32,10 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
     employees,
     absenteeismEvents,
     employeeSkills,
-    addNotification,
 }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedProcessType, setSelectedProcessType] = useState<ProcessType | ''>('');
+    const addNotification = useContext(NotificationContext);
 
     const weekStart = getWeekStart(currentDate);
     const weekDates = Array.from({ length: 7 }, (_, i) => {

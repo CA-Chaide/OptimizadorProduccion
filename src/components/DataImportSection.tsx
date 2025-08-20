@@ -1,17 +1,20 @@
-import React, { useState, useCallback } from 'react';
+
+import React, { useState, useCallback, useContext } from 'react';
 import { SalesDataRow, NotificationMessage } from '@/types/types';
 import { parseExcelData } from '@/services/OptimizationService';
 import { DataImportIcon } from '@/constants/constants';
+import { NotificationContext } from '@/app/(app)/page';
+
 
 interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
-  addNotification: (type: NotificationMessage['type'], text: string) => void;
 }
 
-export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported, addNotification }) => {
+export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const [fileName, setFileName] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [importedDataPreview, setImportedDataPreview] = useState<SalesDataRow[]>([]);
+  const addNotification = useContext(NotificationContext);
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

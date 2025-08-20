@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Employee, EmployeeSkill, WorkstationDefinition, NotificationMessage } from '@/types/types';
 import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
+import { NotificationContext } from '@/app/(app)/page';
 
 interface PersonnelManagementSectionProps {
   employees: Employee[];
@@ -10,7 +11,6 @@ interface PersonnelManagementSectionProps {
   skills: EmployeeSkill[];
   setSkills: (skills: EmployeeSkill[]) => void;
   workstationDefinitions: WorkstationDefinition[];
-  addNotification: (type: NotificationMessage['type'], text: string) => void;
 }
 
 const ROLE_OPTIONS: Array<Employee['role']> = ['Operador', 'Ayudante'];
@@ -21,9 +21,9 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
   skills,
   setSkills,
   workstationDefinitions,
-  addNotification,
 }) => {
   const [activeTab, setActiveTab] = useState<'employees' | 'skills'>('employees');
+  const addNotification = useContext(NotificationContext);
   
   // State for Employee form
   const [employeeForm, setEmployeeForm] = useState<Omit<Employee, 'id' | 'isActive'>>({ name: '', employeeCode: '', machine: '', role: 'Operador' });

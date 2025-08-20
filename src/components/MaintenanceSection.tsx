@@ -51,12 +51,14 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    const newState: Partial<MaintenanceEvent> = { ...formState, [name]: value };
     
-    if (name === 'processType') {
-        newState.workstationDefinitionId = ''; 
-    }
-    setFormState(newState);
+    setFormState(prevState => {
+        const newState: Partial<MaintenanceEvent> = { ...prevState, [name]: value };
+        if (name === 'processType') {
+            newState.workstationDefinitionId = ''; 
+        }
+        return newState;
+    });
   };
   
   const handleMachineAssignmentChange = (wdId: string, newMachineCode: string) => {
@@ -131,21 +133,25 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   };
   
   const getAvailableMachinesForWorkstation = (workstation: WorkstationDefinition): Machine[] => {
-    const assignedLine = activeProductionLines.find(line => 
-        line.assignedWorkstations.some(as => as.definitionId === workstation.id)
-    );
-    if (!assignedLine) return []; 
-    const processType = assignedLine.processType;
-
-    const assignedMachineCodes = new Set(
-      workstationDefinitions
-        .filter(wd => wd.id !== workstation.id && wd.machineCode)
-        .map(wd => wd.machineCode)
-    );
-    
-    return MACHINE_CATALOG.filter(machine => 
-        machine.processType === processType && !assignedMachineCodes.has(machine.code)
-    );
+      // Find the process type for this workstation by looking at the lines it's assigned to.
+      // This assumes a workstation is only used in one type of process, as confirmed.
+      const assignedLine = activeProductionLines.find(line => 
+          line.assignedWorkstations.some(as => as.definitionId === workstation.id)
+      );
+      if (!assignedLine) return []; 
+      const processType = assignedLine.processType;
+      
+      // Get a set of machine codes that are already assigned to OTHER workstations.
+      const assignedMachineCodes = new Set(
+          workstationDefinitions
+              .filter(wd => wd.id !== workstation.id && wd.machineCode)
+              .map(wd => wd.machineCode)
+      );
+      
+      // Return machines that match the process type AND are not already assigned elsewhere.
+      return MACHINE_CATALOG.filter(machine => 
+          machine.processType === processType && !assignedMachineCodes.has(machine.code)
+      );
   };
 
 
@@ -192,7 +198,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label htmlFor="title" className="block text-sm font-medium text-gray-700">Título del Evento</label>
-                  <input type="text" name="title" id="title" value={formState.title} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Ej: Cambio de rodamientos"/>
+                  <input type="text" name="title" id="title" value={formState.title || ''} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Ej: Cambio de rodamientos"/>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -206,7 +212,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                     </div>
                      <div>
                         <label htmlFor="workstationDefinitionId" className="block text-sm font-medium text-gray-700">Puesto de Trabajo</label>
-                        <select name="workstationDefinitionId" id="workstationDefinitionId" value={formState.workstationDefinitionId} onChange={handleInputChange} disabled={!formState.processType} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100">
+                        <select name="workstationDefinitionId" id="workstationDefinitionId" value={formState.workstationDefinitionId || ''} onChange={handleInputChange} disabled={!formState.processType} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100">
                             <option value="">Seleccione un puesto</option>
                             {availableWorkstationsForForm.map(ws => (
                             <option key={ws.id} value={ws.id}>{ws.name}</option>
@@ -217,21 +223,21 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                    <div>
                      <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Fecha Inicio</label>
-                     <input type="date" name="startDate" id="startDate" value={formState.startDate} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
+                     <input type="date" name="startDate" id="startDate" value={formState.startDate || ''} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
                    </div>
                    <div>
                      <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Hora Inicio</label>
-                     <input type="time" name="startTime" id="startTime" value={formState.startTime} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
+                     <input type="time" name="startTime" id="startTime" value={formState.startTime || ''} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
                    </div>
                 </div>
                  <div className="grid grid-cols-2 gap-4">
                    <div>
                      <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">Fecha Fin</label>
-                     <input type="date" name="endDate" id="endDate" value={formState.endDate} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
+                     <input type="date" name="endDate" id="endDate" value={formState.endDate || ''} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
                    </div>
                    <div>
                      <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">Hora Fin</label>
-                     <input type="time" name="endTime" id="endTime" value={formState.endTime} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
+                     <input type="time" name="endTime" id="endTime" value={formState.endTime || ''} onChange={handleInputChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
                    </div>
                 </div>
                 <div className="flex justify-end space-x-3 pt-2">
