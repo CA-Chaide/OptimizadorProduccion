@@ -126,25 +126,24 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   };
   
   const getAvailableMachinesForWorkstation = (workstation: WorkstationDefinition): Machine[] => {
-    // Find which machines are already assigned to OTHER workstations
     const assignedMachineCodes = new Set(
-        workstationDefinitions
-            .filter(wd => wd.id !== workstation.id && wd.machineCode)
-            .map(wd => wd.machineCode)
+      workstationDefinitions
+        .filter(wd => wd.id !== workstation.id && wd.machineCode)
+        .map(wd => wd.machineCode)
     );
 
-    // Find the process type for the current workstation by looking at the lines it's assigned to.
-    // This is a simplification; a workstation could be on lines of different process types.
-    // We take the first one found, which is a reasonable assumption for most cases.
-    const lineWithWorkstation = productionLines.find(line => 
-        line.assignedWorkstations.some(as => as.definitionId === workstation.id)
+    const lineWithWorkstation = productionLines.find(line =>
+      line.isActive !== false && line.assignedWorkstations.some(as => as.definitionId === workstation.id)
     );
-    const processType = lineWithWorkstation?.processType;
 
-    // Return machines that are not already assigned and match the workstation's process type.
+    if (!lineWithWorkstation) {
+      return [];
+    }
+
+    const processType = lineWithWorkstation.processType;
+
     return MACHINE_CATALOG.filter(machine => 
-        !assignedMachineCodes.has(machine.code) &&
-        (processType ? machine.processType === processType : true) // If no process type found, show all unassigned
+      !assignedMachineCodes.has(machine.code) && machine.processType === processType
     );
   };
 
@@ -174,9 +173,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                                   className="w-48 border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm bg-white"
                                 >
                                     <option value="">Operación Manual</option>
-                                    {/* If a machine is already assigned, make sure it's in the list */}
                                     {assignedMachine && <option key={assignedMachine.code} value={assignedMachine.code}>{assignedMachine.name}</option>}
-                                    {/* Show other available (unassigned and matching process type) machines */}
                                     {availableMachines.map(machine => (
                                         <option key={machine.code} value={machine.code}>{machine.name}</option>
                                     ))}
