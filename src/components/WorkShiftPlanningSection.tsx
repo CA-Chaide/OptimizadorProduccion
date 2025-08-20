@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useContext } from 'react';
+import React, { useState, useMemo, useContext, useCallback } from 'react';
 import { 
     WorkShift, AppConstraints, Employee, AbsenteeismEvent, 
     ProcessType, NotificationMessage, EmployeeSkill 
@@ -62,16 +62,17 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
     }, [relevantLines, constraints.workstationDefinitions]);
 
 
-    const getQualifiedEmployeesForWorkstation = (workstationDefId: string) => {
+    // Performance: Memoize this function creation as it's used inside a loop.
+    const getQualifiedEmployeesForWorkstation = useCallback((workstationDefId: string) => {
         const qualifiedEmployeeIds = new Set(
             employeeSkills
                 .filter(skill => skill.workstationDefinitionId === workstationDefId && skill.skillLevel > 0)
                 .map(skill => skill.employeeId)
         );
         return employees.filter(emp => qualifiedEmployeeIds.has(emp.id) && emp.isActive !== false);
-    };
+    }, [employeeSkills, employees]);
 
-    const isEmployeeAbsent = (employeeId: string, date: Date): boolean => {
+    const isEmployeeAbsent = useCallback((employeeId: string, date: Date): boolean => {
         const checkTime = date.getTime();
         return absenteeismEvents.some(event => {
             if (!event.employeeIds.includes(employeeId)) return false;
@@ -79,7 +80,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
             const end = new Date(`${event.endDate}T${event.endTime}`).getTime();
             return checkTime >= start && checkTime <= end;
         });
-    };
+    }, [absenteeismEvents]);
 
     const handleShiftChange = (date: Date, lineId: string, workstationDefId: string, shiftType: 'day' | 'night', employeeId: string | null, assignmentIndex: number) => {
         const dateString = date.toISOString().split('T')[0];

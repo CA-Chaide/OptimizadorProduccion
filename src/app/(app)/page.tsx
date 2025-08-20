@@ -36,6 +36,7 @@ type AppState = {
 };
 
 type AppAction =
+    | { type: 'SET_YEAR'; payload: number }
     | { type: 'SET_ACTIVE_VIEW'; payload: ActiveView }
     | { type: 'SET_SALES_DATA'; payload: SalesDataRow[] }
     | { type: 'SET_CONSTRAINTS'; payload: AppConstraints }
@@ -51,7 +52,7 @@ type AppAction =
 
 
 const initialState: AppState = {
-    year: new Date().getFullYear(),
+    year: null, // Initialize as null to prevent hydration mismatch
     activeView: ActiveView.DASHBOARD,
     salesData: [],
     isLoading: false,
@@ -81,6 +82,8 @@ const initialState: AppState = {
 
 function appReducer(state: AppState, action: AppAction): AppState {
     switch (action.type) {
+        case 'SET_YEAR':
+            return { ...state, year: action.payload };
         case 'SET_ACTIVE_VIEW':
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
@@ -116,6 +119,11 @@ export const NotificationContext = createContext<(type: NotificationMessage['typ
 export default function ProductionOptimizerPage() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const { toast } = useToast();
+
+  // Set year on client-side to avoid hydration mismatch
+  useEffect(() => {
+    dispatch({ type: 'SET_YEAR', payload: new Date().getFullYear() });
+  }, []);
 
   const addNotification = useCallback((type: NotificationMessage['type'], text: string, errors: string[] = []) => {
     let description: React.ReactNode = text;

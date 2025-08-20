@@ -4,7 +4,7 @@ import {
     TacticalRequest, TacticalPlanResult, NotificationMessage, ProvisionalOrder, TacticalOrderItem 
 } from '@/types/types';
 import { parseTacticalOrdersExcel } from '@/services/OptimizationService';
-import { TacticalSchedulingIcon, DataImportIcon } from '@/constants/constants';
+import { TacticalSchedulingIcon, DataImportIcon, MAX_FILE_SIZE_MB } from '@/constants/constants';
 import { NotificationContext } from '@/app/(app)/page';
 
 
@@ -38,6 +38,13 @@ export const TacticalPlanSection: React.FC<TacticalPlanSectionProps> = ({
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Security: Validate file size before processing
+      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        addNotification('error', `El archivo es demasiado grande. El tamaño máximo permitido es ${MAX_FILE_SIZE_MB} MB.`);
+        setFileName(null);
+        event.target.value = '';
+        return;
+      }
       setFileName(file.name);
       setIsProcessing(true);
       addNotification('info', `Procesando archivo de órdenes: ${file.name}...`);
