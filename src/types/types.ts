@@ -1,4 +1,5 @@
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -59,7 +60,7 @@ export interface WorkstationDefinition {
   id:string;
   name: string; // Unique name for the workstation type, e.g., "Cerrador"
   employeesPerWorkstation: number; // How many employees operate ONE such workstation
-  machineName?: string; // New: Machine associated with this workstation
+  machineCode: string | null; // New: Unique code for the machine associated with this workstation
   isActive?: boolean;
 }
 
@@ -102,7 +103,7 @@ export interface WorkCenter {
 export interface LaborCostSettings {
   // id: string; // No longer needed if it's a single object in AppConstraints
   factorAdicionalDiurno: number; // Percentage, e.g., 50 for 50% extra on base for these hours
-  factorRecargoNocturno: number; // Percentage, e.g., 25 for 25% extra on base for night hours
+  factorRecargoNocturno: number; // Percentage, e.g., 25 for 25% extra on night hours
   factorFinSemanaFeriado: number; // Percentage, e.g., 100 for 100% extra on base for weekend/holiday hours
 }
 
@@ -332,4 +333,11 @@ export interface WorkShift {
   workstationDefId: string;
   shiftType: 'day' | 'night';
   employeeIds: string[]; // Can contain multiple employees
+}
+
+// --- Machine Catalog ---
+export interface Machine {
+    code: string;
+    name: string;
+    processType: ProcessType;
 }

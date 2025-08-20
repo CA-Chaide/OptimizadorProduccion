@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { MaintenanceEvent, ProductionLine, WorkstationDefinition, NotificationMessage, AppConstraints } from '@/types/types';
+import { MaintenanceEvent, ProductionLine, WorkstationDefinition, NotificationMessage, AppConstraints, Machine } from '@/types/types';
 import { MaintenanceIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
+import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 
 interface MaintenanceSectionProps {
   events: MaintenanceEvent[];
@@ -31,7 +32,6 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   const [formState, setFormState] = useState<Omit<MaintenanceEvent, 'id'>>(initialFormState);
   const [editingEvent, setEditingEvent] = useState<MaintenanceEvent | null>(null);
   const [availableWorkstations, setAvailableWorkstations] = useState<WorkstationDefinition[]>([]);
-  const [editingMachine, setEditingMachine] = useState<{ id: string; name: string } | null>(null);
   
   const { productionLines, workstationDefinitions } = constraints;
 
@@ -54,17 +54,13 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
     setFormState(newState);
   };
   
-  const handleMachineNameChange = (wdId: string, newName: string) => {
+  const handleMachineAssignmentChange = (wdId: string, newMachineCode: string) => {
     const updatedWds = workstationDefinitions.map(wd => 
-      wd.id === wdId ? { ...wd, machineName: newName } : wd
+      wd.id === wdId ? { ...wd, machineCode: newMachineCode || null } : wd
     );
     onConstraintsUpdate({ ...constraints, workstationDefinitions: updatedWds });
+    addNotification('success', `Máquina para '${workstationDefinitions.find(wd => wd.id === wdId)?.name}' actualizada.`);
   };
-  
-  const handleSaveMachineName = (wdId: string) => {
-    addNotification('success', `Máquina para '${workstationDefinitions.find(wd=>wd.id === wdId)?.name}' actualizada.`);
-    setEditingMachine(null);
-  }
 
   const resetForm = () => {
     setFormState(initialFormState);
@@ -128,6 +124,28 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
     const date = new Date(`${dateStr}T${timeStr}`);
     return date.toLocaleString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
+  
+  const getAvailableMachinesForWorkstation = (workstation: WorkstationDefinition): Machine[] => {
+    const assignedMachineCodes = new Set(
+        workstationDefinitions
+            .filter(wd => wd.id !== workstation.id && wd.machineCode)
+            .map(wd => wd.machineCode)
+    );
+
+    // Find the process type for the current workstation by looking at the lines it's assigned to.
+    // This is a simplification; a workstation could be on lines of different process types.
+    // We take the first one found.
+    const lineWithWorkstation = productionLines.find(line => 
+        line.assignedWorkstations.some(as => as.definitionId === workstation.id)
+    );
+    const processType = lineWithWorkstation?.processType;
+
+    return MACHINE_CATALOG.filter(machine => 
+        !assignedMachineCodes.has(machine.code) &&
+        (processType ? machine.processType === processType : true)
+    );
+  };
+
 
   return (
     <div className="p-6 md:p-8 space-y-8">
@@ -141,33 +159,28 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
           <div className="bg-white p-6 rounded-xl shadow-lg">
              <h3 className="text-lg font-semibold text-gray-800 mb-4">Asignación de Máquinas a Puestos de Trabajo</h3>
              <div className="max-h-[60vh] overflow-y-auto space-y-3">
-                {workstationDefinitions.map(wd => (
-                    <div key={wd.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
-                        <span className="font-medium text-gray-700">{wd.name}</span>
-                        <div className="flex items-center space-x-2">
-                           {editingMachine?.id === wd.id ? (
-                             <>
-                               <input 
-                                 type="text" 
-                                 value={editingMachine.name} 
-                                 onChange={(e) => {
-                                     setEditingMachine({ ...editingMachine, name: e.target.value });
-                                     handleMachineNameChange(wd.id, e.target.value);
-                                 }}
-                                 className="w-48 border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm"
-                               />
-                               <button onClick={() => handleSaveMachineName(wd.id)} className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700">Guardar</button>
-                               <button onClick={() => setEditingMachine(null)} className="px-3 py-1 bg-gray-300 text-gray-800 text-sm rounded-md hover:bg-gray-400">Cancelar</button>
-                             </>
-                           ) : (
-                             <>
-                               <span className="text-sm text-gray-600">{wd.machineName || 'Operación Manual'}</span>
-                               <button onClick={() => setEditingMachine({ id: wd.id, name: wd.machineName || '' })} className="text-indigo-600 hover:text-indigo-800"><EditIcon /></button>
-                             </>
-                           )}
+                {workstationDefinitions.map(wd => {
+                    const availableMachines = getAvailableMachinesForWorkstation(wd);
+                    const assignedMachine = MACHINE_CATALOG.find(m => m.code === wd.machineCode);
+                    return (
+                        <div key={wd.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
+                            <span className="font-medium text-gray-700">{wd.name}</span>
+                            <div className="flex items-center space-x-2">
+                                <select
+                                  value={wd.machineCode || ''}
+                                  onChange={(e) => handleMachineAssignmentChange(wd.id, e.target.value)}
+                                  className="w-48 border border-gray-300 rounded-md shadow-sm py-1 px-2 text-sm bg-white"
+                                >
+                                    <option value="">Operación Manual</option>
+                                    {assignedMachine && <option key={assignedMachine.code} value={assignedMachine.code}>{assignedMachine.name}</option>}
+                                    {availableMachines.map(machine => (
+                                        <option key={machine.code} value={machine.code}>{machine.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
              </div>
           </div>
           

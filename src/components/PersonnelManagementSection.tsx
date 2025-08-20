@@ -1,6 +1,8 @@
+
 import React, { useState } from 'react';
 import { Employee, EmployeeSkill, WorkstationDefinition, NotificationMessage } from '@/types/types';
 import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
+import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 
 interface PersonnelManagementSectionProps {
   employees: Employee[];
@@ -11,7 +13,6 @@ interface PersonnelManagementSectionProps {
   addNotification: (type: NotificationMessage['type'], text: string) => void;
 }
 
-const MACHINE_OPTIONS = ['Maq1', 'Maq2', 'M3'];
 const ROLE_OPTIONS: Array<Employee['role']> = ['Operador', 'Ayudante'];
 
 export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProps> = ({
@@ -136,7 +137,7 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
                         <label htmlFor="machine" className="block text-sm font-medium text-gray-700">Máquina</label>
                         <select name="machine" id="machine" value={employeeForm.machine} onChange={e => setEmployeeForm({...employeeForm, machine: e.target.value})} className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                             <option value="">-- Sin asignar --</option>
-                            {MACHINE_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+                            {MACHINE_CATALOG.map(m => <option key={m.code} value={m.name}>{m.name}</option>)}
                         </select>
                     </div>
                     <div>
