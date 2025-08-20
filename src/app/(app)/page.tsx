@@ -115,7 +115,7 @@ export default function ProductionOptimizerPage() {
             setIsLoading(false);
         }
     }, 500); // Give UI time to update
-  }, [salesData, constraints]);
+  }, [salesData, constraints, addNotification]);
 
   const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
       addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
@@ -142,7 +142,7 @@ export default function ProductionOptimizerPage() {
           setTacticalPlanResult(emptyResult);
           return emptyResult;
       }
-  }, [productionPlan.dailyPlan, constraints, maintenanceEvents, absenteeismEvents, employees, employeeSkills]);
+  }, [productionPlan.dailyPlan, constraints, maintenanceEvents, absenteeismEvents, employees, employeeSkills, addNotification]);
 
   const renderActiveView = () => {
     switch (activeView) {
@@ -161,7 +161,7 @@ export default function ProductionOptimizerPage() {
       case ActiveView.MAINTENANCE:
         return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} productionLines={constraints.productionLines} addNotification={addNotification} />;
       case ActiveView.TACTICAL_SCHEDULING:
-        return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} addNotification={addNotification} constraints={constraints} employees={employees} employeeSkills={employeeSkills} />;
+        return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} addNotification={addNotification} />;
       case ActiveView.WORK_SHIFT_PLANNING:
         return <WorkShiftPlanningSection 
           shifts={workShifts} 

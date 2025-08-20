@@ -1013,16 +1013,16 @@ const parseDateFromExcel = (dateValue: any): string | null => {
     if (typeof dateValue === 'string') {
         // Handle string dates like 'D/M/YYYY' or other formats
         const parts = dateValue.match(/(\d+)/g);
-        if (parts && parts.length === 3) {
+        if (parts && parts.length >= 3) {
             let day, month, year;
             // Attempt to parse common formats like D/M/YYYY or M/D/YYYY
-            if (parseInt(parts[1]) > 12) { // Assuming DD/MM/YYYY
+            if (parseInt(parts[0]) > 12 || parseInt(parts[1]) > 12) { // Heuristic for DD/MM/YYYY
                 day = parseInt(parts[0]);
                 month = parseInt(parts[1]);
                 year = parseInt(parts[2]);
-            } else { // Assuming MM/DD/YYYY or some ambiguity, default to a common interpretation
-                day = parseInt(parts[1]);
-                month = parseInt(parts[0]);
+            } else { // Can be ambiguous, assume M/D/YYYY for US format or D/M for others. Let's try D/M/YYYY as a common non-US standard.
+                day = parseInt(parts[0]);
+                month = parseInt(parts[1]);
                 year = parseInt(parts[2]);
             }
             if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
@@ -1052,14 +1052,15 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
         }
 
         const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
-
-        if (jsonData.length < 2) { 
-          resolve([]);
-          return;
-        }
         
-        const headers = jsonData[0].map(h => String(h || '').trim().toUpperCase().replace(/\s+/g, ''));
-        const headerMap: { [key: string]: number } = {
+        const firstRowWithData = jsonData.findIndex(row => row && row.some(cell => cell !== null && cell !== undefined && cell !== ''));
+        if (firstRowWithData === -1) {
+            resolve([]);
+            return;
+        }
+
+        const headers = jsonData[firstRowWithData].map(h => String(h || '').trim().toUpperCase().replace(/\s+/g, ''));
+        const headerMap: { [key in keyof ProvisionalOrder]?: number } = {
             ORDENPREVISIONAL: headers.indexOf('ORDENPREVISIONAL'),
             MATERIAL: headers.indexOf('MATERIAL'),
             NOMBRE: headers.indexOf('NOMBRE'),
@@ -1068,28 +1069,28 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
             CENTRO: headers.indexOf('CENTRO'),
         };
         
-        const requiredHeaders = ['MATERIAL', 'CANTIDAD', 'FECHAINICIO', 'CENTRO'];
+        const requiredHeaders: (keyof ProvisionalOrder)[] = ['MATERIAL', 'CANTIDAD', 'FECHAINICIO', 'CENTRO'];
         for (const h of requiredHeaders) {
-            if (headerMap[h] === -1) {
+            if (headerMap[h] === undefined || headerMap[h] === -1) {
                 reject(new Error(`El archivo de órdenes previsionales debe contener la columna '${h}'.`));
                 return;
             }
         }
 
-        const orders: ProvisionalOrder[] = jsonData.slice(1).map((row, index) => {
+        const orders: ProvisionalOrder[] = jsonData.slice(firstRowWithData + 1).map((row, index) => {
           if(!row || row.filter(cell => cell !== null && cell !== undefined && cell !== '').length === 0) return null; 
-
-          const orderDate = parseDateFromExcel(row[headerMap.FECHAINICIO]);
+          
+          const orderDate = parseDateFromExcel(row[headerMap.FECHAINICIO!]);
           if (!orderDate) return null;
 
           return {
-            rowIndex: index + 2,
-            ORDENPREVISIONAL: String(row[headerMap.ORDENPREVISIONAL] || ''),
-            MATERIAL: String(row[headerMap.MATERIAL] || '').trim(),
-            NOMBRE: String(row[headerMap.NOMBRE] || ''),
-            CANTIDAD: parseFloat(String(row[headerMap.CANTIDAD])) || 0,
+            rowIndex: index + firstRowWithData + 2,
+            ORDENPREVISIONAL: String(row[headerMap.ORDENPREVISIONAL!] || ''),
+            MATERIAL: String(row[headerMap.MATERIAL!] || '').trim(),
+            NOMBRE: String(row[headerMap.NOMBRE!] || ''),
+            CANTIDAD: parseFloat(String(row[headerMap.CANTIDAD!])) || 0,
             FECHAINICIO: orderDate,
-            CENTRO: String(row[headerMap.CENTRO] || '').trim(),
+            CENTRO: String(row[headerMap.CENTRO!] || '').trim(),
           };
         }).filter((row): row is ProvisionalOrder => row !== null && !!row.MATERIAL && !!row.CENTRO && row.CANTIDAD > 0); 
 
@@ -1199,8 +1200,8 @@ export const generateTacticalPlan = (
         }
 
         const possibleLines = availableLines
-            .filter(line => line.workCenterId === center.id)
-            .map(line => ({ line, time: calculateEffectiveManufacturingTime(productInfo, line) }))
+            .filter(line => line.workCenterId === center.id && constraints.productProcessInfos.some(ppi => ppi.productId === productId && ppi.productionLineId === line.id))
+            .map(line => ({ line, time: calculateEffectiveManufacturingTime(constraints.productProcessInfos.find(ppi => ppi.productId === productId && ppi.productionLineId === line.id)!, line) }))
             .filter(l => l.time < Infinity)
             .sort((a,b) => a.time - b.time);
 

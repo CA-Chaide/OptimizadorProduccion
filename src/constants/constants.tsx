@@ -71,12 +71,12 @@ export const APP_VERSION = '1.0.0-next';
 
 const NAVIGATION_ITEMS = [
   { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon /> },
-  { id: ActiveView.DATA_IMPORT, label: 'Importar Datos Ventas', icon: <DataImportIcon /> },
+  { id: ActiveView.DATA_IMPORT, label: 'Importar Ventas', icon: <DataImportIcon /> },
   { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
+  { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon /> },
+  { id: ActiveView.MAINTENANCE, label: 'Mantenimiento', icon: <MaintenanceIcon /> },
+  { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon /> },
   { id: ActiveView.PRODUCTION_PLAN, label: 'Plan de Producción', icon: <PlanIcon /> },
-  { id: ActiveView.PERSONNEL, label: 'Calificación Técnica Personal', icon: <PersonnelIcon /> },
-  { id: ActiveView.MAINTENANCE, label: 'Mantenimiento Programado', icon: <MaintenanceIcon /> },
-  { id: ActiveView.ABSENTEEISM, label: 'Gestión de Ausentismos', icon: <AbsenteeismIcon /> },
   { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon /> },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon /> },
 ];

@@ -103,7 +103,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
                  newShifts = newShifts.filter(s => s.id !== shiftId);
             } else {
                  const shiftIndex = newShifts.findIndex(s => s.id === shiftId);
-                 newShifts[shiftIndex] = { ...existingShift, employeeIds: finalEmployeeIds };
+                 newShifts[shiftIndex] = { ...existingShift, employeeIds: finalEmployeeIds as string[] };
             }
 
         } else if (employeeId) {
@@ -146,7 +146,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
                 onChange={e => setSelectedProcessType(e.target.value as ProcessType | '')}
                 className="w-full md:w-1/3 border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
             >
-                <option value="">-- Todos los Procesos --</option>
+                <option value="">-- Seleccionar Proceso --</option>
                 {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
         </div>

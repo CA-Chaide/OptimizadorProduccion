@@ -1,8 +1,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { 
-    TacticalRequest, TacticalPlanResult, NotificationMessage, AppConstraints, 
-    Employee, EmployeeSkill, ProvisionalOrder, TacticalOrderItem 
+    TacticalRequest, TacticalPlanResult, NotificationMessage, ProvisionalOrder, TacticalOrderItem 
 } from '@/types/types';
 import { parseTacticalOrdersExcel } from '@/services/OptimizationService';
 import { TacticalSchedulingIcon, DataImportIcon } from '@/constants/constants';
@@ -10,9 +9,6 @@ import { TacticalSchedulingIcon, DataImportIcon } from '@/constants/constants';
 interface TacticalPlanSectionProps {
   onGeneratePlan: (request: TacticalRequest) => TacticalPlanResult;
   addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
-  constraints: AppConstraints; // Needed for display purposes
-  employees: Employee[];
-  employeeSkills: EmployeeSkill[];
 }
 
 const getTodayString = () => {
@@ -21,6 +17,7 @@ const getTodayString = () => {
 };
 
 const getTargetDateString = (executionDate: string): string => {
+    if (!executionDate) return '';
     const date = new Date(executionDate + 'T00:00:00');
     date.setDate(date.getDate() + 4);
     return date.toISOString().split('T')[0];
