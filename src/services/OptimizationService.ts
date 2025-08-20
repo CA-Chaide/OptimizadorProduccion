@@ -5,7 +5,7 @@ import {
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
-    Machine
+    Machine, Qualification
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -730,7 +730,7 @@ export const generateProductionPlan = (
     const mp = monthlyPlanMap.get(key)!;
     mp.totalQuantityToProduce += dp.quantityToProduce;
     mp.totalHoursWorked += dp.hoursWorked;
-    mp.totalEstimatedLaborCost += dp.estimatedLaborCost;
+    mp.totalEstimatedLaborCost += dp.totalEstimatedLaborCost;
   });
 
   // --- 8. FINAL AUDIT SUMMARY ---
@@ -1236,14 +1236,22 @@ export const generateTacticalPlan = (
         const requiredWorkstations = bestLine.assignedWorkstations;
         requiredWorkstations.forEach(reqWs => {
             const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === reqWs.definitionId);
-            if(!workstationDef) return;
+            if(!workstationDef || !workstationDef.machineCode) return;
 
             const qualifiedEmployees = availableEmployees
-                .filter(emp => employeeSkills.some(skill => skill.employeeId === emp.id && skill.workstationDefinitionId === reqWs.definitionId && skill.skillLevel > 0))
+                .filter(emp => {
+                    const skill = employeeSkills.find(s => s.employeeId === emp.id && s.machineCode === workstationDef.machineCode);
+                    if (!skill) return false;
+                    // Check if the employee has any qualification for this machine in the correct center
+                    return skill.qualifications.some(q => q.centerId === center.id && q.skillLevel > 0);
+                })
                 .sort((a, b) => {
-                    const skillA = employeeSkills.find(s => s.employeeId === a.id && s.workstationDefinitionId === reqWs.definitionId)!.skillLevel;
-                    const skillB = employeeSkills.find(s => s.employeeId === b.id && s.workstationDefinitionId === reqWs.definitionId)!.skillLevel;
-                    return skillB - skillA;
+                    const skillA = employeeSkills.find(s => s.employeeId === a.id && s.machineCode === workstationDef.machineCode)!;
+                    const skillB = employeeSkills.find(s => s.employeeId === b.id && s.machineCode === workstationDef.machineCode)!;
+                    // Get best qualification for each employee in this center
+                    const bestQualA = Math.max(0, ...skillA.qualifications.filter(q => q.centerId === center.id).map(q => q.skillLevel));
+                    const bestQualB = Math.max(0, ...skillB.qualifications.filter(q => q.centerId === center.id).map(q => q.skillLevel));
+                    return bestQualB - bestQualA;
                 });
             
             if(qualifiedEmployees.length < reqWs.quantity) {
@@ -1290,42 +1298,32 @@ export const exportSkillsToExcel = (
 
   const dataToExport: any[] = [];
 
+  // Iterate over each employee's skill set
   skills.forEach(skill => {
     const employee = employees.find(e => e.id === skill.employeeId);
     const machine = machines.find(m => m.code === skill.machineCode);
     if (!employee || !machine) return;
 
-    // Find all centers where this machine's process type is used
-    const relevantLines = constraints.productionLines.filter(
-      line => line.processType === machine.processType
-    );
-    const centerIds = new Set(relevantLines.map(line => line.workCenterId));
+    // A skill can have qualifications in multiple centers for multiple roles
+    skill.qualifications.forEach(qual => {
+      const center = constraints.workCenters.find(c => c.id === qual.centerId);
+      if (!center) return;
 
-    if (centerIds.size > 0) {
-      centerIds.forEach(centerId => {
-        const center = constraints.workCenters.find(c => c.id === centerId);
-        dataToExport.push({
-          'CODIGO': employee.employeeCode,
-          'NOMBRE': employee.name,
-          'CENTRO': center ? center.name.replace(/Centro\s*/, '') : 'N/A', // Extract number from "Centro XXXX"
-          'MÁQUINA': machine.code,
-          'Rol': skill.role === 'Operador' ? 'Op. Principal' : skill.role,
-          '% Calificación': skill.skillLevel
-        });
+      dataToExport.push({
+        'CODIGO': employee.employeeCode,
+        'NOMBRE': employee.name,
+        'CENTRO': center.name.replace(/Centro\s*/, ''), // Extract number from "Centro XXXX"
+        'MÁQUINA': machine.code,
+        'Rol': qual.role === 'Operador' ? 'Op. Principal' : qual.role,
+        '% Calificación': qual.skillLevel
       });
-    } else {
-      // Handle cases where a machine might not be on any active line yet
-       dataToExport.push({
-          'CODIGO': employee.employeeCode,
-          'NOMBRE': employee.name,
-          'CENTRO': 'N/A',
-          'MÁQUINA': machine.code,
-          'Rol': skill.role === 'Operador' ? 'Op. Principal' : skill.role,
-          '% Calificación': skill.skillLevel,
-        });
-    }
+    });
   });
 
+  if (dataToExport.length === 0) {
+      alert('No se encontraron calificaciones válidas con centros de trabajo asignados para exportar.');
+      return;
+  }
 
   const worksheet = XLSX.utils.json_to_sheet(dataToExport);
 
@@ -1345,13 +1343,12 @@ export const exportSkillsToExcel = (
   for (let R = range.s.r + 1; R <= range.e.r; ++R) {
     const cell_address = {c:5, r:R}; // 5 is the index for '% Calificación' (F column)
     const cell = XLSX.utils.encode_cell(cell_address);
-    if(worksheet[cell]) {
+    if(worksheet[cell] && typeof worksheet[cell].v === 'number') {
       worksheet[cell].t = 'n';
       worksheet[cell].v = worksheet[cell].v / 100;
       worksheet[cell].z = '0%';
     }
   }
-
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Calificaciones Técnicas');

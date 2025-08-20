@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -35,12 +29,20 @@ export type Employee = {
   isActive?: boolean;
 };
 
-export type EmployeeSkill = {
+// Represents the qualification of an employee for a specific role at a specific center.
+export interface Qualification {
+  centerId: string;
+  role: 'Operador' | 'Ayudante';
+  skillLevel: number; // 0-100
+}
+
+// A skill is defined for a specific machine and contains multiple qualifications.
+export interface EmployeeSkill {
   employeeId: string;
   machineCode: string; // Links to Machine.code from catalog
-  role: 'Operador' | 'Ayudante';
-  skillLevel: number; // 1-100
-};
+  qualifications: Qualification[];
+}
+
 
 export type ProcessType = 'Colchones' | 'Forros' | 'Bases' | 'Paneles' | 'Espuma' | 'Muebles';
 

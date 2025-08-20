@@ -1,6 +1,6 @@
 
 import React, { useState, useContext, useMemo } from 'react';
-import { Employee, EmployeeSkill, NotificationMessage, Machine, AppConstraints } from '@/types/types';
+import { Employee, EmployeeSkill, NotificationMessage, Machine, AppConstraints, Qualification, WorkCenter } from '@/types/types';
 import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon } from '@/constants/constants';
 import { NotificationContext } from '@/app/(app)/page';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
@@ -14,52 +14,78 @@ interface PersonnelManagementSectionProps {
   constraints: AppConstraints;
 }
 
-const ROLE_OPTIONS: Array<EmployeeSkill['role']> = ['Operador', 'Ayudante'];
+const ROLES: Array<Qualification['role']> = ['Operador', 'Ayudante'];
 
 // --- Modal Component for Skill Editing ---
 const SkillEditModal: React.FC<{
   employee: Employee;
-  existingSkills: EmployeeSkill[];
+  employeeSkills: EmployeeSkill[]; // All skills for all employees
   availableMachines: Machine[];
-  onSave: (newSkills: { role: EmployeeSkill['role']; skillLevel: number }[], machineCode: string) => void;
+  workCenters: WorkCenter[];
+  onSave: (employeeId: string, machineCode: string, qualifications: Qualification[]) => void;
   onClose: () => void;
-  initialSkillToEdit?: { machineCode: string };
-}> = ({ employee, existingSkills, availableMachines, onSave, onClose, initialSkillToEdit }) => {
+  machineToEditCode?: string;
+}> = ({ employee, employeeSkills, availableMachines, workCenters, onSave, onClose, machineToEditCode }) => {
   
-  const [selectedMachineCode, setSelectedMachineCode] = useState<string>(initialSkillToEdit?.machineCode || '');
-  const [operatorSkill, setOperatorSkill] = useState<number>(0);
-  const [ayudanteSkill, setAyudanteSkill] = useState<number>(0);
+  const [selectedMachineCode, setSelectedMachineCode] = useState<string>(machineToEditCode || '');
+  
+  // State to hold the matrix of qualifications: { 'centerId-role': skillLevel }
+  const [qualificationsMatrix, setQualificationsMatrix] = useState<Record<string, number>>({});
 
+  // Pre-populate the matrix when the component loads or the machine to edit changes
   React.useEffect(() => {
-    if (selectedMachineCode) {
-      const opSkill = existingSkills.find(s => s.machineCode === selectedMachineCode && s.role === 'Operador')?.skillLevel || 0;
-      const aySkill = existingSkills.find(s => s.machineCode === selectedMachineCode && s.role === 'Ayudante')?.skillLevel || 0;
-      setOperatorSkill(opSkill);
-      setAyudanteSkill(aySkill);
+    if (machineToEditCode) {
+      const existingSkill = employeeSkills.find(s => s.employeeId === employee.id && s.machineCode === machineToEditCode);
+      const initialMatrix: Record<string, number> = {};
+      if (existingSkill) {
+        existingSkill.qualifications.forEach(q => {
+          initialMatrix[`${q.centerId}-${q.role}`] = q.skillLevel;
+        });
+      }
+      setQualificationsMatrix(initialMatrix);
     }
-  }, [selectedMachineCode, existingSkills]);
+  }, [machineToEditCode, employee.id, employeeSkills]);
+
+  const handleQualificationChange = (centerId: string, role: Qualification['role'], value: string) => {
+    const skillLevel = Math.max(0, Math.min(100, Number(value) || 0));
+    setQualificationsMatrix(prev => ({
+      ...prev,
+      [`${centerId}-${role}`]: skillLevel,
+    }));
+  };
 
   const handleSave = () => {
     if (!selectedMachineCode) return;
-    const newSkills: { role: EmployeeSkill['role']; skillLevel: number }[] = [];
-    if (operatorSkill > 0) newSkills.push({ role: 'Operador', skillLevel: operatorSkill });
-    if (ayudanteSkill > 0) newSkills.push({ role: 'Ayudante', skillLevel: ayudanteSkill });
-    onSave(newSkills, selectedMachineCode);
+    
+    const newQualifications: Qualification[] = [];
+    Object.entries(qualificationsMatrix).forEach(([key, skillLevel]) => {
+      if (skillLevel > 0) {
+        const [centerId, role] = key.split('-');
+        newQualifications.push({
+          centerId,
+          role: role as Qualification['role'],
+          skillLevel,
+        });
+      }
+    });
+    
+    onSave(employee.id, selectedMachineCode, newQualifications);
     onClose();
   };
-
-  const selectedMachine = MACHINE_CATALOG.find(m => m.code === selectedMachineCode);
   
+  const selectedMachine = MACHINE_CATALOG.find(m => m.code === selectedMachineCode);
+  const isEditing = !!machineToEditCode;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg">
+      <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-2xl">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">
-          {initialSkillToEdit ? 'Editar' : 'Añadir'} Competencia para: <span className="text-indigo-600">{employee.name}</span>
+          {isEditing ? 'Editar' : 'Añadir'} Competencia para: <span className="text-indigo-600">{employee.name}</span>
         </h3>
         <div className="space-y-4">
           <div>
             <label htmlFor="machine-select" className="block text-sm font-medium text-gray-700">Máquina</label>
-            {initialSkillToEdit ? (
+            {isEditing ? (
                <input type="text" value={selectedMachine?.name || ''} disabled className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm bg-gray-100" />
             ) : (
               <select 
@@ -75,16 +101,39 @@ const SkillEditModal: React.FC<{
               </select>
             )}
           </div>
+
           {selectedMachineCode && (
-            <div className="p-4 border rounded-md bg-gray-50 space-y-3">
-               <div>
-                  <label className="block text-sm font-medium text-gray-700">Calificación como Operador (0-100)</label>
-                  <input type="number" min="0" max="100" value={operatorSkill} onChange={e => setOperatorSkill(Math.max(0, Math.min(100, Number(e.target.value))))} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
-               </div>
-               <div>
-                  <label className="block text-sm font-medium text-gray-700">Calificación como Ayudante (0-100)</label>
-                  <input type="number" min="0" max="100" value={ayudanteSkill} onChange={e => setAyudanteSkill(Math.max(0, Math.min(100, Number(e.target.value))))} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm"/>
-               </div>
+            <div className="p-2 border rounded-md bg-gray-50 overflow-x-auto">
+               <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="p-2 text-left font-semibold text-gray-600">Rol</th>
+                      {workCenters.map(wc => (
+                        <th key={wc.id} className="p-2 text-center font-semibold text-gray-600">{wc.name}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ROLES.map(role => (
+                      <tr key={role} className="border-b last:border-0">
+                        <td className="p-2 font-medium text-gray-700">{role}</td>
+                        {workCenters.map(wc => (
+                          <td key={wc.id} className="p-1">
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="100"
+                              placeholder="0"
+                              value={qualificationsMatrix[`${wc.id}-${role}`] || ''}
+                              onChange={e => handleQualificationChange(wc.id, role, e.target.value)}
+                              className="w-20 text-center border border-gray-300 rounded-md shadow-sm py-1 px-2"
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+               </table>
             </div>
           )}
         </div>
@@ -113,14 +162,13 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
   const [searchQuery, setSearchQuery] = useState('');
   
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
-  const [skillToEdit, setSkillToEdit] = useState<{ machineCode: string } | undefined>(undefined);
+  const [machineToEditCode, setMachineToEditCode] = useState<string | undefined>(undefined);
 
   const filteredEmployees = useMemo(() => {
-    if (!searchQuery) {
-      return employees;
-    }
+    const lowercasedQuery = searchQuery.toLowerCase();
+    if (!lowercasedQuery) return employees;
     return employees.filter(emp =>
-      emp.name.toLowerCase().includes(searchQuery.toLowerCase())
+      emp.name.toLowerCase().includes(lowercasedQuery) || emp.employeeCode.toLowerCase().includes(lowercasedQuery)
     );
   }, [employees, searchQuery]);
 
@@ -154,6 +202,10 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
       resetEmployeeForm();
 
     } else {
+      if (employees.some(emp => emp.employeeCode === trimmedCode)) {
+        addNotification('error', `El código de empleado '${trimmedCode}' ya existe.`);
+        return;
+      }
       const newEmployee: Employee = { id: Date.now().toString(), ...employeeForm, employeeCode: trimmedCode, isActive: true };
       const updatedEmployees = [...employees, newEmployee];
       setEmployees(updatedEmployees);
@@ -178,34 +230,31 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
   };
 
   const handleSaveSkill = (
-    newSkillsForMachine: { role: EmployeeSkill['role']; skillLevel: number }[],
-    machineCode: string
+    employeeId: string,
+    machineCode: string,
+    qualifications: Qualification[]
   ) => {
-    if (!selectedEmployee) return;
+    let skillFound = false;
+    const updatedSkills = skills.map(s => {
+      if (s.employeeId === employeeId && s.machineCode === machineCode) {
+        skillFound = true;
+        // If no qualifications are left, filter out this skill entirely
+        if (qualifications.length === 0) return null;
+        return { ...s, qualifications: qualifications };
+      }
+      return s;
+    }).filter((s): s is EmployeeSkill => s !== null);
 
-    // Remove all existing skills for this employee on this machine
-    let updatedSkills = skills.filter(s => !(s.employeeId === selectedEmployee.id && s.machineCode === machineCode));
-
-    // Add the new/updated skills
-    newSkillsForMachine.forEach(newSkill => {
-      updatedSkills.push({
-        employeeId: selectedEmployee.id,
-        machineCode: machineCode,
-        role: newSkill.role,
-        skillLevel: newSkill.skillLevel
-      });
-    });
-
+    if (!skillFound && qualifications.length > 0) {
+      updatedSkills.push({ employeeId, machineCode, qualifications });
+    }
+    
     setSkills(updatedSkills);
     addNotification('success', `Competencias para ${MACHINE_CATALOG.find(m=>m.code===machineCode)?.name} actualizadas.`);
   };
 
   const handleOpenSkillModal = (machineCode?: string) => {
-    if (machineCode) {
-      setSkillToEdit({ machineCode });
-    } else {
-      setSkillToEdit(undefined);
-    }
+    setMachineToEditCode(machineCode);
     setIsSkillModalOpen(true);
   };
 
@@ -219,16 +268,13 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
       return skills.filter(s => s.employeeId === selectedEmployee.id);
   }, [selectedEmployee, skills]);
 
-  const employeeMachines = useMemo(() => {
-      const machineCodes = new Set(employeeSkills.map(s => s.machineCode));
-      return MACHINE_CATALOG.filter(m => machineCodes.has(m.code));
-  }, [employeeSkills]);
-
   const availableMachinesForNewSkill = useMemo(() => {
     if (!selectedEmployee) return [];
     const assignedMachineCodes = new Set(skills.filter(s => s.employeeId === selectedEmployee.id).map(s => s.machineCode));
     return MACHINE_CATALOG.filter(m => !assignedMachineCodes.has(m.code));
   }, [selectedEmployee, skills]);
+  
+  const activeWorkCenters = useMemo(() => constraints.workCenters.filter(wc => wc.isActive !== false), [constraints.workCenters]);
 
 
   return (
@@ -236,11 +282,12 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
       {isSkillModalOpen && selectedEmployee && (
         <SkillEditModal 
           employee={selectedEmployee}
-          existingSkills={employeeSkills}
+          employeeSkills={skills}
           availableMachines={availableMachinesForNewSkill}
+          workCenters={activeWorkCenters}
           onSave={handleSaveSkill}
           onClose={() => setIsSkillModalOpen(false)}
-          initialSkillToEdit={skillToEdit}
+          machineToEditCode={machineToEditCode}
         />
       )}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -265,7 +312,7 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
             <h3 className="text-lg font-semibold text-gray-800 mb-2">Lista de Empleados ({filteredEmployees.length})</h3>
             <input
                 type="text"
-                placeholder="Buscar empleado por nombre..."
+                placeholder="Buscar empleado..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm mb-4"
@@ -313,26 +360,31 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
           {selectedEmployee ? (
             <>
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">Competencias por Máquina de: <span className="text-indigo-600">{selectedEmployee.name}</span></h3>
+                <h3 className="text-lg font-semibold text-gray-800">Competencias de: <span className="text-indigo-600">{selectedEmployee.name}</span></h3>
                 <button onClick={() => handleOpenSkillModal()} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
                   <PlusIcon /> Añadir Competencia
                 </button>
               </div>
               <div className="max-h-[75vh] overflow-y-auto space-y-3">
-                 {employeeMachines.length > 0 ? (
-                    employeeMachines.map(machine => {
-                        const opSkill = employeeSkills.find(s => s.machineCode === machine.code && s.role === 'Operador');
-                        const aySkill = employeeSkills.find(s => s.machineCode === machine.code && s.role === 'Ayudante');
+                 {employeeSkills.length > 0 ? (
+                    employeeSkills.map(skill => {
+                        const machine = MACHINE_CATALOG.find(m => m.code === skill.machineCode);
                         return (
-                            <div key={machine.code} className="bg-gray-50 p-4 rounded-lg border flex justify-between items-center">
+                            <div key={skill.machineCode} className="bg-gray-50 p-4 rounded-lg border flex justify-between items-center">
                                 <div>
-                                    <p className="font-bold text-gray-800">{machine.name}</p>
-                                    <div className="flex space-x-4 mt-1 text-sm">
-                                        {opSkill && <span>Operador: <span className="font-semibold text-blue-600">{opSkill.skillLevel}%</span></span>}
-                                        {aySkill && <span>Ayudante: <span className="font-semibold text-green-600">{aySkill.skillLevel}%</span></span>}
+                                    <p className="font-bold text-gray-800">{machine?.name || skill.machineCode}</p>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm">
+                                        {skill.qualifications.map(q => {
+                                            const center = constraints.workCenters.find(c => c.id === q.centerId);
+                                            return (
+                                                <span key={q.centerId + q.role}>
+                                                    {center?.name}: <span className="font-semibold text-blue-600">{q.role} ({q.skillLevel}%)</span>
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                 </div>
-                                <button onClick={() => handleOpenSkillModal(machine.code)} className="text-indigo-600 hover:text-indigo-800"><EditIcon /></button>
+                                <button onClick={() => handleOpenSkillModal(skill.machineCode)} className="text-indigo-600 hover:text-indigo-800"><EditIcon /></button>
                             </div>
                         )
                     })
