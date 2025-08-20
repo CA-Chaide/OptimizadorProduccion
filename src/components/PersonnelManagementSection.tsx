@@ -55,6 +55,8 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
       );
       setEmployees(updatedEmployees);
       addNotification('success', 'Empleado actualizado.');
+      resetEmployeeForm();
+
     } else {
         if (employees.some(emp => emp.employeeCode === trimmedCode)) {
             addNotification('error', `El código de empleado '${trimmedCode}' ya existe.`);
@@ -62,12 +64,20 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
         }
       const newEmployee: Employee = { id: Date.now().toString(), ...employeeForm, employeeCode: trimmedCode, isActive: true };
       setEmployees([...employees, newEmployee]);
-      addNotification('success', 'Nuevo empleado agregado.');
+      addNotification('success', 'Nuevo empleado agregado. Asigne sus competencias.');
+      
+      // --- START: Smart flow improvement ---
+      // Automatically switch tab and select the new employee
+      setActiveTab('skills');
+      setSelectedEmployeeId(newEmployee.id);
+      // --- END: Smart flow improvement ---
+
+      resetEmployeeForm();
     }
-    resetEmployeeForm();
   };
   
   const handleEditEmployee = (employee: Employee) => {
+    setActiveTab('employees');
     setEditingEmployee(employee);
     setEmployeeForm({ name: employee.name, employeeCode: employee.employeeCode, machine: employee.machine || '', role: employee.role || 'Operador' });
   };
