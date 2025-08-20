@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import {
   DataImportSection,
@@ -24,6 +24,12 @@ import { NotificationMessage } from '@/types/types';
 
 export default function ProductionOptimizerPage() {
   const { toast } = useToast();
+  const [year, setYear] = useState<number | null>(null);
+
+  useEffect(() => {
+    setYear(new Date().getFullYear());
+  }, []);
+
 
   const [activeView, setActiveView] = useState<ActiveView>(ActiveView.DASHBOARD);
   const [salesData, setSalesData] = useState<SalesDataRow[]>([]);
@@ -204,7 +210,7 @@ export default function ProductionOptimizerPage() {
           );
         })}
         <div className="mt-auto pt-4 border-t border-primary-foreground/20">
-          <p className="text-xs text-primary-foreground/50 text-center">&copy; {new Date().getFullYear()} Chaide IA</p>
+          <p className="text-xs text-primary-foreground/50 text-center">&copy; {year || '...'} Chaide IA</p>
         </div>
       </nav>
 

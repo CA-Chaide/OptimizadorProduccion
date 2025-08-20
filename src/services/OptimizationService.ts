@@ -523,7 +523,7 @@ export const generateProductionPlan = (
 
   // --- 5. MONTHLY SCHEDULING (REVISED LOGIC WITH OVERFLOW) ---
   auditLog.push('\n\n--- INICIO DE ASIGNACIÓN MENSUAL (con plan anticipado y desborde inteligente) ---');
-  const monthlyAssignments = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>(); // key: `${monthIndex}-${lineId}-${productId}`
+  const monthlyAssignments = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>(); // key: `${monthIndex}-${lineId}-${productId}-${centerId}`
 
   // Refined Logic: This loop now also pushes unmet demand to previous months if capacity is insufficient.
   for (let monthIndex = planningHorizon.length - 1; monthIndex >= 0; monthIndex--) {
@@ -549,7 +549,10 @@ export const generateProductionPlan = (
     // Schedule products on their most efficient lines first
     for(const prod of productsToPlanThisMonth) {
         let unitsLeftToPlan = prod.units;
-        const [productId] = prod.pair.split('---');
+        const [productId, centerName] = prod.pair.split('---');
+        const center = workCenters.find(c => normalizeCenterName(c.name) === centerName);
+        if (!center) continue;
+
 
         for (const ppi of prod.ppiOptions) { // Iterate through efficient lines
             if (unitsLeftToPlan < 0.1) break;
@@ -576,7 +579,7 @@ export const generateProductionPlan = (
             }
 
             const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
-            const assignmentKey = `${monthIndex}-${lineId}-${productId}`;
+            const assignmentKey = `${monthIndex}-${lineId}-${productId}-${center.id}`;
             const assignment = monthlyAssignments.get(assignmentKey) || { units: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
             assignment.units += unitsToMake;
             assignment.hours.regular += consumedHours.regular;
@@ -616,9 +619,9 @@ export const generateProductionPlan = (
     // Create a mutable "bucket" of monthly production to be scheduled day-by-day
     const monthlyProductionBucket = new Map<string, { units: number; hours: number; cost: number }>();
     monthlyAssignments.forEach((assignment, key) => {
-      const [mIdx, lineId, productId] = key.split('-');
+      const [mIdx, lineId, productId, centerId] = key.split('-');
       if (parseInt(mIdx) !== monthIndex) return;
-      const bucketKey = `${lineId}-${productId}`;
+      const bucketKey = `${lineId}-${productId}-${centerId}`;
       const totalHours = assignment.hours.regular + assignment.hours.extra + assignment.hours.holiday;
       monthlyProductionBucket.set(bucketKey, { units: assignment.units, hours: totalHours, cost: assignment.laborCost });
     });
@@ -657,7 +660,7 @@ export const generateProductionPlan = (
       if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') activeLines.forEach(l => capacityForDay[l.id] = SATURDAY_HOLIDAY_HOURS);
       
       for (const [bucketKey, bucket] of monthlyProductionBucket.entries()) {
-        const [lineId, productId] = bucketKey.split('-');
+        const [lineId, productId, centerId] = bucketKey.split('-');
         const line = activeLines.find(l => l.id === lineId);
         if (!line || !capacityForDay[lineId] || capacityForDay[lineId] <= 0.01) continue;
         
@@ -674,7 +677,7 @@ export const generateProductionPlan = (
         bucket.cost -= costForDay;
         capacityForDay[lineId] -= hoursToSchedule;
 
-        const center = workCenters.find(c => c.id === line.workCenterId)!;
+        const center = workCenters.find(c => c.id === centerId)!;
         const stockKey = `${productId}-${center.id}`;
         const initialStockOnDay = stockState.get(stockKey)!;
         stockState.set(stockKey, initialStockOnDay + unitsToProduce);
@@ -1008,14 +1011,25 @@ const parseDateFromExcel = (dateValue: any): string | null => {
         return date.toISOString().split('T')[0];
     }
     if (typeof dateValue === 'string') {
-        // Handle string dates like 'D/M/YYYY'
-        const parts = dateValue.split('/');
-        if (parts.length === 3) {
-            const [day, month, year] = parts.map(Number);
+        // Handle string dates like 'D/M/YYYY' or other formats
+        const parts = dateValue.match(/(\d+)/g);
+        if (parts && parts.length === 3) {
+            let day, month, year;
+            // Attempt to parse common formats like D/M/YYYY or M/D/YYYY
+            if (parseInt(parts[1]) > 12) { // Assuming DD/MM/YYYY
+                day = parseInt(parts[0]);
+                month = parseInt(parts[1]);
+                year = parseInt(parts[2]);
+            } else { // Assuming MM/DD/YYYY or some ambiguity, default to a common interpretation
+                day = parseInt(parts[1]);
+                month = parseInt(parts[0]);
+                year = parseInt(parts[2]);
+            }
             if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
-                 // Handle 2-digit years
                 const fullYear = year < 100 ? 2000 + year : year;
-                return `${fullYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                if(fullYear > 1900 && month > 0 && month <= 12 && day > 0 && day <= 31) {
+                    return `${fullYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                }
             }
         }
     }
@@ -1037,24 +1051,21 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
             return;
         }
 
-        const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
 
         if (jsonData.length < 2) { 
           resolve([]);
           return;
         }
         
-        // Map headers to indices
-        const headers = jsonData[0].map(h => String(h).trim().toUpperCase());
+        const headers = jsonData[0].map(h => String(h || '').trim().toUpperCase().replace(/\s+/g, ''));
         const headerMap: { [key: string]: number } = {
             ORDENPREVISIONAL: headers.indexOf('ORDENPREVISIONAL'),
             MATERIAL: headers.indexOf('MATERIAL'),
             NOMBRE: headers.indexOf('NOMBRE'),
             CANTIDAD: headers.indexOf('CANTIDAD'),
             FECHAINICIO: headers.indexOf('FECHAINICIO'),
-            FECHAFIN: headers.indexOf('FECHAFIN'),
             CENTRO: headers.indexOf('CENTRO'),
-            MAQUINA: headers.indexOf('MAQUINA')
         };
         
         const requiredHeaders = ['MATERIAL', 'CANTIDAD', 'FECHAINICIO', 'CENTRO'];
@@ -1066,10 +1077,10 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
         }
 
         const orders: ProvisionalOrder[] = jsonData.slice(1).map((row, index) => {
-          if(row.filter(cell => cell !== null && cell !== undefined && cell !== '').length === 0) return null; 
+          if(!row || row.filter(cell => cell !== null && cell !== undefined && cell !== '').length === 0) return null; 
 
           const orderDate = parseDateFromExcel(row[headerMap.FECHAINICIO]);
-          if (!orderDate) return null; // Skip rows with invalid date formats
+          if (!orderDate) return null;
 
           return {
             rowIndex: index + 2,

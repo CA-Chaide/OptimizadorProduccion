@@ -97,7 +97,6 @@ export default function DataImportPage() {
                         variant={
                           item.status === 'Completed' ? 'default' : 'destructive'
                         }
-                        className={item.status === 'Completed' ? 'bg-green-500' : ''}
                       >
                         {item.status}
                       </Badge>
