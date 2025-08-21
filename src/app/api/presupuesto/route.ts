@@ -15,19 +15,28 @@ export async function GET() {
         'Authorization': `Bearer ${API_TOKEN}`,
         'accept': 'application/json',
       },
-      cache: 'no-store', // Ensure fresh data on every request
+      cache: 'no-store', 
     });
 
     if (!response.ok) {
-      // Try to parse the error from the external API, but provide a fallback.
       let errorBody;
-      try {
-        errorBody = await response.json();
-      } catch (e) {
-        errorBody = { message: 'Failed to parse error response from external API.' };
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          errorBody = await response.json();
+        } catch (e) {
+          errorBody = { message: 'Failed to parse JSON error response from external API.' };
+        }
+      } else {
+        // If it's not JSON, it's likely HTML or plain text.
+        const textError = await response.text();
+        // Don't send the full HTML to the client, just log it and send a generic error.
+        console.error(`External API returned non-JSON error: ${textError.substring(0, 500)}...`);
+        errorBody = { message: `External API returned a non-JSON response (status ${response.status}).` };
       }
+      
       console.error(`External API error: ${response.status}`, errorBody);
-      return NextResponse.json({ error: `External API failed with status ${response.status}` }, { status: response.status });
+      return NextResponse.json({ error: `External API failed with status ${response.status}`, details: errorBody }, { status: response.status });
     }
 
     const data = await response.json();
@@ -35,7 +44,6 @@ export async function GET() {
 
   } catch (error) {
     console.error('Error fetching from external API:', error);
-    // This catches network errors, DNS issues, etc.
     return NextResponse.json({ error: 'Failed to connect to the external API.' }, { status: 502 }); // 502 Bad Gateway
   }
 }

@@ -15,19 +15,26 @@ export async function GET() {
         'Authorization': `Bearer ${API_TOKEN}`,
         'accept': 'application/json',
       },
-      cache: 'no-store', // Ensure fresh data on every request
+      cache: 'no-store',
     });
 
     if (!response.ok) {
-       // Try to parse the error from the external API, but provide a fallback.
       let errorBody;
-      try {
-        errorBody = await response.json();
-      } catch (e) {
-        errorBody = { message: 'Failed to parse error response from external API.' };
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          errorBody = await response.json();
+        } catch (e) {
+          errorBody = { message: 'Failed to parse JSON error response from external API.' };
+        }
+      } else {
+        const textError = await response.text();
+        console.error(`External API returned non-JSON error: ${textError.substring(0, 500)}...`);
+        errorBody = { message: `External API returned a non-JSON response (status ${response.status}).` };
       }
+
       console.error(`External API error: ${response.status}`, errorBody);
-      return NextResponse.json({ error: `External API failed with status ${response.status}` }, { status: response.status });
+      return NextResponse.json({ error: `External API failed with status ${response.status}`, details: errorBody }, { status: response.status });
     }
 
     const data = await response.json();
