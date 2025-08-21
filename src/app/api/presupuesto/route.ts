@@ -18,32 +18,31 @@ export async function GET() {
       cache: 'no-store', 
     });
 
-    if (!response.ok) {
-      let errorBody;
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        try {
-          errorBody = await response.json();
-        } catch (e) {
-          errorBody = { message: 'Failed to parse JSON error response from external API.' };
-        }
-      } else {
-        // If it's not JSON, it's likely HTML or plain text.
+    const contentType = response.headers.get('content-type');
+
+    // DEFENSIVE CHECK: Always validate content type, even for "OK" responses.
+    if (!contentType || !contentType.includes('application/json')) {
         const textError = await response.text();
-        // Don't send the full HTML to the client, just log it and send a generic error.
-        console.error(`External API returned non-JSON error: ${textError.substring(0, 500)}...`);
-        errorBody = { message: `External API returned a non-JSON response (status ${response.status}).` };
-      }
-      
-      console.error(`External API error: ${response.status}`, errorBody);
-      return NextResponse.json({ error: `External API failed with status ${response.status}`, details: errorBody }, { status: response.status });
+        console.error(`External API returned non-JSON response (status ${response.status}): ${textError.substring(0, 500)}...`);
+        return NextResponse.json({ error: `External API returned a non-JSON response type.`, details: `Received content-type: ${contentType}` }, { status: 502 });
     }
 
+    // Now it's safer to attempt to parse.
     const data = await response.json();
+    
+    if (!response.ok) {
+      console.error(`External API error: ${response.status}`, data);
+      return NextResponse.json({ error: `External API failed with status ${response.status}`, details: data }, { status: response.status });
+    }
+
     return NextResponse.json(data);
 
   } catch (error) {
     console.error('Error fetching from external API:', error);
+    // This will catch network errors or if response.json() fails for some other reason
+    if (error instanceof SyntaxError) {
+        return NextResponse.json({ error: 'Failed to parse JSON response from the external API.' }, { status: 502 });
+    }
     return NextResponse.json({ error: 'Failed to connect to the external API.' }, { status: 502 }); // 502 Bad Gateway
   }
 }
