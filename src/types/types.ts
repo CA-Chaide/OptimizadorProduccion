@@ -1,4 +1,5 @@
 
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -355,4 +356,33 @@ export interface Machine {
     code: string;
     name: string;
     processType: ProcessType;
+}
+
+// --- API Data Types for RealDataSection ---
+export interface PresupuestoItem {
+  Año: number;
+  Mes: number;
+  Sector: string;
+  Etiqueta: string;
+  Centro: string;
+  CodVendedor: string;
+  CodMaterial: string;
+  UnidadesProyectado: number;
+  DolaresProyectado: number;
+  Vendedor: string;
+  Material: string;
+  Familia: string;
+  Marca: string;
+}
+
+export interface TiempoEnsambleItem {
+  CodMaterial: string;
+  Centro: string;
+  Linea: string;
+  PuestoTrabajo: string;
+  Tiempo: number;
+  StockActual: number;
+  StockSeguridad: number;
+  StockMaximo: number;
+  GrupoCompras: string;
 }
