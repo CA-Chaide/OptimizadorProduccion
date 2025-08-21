@@ -63,22 +63,14 @@ export const RealDataSection: React.FC = () => {
     const addNotification = useContext(NotificationContext);
 
     useEffect(() => {
-        const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
-        const API_BASE_URL_PRESUPUESTO = 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion/presupuesto/';
-        const API_BASE_URL_TIEMPO = 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion/tiempoensamble/';
-
         const fetchData = async () => {
             // Fetch Presupuesto Data
             try {
                 setPresupuestoLoading(true);
-                const presResponse = await fetch(API_BASE_URL_PRESUPUESTO, {
-                    headers: {
-                        'Authorization': `Bearer ${API_TOKEN}`,
-                        'accept': 'application/json',
-                    }
-                });
+                const presResponse = await fetch('/api/presupuesto');
                 if (!presResponse.ok) {
-                    throw new Error(`Error HTTP: ${presResponse.status} ${presResponse.statusText}`);
+                    const errorData = await presResponse.json();
+                    throw new Error(errorData.error || `Error HTTP: ${presResponse.status}`);
                 }
                 const presData = await presResponse.json();
                 setPresupuestoData(presData);
@@ -95,14 +87,10 @@ export const RealDataSection: React.FC = () => {
             // Fetch Tiempo Ensamble Data
             try {
                 setTiempoLoading(true);
-                const tiempoResponse = await fetch(API_BASE_URL_TIEMPO, {
-                     headers: {
-                        'Authorization': `Bearer ${API_TOKEN}`,
-                        'accept': 'application/json',
-                    }
-                });
-                if (!tiempoResponse.ok) {
-                    throw new Error(`Error HTTP: ${tiempoResponse.status} ${tiempoResponse.statusText}`);
+                const tiempoResponse = await fetch('/api/tiempoensamble');
+                 if (!tiempoResponse.ok) {
+                    const errorData = await tiempoResponse.json();
+                    throw new Error(errorData.error || `Error HTTP: ${tiempoResponse.status}`);
                 }
                 const tiempoData = await tiempoResponse.json();
                 setTiempoData(tiempoData);

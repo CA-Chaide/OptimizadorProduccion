@@ -251,6 +251,7 @@ export default function ProductionOptimizerPage() {
                   width={180}
                   height={40}
                   className="mx-auto"
+                  style={{ height: 'auto', width: 'auto' }}
                   data-ai-hint="company logo"
               />
           </div>
