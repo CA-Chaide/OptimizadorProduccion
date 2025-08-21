@@ -11,3 +11,4 @@ export * from './PersonnelManagementSection';
 export * from './ProductionPlanSection';
 export * from './TacticalPlanSection';
 export * from './WorkShiftPlanningSection';
+export * from './RealDataSection';

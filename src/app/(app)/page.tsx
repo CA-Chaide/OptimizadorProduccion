@@ -11,6 +11,7 @@ import {
   TacticalPlanSection,
   AbsenteeismSection,
   WorkShiftPlanningSection,
+  RealDataSection,
 } from '@/components';
 import DashboardSection from '@/components/DashboardSection';
 import { ActiveView, viewConfig } from '@/constants/constants';
@@ -232,6 +233,8 @@ export default function ProductionOptimizerPage() {
           absenteeismEvents={state.absenteeismEvents}
           employeeSkills={state.employeeSkills}
         />;
+      case ActiveView.REAL_DATA:
+        return <RealDataSection />;
       default:
         return <DataImportSection onDataImported={handleDataImported} />;
     }
