@@ -1,4 +1,5 @@
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -77,7 +78,7 @@ export const parseExcelData = (file: File): Promise<SalesDataRow[]> => {
             descripciónMaterial: String(row[8] || ''),
             familia: String(row[9] || ''),
             marca: String(row[10] || ''),
-            lineaProduccion: String(row[11] || '').trim(), // Suggested Production Line name (from import, map to ID)
+            lineaProduccion: String(row[11] || '').trim(), // Suggested production line name (from import, map to ID)
           };
         }).filter(row => row !== null && row.unidadesProyectado >= 0 && row.código) as SalesDataRow[]; 
 

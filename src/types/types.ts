@@ -423,10 +423,11 @@ export interface TiempoEnsambleItem {
   Linea: string;
   PuestoTrabajo: string;
   Tiempo: number;
-  StockActual: number;
+  SaldoInicial: number;
   StockSeguridad: number;
   StockMaximo: number;
   GrupoCompras: string;
+  TipoAprovisionamiento: 'E' | 'X' | 'F';
 }
 
 // Import ActiveView from constants
