@@ -250,6 +250,7 @@ export default function ProductionOptimizerPage() {
                   alt="Logo de la Compañía"
                   width={180}
                   height={40}
+                  priority
                   className="mx-auto"
                   style={{ height: 'auto', width: 'auto' }}
                   data-ai-hint="company logo"
