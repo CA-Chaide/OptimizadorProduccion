@@ -43,6 +43,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       etiqueta: ''
   });
   const [groupBy, setGroupBy] = useState<GroupByOption>('sector');
+  const [selectedSectors, setSelectedSectors] = useState<Set<string>>(new Set());
 
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -92,6 +93,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       setIsProcessing(true);
       setAggregatedData(null);
       setFetchedData([]);
+      setSelectedSectors(new Set()); // Reset selection
       addNotification('info', `Consultando datos desde la API...`);
 
       try {
@@ -129,9 +131,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               }
               aggregationResult[key].units += row.unidadesProyectado;
           });
-
+          
+          setSelectedSectors(new Set(Object.keys(aggregationResult))); // Pre-select all by default
           setAggregatedData(aggregationResult);
-          addNotification('success', `Se han pre-cargado ${mappedData.length} registros. Revise el resumen y acepte para continuar.`);
+          addNotification('success', `Se han pre-cargado ${mappedData.length} registros. Seleccione los sectores y acepte para continuar.`);
 
       } catch (error) {
           console.error("Error fetching from API:", error);
@@ -143,18 +146,56 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const handleAcceptData = () => {
     if(fetchedData.length > 0) {
-        onDataImported(fetchedData);
+        if(selectedSectors.size === 0) {
+            addNotification('warning', 'Debe seleccionar al menos un sector para cargar.');
+            return;
+        }
+
+        const dataToLoad = fetchedData.filter(row => selectedSectors.has(row[groupBy] || 'Sin Asignar'));
+        
+        onDataImported(dataToLoad);
         setAggregatedData(null);
         setFetchedData([]);
+        setSelectedSectors(new Set());
     } else {
         addNotification('error', 'No hay datos para cargar. Por favor, genere una previsualización primero.');
     }
   };
 
+  const handleSectorSelection = (sector: string, isSelected: boolean) => {
+      setSelectedSectors(prev => {
+          const newSet = new Set(prev);
+          if (isSelected) {
+              newSet.add(sector);
+          } else {
+              newSet.delete(sector);
+          }
+          return newSet;
+      });
+  };
+
+  const handleSelectAllSectors = (isSelected: boolean) => {
+      if (aggregatedData) {
+          if (isSelected) {
+              setSelectedSectors(new Set(Object.keys(aggregatedData)));
+          } else {
+              setSelectedSectors(new Set());
+          }
+      }
+  };
+
   const totalUnits = useMemo(() => {
-    if(!aggregatedData) return 0;
-    return Object.values(aggregatedData).reduce((sum, item) => sum + item.units, 0);
-  }, [aggregatedData]);
+    if(!aggregatedData) return { total: 0, selected: 0 };
+    let total = 0;
+    let selected = 0;
+    Object.entries(aggregatedData).forEach(([key, value]) => {
+        total += value.units;
+        if (selectedSectors.has(key)) {
+            selected += value.units;
+        }
+    });
+    return { total, selected };
+  }, [aggregatedData, selectedSectors]);
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -164,7 +205,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Seleccione los filtros para consultar los datos. Luego, podrá previsualizar un resumen antes de aceptarlos y cargarlos en el sistema.
+        Seleccione los filtros para consultar los datos. Luego, podrá previsualizar, seleccionar los sectores de interés y finalmente cargar los datos en el sistema.
       </p>
 
       {/* --- Filtros --- */}
@@ -203,6 +244,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             <table className="min-w-full text-sm divide-y divide-gray-200">
               <thead className="bg-gray-200 sticky top-0">
                 <tr>
+                  <th className="p-2 w-10 text-left">
+                      <input 
+                        type="checkbox"
+                        className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        checked={aggregatedData ? selectedSectors.size === Object.keys(aggregatedData).length : false}
+                        onChange={(e) => handleSelectAllSectors(e.target.checked)}
+                      />
+                  </th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">{groupBy === 'sector' ? 'Sector' : 'Etiqueta'}</th>
                   <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades Totales</th>
                 </tr>
@@ -210,6 +259,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               <tbody className="bg-white divide-y divide-gray-200">
                 {Object.entries(aggregatedData).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)).map(([key, value]) => (
                   <tr key={key}>
+                    <td className="p-2">
+                        <input 
+                            type="checkbox"
+                            className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                            checked={selectedSectors.has(key)}
+                            onChange={(e) => handleSectorSelection(key, e.target.checked)}
+                        />
+                    </td>
                     <td className="px-4 py-2 whitespace-nowrap font-medium">{key}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-right">{value.units.toLocaleString()}</td>
                   </tr>
@@ -217,8 +274,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               </tbody>
                <tfoot className="bg-gray-200 sticky bottom-0">
                     <tr>
-                        <td className="px-4 py-2 text-left font-bold text-gray-700 uppercase">Total General</td>
-                        <td className="px-4 py-2 text-right font-bold text-gray-700">{totalUnits.toLocaleString()}</td>
+                        <td colSpan={2} className="px-4 py-2 text-left font-bold text-gray-700 uppercase">Total Seleccionado</td>
+                        <td className="px-4 py-2 text-right font-bold text-gray-700">{totalUnits.selected.toLocaleString()}</td>
                     </tr>
                </tfoot>
             </table>
@@ -227,9 +284,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
            <div className="flex justify-end pt-4">
                 <button
                     onClick={handleAcceptData}
-                    className="w-full md:w-auto px-6 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                    className="w-full md:w-auto px-6 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                    disabled={selectedSectors.size === 0}
                 >
-                    Aceptar y Continuar
+                    Aceptar y Continuar ({selectedSectors.size} {groupBy}s)
                 </button>
            </div>
         </div>
@@ -237,5 +295,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
-
-    
