@@ -225,6 +225,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     const targetSectors = new Set(['01', '02', '03']);
     
+    // Corrected logic: Always iterate over the raw fetchedData for the subtotal
     fetchedData.forEach(row => {
         if (targetSectors.has(row.sector)) {
             result.subtotalSectors.total += row.unidadesProyectado;
