@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 
 // This layout is now simplified as the main visual structure is in the page itself.
