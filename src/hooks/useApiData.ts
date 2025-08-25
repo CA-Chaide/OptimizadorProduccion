@@ -47,9 +47,14 @@ const fetcher = async (url: string) => {
 export const fetchPresupuestoData = async (params: PresupuestoParams = {}): Promise<PresupuestoItem[]> => {
     const query = new URLSearchParams();
     
-    // Paginación por defecto para no sobrecargar la API si no se especifica.
+    // Paginación
     query.append('skip', (params.skip || 0).toString());
-    query.append('limit', (params.limit || 1000).toString());
+    
+    // Si no se especifica un límite, la API podría tener uno por defecto.
+    // Para obtener todos, no añadimos el parámetro de límite a menos que se especifique.
+    if (params.limit !== undefined) {
+      query.append('limit', params.limit.toString());
+    }
 
     // Añadir filtros si existen
     if (params.año) query.append('año', params.año.toString());
@@ -101,3 +106,5 @@ export function useTiempoEnsambleData() {
     isLoading,
   };
 }
+
+    

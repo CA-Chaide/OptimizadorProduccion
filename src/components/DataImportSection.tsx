@@ -109,7 +109,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
       try {
           const apiParams = {
-              limit: 10000, 
+              limit: undefined, // Fetch all records that match the filter
               año: filters.año ? Number(filters.año) : undefined,
               mes: filters.mes ? Number(filters.mes) : undefined,
               centro: filters.centro || undefined,
@@ -297,3 +297,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
+
+    
