@@ -4,7 +4,7 @@
 import React from 'react';
 import { RealDataIcon } from '@/constants/constants';
 import { PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
-import { usePresupuestoData, useTiempoEnsambleData } from '@/hooks/useApiData';
+import { usePresupuestoDataForDictionary, useTiempoEnsambleData } from '@/hooks/useApiData';
 
 // --- Reusable Dictionary Component ---
 interface DataDictionaryProps<T> {
@@ -54,7 +54,7 @@ const DataDictionary = <T extends object>({ title, data, isLoading, error }: Dat
 
 
 export const RealDataSection: React.FC = () => {
-    const { data: presupuestoData, error: presupuestoError, isLoading: isPresupuestoLoading } = usePresupuestoData();
+    const { data: presupuestoData, error: presupuestoError, isLoading: isPresupuestoLoading } = usePresupuestoDataForDictionary();
     const { data: tiempoData, error: tiempoError, isLoading: isTiempoLoading } = useTiempoEnsambleData();
 
     return (

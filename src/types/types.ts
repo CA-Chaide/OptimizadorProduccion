@@ -360,7 +360,15 @@ export interface Machine {
     processType: ProcessType;
 }
 
-// --- API Data Types for RealDataSection ---
+// --- API Data Types ---
+export interface PresupuestoParams {
+    skip?: number;
+    limit?: number;
+    año?: number;
+    mes?: number;
+    centro?: string;
+    etiqueta?: string;
+}
 export interface PresupuestoItem {
   Año: number;
   Mes: number;
