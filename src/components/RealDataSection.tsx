@@ -63,14 +63,22 @@ export const RealDataSection: React.FC = () => {
     const addNotification = useContext(NotificationContext);
 
     useEffect(() => {
+        const apiBaseUrl = 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion';
+        const apiToken = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
+
         const fetchData = async () => {
             // Fetch Presupuesto Data
             try {
                 setPresupuestoLoading(true);
-                const presResponse = await fetch('/api/presupuesto');
+                const presResponse = await fetch(`${apiBaseUrl}/presupuesto/`, {
+                    headers: {
+                        'Authorization': `Bearer ${apiToken}`,
+                        'accept': 'application/json',
+                    },
+                });
                 if (!presResponse.ok) {
-                    const errorData = await presResponse.json();
-                    throw new Error(errorData.error || `Error HTTP: ${presResponse.status}`);
+                    const errorText = await presResponse.text();
+                    throw new Error(`Error HTTP: ${presResponse.status} - ${errorText}`);
                 }
                 const presData = await presResponse.json();
                 setPresupuestoData(presData);
@@ -87,10 +95,15 @@ export const RealDataSection: React.FC = () => {
             // Fetch Tiempo Ensamble Data
             try {
                 setTiempoLoading(true);
-                const tiempoResponse = await fetch('/api/tiempoensamble');
+                const tiempoResponse = await fetch(`${apiBaseUrl}/tiempoensamble/`, {
+                     headers: {
+                        'Authorization': `Bearer ${apiToken}`,
+                        'accept': 'application/json',
+                    },
+                });
                  if (!tiempoResponse.ok) {
-                    const errorData = await tiempoResponse.json();
-                    throw new Error(errorData.error || `Error HTTP: ${tiempoResponse.status}`);
+                    const errorText = await tiempoResponse.text();
+                    throw new Error(`Error HTTP: ${tiempoResponse.status} - ${errorText}`);
                 }
                 const tiempoData = await tiempoResponse.json();
                 setTiempoData(tiempoData);
