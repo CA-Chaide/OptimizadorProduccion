@@ -5,7 +5,7 @@ import type { PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 // --- Configuración Central de API ---
 // Cuando las variables de entorno estén listas, las usaremos aquí.
 // Por ahora, usamos las URLs directamente como solicitaste.
-const API_BASE_URL = 'http://192.168.1.209/Aplicativos/ApiOptimizadorProduccion';
+const API_BASE_URL = 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion';
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
 
 /**
@@ -29,7 +29,11 @@ const fetcher = async (url: string) => {
   if (!res.ok) {
     const error: any = new Error('Ocurrió un error al cargar los datos.');
     // Adjuntamos información extra al objeto de error.
-    error.info = await res.json().catch(() => ({ message: 'No se pudo leer el cuerpo del error.' }));
+    try {
+        error.info = await res.json();
+    } catch (e) {
+        error.info = { message: 'No se pudo leer el cuerpo del error.', statusText: res.statusText };
+    }
     error.status = res.status;
     throw error;
   }
