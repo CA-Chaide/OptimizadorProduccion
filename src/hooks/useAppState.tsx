@@ -4,10 +4,11 @@
 import { useReducer, useCallback, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import {
-    AppState, AppAction, ActiveView, SalesDataRow, ProductionPlan, TacticalRequest,
+    AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
     TacticalPlanResult, Employee, EmployeeSkill, AbsenteeismEvent, MaintenanceEvent,
     WorkShift, AppConstraints, NotificationMessage
 } from '@/types/types';
+import { ActiveView } from '@/constants/constants';
 import { generateProductionPlan, generateTacticalPlan } from '@/services/OptimizationService';
 
 const initialState: AppState = {
@@ -176,5 +177,3 @@ export function useAppState() {
         setConstraints,
     };
 }
-
-    
