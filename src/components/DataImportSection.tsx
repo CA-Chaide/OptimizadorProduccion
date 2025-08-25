@@ -11,9 +11,11 @@ interface DataImportSectionProps {
 
 type GroupByOption = 'sector' | 'etiqueta';
 
+// Updated data structure to hold totals per center
 interface AggregatedData {
   [key: string]: {
-    units: number;
+    totalUnits: number;
+    unitsByCenter: { [centerName: string]: number };
   };
 }
 
@@ -87,16 +89,30 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       };
   }, [filterData]);
 
-  const aggregatedData = useMemo(() => {
+  // Get a list of unique centers from the fetched data to build table columns
+  const uniqueCentersInFetchedData = useMemo(() => {
+    if (fetchedData.length === 0) return [];
+    const centers = new Set(fetchedData.map(row => row.centro));
+    return Array.from(centers).sort();
+  }, [fetchedData]);
+
+  const aggregatedData = useMemo<AggregatedData | null>(() => {
     if (fetchedData.length === 0) return null;
 
     const aggregationResult: AggregatedData = {};
     fetchedData.forEach(row => {
         const key = (groupBy === 'sector' ? row.sector : row.etiqueta) || 'Sin Asignar';
         if (!aggregationResult[key]) {
-            aggregationResult[key] = { units: 0 };
+            aggregationResult[key] = { totalUnits: 0, unitsByCenter: {} };
         }
-        aggregationResult[key].units += row.unidadesProyectado;
+        aggregationResult[key].totalUnits += row.unidadesProyectado;
+        
+        // Aggregate by center
+        const centerName = row.centro;
+        if (!aggregationResult[key].unitsByCenter[centerName]) {
+            aggregationResult[key].unitsByCenter[centerName] = 0;
+        }
+        aggregationResult[key].unitsByCenter[centerName] += row.unidadesProyectado;
     });
     return aggregationResult;
   }, [fetchedData, groupBy]);
@@ -109,7 +125,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
       try {
           const apiParams = {
-              limit: 50000, // Fetch all records that match the filter
+              limit: 50000, 
               año: filters.año ? Number(filters.año) : undefined,
               mes: filters.mes ? Number(filters.mes) : undefined,
               centro: filters.centro || undefined,
@@ -188,27 +204,44 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       }
   };
 
-  const totalSelectedUnits = useMemo(() => {
-    if(!aggregatedData) return 0;
-    let selected = 0;
+  const totals = useMemo(() => {
+    const result: {
+        subtotalSectors: { [centerName: string]: number; total: number };
+        selectedTotal: { [centerName: string]: number; total: number };
+    } = {
+        subtotalSectors: { total: 0 },
+        selectedTotal: { total: 0 },
+    };
+
+    if (!aggregatedData) return result;
+
+    const targetSectors = new Set(['01', '02', '03']);
+
+    // Initialize totals for all centers
+    uniqueCentersInFetchedData.forEach(center => {
+        result.subtotalSectors[center] = 0;
+        result.selectedTotal[center] = 0;
+    });
+
     Object.entries(aggregatedData).forEach(([key, value]) => {
+        // Subtotal for sectors 01, 02, 03
+        if (groupBy === 'sector' && targetSectors.has(key)) {
+            result.subtotalSectors.total += value.totalUnits;
+            uniqueCentersInFetchedData.forEach(center => {
+                result.subtotalSectors[center] += value.unitsByCenter[center] || 0;
+            });
+        }
+        // Total for selected groups
         if (selectedGroups.has(key)) {
-            selected += value.units;
+            result.selectedTotal.total += value.totalUnits;
+            uniqueCentersInFetchedData.forEach(center => {
+                result.selectedTotal[center] += value.unitsByCenter[center] || 0;
+            });
         }
     });
-    return selected;
-  }, [aggregatedData, selectedGroups]);
 
-  const subtotalSectors010203 = useMemo(() => {
-    if (fetchedData.length === 0) return 0;
-    const targetSectors = new Set(['01', '02', '03']);
-    return fetchedData.reduce((acc, row) => {
-      if (targetSectors.has(row.sector)) {
-        return acc + row.unidadesProyectado;
-      }
-      return acc;
-    }, 0);
-  }, [fetchedData]);
+    return result;
+  }, [aggregatedData, selectedGroups, groupBy, uniqueCentersInFetchedData]);
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -266,6 +299,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                       />
                   </th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">{groupBy === 'sector' ? 'Sector' : 'Etiqueta'}</th>
+                  {uniqueCentersInFetchedData.map(center => (
+                    <th key={center} className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{center}</th>
+                  ))}
                   <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades Totales</th>
                 </tr>
               </thead>
@@ -281,18 +317,35 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         />
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap font-medium">{key}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-right">{value.units.toLocaleString()}</td>
+                    {uniqueCentersInFetchedData.map(center => (
+                        <td key={center} className="px-4 py-2 whitespace-nowrap text-right">
+                            {(value.unitsByCenter[center] || 0).toLocaleString()}
+                        </td>
+                    ))}
+                    <td className="px-4 py-2 whitespace-nowrap text-right font-bold">{value.totalUnits.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
                <tfoot className="bg-gray-200 sticky bottom-0">
-                    <tr className="border-t-2 border-gray-400">
-                        <td colSpan={2} className="px-4 py-2 text-left font-semibold text-gray-600 uppercase">Subtotal Sectores 01-03</td>
-                        <td className="px-4 py-2 text-right font-semibold text-gray-600">{subtotalSectors010203.toLocaleString()}</td>
-                    </tr>
+                    {groupBy === 'sector' && 
+                        <tr className="border-t-2 border-gray-400">
+                            <td colSpan={2} className="px-4 py-2 text-left font-semibold text-gray-600 uppercase">Subtotal Sectores 01-03</td>
+                            {uniqueCentersInFetchedData.map(center => (
+                                <td key={center} className="px-4 py-2 text-right font-semibold text-gray-600">
+                                    {(totals.subtotalSectors[center] || 0).toLocaleString()}
+                                </td>
+                            ))}
+                            <td className="px-4 py-2 text-right font-semibold text-gray-600">{totals.subtotalSectors.total.toLocaleString()}</td>
+                        </tr>
+                    }
                     <tr>
                         <td colSpan={2} className="px-4 py-2 text-left font-bold text-gray-700 uppercase">Total Seleccionado</td>
-                        <td className="px-4 py-2 text-right font-bold text-gray-700">{totalSelectedUnits.toLocaleString()}</td>
+                        {uniqueCentersInFetchedData.map(center => (
+                            <td key={center} className="px-4 py-2 text-right font-bold text-gray-700">
+                                {(totals.selectedTotal[center] || 0).toLocaleString()}
+                            </td>
+                        ))}
+                        <td className="px-4 py-2 text-right font-bold text-gray-700">{totals.selectedTotal.total.toLocaleString()}</td>
                     </tr>
                </tfoot>
             </table>
