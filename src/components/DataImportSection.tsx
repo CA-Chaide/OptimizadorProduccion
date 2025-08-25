@@ -54,7 +54,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   React.useEffect(() => {
     const loadFilterOptions = async () => {
       try {
-        const data = await fetchPresupuestoData({ limit: 5000 });
+        const data = await fetchPresupuestoData({ limit: 10000 });
         setFilterData(data);
       } catch (error) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
