@@ -199,6 +199,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     return selected;
   }, [aggregatedData, selectedGroups]);
 
+  const subtotalSectors010203 = useMemo(() => {
+    if (fetchedData.length === 0) return 0;
+    const targetSectors = new Set(['01', '02', '03']);
+    return fetchedData.reduce((acc, row) => {
+      if (targetSectors.has(row.sector)) {
+        return acc + row.unidadesProyectado;
+      }
+      return acc;
+    }, 0);
+  }, [fetchedData]);
+
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
       <div className="flex items-center space-x-3">
@@ -275,6 +286,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 ))}
               </tbody>
                <tfoot className="bg-gray-200 sticky bottom-0">
+                    <tr className="border-t-2 border-gray-400">
+                        <td colSpan={2} className="px-4 py-2 text-left font-semibold text-gray-600 uppercase">Subtotal Sectores 01-03</td>
+                        <td className="px-4 py-2 text-right font-semibold text-gray-600">{subtotalSectors010203.toLocaleString()}</td>
+                    </tr>
                     <tr>
                         <td colSpan={2} className="px-4 py-2 text-left font-bold text-gray-700 uppercase">Total Seleccionado</td>
                         <td className="px-4 py-2 text-right font-bold text-gray-700">{totalSelectedUnits.toLocaleString()}</td>
