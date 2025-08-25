@@ -2,12 +2,8 @@
 'use client';
 
 import React from 'react';
-import { AppProvider } from '@/context/AppProvider';
+import { AppProvider } from './AppProvider';
 
 export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  return (
-    <AppProvider>
-      {children}
-    </AppProvider>
-  );
+  return <AppProvider>{children}</AppProvider>;
 };

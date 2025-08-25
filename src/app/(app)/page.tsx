@@ -19,8 +19,10 @@ import { useAppContext } from '@/context/AppProvider';
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarRail } from '@/components/ui/sidebar';
 import { UserNav } from '@/components/user-nav';
+import { ClientProvider } from '@/context/ClientProvider';
 
-// The main component that orchestrates the different sections
+
+// The component that needs the context
 const ProductionOptimizerClient: React.FC = () => {
     const {
         activeView,
@@ -58,7 +60,7 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.PERSONNEL:
                 return <PersonnelManagementSection employees={employees} setEmployees={setEmployees} skills={employeeSkills} setSkills={setSkills} constraints={constraints} />;
             case ActiveView.MAINTENANCE:
-                return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={onConstraintsUpdate} addNotification={addNotification} />;
+                return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
             case ActiveView.ABSENTEEISM:
                 return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:
@@ -119,8 +121,13 @@ const ProductionOptimizerClient: React.FC = () => {
     );
 };
 
+
 // This is the default export for the page, which is a Server Component.
-// It renders the Client Component that uses the context.
+// It wraps the Client Component in the provider.
 export default function ProductionOptimizerPage() {
-    return <ProductionOptimizerClient />;
+    return (
+        <ClientProvider>
+            <ProductionOptimizerClient />
+        </ClientProvider>
+    );
 }
