@@ -16,6 +16,8 @@ interface AggregatedData {
   [key: string]: {
     totalUnits: number;
     unitsByCenter: { [centerName: string]: number };
+    // This new property will help in subtotal calculation regardless of grouping
+    dataRows: SalesDataRow[];
   };
 }
 
@@ -103,9 +105,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     fetchedData.forEach(row => {
         const key = (groupBy === 'sector' ? row.sector : row.etiqueta) || 'Sin Asignar';
         if (!aggregationResult[key]) {
-            aggregationResult[key] = { totalUnits: 0, unitsByCenter: {} };
+            aggregationResult[key] = { totalUnits: 0, unitsByCenter: {}, dataRows: [] };
         }
         aggregationResult[key].totalUnits += row.unidadesProyectado;
+        aggregationResult[key].dataRows.push(row);
         
         // Aggregate by center
         const centerName = row.centro;
@@ -217,21 +220,22 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     const targetSectors = new Set(['01', '02', '03']);
 
-    // Initialize totals for all centers
+    // Initialize totals for all centers to ensure columns always exist
     uniqueCentersInFetchedData.forEach(center => {
         result.subtotalSectors[center] = 0;
         result.selectedTotal[center] = 0;
     });
 
-    Object.entries(aggregatedData).forEach(([key, value]) => {
-        // Subtotal for sectors 01, 02, 03
-        if (groupBy === 'sector' && targetSectors.has(key)) {
-            result.subtotalSectors.total += value.totalUnits;
-            uniqueCentersInFetchedData.forEach(center => {
-                result.subtotalSectors[center] += value.unitsByCenter[center] || 0;
-            });
+    // Calculate subtotal for sectors 01, 02, 03, regardless of current grouping
+    fetchedData.forEach(row => {
+        if (targetSectors.has(row.sector)) {
+            result.subtotalSectors.total += row.unidadesProyectado;
+            result.subtotalSectors[row.centro] = (result.subtotalSectors[row.centro] || 0) + row.unidadesProyectado;
         }
-        // Total for selected groups
+    });
+
+    // Calculate totals for currently selected groups
+    Object.entries(aggregatedData).forEach(([key, value]) => {
         if (selectedGroups.has(key)) {
             result.selectedTotal.total += value.totalUnits;
             uniqueCentersInFetchedData.forEach(center => {
@@ -241,7 +245,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     });
 
     return result;
-  }, [aggregatedData, selectedGroups, groupBy, uniqueCentersInFetchedData]);
+  }, [aggregatedData, selectedGroups, fetchedData, uniqueCentersInFetchedData]);
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -327,7 +331,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 ))}
               </tbody>
                <tfoot className="bg-gray-200 sticky bottom-0">
-                    {groupBy === 'sector' && 
+                    
                         <tr className="border-t-2 border-gray-400">
                             <td colSpan={2} className="px-4 py-2 text-left font-semibold text-gray-600 uppercase">Subtotal Sectores 01-03</td>
                             {uniqueCentersInFetchedData.map(center => (
@@ -337,7 +341,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                             ))}
                             <td className="px-4 py-2 text-right font-semibold text-gray-600">{totals.subtotalSectors.total.toLocaleString()}</td>
                         </tr>
-                    }
+                    
                     <tr>
                         <td colSpan={2} className="px-4 py-2 text-left font-bold text-gray-700 uppercase">Total Seleccionado</td>
                         {uniqueCentersInFetchedData.map(center => (
