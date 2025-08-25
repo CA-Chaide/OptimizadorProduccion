@@ -5,7 +5,7 @@ import {
 } from '@/types/types';
 import { parseTacticalOrdersExcel } from '@/services/OptimizationService';
 import { TacticalSchedulingIcon, DataImportIcon, MAX_FILE_SIZE_MB } from '@/constants/constants';
-import { NotificationContext } from '@/app/(app)/page';
+import { useAppContext } from '@/context/AppProvider';
 
 
 interface TacticalPlanSectionProps {
@@ -33,7 +33,7 @@ export const TacticalPlanSection: React.FC<TacticalPlanSectionProps> = ({
   const [fileName, setFileName] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [tacticalPlanResult, setTacticalPlanResult] = useState<TacticalPlanResult | null>(null);
-  const addNotification = useContext(NotificationContext);
+  const { addNotification } = useAppContext();
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

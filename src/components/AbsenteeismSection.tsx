@@ -1,8 +1,8 @@
 
-import React, { useState, useContext } from 'react';
-import { AbsenteeismEvent, Employee, NotificationMessage } from '@/types/types';
+import React, { useState } from 'react';
+import { AbsenteeismEvent, Employee } from '@/types/types';
 import { AbsenteeismIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
-import { NotificationContext } from '@/app/(app)/page';
+import { useAppContext } from '@/context/AppProvider';
 
 
 interface AbsenteeismSectionProps {
@@ -26,7 +26,7 @@ const initialFormState: Omit<AbsenteeismEvent, 'id'> = {
 export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, setEvents, employees }) => {
   const [formState, setFormState] = useState(initialFormState);
   const [editingEvent, setEditingEvent] = useState<AbsenteeismEvent | null>(null);
-  const addNotification = useContext(NotificationContext);
+  const { addNotification } = useAppContext();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -222,3 +222,5 @@ export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, 
     </div>
   );
 };
+
+    

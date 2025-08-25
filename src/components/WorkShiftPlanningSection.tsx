@@ -6,7 +6,7 @@ import {
 } from '@/types/types';
 import { WorkShiftIcon, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { NotificationContext } from '@/app/(app)/page';
+import { useAppContext } from '@/context/AppProvider';
 
 
 interface WorkShiftPlanningSectionProps {
@@ -35,7 +35,7 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
 }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedProcessType, setSelectedProcessType] = useState<ProcessType | ''>('');
-    const addNotification = useContext(NotificationContext);
+    const { addNotification } = useAppContext();
 
     const weekStart = getWeekStart(currentDate);
     const weekDates = Array.from({ length: 7 }, (_, i) => {
@@ -66,11 +66,11 @@ export const WorkShiftPlanningSection: React.FC<WorkShiftPlanningSectionProps> =
     const getQualifiedEmployeesForWorkstation = useCallback((workstationDefId: string) => {
         const qualifiedEmployeeIds = new Set(
             employeeSkills
-                .filter(skill => skill.workstationDefinitionId === workstationDefId && skill.skillLevel > 0)
+                .filter(skill => skill.qualifications.some(q => q.skillLevel > 0) && constraints.workstationDefinitions.find(wd => wd.id === workstationDefId)?.machineCode === skill.machineCode)
                 .map(skill => skill.employeeId)
         );
         return employees.filter(emp => qualifiedEmployeeIds.has(emp.id) && emp.isActive !== false);
-    }, [employeeSkills, employees]);
+    }, [employeeSkills, employees, constraints.workstationDefinitions]);
 
     const isEmployeeAbsent = useCallback((employeeId: string, date: Date): boolean => {
         const checkTime = date.getTime();

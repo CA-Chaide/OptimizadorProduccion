@@ -1,8 +1,8 @@
 
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Employee, EmployeeSkill, NotificationMessage, Machine, AppConstraints, Qualification, WorkCenter } from '@/types/types';
 import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon } from '@/constants/constants';
-import { NotificationContext } from '@/app/(app)/page';
+import { useAppContext } from '@/context/AppProvider';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { exportSkillsToExcel } from '@/services/OptimizationService';
 
@@ -154,7 +154,7 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
   setSkills,
   constraints,
 }) => {
-  const addNotification = useContext(NotificationContext);
+  const { addNotification } = useAppContext();
   
   const [employeeForm, setEmployeeForm] = useState<Omit<Employee, 'id' | 'isActive'>>({ name: '', employeeCode: '' });
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);

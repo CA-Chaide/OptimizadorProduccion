@@ -20,7 +20,6 @@ import { Toaster } from "@/components/ui/toaster";
 
 export default function ProductionOptimizerPage() {
   const {
-      state,
       dispatch,
       handleDataImported,
       handleGeneratePlan,
@@ -32,9 +31,7 @@ export default function ProductionOptimizerPage() {
       setWorkShifts,
       setConstraints,
       addNotification,
-  } = useAppContext();
-
-  const {
+      // State properties
       year,
       activeView,
       productionPlan,
@@ -46,7 +43,7 @@ export default function ProductionOptimizerPage() {
       absenteeismEvents,
       maintenanceEvents,
       workShifts,
-  } = state;
+  } = useAppContext();
   
   const renderActiveView = () => {
     switch (activeView) {
@@ -55,7 +52,7 @@ export default function ProductionOptimizerPage() {
       case ActiveView.DATA_IMPORT:
         return <DataImportSection onDataImported={handleDataImported} />;
       case ActiveView.CONSTRAINTS:
-        return <ConstraintConfigurationSection constraints={constraints} onConstraintsUpdate={setConstraints} salesDataProducts={salesData} addNotification={addNotification} />;
+        return <ConstraintConfigurationSection constraints={constraints} onConstraintsUpdate={setConstraints} salesDataProducts={salesData} />;
       case ActiveView.PERSONNEL:
         return <PersonnelManagementSection 
                   employees={employees} 
@@ -69,7 +66,7 @@ export default function ProductionOptimizerPage() {
       case ActiveView.PRODUCTION_PLAN:
         return <ProductionPlanSection plan={productionPlan} onGeneratePlan={handleGeneratePlan} isLoading={isLoading} constraints={constraints} />;
       case ActiveView.MAINTENANCE:
-        return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
+        return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} />;
       case ActiveView.TACTICAL_SCHEDULING:
         return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} />;
       case ActiveView.WORK_SHIFT_PLANNING:
