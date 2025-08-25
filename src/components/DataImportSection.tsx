@@ -127,13 +127,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       addNotification('info', `Consultando datos desde la API...`);
 
       try {
-          const apiParams = {
+          const apiParams: { limit: number; año?: number; mes?: number; centro?: string; etiqueta?: string; } = {
               limit: 50000, 
-              año: filters.año ? Number(filters.año) : undefined,
-              mes: filters.mes ? Number(filters.mes) : undefined,
-              centro: filters.centro || undefined,
-              etiqueta: filters.etiqueta || undefined,
           };
+          
+          if(filters.año) apiParams.año = Number(filters.año);
+          if(filters.mes) apiParams.mes = Number(filters.mes);
+          if(filters.centro) apiParams.centro = filters.centro;
+          if(filters.etiqueta) apiParams.etiqueta = filters.etiqueta;
+
           const dataFromApi = await fetchPresupuestoData(apiParams);
           
           if (dataFromApi.length === 0) {
@@ -208,28 +210,29 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   };
 
   const totals = useMemo(() => {
-    const result: {
-        subtotalSectors: { [centerName: string]: number; total: number };
-        selectedTotal: { [centerName: string]: number; total: number };
-    } = {
-        subtotalSectors: { total: 0 },
-        selectedTotal: { total: 0 },
+    // Correctly initialize the totals object structure.
+    const result = {
+        subtotalSectors: uniqueCentersInFetchedData.reduce((acc, center) => {
+            acc[center] = 0;
+            return acc;
+        }, { total: 0 } as { [centerName: string]: number; total: number }),
+        selectedTotal: uniqueCentersInFetchedData.reduce((acc, center) => {
+            acc[center] = 0;
+            return acc;
+        }, { total: 0 } as { [centerName: string]: number; total: number }),
     };
-    
-    uniqueCentersInFetchedData.forEach(center => {
-        result.subtotalSectors[center] = 0;
-        result.selectedTotal[center] = 0;
-    });
 
     if (!aggregatedData) return result;
 
     const targetSectors = new Set(['01', '02', '03']);
     
-    // Corrected logic: Always iterate over the raw fetchedData for the subtotal
+    // Always iterate over the raw fetchedData for the subtotal to ensure accuracy.
     fetchedData.forEach(row => {
         if (targetSectors.has(row.sector)) {
             result.subtotalSectors.total += row.unidadesProyectado;
-            result.subtotalSectors[row.centro] = (result.subtotalSectors[row.centro] || 0) + row.unidadesProyectado;
+            if (result.subtotalSectors[row.centro] !== undefined) {
+                result.subtotalSectors[row.centro] += row.unidadesProyectado;
+            }
         }
     });
 
@@ -237,7 +240,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         if (selectedGroups.has(key)) {
             result.selectedTotal.total += value.totalUnits;
             uniqueCentersInFetchedData.forEach(center => {
-                result.selectedTotal[center] = (result.selectedTotal[center] || 0) + (value.unitsByCenter[center] || 0);
+                result.selectedTotal[center] += (value.unitsByCenter[center] || 0);
             });
         }
     });
