@@ -21,7 +21,7 @@ import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarHeader
 import { UserNav } from '@/components/user-nav';
 
 // The main component that orchestrates the different sections
-const ProductionOptimizerPage: React.FC = () => {
+const ProductionOptimizerClient: React.FC = () => {
     const {
         activeView,
         dispatch,
@@ -58,7 +58,7 @@ const ProductionOptimizerPage: React.FC = () => {
             case ActiveView.PERSONNEL:
                 return <PersonnelManagementSection employees={employees} setEmployees={setEmployees} skills={employeeSkills} setSkills={setSkills} constraints={constraints} />;
             case ActiveView.MAINTENANCE:
-                return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
+                return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={onConstraintsUpdate} addNotification={addNotification} />;
             case ActiveView.ABSENTEEISM:
                 return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:
@@ -119,4 +119,8 @@ const ProductionOptimizerPage: React.FC = () => {
     );
 };
 
-export default ProductionOptimizerPage;
+// This is the default export for the page, which is a Server Component.
+// It renders the Client Component that uses the context.
+export default function ProductionOptimizerPage() {
+    return <ProductionOptimizerClient />;
+}
