@@ -84,7 +84,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.PRODUCTION_PLAN, label: 'Plan de Producción', icon: <PlanIcon /> },
   { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon /> },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon /> },
-  { id: ActiveView.REAL_DATA, label: 'Datos Reales', icon: <RealDataIcon /> },
+  { id: ActiveView.REAL_DATA, label: 'Diccionario de Datos', icon: <RealDataIcon /> },
 ];
 
 
