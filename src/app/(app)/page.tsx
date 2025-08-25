@@ -233,7 +233,7 @@ export default function ProductionOptimizerPage() {
           absenteeismEvents={state.absenteeismEvents}
           employeeSkills={state.employeeSkills}
         />;
-      case ActiveView.REAL_DATA:
+      case ActiveView.DICTIONARY:
         return <RealDataSection />;
       default:
         return <DataImportSection onDataImported={handleDataImported} />;
@@ -252,7 +252,7 @@ export default function ProductionOptimizerPage() {
                   height={40}
                   priority
                   className="mx-auto"
-                  style={{ height: 'auto', width: 'auto' }}
+                  style={{ height: 'auto' }}
                   data-ai-hint="company logo"
               />
           </div>

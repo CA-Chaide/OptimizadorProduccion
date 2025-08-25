@@ -3,8 +3,6 @@ import useSWR from 'swr';
 import type { PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
-// Cuando las variables de entorno estén listas, las usaremos aquí.
-// Por ahora, usamos las URLs directamente como solicitaste.
 const API_BASE_URL = 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion';
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
 
@@ -46,10 +44,11 @@ const fetcher = async (url: string) => {
 /**
  * Hook para obtener los datos de la API de Presupuesto.
  * Utiliza SWR para cacheo, revalidación y deduplicación automáticas.
+ * Pide solo el primer registro para el diccionario de datos.
  */
 export function usePresupuestoData() {
   const { data, error, isLoading } = useSWR<PresupuestoItem[], Error>(
-    `${API_BASE_URL}/presupuesto/`,
+    `${API_BASE_URL}/presupuesto/?skip=0&limit=1`,
     fetcher
   );
 
@@ -63,10 +62,11 @@ export function usePresupuestoData() {
 /**
  * Hook para obtener los datos de la API de Tiempos de Ensamble.
  * Utiliza SWR para cacheo, revalidación y deduplicación automáticas.
+ * Pide solo el primer registro para el diccionario de datos.
  */
 export function useTiempoEnsambleData() {
   const { data, error, isLoading } = useSWR<TiempoEnsambleItem[], Error>(
-    `${API_BASE_URL}/tiempoensamble/`,
+    `${API_BASE_URL}/tiempoensamble/?skip=0&limit=1`,
     fetcher
   );
 
