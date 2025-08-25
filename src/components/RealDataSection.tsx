@@ -1,29 +1,29 @@
 
 'use client';
 
-import React, { useState, useEffect, useContext } from 'react';
+import React from 'react';
 import { RealDataIcon } from '@/constants/constants';
-import { PresupuestoItem, TiempoEnsambleItem, NotificationMessage } from '@/types/types';
-import { NotificationContext } from '@/app/(app)/page';
+import { PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
+import { usePresupuestoData, useTiempoEnsambleData } from '@/hooks/useApiData';
 
 // --- Reusable Table Component ---
 interface DataTableProps<T> {
     title: string;
-    data: T[];
+    data: T[] | undefined;
     isLoading: boolean;
-    error: string | null;
+    error: Error | undefined;
 }
 
 const DataTable = <T extends object>({ title, data, isLoading, error }: DataTableProps<T>) => {
-    const headers = data.length > 0 ? Object.keys(data[0]) : [];
+    const headers = data && data.length > 0 ? Object.keys(data[0]) : [];
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
             {isLoading && <p className="text-gray-500">Cargando datos...</p>}
-            {error && <p className="text-red-500">Error: {error}</p>}
-            {!isLoading && !error && data.length === 0 && <p className="text-gray-500">No se encontraron datos.</p>}
-            {!isLoading && !error && data.length > 0 && (
+            {error && <p className="text-red-500">Error al cargar datos: {error.message}</p>}
+            {!isLoading && !error && (!data || data.length === 0) && <p className="text-gray-500">No se encontraron datos.</p>}
+            {!isLoading && !error && data && data.length > 0 && (
                 <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
                         <thead className="bg-gray-50 sticky top-0">
@@ -53,73 +53,8 @@ const DataTable = <T extends object>({ title, data, isLoading, error }: DataTabl
 
 
 export const RealDataSection: React.FC = () => {
-    const [presupuestoData, setPresupuestoData] = useState<PresupuestoItem[]>([]);
-    const [tiempoData, setTiempoData] = useState<TiempoEnsambleItem[]>([]);
-    const [presupuestoLoading, setPresupuestoLoading] = useState(true);
-    const [tiempoLoading, setTiempoLoading] = useState(true);
-    const [presupuestoError, setPresupuestoError] = useState<string | null>(null);
-    const [tiempoError, setTiempoError] = useState<string | null>(null);
-    
-    const addNotification = useContext(NotificationContext);
-
-    useEffect(() => {
-        const apiBaseUrl = 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion';
-        const apiToken = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
-
-        const fetchData = async () => {
-            // Fetch Presupuesto Data
-            try {
-                setPresupuestoLoading(true);
-                const presResponse = await fetch(`${apiBaseUrl}/presupuesto/`, {
-                    headers: {
-                        'Authorization': `Bearer ${apiToken}`,
-                        'accept': 'application/json',
-                    },
-                });
-                if (!presResponse.ok) {
-                    const errorText = await presResponse.text();
-                    throw new Error(`Error HTTP: ${presResponse.status} - ${errorText}`);
-                }
-                const presData = await presResponse.json();
-                setPresupuestoData(presData);
-                setPresupuestoError(null);
-            } catch (error) {
-                const errorMessage = (error as Error).message;
-                console.error("Error fetching presupuesto data:", errorMessage);
-                setPresupuestoError(errorMessage);
-                addNotification('error', `No se pudo cargar los datos de presupuesto: ${errorMessage}`);
-            } finally {
-                setPresupuestoLoading(false);
-            }
-
-            // Fetch Tiempo Ensamble Data
-            try {
-                setTiempoLoading(true);
-                const tiempoResponse = await fetch(`${apiBaseUrl}/tiempoensamble/`, {
-                     headers: {
-                        'Authorization': `Bearer ${apiToken}`,
-                        'accept': 'application/json',
-                    },
-                });
-                 if (!tiempoResponse.ok) {
-                    const errorText = await tiempoResponse.text();
-                    throw new Error(`Error HTTP: ${tiempoResponse.status} - ${errorText}`);
-                }
-                const tiempoData = await tiempoResponse.json();
-                setTiempoData(tiempoData);
-                setTiempoError(null);
-            } catch (error) {
-                const errorMessage = (error as Error).message;
-                console.error("Error fetching tiempo ensamble data:", errorMessage);
-                setTiempoError(errorMessage);
-                addNotification('error', `No se pudo cargar los tiempos de ensamble: ${errorMessage}`);
-            } finally {
-                setTiempoLoading(false);
-            }
-        };
-
-        fetchData();
-    }, [addNotification]);
+    const { data: presupuestoData, error: presupuestoError, isLoading: isPresupuestoLoading } = usePresupuestoData();
+    const { data: tiempoData, error: tiempoError, isLoading: isTiempoLoading } = useTiempoEnsambleData();
 
     return (
         <div className="p-6 md:p-8 space-y-6">
@@ -129,20 +64,20 @@ export const RealDataSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta sección muestra datos en vivo consultados desde las APIs externas de producción. Las tablas se actualizan cada vez que se carga la página.
+                Esta sección muestra datos en vivo consultados desde las APIs externas de producción. Las tablas se actualizan automáticamente según las mejores prácticas de SWR.
             </p>
 
             <div className="space-y-8">
                 <DataTable 
                     title="Datos de Presupuesto"
                     data={presupuestoData}
-                    isLoading={presupuestoLoading}
+                    isLoading={isPresupuestoLoading}
                     error={presupuestoError}
                 />
                 <DataTable
                     title="Tiempos de Ensamble"
                     data={tiempoData}
-                    isLoading={tiempoLoading}
+                    isLoading={isTiempoLoading}
                     error={tiempoError}
                 />
             </div>
