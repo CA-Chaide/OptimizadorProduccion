@@ -215,18 +215,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         subtotalSectors: { total: 0 },
         selectedTotal: { total: 0 },
     };
-
-    if (!aggregatedData) return result;
-
-    const targetSectors = new Set(['01', '02', '03']);
-
-    // Initialize totals for all centers to ensure columns always exist
+    
     uniqueCentersInFetchedData.forEach(center => {
         result.subtotalSectors[center] = 0;
         result.selectedTotal[center] = 0;
     });
 
-    // Calculate subtotal for sectors 01, 02, 03, regardless of current grouping
+    if (!aggregatedData) return result;
+
+    const targetSectors = new Set(['01', '02', '03']);
+    
     fetchedData.forEach(row => {
         if (targetSectors.has(row.sector)) {
             result.subtotalSectors.total += row.unidadesProyectado;
@@ -234,12 +232,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         }
     });
 
-    // Calculate totals for currently selected groups
     Object.entries(aggregatedData).forEach(([key, value]) => {
         if (selectedGroups.has(key)) {
             result.selectedTotal.total += value.totalUnits;
             uniqueCentersInFetchedData.forEach(center => {
-                result.selectedTotal[center] += value.unitsByCenter[center] || 0;
+                result.selectedTotal[center] = (result.selectedTotal[center] || 0) + (value.unitsByCenter[center] || 0);
             });
         }
     });
