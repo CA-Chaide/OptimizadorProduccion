@@ -92,7 +92,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     const aggregationResult: AggregatedData = {};
     fetchedData.forEach(row => {
-        const key = row[groupBy] || 'Sin Asignar';
+        const key = (groupBy === 'sector' ? row.sector : row.etiqueta) || 'Sin Asignar';
         if (!aggregationResult[key]) {
             aggregationResult[key] = { units: 0 };
         }
@@ -156,7 +156,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             return;
         }
 
-        const dataToLoad = fetchedData.filter(row => selectedGroups.has(row[groupBy] || 'Sin Asignar'));
+        const dataToLoad = fetchedData.filter(row => selectedGroups.has((groupBy === 'sector' ? row.sector : row.etiqueta) || 'Sin Asignar'));
         
         onDataImported(dataToLoad);
         setFetchedData([]);
@@ -297,5 +297,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
-
-    
