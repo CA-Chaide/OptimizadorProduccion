@@ -1,9 +1,6 @@
-
 import * as React from 'react';
 
-// Este layout ahora es más simple, ya que el proveedor principal está en la raíz.
+// This layout is now simplified as the main visual structure is in the page itself.
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
-
-    

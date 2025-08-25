@@ -5,21 +5,8 @@ import React, { createContext, useContext } from 'react';
 import { useAppState } from '@/hooks/useAppState';
 import type { AppState, AppAction, NotificationMessage, TacticalRequest, TacticalPlanResult, SalesDataRow, Employee, EmployeeSkill, AbsenteeismEvent, MaintenanceEvent, WorkShift, AppConstraints } from '@/types/types';
 
-// Define el tipo para el valor del contexto
-type AppContextType = {
-    state: AppState;
-    dispatch: React.Dispatch<AppAction>;
-    addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
-    handleDataImported: (data: SalesDataRow[]) => void;
-    handleGeneratePlan: () => void;
-    handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
-    setEmployees: (employees: Employee[]) => void;
-    setSkills: (skills: EmployeeSkill[]) => void;
-    setAbsenteeismEvents: (events: AbsenteeismEvent[]) => void;
-    setMaintenanceEvents: (events: MaintenanceEvent[]) => void;
-    setWorkShifts: (shifts: WorkShift[]) => void;
-    setConstraints: (constraints: AppConstraints) => void;
-};
+// Define el tipo para el valor del contexto completo, incluyendo el estado y las funciones.
+type AppContextType = ReturnType<typeof useAppState>;
 
 // Crea el contexto con un valor inicial undefined
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -35,13 +22,11 @@ export const useAppContext = () => {
 
 // El componente proveedor
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const appState = useAppState();
+  const appStateAndActions = useAppState();
 
   return (
-    <AppContext.Provider value={appState}>
+    <AppContext.Provider value={appStateAndActions}>
       {children}
     </AppContext.Provider>
   );
 };
-
-    

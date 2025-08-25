@@ -1,5 +1,37 @@
 
 
+// Este AppState ya no será necesario, se moverá al hook useAppState
+export type AppState = {
+  year: number | null;
+  activeView: ActiveView;
+  salesData: SalesDataRow[];
+  isLoading: boolean;
+  productionPlan: ProductionPlan;
+  constraints: AppConstraints;
+  employees: Employee[];
+  employeeSkills: EmployeeSkill[];
+  maintenanceEvents: MaintenanceEvent[];
+  absenteeismEvents: AbsenteeismEvent[];
+  workShifts: WorkShift[];
+  tacticalPlanResult: TacticalPlanResult | null;
+};
+
+// Tipos de acción para el reducer
+export type AppAction =
+  | { type: 'SET_YEAR'; payload: number }
+  | { type: 'SET_ACTIVE_VIEW'; payload: ActiveView }
+  | { type: 'SET_SALES_DATA'; payload: SalesDataRow[] }
+  | { type: 'GENERATE_PRODUCTION_PLAN_START' }
+  | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: ProductionPlan }
+  | { type: 'GENERATE_PRODUCTION_PLAN_ERROR' }
+  | { type: 'SET_CONSTRAINTS'; payload: AppConstraints }
+  | { type: 'SET_EMPLOYEES'; payload: Employee[] }
+  | { type: 'SET_EMPLOYEE_SKILLS'; payload: EmployeeSkill[] }
+  | { type: 'SET_MAINTENANCE_EVENTS'; payload: MaintenanceEvent[] }
+  | { type: 'SET_ABSENTEEISM_EVENTS'; payload: AbsenteeismEvent[] }
+  | { type: 'SET_WORK_SHIFTS'; payload: WorkShift[] }
+  | { type: 'GENERATE_TACTICAL_PLAN'; payload: TacticalPlanResult | null };
+
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
@@ -396,3 +428,6 @@ export interface TiempoEnsambleItem {
   StockMaximo: number;
   GrupoCompras: string;
 }
+
+// Import ActiveView from constants
+import { ActiveView } from '@/constants/constants';

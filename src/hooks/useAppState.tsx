@@ -163,7 +163,7 @@ export function useAppState() {
     const setConstraints = (constraints: AppConstraints) => dispatch({ type: 'SET_CONSTRAINTS', payload: constraints });
 
     return {
-        state,
+        ...state, // Devuelve todas las propiedades del estado
         dispatch,
         addNotification,
         handleDataImported,

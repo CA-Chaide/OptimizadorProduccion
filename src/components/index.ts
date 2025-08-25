@@ -6,6 +6,7 @@
 export * from './AbsenteeismSection';
 export * from './ConstraintConfigurationSection';
 export * from './DataImportSection';
+export * from './DashboardSection';
 export * from './MaintenanceSection';
 export * from './PersonnelManagementSection';
 export * from './ProductionPlanSection';

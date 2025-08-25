@@ -1,7 +1,9 @@
+
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import Script from 'next/script';
 import { Toaster } from '@/components/ui/toaster';
+import { AppProvider } from '@/context/AppProvider';
 
 import '@/app/globals.css';
 
@@ -20,7 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
-        {children}
+        <AppProvider>
+          {children}
+        </AppProvider>
         <Toaster />
         <Script
           src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"

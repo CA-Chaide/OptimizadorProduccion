@@ -1,4 +1,3 @@
-
 'use client';
 import React from 'react';
 import Image from 'next/image';
@@ -12,26 +11,15 @@ import {
   AbsenteeismSection,
   WorkShiftPlanningSection,
   RealDataSection,
+  DashboardSection,
 } from '@/components';
-import DashboardSection from '@/components/DashboardSection';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 import { Toaster } from "@/components/ui/toaster";
 
 export default function ProductionOptimizerPage() {
   const {
-      dispatch,
-      handleDataImported,
-      handleGeneratePlan,
-      handleGenerateTacticalPlan,
-      setEmployees,
-      setSkills,
-      setAbsenteeismEvents,
-      setMaintenanceEvents,
-      setWorkShifts,
-      setConstraints,
-      addNotification,
-      // State properties
+      // Direct state properties
       year,
       activeView,
       productionPlan,
@@ -43,16 +31,29 @@ export default function ProductionOptimizerPage() {
       absenteeismEvents,
       maintenanceEvents,
       workShifts,
+      // Dispatch function
+      dispatch,
+      // Handler functions
+      handleDataImported,
+      handleGeneratePlan,
+      handleGenerateTacticalPlan,
+      setEmployees,
+      setSkills,
+      setAbsenteeismEvents,
+      setMaintenanceEvents,
+      setWorkShifts,
+      setConstraints,
+      addNotification,
   } = useAppContext();
   
   const renderActiveView = () => {
     switch (activeView) {
       case ActiveView.DASHBOARD:
-        return <DashboardSection />;
+        return <DashboardSection plan={productionPlan.dailyPlan} salesData={salesData} constraints={constraints} />;
       case ActiveView.DATA_IMPORT:
         return <DataImportSection onDataImported={handleDataImported} />;
       case ActiveView.CONSTRAINTS:
-        return <ConstraintConfigurationSection constraints={constraints} onConstraintsUpdate={setConstraints} salesDataProducts={salesData} />;
+        return <ConstraintConfigurationSection constraints={constraints} onConstraintsUpdate={setConstraints} salesDataProducts={salesData} addNotification={addNotification} />;
       case ActiveView.PERSONNEL:
         return <PersonnelManagementSection 
                   employees={employees} 
@@ -66,7 +67,7 @@ export default function ProductionOptimizerPage() {
       case ActiveView.PRODUCTION_PLAN:
         return <ProductionPlanSection plan={productionPlan} onGeneratePlan={handleGeneratePlan} isLoading={isLoading} constraints={constraints} />;
       case ActiveView.MAINTENANCE:
-        return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} />;
+        return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
       case ActiveView.TACTICAL_SCHEDULING:
         return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} />;
       case ActiveView.WORK_SHIFT_PLANNING:
@@ -131,5 +132,3 @@ export default function ProductionOptimizerPage() {
       </div>
   );
 }
-
-    

@@ -2,12 +2,7 @@ import React, { useMemo } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { ProductionPlanItem, SalesDataRow, AppConstraints, ChartDataItem, Holiday } from '@/types/types';
 import { DashboardIcon, MONTH_NAMES } from '@/constants/constants';
-
-interface DashboardSectionProps {
-  plan: ProductionPlanItem[];
-  salesData: SalesDataRow[];
-  constraints: AppConstraints;
-}
+import { useAppContext } from '@/context/AppProvider';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82Ca9D'];
 const getDayTypeForProduction = (date: Date, holidays: Holiday[]): 'Weekday' | 'Saturday' | 'Sunday' | 'ProductiveHoliday' | 'NonProductiveHoliday' => {
@@ -25,8 +20,7 @@ const getDayTypeForProduction = (date: Date, holidays: Holiday[]): 'Weekday' | '
 };
 
 
-const DashboardSection: React.FC<DashboardSectionProps> = ({ plan, salesData, constraints }) => {
-
+export const DashboardSection: React.FC<{ plan: ProductionPlanItem[]; salesData: SalesDataRow[]; constraints: AppConstraints; }> = ({ plan, salesData, constraints }) => {
   const planComplianceData = useMemo<ChartDataItem[]>(() => {
     if (!plan || !salesData) return [];
     
@@ -241,5 +235,3 @@ const DashboardSection: React.FC<DashboardSectionProps> = ({ plan, salesData, co
     </div>
   );
 };
-
-export default DashboardSection;
