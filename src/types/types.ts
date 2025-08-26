@@ -202,27 +202,10 @@ export interface QualityParameter { // Kept for future
   isActive?: boolean;
 }
 
-export interface ProductionTimeImportRow {
-  rowIndex: number;
-  códigoMaterial: string;
-  centro: string; // Production center name
-  linea: string;
-  puestoTrabajo: string; // Name of the WorkstationDefinition
-  tiempo: number; // Time in MINUTES from excel, to be converted to hours
-  saldoInicial: number; 
-  stockSeguridad: number;
-  stockMaximo: number;
-}
-
 export interface SupplyInfo {
   código: string;
   centro: string;
   aprovisionamiento: 'E' | 'X' | 'F';
-}
-
-export interface ParsedProductionData {
-  times: ProductionTimeImportRow[];
-  supplyInfos: SupplyInfo[];
 }
 
 export interface Holiday {
@@ -449,5 +432,3 @@ export interface TiempoEnsambleItem {
 
 // Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';
-
-    

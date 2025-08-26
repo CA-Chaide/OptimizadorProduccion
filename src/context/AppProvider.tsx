@@ -190,7 +190,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('success', `Sincronización exitosa. Se procesaron y validaron ${assemblyData.length} registros.`);
             return true;
         } catch (error) {
-            console.error("Error during sync and validation:", error);
             const errorMessage = `Error de red o de API al sincronizar: ${(error as Error).message}`;
             addNotification('error', errorMessage);
             dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: [errorMessage] }});
@@ -218,7 +217,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('success', 'Plan de producción generado exitosamente.');
 
         } catch (error) {
-            console.error("Error during plan generation process:", error);
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
             addNotification('error', `Error al generar el plan: ${(error as Error).message}`);
         }
@@ -243,7 +241,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             return result;
         } catch (error) {
-            console.error("Error generating tactical plan:", error);
             addNotification('error', `Error al generar el plan táctico: ${(error as Error).message}`);
             const emptyResult: TacticalPlanResult = { plan: [], alerts: [`Error al generar el plan táctico: ${(error as Error).message}`] };
             dispatch({ type: 'GENERATE_TACTICAL_PLAN', payload: emptyResult });
@@ -280,5 +277,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-
-    

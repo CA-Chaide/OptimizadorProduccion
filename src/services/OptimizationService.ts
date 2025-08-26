@@ -1,9 +1,9 @@
 
 import { 
-    SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
+    SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
-    ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
+    SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
     Machine, Qualification, TiempoEnsambleItem
 } from '@/types/types';
@@ -943,7 +943,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 
         resolve(orders);
       } catch (error) {
-        console.error("Error processing Tactical Orders Excel:", error);
         reject(new Error('Formato de archivo Excel de órdenes previsionales inválido.'));
       }
     };
