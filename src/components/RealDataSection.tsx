@@ -1,61 +1,103 @@
 
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { RealDataIcon } from '@/constants/constants';
-import { PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
-import { usePresupuestoDataForDictionary, useTiempoEnsambleData } from '@/hooks/useApiData';
+import { queryApi } from '@/hooks/useApiData';
 
-// --- Reusable Dictionary Component ---
-interface DataDictionaryProps<T> {
-    title: string;
-    data: T[] | undefined;
-    isLoading: boolean;
-    error: Error | undefined;
+interface ColumnInfo {
+    column_name: string;
+    friendly_name: string;
+    description: string;
 }
 
-const DataDictionary = <T extends object>({ title, data, isLoading, error }: DataDictionaryProps<T>) => {
-    const sampleData = data && data.length > 0 ? data[0] : null;
-    const headers = sampleData ? Object.keys(sampleData) : [];
+interface SourceInfo {
+    description: string;
+    columns: ColumnInfo[];
+}
 
+interface Documentation {
+    [sourceName: string]: SourceInfo;
+}
+
+// --- Reusable Dictionary Component ---
+interface DataDictionaryProps {
+    title: string;
+    sourceInfo: SourceInfo | undefined;
+    isLoading: boolean;
+}
+
+const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLoading }) => {
+    if (isLoading) {
+        return (
+            <div className="bg-white p-6 rounded-xl shadow-lg">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
+                <p className="text-gray-500 animate-pulse">Consultando esquema de la fuente de datos...</p>
+            </div>
+        );
+    }
+
+    if (!sourceInfo) {
+        return (
+            <div className="bg-white p-6 rounded-xl shadow-lg">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
+                <p className="text-gray-500">No se encontró la documentación para esta fuente de datos.</p>
+            </div>
+        );
+    }
+    
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
-            {isLoading && <p className="text-gray-500 animate-pulse">Consultando esquema de la fuente de datos...</p>}
-            {error && <p className="text-red-500">Error al cargar el esquema: {error.message}</p>}
-            {!isLoading && !error && (!data || data.length === 0) && <p className="text-gray-500">No se encontraron datos para definir el diccionario.</p>}
-            {!isLoading && !error && sampleData && (
-                <div className="overflow-x-auto max-h-[60vh] border rounded-lg bg-gray-50">
-                    <table className="min-w-full text-sm divide-y divide-gray-200">
-                        <thead className="bg-gray-100 sticky top-0">
-                            <tr>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/2">Nombre de Columna (Campo)</th>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Ejemplo de Dato</th>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">{title}</h3>
+            <p className="text-sm text-gray-600 mb-4">{sourceInfo.description}</p>
+            <div className="overflow-x-auto max-h-[60vh] border rounded-lg bg-gray-50">
+                <table className="min-w-full text-sm divide-y divide-gray-200">
+                    <thead className="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/3">Nombre de Columna (API)</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/3">Nombre Amigable</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {sourceInfo.columns.map(col => (
+                            <tr key={col.column_name} className="hover:bg-gray-50">
+                                <td className="px-4 py-2 whitespace-nowrap font-mono text-indigo-700">{col.column_name}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-gray-800">{col.friendly_name}</td>
+                                <td className="px-4 py-2 whitespace-normal text-gray-600">{col.description}</td>
                             </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {headers.map(header => (
-                                <tr key={header} className="hover:bg-gray-50">
-                                    <td className="px-4 py-2 whitespace-nowrap font-mono text-indigo-700">{header}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-gray-600">
-                                        <span className="bg-gray-200 px-2 py-1 rounded-sm text-xs">
-                                          {String((sampleData as any)[header])}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 };
 
 
 export const RealDataSection: React.FC = () => {
-    const { data: presupuestoData, error: presupuestoError, isLoading: isPresupuestoLoading } = usePresupuestoDataForDictionary();
-    const { data: tiempoData, error: tiempoError, isLoading: isTiempoLoading } = useTiempoEnsambleData();
+    const [documentation, setDocumentation] = useState<Documentation | null>(null);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [error, setError] = useState<Error | null>(null);
+
+    useEffect(() => {
+        const fetchDocumentation = async () => {
+            setIsLoading(true);
+            setError(null);
+            try {
+                const docData = await queryApi({ operation: 'get_documentation' });
+                setDocumentation(docData);
+            } catch (err) {
+                setError(err as Error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchDocumentation();
+    }, []);
+
+    const dataSources = documentation ? Object.keys(documentation) : [];
 
     return (
         <div className="p-6 md:p-8 space-y-6">
@@ -65,24 +107,25 @@ export const RealDataSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600 text-sm">
-                Esta sección muestra los esquemas de las fuentes de datos disponibles. Cada tabla lista las columnas que se pueden consultar y un ejemplo del tipo de dato que contienen.
-                Utiliza esta información para solicitar cambios en la aplicación, por ejemplo: "En la pantalla de restricciones, puebla el campo 'Materiales' con los valores de la columna 'Material' de la tabla 'Datos de Presupuesto'".
+                Esta sección muestra los esquemas de las fuentes de datos disponibles directamente desde la API. Cada tabla lista las columnas que se pueden consultar, su descripción y su nombre técnico.
+                Utiliza esta información para entender la estructura de datos al solicitar cambios en la aplicación.
             </p>
 
+            {isLoading && <p className="text-gray-500 animate-pulse text-center">Cargando documentación de la API...</p>}
+            {error && <p className="text-red-500 text-center">Error al cargar la documentación: {error.message}</p>}
+            
             <div className="space-y-8">
-                <DataDictionary 
-                    title="Tabla: Datos de Presupuesto"
-                    data={presupuestoData}
-                    isLoading={isPresupuestoLoading}
-                    error={presupuestoError}
-                />
-                <DataDictionary
-                    title="Tabla: Tiempos de Ensamble"
-                    data={tiempoData}
-                    isLoading={isTiempoLoading}
-                    error={tiempoError}
-                />
+                {dataSources.map(sourceName => (
+                    <DataDictionary
+                        key={sourceName}
+                        title={`Tabla: ${sourceName}`}
+                        sourceInfo={documentation?.[sourceName]}
+                        isLoading={false}
+                    />
+                ))}
             </div>
         </div>
     );
 };
+
+    

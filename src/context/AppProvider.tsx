@@ -10,7 +10,7 @@ import {
 } from '@/types/types';
 import { ActiveView } from '@/constants/constants';
 import { generateProductionPlan, generateTacticalPlan, processAndValidateAssemblyData } from '@/services/OptimizationService';
-import { fetchTiempoEnsambleData } from '@/hooks/useApiData';
+import { queryApi } from '@/hooks/useApiData';
 
 const initialState: AppState = {
     year: null,
@@ -153,7 +153,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const handleSyncAndValidate = useCallback(async (): Promise<boolean> => {
         addNotification('info', 'Sincronizando y validando datos de ensamble desde la API...');
         try {
-            const assemblyData: TiempoEnsambleItem[] = await fetchTiempoEnsambleData({ limit: 50000 });
+            const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
+                source: 'TiemposEnsamblado', 
+                operation: 'get_data',
+                pagination: { limit: 50000 }
+            });
             if (assemblyData.length === 0) {
                 addNotification('warning', "La API no devolvió datos de tiempos de ensamble.");
                 dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: ["La API no devolvió datos."] }});
@@ -276,3 +280,5 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
+
+    

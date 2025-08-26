@@ -402,14 +402,22 @@ export interface Machine {
 }
 
 // --- API Data Types ---
-export interface PresupuestoParams {
-    skip?: number;
-    limit?: number;
-    año?: number;
-    mes?: number;
-    centro?: string;
-    etiqueta?: string;
-}
+export type ApiQuery = 
+  | {
+      operation: 'get_documentation';
+    }
+  | {
+      operation: 'get_data';
+      source: string;
+      filters?: { [key: string]: any };
+      pagination?: { skip?: number; limit?: number };
+    }
+  | {
+      operation: 'get_distinct_values';
+      source: string;
+      column: string;
+    };
+    
 export interface PresupuestoItem {
   Año: number;
   Mes: number;
@@ -441,3 +449,5 @@ export interface TiempoEnsambleItem {
 
 // Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';
+
+    

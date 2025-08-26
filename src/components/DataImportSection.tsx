@@ -1,7 +1,7 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
-import { fetchPresupuestoData } from '@/hooks/useApiData';
+import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 
@@ -37,8 +37,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [fetchedData, setFetchedData] = useState<SalesDataRow[]>([]);
   const { addNotification } = useAppContext();
+  
+  const [filterOptions, setFilterOptions] = useState({
+      años: [] as {value: number, label: string}[],
+      meses: MONTH_NAMES.map((m, i) => ({ value: i + 1, label: m })),
+      centros: [] as {value: string, label: string}[],
+      etiquetas: [] as {value: string, label: string}[],
+  });
 
-  const [filterData, setFilterData] = useState<PresupuestoItem[]>([]);
   const [filters, setFilters] = useState({
       año: new Date().getFullYear().toString(),
       mes: '',
@@ -55,11 +61,26 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   };
 
   // Cargar datos para los filtros una sola vez
-  React.useEffect(() => {
+  useEffect(() => {
     const loadFilterOptions = async () => {
       try {
-        const data = await fetchPresupuestoData({ limit: 50000 });
-        setFilterData(data);
+        const [añosData, centrosData, etiquetasData] = await Promise.all([
+          queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' }),
+          queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' }),
+          queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' })
+        ]);
+
+        const currentYear = new Date().getFullYear();
+        const añosSet = new Set(añosData.map((item: any) => item['Año']));
+        if (!añosSet.has(currentYear)) añosSet.add(currentYear);
+
+        setFilterOptions(prev => ({
+          ...prev,
+          años: Array.from(añosSet).sort((a,b) => b - a).map(y => ({ value: y, label: String(y) })),
+          centros: centrosData.map((item: any) => ({ value: item['Centro'], label: item['Centro'] })).sort((a,b) => a.label.localeCompare(b.label)),
+          etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })).sort((a,b) => a.label.localeCompare(b.label)),
+        }));
+
       } catch (error) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
       }
@@ -67,29 +88,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     loadFilterOptions();
   }, [addNotification]);
 
-  // Opciones memoizadas para los dropdowns de filtros
-  const filterOptions = useMemo(() => {
-      const años = new Set<number>();
-      const centros = new Set<string>();
-      const etiquetas = new Set<string>();
-
-      filterData.forEach(item => {
-          if (item.Año) años.add(item.Año);
-          if (item.Centro) centros.add(item.Centro);
-          if (item.Etiqueta) etiquetas.add(item.Etiqueta);
-      });
-      
-      const currentYear = new Date().getFullYear();
-      if (!años.has(currentYear)) años.add(currentYear);
-
-
-      return {
-          años: Array.from(años).sort((a,b) => b - a).map(y => ({ value: y, label: String(y) })),
-          meses: MONTH_NAMES.map((m, i) => ({ value: i + 1, label: m })),
-          centros: Array.from(centros).sort().map(c => ({ value: c, label: c })),
-          etiquetas: Array.from(etiquetas).sort().map(e => ({ value: e, label: e })),
-      };
-  }, [filterData]);
 
   // Get a list of unique centers from the fetched data to build table columns
   const uniqueCentersInFetchedData = useMemo(() => {
@@ -127,16 +125,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       addNotification('info', `Consultando datos desde la API...`);
 
       try {
-          const apiParams: { limit: number; año?: number; mes?: number; centro?: string; etiqueta?: string; } = {
-              limit: 50000, 
-          };
-          
-          if(filters.año) apiParams.año = Number(filters.año);
-          if(filters.mes) apiParams.mes = Number(filters.mes);
-          if(filters.centro) apiParams.centro = filters.centro;
-          if(filters.etiqueta) apiParams.etiqueta = filters.etiqueta;
+          const apiFilters: { [key: string]: any } = {};
+          if(filters.año) apiFilters['Año'] = Number(filters.año);
+          if(filters.mes) apiFilters['Mes'] = Number(filters.mes);
+          if(filters.centro) apiFilters['Centro'] = filters.centro;
+          if(filters.etiqueta) apiFilters['Etiqueta'] = filters.etiqueta;
 
-          const dataFromApi = await fetchPresupuestoData(apiParams);
+          const dataFromApi: PresupuestoItem[] = await queryApi({
+            source: 'Presupuesto',
+            operation: 'get_data',
+            filters: apiFilters,
+            pagination: { limit: 50000 }
+          });
           
           if (dataFromApi.length === 0) {
               addNotification('warning', 'La API no devolvió datos para los filtros seleccionados.');
@@ -364,3 +364,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
+
+    

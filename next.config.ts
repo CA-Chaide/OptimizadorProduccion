@@ -1,3 +1,4 @@
+
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -18,6 +19,16 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/Aplicativos/ApiOptimizadorProduccion/:path*',
+        destination: 'http://172.16.10.35:8091/Aplicativos/ApiOptimizadorProduccion/:path*',
+      },
+    ]
+  },
 };
 
 export default nextConfig;
+
+    

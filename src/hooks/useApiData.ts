@@ -1,122 +1,74 @@
 
-import useSWR from 'swr';
-import type { PresupuestoItem, TiempoEnsambleItem, PresupuestoParams } from '@/types/types';
+import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
-const API_BASE_URL = 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion';
+const API_BASE_URL = 'http://127.0.0.1:8000'; // Using local proxy for development
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
 
 /**
- * Un 'fetcher' genérico y reutilizable para SWR.
+ * Un 'fetcher' genérico y reutilizable para peticiones a la API.
  * Se encarga de hacer la petición fetch, añadir el token de autorización,
- * y parsear la respuesta como JSON.
+ * y parsear la respuesta como JSON. Puede manejar peticiones GET y POST.
  * @param url La URL a la que se hará la petición.
+ * @param method El método HTTP (GET o POST).
+ * @param body El cuerpo de la petición para POST.
  * @returns Los datos en formato JSON.
  * @throws Un error si la respuesta de la red no es 'ok'.
  */
-const fetcher = async (url: string) => {
-  const res = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${API_TOKEN}`,
-      'Accept': 'application/json',
-    },
-  });
+const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
+    const options: RequestInit = {
+        method,
+        headers: {
+            'Authorization': `Bearer ${API_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        },
+    };
 
-  // Si el servidor responde con un código de error (ej. 401, 404, 500),
-  // SWR lo capturará como un error.
-  if (!res.ok) {
-    const error: any = new Error('Ocurrió un error al cargar los datos.');
-    // Adjuntamos información extra al objeto de error.
-    try {
-        error.info = await res.json();
-    } catch (e) {
-        error.info = { message: 'No se pudo leer el cuerpo del error.', statusText: res.statusText };
+    if (method === 'POST' && body) {
+        options.body = JSON.stringify(body);
     }
-    error.status = res.status;
-    throw error;
-  }
 
-  return res.json();
+    const res = await fetch(url, options);
+
+    if (!res.ok) {
+        const error: any = new Error('Ocurrió un error al cargar los datos desde la API.');
+        try {
+            error.info = await res.json();
+        } catch (e) {
+            error.info = { message: `No se pudo leer el cuerpo del error. Estado: ${res.status}`, statusText: res.statusText };
+        }
+        error.status = res.status;
+        throw error;
+    }
+
+    // Handle empty response for certain successful operations
+    if (res.status === 204 || res.headers.get('content-length') === '0') {
+        return null;
+    }
+
+    return res.json();
 };
 
 /**
- * Obtiene los datos de presupuesto de la API con paginación y filtros opcionales.
- * @param params Objeto con los parámetros de paginación y filtros.
- * @returns Los datos de presupuesto.
+ * Realiza una consulta genérica al nuevo motor de la API.
+ * @param query El objeto de la consulta, que puede ser para documentación o datos.
+ * @returns La respuesta de la API.
  */
-export const fetchPresupuestoData = async (params: PresupuestoParams = {}): Promise<PresupuestoItem[]> => {
-    const query = new URLSearchParams();
-    
-    // Paginación
-    query.append('skip', (params.skip || 0).toString());
-    
-    // Si no se especifica un límite, la API podría tener uno por defecto.
-    // Para obtener todos, no añadimos el parámetro de límite a menos que se especifique.
-    if (params.limit !== undefined) {
-      query.append('limit', params.limit.toString());
+export const queryApi = async (query: ApiQuery): Promise<any> => {
+    let url = API_BASE_URL;
+    let method: 'GET' | 'POST' = 'POST';
+    let body: any = query;
+
+    if (query.operation === 'get_documentation') {
+        url += '/documentation/';
+        method = 'GET';
+        body = undefined; // No body for documentation GET request
+    } else {
+        url += '/query/';
     }
 
-    // Añadir filtros si existen
-    if (params.año) query.append('año', params.año.toString());
-    if (params.mes) query.append('mes', params.mes.toString());
-    if (params.centro) query.append('centro', params.centro);
-    if (params.etiqueta) query.append('etiqueta', params.etiqueta);
+    return fetcher(url, method, body);
+};
 
-    const url = `${API_BASE_URL}/presupuesto/?${query.toString()}`;
     
-    // Usamos el fetcher directamente ya que esta función no es un hook de SWR.
-    return fetcher(url);
-};
-
-/**
- * Obtiene los datos de tiempos de ensamble de la API.
- * @param params Objeto con parámetros (actualmente solo soporta 'limit').
- * @returns Los datos de tiempos de ensamble.
- */
-export const fetchTiempoEnsambleData = async (params: { limit?: number } = {}): Promise<TiempoEnsambleItem[]> => {
-    const query = new URLSearchParams();
-    if (params.limit !== undefined) {
-      query.append('limit', params.limit.toString());
-    }
-    const url = `${API_BASE_URL}/tiempoensamble/?${query.toString()}`;
-    return fetcher(url);
-};
-
-
-// --- Hooks Específicos por Endpoint para Diccionario ---
-
-/**
- * Hook para obtener los datos de la API de Presupuesto.
- * Utiliza SWR para cacheo, revalidación y deduplicación automáticas.
- * Pide solo el primer registro para el diccionario de datos.
- */
-export function usePresupuestoDataForDictionary() {
-  const { data, error, isLoading } = useSWR<PresupuestoItem[], Error>(
-    `${API_BASE_URL}/presupuesto/?skip=0&limit=1`,
-    fetcher
-  );
-
-  return {
-    data,
-    error,
-    isLoading,
-  };
-}
-
-/**
- * Hook para obtener los datos de la API de Tiempos de Ensamble.
- * Utiliza SWR para cacheo, revalidación y deduplicación automáticas.
- * Pide solo el primer registro para el diccionario de datos.
- */
-export function useTiempoEnsambleData() {
-  const { data, error, isLoading } = useSWR<TiempoEnsambleItem[], Error>(
-    `${API_BASE_URL}/tiempoensamble/?skip=0&limit=1`,
-    fetcher
-  );
-
-  return {
-    data,
-    error,
-    isLoading,
-  };
-}
