@@ -2,18 +2,13 @@
 import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
-const API_BASE_URL = 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion'; 
+const API_BASE_URL = 'https://intranet.chaide.com'; 
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
 
 /**
  * Un 'fetcher' genérico y reutilizable para peticiones a la API.
  * Se encarga de hacer la petición fetch, añadir el token de autorización,
  * y parsear la respuesta como JSON. Puede manejar peticiones GET y POST.
- * @param url La URL a la que se hará la petición.
- * @param method El método HTTP (GET o POST).
- * @param body El cuerpo de la petición para POST.
- * @returns Los datos en formato JSON.
- * @throws Un error si la respuesta de la red no es 'ok'.
  */
 const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
     const options: RequestInit = {
@@ -44,7 +39,6 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
             throw error;
         }
 
-        // Handle empty response for certain successful operations
         if (res.status === 204 || res.headers.get('content-length') === '0') {
             return null;
         }
@@ -53,7 +47,7 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
         return jsonResponse;
 
     } catch (error) {
-        // Re-throw the error to be caught by the calling function
+        console.error('Fetcher: Capturado error de fetch', error);
         throw error;
     }
 };
@@ -64,17 +58,18 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
  * @returns La respuesta de la API.
  */
 export const queryApi = async (query: ApiQuery): Promise<any> => {
-    let url = API_BASE_URL;
+    let endpoint = '';
     let method: 'GET' | 'POST' = 'POST';
     let body: any = query;
 
     if (query.operation === 'get_documentation') {
-        url += '/documentation/';
+        endpoint = '/Aplicativos/ApiOptimizadorProduccion/documentation/';
         method = 'GET';
         body = undefined; // No body for documentation GET request
     } else {
-        url += '/query/';
+        endpoint = '/Aplicativos/ApiOptimizadorProduccion/query/';
     }
 
-    return fetcher(url, method, body);
+    const fullUrl = API_BASE_URL + endpoint;
+    return fetcher(fullUrl, method, body);
 };
