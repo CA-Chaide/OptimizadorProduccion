@@ -80,7 +80,7 @@ const ProductionOptimizerClient: React.FC = () => {
       <div className="flex h-screen bg-gray-100">
         {/* Sidebar */}
         <div className="hidden md:flex flex-col w-64 bg-primary text-primary-foreground">
-            <div className="flex items-center justify-center h-20 bg-white p-4">
+            <div className="flex items-center justify-center h-20 bg-primary p-4">
                 <Image src="/logo.png" alt="Chaide Logo" width={150} height={50} />
             </div>
             <div className="flex flex-col flex-1 overflow-y-auto">
