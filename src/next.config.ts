@@ -19,14 +19,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  async rewrites() {
-    return [
-      {
-        source: '/Aplicativos/ApiOptimizadorProduccion/:path*',
-        destination: 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion/:path*',
-      },
-    ]
-  },
 };
 
 export default nextConfig;

@@ -82,15 +82,12 @@ export const RealDataSection: React.FC = () => {
 
     useEffect(() => {
         const fetchDocumentation = async () => {
-            console.log("RealDataSection: Iniciando fetch de documentación...");
             setIsLoading(true);
             setError(null);
             try {
                 const docData = await queryApi({ operation: 'get_documentation' });
-                console.log("RealDataSection: Datos de documentación recibidos:", docData);
                 setDocumentation(docData);
             } catch (err) {
-                console.error("RealDataSection: Error al hacer fetch de la documentación", err);
                 setError(err as Error);
             } finally {
                 setIsLoading(false);
