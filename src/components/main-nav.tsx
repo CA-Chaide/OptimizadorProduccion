@@ -30,7 +30,7 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
               isActive && 'bg-white/25'
             )}
           >
-            {React.cloneElement(config.icon, { className: 'h-5 w-5 mr-3' })}
+            {React.cloneElement(config.icon, { className: 'h-5 w-5 mr-6' })}
             {config.title}
           </a>
         );
