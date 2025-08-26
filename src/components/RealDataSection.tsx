@@ -82,14 +82,18 @@ export const RealDataSection: React.FC = () => {
 
     useEffect(() => {
         const fetchDocumentation = async () => {
+            console.log('RealDataSection: Iniciando fetch de documentación...');
             setIsLoading(true);
             setError(null);
             try {
                 const docData = await queryApi({ operation: 'get_documentation' });
+                console.log('RealDataSection: Datos de documentación recibidos:', docData);
                 setDocumentation(docData);
             } catch (err) {
+                console.error('RealDataSection: Error al obtener la documentación:', err);
                 setError(err as Error);
             } finally {
+                console.log('RealDataSection: Fetch de documentación finalizado.');
                 setIsLoading(false);
             }
         };
@@ -127,5 +131,3 @@ export const RealDataSection: React.FC = () => {
         </div>
     );
 };
-
-    
