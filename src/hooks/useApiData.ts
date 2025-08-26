@@ -70,5 +70,3 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
 
     return fetcher(url, method, body);
 };
-
-    
