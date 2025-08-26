@@ -2,7 +2,7 @@
 import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
-const API_BASE_URL = 'http://127.0.0.1:8000'; // Using local proxy for development
+const API_BASE_URL = '/Aplicativos/ApiOptimizadorProduccion'; 
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
 
 /**
