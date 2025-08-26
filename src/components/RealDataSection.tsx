@@ -9,6 +9,7 @@ interface ColumnInfo {
     column_name: string;
     friendly_name: string;
     description: string;
+    sample_value: string;
 }
 
 interface SourceInfo {
@@ -54,9 +55,10 @@ const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLo
                 <table className="min-w-full text-sm divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0">
                         <tr>
-                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/3">Nombre de Columna (API)</th>
-                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/3">Nombre Amigable</th>
-                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/4">Nombre de Columna (API)</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/4">Nombre Amigable</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/4">Descripción</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/4">Valor de Ejemplo</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -65,6 +67,7 @@ const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLo
                                 <td className="px-4 py-2 whitespace-nowrap font-mono text-indigo-700">{col.column_name}</td>
                                 <td className="px-4 py-2 whitespace-nowrap text-gray-800">{col.friendly_name}</td>
                                 <td className="px-4 py-2 whitespace-normal text-gray-600">{col.description}</td>
+                                <td className="px-4 py-2 whitespace-nowrap font-mono text-gray-500">{col.sample_value || 'N/A'}</td>
                             </tr>
                         ))}
                     </tbody>
