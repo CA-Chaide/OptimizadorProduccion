@@ -2,6 +2,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import {
   DataImportSection,
   ConstraintConfigurationSection,
@@ -78,13 +79,12 @@ const ProductionOptimizerClient: React.FC = () => {
     return (
       <div className="flex h-screen bg-gray-100">
         {/* Sidebar */}
-        <div className="hidden md:flex flex-col w-64 bg-gray-800">
-            <div className="flex items-center justify-center h-16 bg-gray-900">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
-                <span className="text-white font-bold uppercase ml-2">Chaide</span>
+        <div className="hidden md:flex flex-col w-64 bg-primary text-primary-foreground">
+            <div className="flex items-center justify-center h-20 bg-white p-4">
+                <Image src="/logo.png" alt="Chaide Logo" width={150} height={50} />
             </div>
             <div className="flex flex-col flex-1 overflow-y-auto">
-                <nav className="flex-1 px-2 py-4 bg-gray-800">
+                <nav className="flex-1 px-2 py-4">
                   <MainNav />
                 </nav>
             </div>

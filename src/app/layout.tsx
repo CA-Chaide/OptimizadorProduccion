@@ -5,6 +5,7 @@ import Script from 'next/script';
 import { Toaster } from '@/components/ui/toaster';
 
 import '@/app/globals.css';
+import { cn } from '@/lib/utils';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -20,7 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={cn('min-h-screen bg-background font-sans antialiased', inter.variable)}>
         {children}
         <Toaster />
         <Script

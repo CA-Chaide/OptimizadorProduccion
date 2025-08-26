@@ -10,7 +10,7 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
   const { activeView, dispatch } = useAppContext();
 
   return (
-    <nav className={cn('flex flex-col', className)} {...props}>
+    <nav className={cn('flex flex-col space-y-1', className)} {...props}>
       {Object.values(ActiveView).map(viewId => {
         const config = viewConfig[viewId];
         if (!config) return null;
@@ -26,11 +26,11 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
                 dispatch({ type: 'SET_ACTIVE_VIEW', payload: viewId })
             }}
             className={cn(
-              'flex items-center px-4 py-2 mt-2 text-gray-100 rounded hover:bg-gray-700',
-              isActive && 'bg-gray-700'
+              'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20',
+              isActive && 'bg-white/25'
             )}
           >
-            {React.cloneElement(config.icon, { className: 'h-6 w-6 mr-3' })}
+            {React.cloneElement(config.icon, { className: 'h-5 w-5 mr-3' })}
             {config.title}
           </a>
         );
