@@ -74,9 +74,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       const etiquetas = new Set<string>();
 
       filterData.forEach(item => {
-          años.add(item.Año);
-          centros.add(item.Centro);
-          etiquetas.add(item.Etiqueta);
+          if (item.Año) años.add(item.Año);
+          if (item.Centro) centros.add(item.Centro);
+          if (item.Etiqueta) etiquetas.add(item.Etiqueta);
       });
       
       const currentYear = new Date().getFullYear();
@@ -145,8 +145,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
           const mappedData: SalesDataRow[] = dataFromApi.map((item, index) => ({
               id: `row-${Date.now()}-${index}`,
-              año: item.Año, mes: item.Mes, sector: item.Sector,
-              etiqueta: item.Etiqueta, código: item.CodMaterial.trim(),
+              año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+              etiqueta: item.Etiqueta || 'Sin Etiqueta', código: item.CodMaterial.trim(),
               centro: item.Centro.trim(), unidadesProyectado: item.UnidadesProyectado,
               dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
               familia: item.Familia, marca: item.Marca, lineaProduccion: '',
@@ -210,43 +210,37 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   };
 
   const totals = useMemo(() => {
-    // Correctly initialize the totals object structure.
-    const result = {
-        subtotalSectors: uniqueCentersInFetchedData.reduce((acc, center) => {
-            acc[center] = 0;
-            return acc;
-        }, { total: 0 } as { [centerName: string]: number; total: number }),
-        selectedTotal: uniqueCentersInFetchedData.reduce((acc, center) => {
-            acc[center] = 0;
-            return acc;
-        }, { total: 0 } as { [centerName: string]: number; total: number }),
-    };
+      const result = {
+          subtotalSectors: uniqueCentersInFetchedData.reduce((acc, center) => ({ ...acc, [center]: 0 }), { total: 0 } as { [centerName: string]: number; total: number }),
+          selectedTotal: uniqueCentersInFetchedData.reduce((acc, center) => ({ ...acc, [center]: 0 }), { total: 0 } as { [centerName: string]: number; total: number }),
+      };
 
-    if (!aggregatedData) return result;
+      if (!aggregatedData) return result;
 
-    const targetSectors = new Set(['01', '02', '03']);
-    
-    // Always iterate over the raw fetchedData for the subtotal to ensure accuracy.
-    fetchedData.forEach(row => {
-        if (targetSectors.has(row.sector)) {
-            result.subtotalSectors.total += row.unidadesProyectado;
-            if (result.subtotalSectors[row.centro] !== undefined) {
-                result.subtotalSectors[row.centro] += row.unidadesProyectado;
-            }
-        }
-    });
+      // Calculate subtotal for specific sectors (01, 02, 03) directly from the source data
+      const targetSectors = new Set(['01', '02', '03']);
+      fetchedData.forEach(row => {
+          if (targetSectors.has(row.sector)) {
+              result.subtotalSectors.total += row.unidadesProyectado;
+              if (result.subtotalSectors[row.centro] !== undefined) {
+                  result.subtotalSectors[row.centro] += row.unidadesProyectado;
+              }
+          }
+      });
 
-    Object.entries(aggregatedData).forEach(([key, value]) => {
-        if (selectedGroups.has(key)) {
-            result.selectedTotal.total += value.totalUnits;
-            uniqueCentersInFetchedData.forEach(center => {
-                result.selectedTotal[center] += (value.unitsByCenter[center] || 0);
-            });
-        }
-    });
+      // Calculate total for selected groups
+      Object.entries(aggregatedData).forEach(([key, value]) => {
+          if (selectedGroups.has(key)) {
+              result.selectedTotal.total += value.totalUnits;
+              uniqueCentersInFetchedData.forEach(center => {
+                  result.selectedTotal[center] += (value.unitsByCenter[center] || 0);
+              });
+          }
+      });
 
-    return result;
+      return result;
   }, [aggregatedData, selectedGroups, fetchedData, uniqueCentersInFetchedData]);
+
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
