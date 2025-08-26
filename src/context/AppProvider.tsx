@@ -6,10 +6,11 @@ import { useToast } from "@/hooks/use-toast";
 import {
     AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
     TacticalPlanResult, Employee, EmployeeSkill, AbsenteeismEvent, MaintenanceEvent,
-    WorkShift, AppConstraints, NotificationMessage
+    WorkShift, AppConstraints, NotificationMessage, TiempoEnsambleItem
 } from '@/types/types';
 import { ActiveView } from '@/constants/constants';
-import { generateProductionPlan, generateTacticalPlan } from '@/services/OptimizationService';
+import { generateProductionPlan, generateTacticalPlan, processAssemblyDataFromApi } from '@/services/OptimizationService';
+import { fetchTiempoEnsambleData } from '@/hooks/useApiData';
 
 const initialState: AppState = {
     year: null,
@@ -144,25 +145,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_ACTIVE_VIEW', payload: ActiveView.CONSTRAINTS });
     };
 
-    const handleGeneratePlan = useCallback(() => {
+    const handleGeneratePlan = useCallback(async () => {
         if (state.salesData.length === 0) {
             addNotification('warning', 'Por favor, carga primero los datos de ventas.');
             return;
         }
         dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
-        addNotification('info', 'Generando plan de producción... Esto puede tardar unos momentos.');
-
-        setTimeout(() => {
-            try {
-                const plan = generateProductionPlan(state.salesData, state.constraints);
-                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: plan });
-                addNotification('success', 'Plan de producción generado exitosamente.');
-            } catch (error) {
-                console.error("Error generating production plan:", error);
-                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
-                addNotification('error', `Error al generar el plan: ${(error as Error).message}`);
+        
+        try {
+            // 1. Fetch assembly times data from the API
+            addNotification('info', 'Sincronizando datos de ensamble desde la API...');
+            const assemblyData: TiempoEnsambleItem[] = await fetchTiempoEnsambleData({ limit: 50000 });
+            
+            if (assemblyData.length === 0) {
+                throw new Error("La API no devolvió datos de tiempos de ensamble.");
             }
-        }, 500);
+            addNotification('success', `Se sincronizaron ${assemblyData.length} registros de ensamble.`);
+
+            // 2. Process this data to update constraints (ProductProcessInfos and InventorySettings)
+            addNotification('info', 'Validando y procesando datos de ensamble...');
+            const { productProcessInfos, inventorySettings, validationErrors } = processAssemblyDataFromApi(
+                assemblyData,
+                state.constraints,
+                state.salesData
+            );
+
+            if (validationErrors.length > 0) {
+                addNotification('error', `La sincronización se detuvo por ${validationErrors.length} inconsistencia(s) entre la API y la configuración.`, validationErrors);
+                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
+                return;
+            }
+
+            const updatedConstraints: AppConstraints = {
+                ...state.constraints,
+                productProcessInfos,
+                inventorySettings,
+            };
+            
+            // This dispatch is important to make sure the planner uses the latest data
+            dispatch({ type: 'SET_CONSTRAINTS', payload: updatedConstraints });
+
+            // 3. Generate the actual production plan with the updated constraints
+            addNotification('info', 'Generando plan de producción... Esto puede tardar unos momentos.');
+            const plan = generateProductionPlan(state.salesData, updatedConstraints);
+            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: plan });
+            addNotification('success', 'Plan de producción generado exitosamente.');
+
+        } catch (error) {
+            console.error("Error during plan generation process:", error);
+            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
+            addNotification('error', `Error al generar el plan: ${(error as Error).message}`);
+        }
     }, [state.salesData, state.constraints, addNotification]);
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {

@@ -6,7 +6,7 @@ import {
     NotificationMessage, ProductionTimeImportRow, Holiday, ProcessType, WorkstationDefinition, ShiftParameters
 } from '@/types/types';
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
-import { parseProductionTimesExcel, processImportedProductionData } from '@/services/OptimizationService';
+
 
 interface ConstraintConfigurationSectionProps {
   constraints: AppConstraints;
@@ -74,9 +74,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   const [assignedWsDefId, setAssignedWsDefId] = useState<string>(''); // ID of WorkstationDefinition to assign
   const [assignedWsQuantity, setAssignedWsQuantity] = useState<number>(1); // Quantity for this assignment
   
-  const [productionTimesFileName, setProductionTimesFileName] = useState<string | null>(null);
-  const [isProcessingTimes, setIsProcessingTimes] = useState<boolean>(false);
-
   const [globalBaseCostDisplay, setGlobalBaseCostDisplay] = useState<string>('');
   const [laborFactorsDisplay, setLaborFactorsDisplay] = useState({
     factorAdicionalDiurno: '',
@@ -327,65 +324,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     addNotification('info', 'Puesto desasignado de la línea.');
   };
   
-  // --- Production Times & Inventory Import ---
-  const handleProductionTimesFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    setProductionTimesFileName(file.name);
-    setIsProcessingTimes(true);
-    addNotification('info', `Validando y procesando archivo: ${file.name}...`);
-
-    try {
-        const parsedData = await parseProductionTimesExcel(file);
-      
-        if (parsedData.times.length === 0 && parsedData.supplyInfos.length === 0) {
-            addNotification('warning', 'El archivo no contiene datos válidos en las hojas "Tiempos_produccion" o "Tipo_suministro".');
-            return;
-        }
-
-        // The processing function now returns validation errors if any.
-        const {
-            productProcessInfos: newProductProcessInfos,
-            inventorySettings: newInventorySettings,
-            validationErrors
-        } = processImportedProductionData(parsedData, constraints, uniqueProductsForDropdowns);
-        
-        // If there are validation errors, stop the process and notify the user.
-        if (validationErrors.length > 0) {
-            const errorTitle = `La importación fue detenida por ${validationErrors.length} inconsistencia(s).`;
-            addNotification('error', errorTitle, validationErrors);
-            return; // Halt execution
-        }
-        
-        // If validation passes, proceed with updating the state.
-        const existingInventorySettings = constraints.inventorySettings || [];
-        const updatedInventorySettingsMap = new Map(existingInventorySettings.map(is => [`${is.itemId}-${is.centerId}`, is]));
-        
-        newInventorySettings.forEach(newSetting => {
-            updatedInventorySettingsMap.set(`${newSetting.itemId}-${newSetting.centerId}`, newSetting);
-        });
-
-        onConstraintsUpdate({
-            ...constraints,
-            productProcessInfos: newProductProcessInfos,
-            inventorySettings: Array.from(updatedInventorySettingsMap.values()),
-        });
-
-        addNotification('success', `Importación exitosa. Se procesaron ${newProductProcessInfos.length} registros de proceso y ${newInventorySettings.length} de inventario.`);
-
-    } catch (error) {
-      console.error("Error processing production times file:", error);
-      addNotification('error', `Error al procesar el archivo: ${(error as Error).message}`);
-    } finally {
-      setProductionTimesFileName(null);
-      setIsProcessingTimes(false);
-      event.target.value = '';
-    }
-  };
-
   const handleSaveGlobalCosts = () => {
     const baseCost = parseFloat(globalBaseCostDisplay);
     const factors: LaborCostSettings = {
@@ -438,9 +376,8 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   const tabs = [
     { id: 'workstationDefs', label: '1. Puestos Trabajo (Global)' },
     { id: 'workCentersAndLines', label: '2. Centros y Líneas' },
-    { id: 'productionTimes', label: '3. Importar Tiempos' },
-    { id: 'costsAndShifts', label: '4. Costos y Turnos' },
-    { id: 'holidays', label: '5. Feriados' },
+    { id: 'costsAndShifts', label: '3. Costos y Turnos' },
+    { id: 'holidays', label: '4. Feriados' },
   ];
   
   const activeWorkCenters = useMemo(() => constraints.workCenters.filter(wc => wc.isActive !== false), [constraints.workCenters]);
@@ -602,37 +539,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                               )
                           })}
                       </ul>
-                  </div>
-              </div>
-            )}
-            {activeTab === 'productionTimes' && (
-              <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-800">Importar Tiempos de Producción, Inventario y Suministro</h3>
-                  <p className="text-gray-600 text-sm">
-                      Seleccione un archivo Excel (.xls o .xlsx) que contenga las hojas de cálculo:
-                      <br/>- <strong>Tiempos_produccion</strong>: Con columnas: CódigoMaterial, Centro, Linea, PuestoTrabajo, Tiempo(minutos), SaldoInicial, StockSeguridad, StockMaximo.
-                      <br/>- <strong>Tipo_suministro</strong>: Con columnas: Código, Centro, Aprovisionamiento (con valores 'E', 'X', o 'F').
-                  </p>
-                   <div className="mt-4">
-                      <label htmlFor="times-upload" className="w-full sm:w-auto flex items-center justify-center px-6 py-3 border-2 border-dashed border-indigo-300 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition-colors duration-200">
-                          <DataImportIcon />
-                          <span className="ml-2 text-indigo-600 font-medium">
-                            {productionTimesFileName || "Seleccionar archivo Excel"}
-                          </span>
-                      </label>
-                      <input id="times-upload" type="file" className="sr-only" accept=".xlsx, .xls" onChange={handleProductionTimesFileChange} disabled={isProcessingTimes} />
-                      {isProcessingTimes && <p className="mt-2 text-sm text-indigo-600">Procesando...</p>}
-                  </div>
-                  <h4 className="text-md font-semibold text-gray-700 pt-4">Resultados de la Importación</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="p-4 bg-gray-50 rounded-md">
-                          <p className="font-medium text-gray-800">Tiempos de Proceso Definidos</p>
-                          <p className="text-2xl font-bold text-indigo-600">{constraints.productProcessInfos.length}</p>
-                      </div>
-                      <div className="p-4 bg-gray-50 rounded-md">
-                          <p className="font-medium text-gray-800">Configuraciones de Inventario</p>
-                          <p className="text-2xl font-bold text-indigo-600">{constraints.inventorySettings.length}</p>
-                      </div>
                   </div>
               </div>
             )}

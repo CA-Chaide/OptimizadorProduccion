@@ -1,12 +1,11 @@
 
-
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, ProductionTimeImportRow, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     ParsedProductionData, SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
-    Machine, Qualification
+    Machine, Qualification, TiempoEnsambleItem
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -86,83 +85,6 @@ export const parseExcelData = (file: File): Promise<SalesDataRow[]> => {
       } catch (error) {
         console.error("Error processing Sales Excel:", error);
         reject(new Error('Formato de archivo Excel de ventas inválido o corrupto.'));
-      }
-    };
-    reader.onerror = (error) => reject(error);
-    reader.readAsBinaryString(file);
-  });
-};
-
-export const parseProductionTimesExcel = (file: File): Promise<ParsedProductionData> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = event.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
-
-        const productionTimes: ProductionTimeImportRow[] = [];
-        const supplyInfos: SupplyInfo[] = [];
-
-        // --- Parse Times Sheet ("Tiempos_produccion" or "Tiempos_producción") ---
-        const timesWorksheet = findSheetByName(workbook, 'Tiempos_produccion');
-        if (timesWorksheet) {
-            const jsonData = XLSX.utils.sheet_to_json(timesWorksheet, { header: 1 }) as any[][];
-            if (jsonData.length >= 2) {
-                productionTimes.push(...jsonData.slice(1).map((row, index) => {
-                  if(row.filter(cell => cell !== null && cell !== undefined && cell !== '').length === 0) return null;
-                  
-                  // The time value from Excel is assumed to be in MINUTES.
-                  return {
-                    rowIndex: index + 2, 
-                    códigoMaterial: String(row[0] || '').trim(),      
-                    centro: String(row[1] || '').trim(),              
-                    linea: String(row[2] || '').trim(),               
-                    puestoTrabajo: String(row[3] || '').trim(),      
-                    tiempo: parseFloat(String(row[4])) || 0, // This is in MINUTES         
-                    saldoInicial: parseFloat(String(row[5])) || 0,    
-                    stockSeguridad: parseFloat(String(row[6])) || 0,  
-                    stockMaximo: parseFloat(String(row[7])) || 0,     
-                  };
-                }).filter(row => 
-                    row !== null && 
-                    row.códigoMaterial && 
-                    row.centro && 
-                    row.linea && 
-                    row.puestoTrabajo
-                ) as ProductionTimeImportRow[]);
-            }
-        }
-        
-        // --- Parse Supply Sheet ("Tipo_suministro") ---
-        const supplyWorksheet = findSheetByName(workbook, 'Tipo_suministro');
-        if (supplyWorksheet) {
-            const supplyJsonData = XLSX.utils.sheet_to_json(supplyWorksheet, { header: 1 }) as any[][];
-            if (supplyJsonData.length > 1) {
-                supplyInfos.push(
-                    ...supplyJsonData.slice(1).map((row): SupplyInfo | null => {
-                         if(row.filter(cell => cell !== null && cell !== undefined && cell !== '').length === 0) return null;
-                         
-                         const aprovisionamiento = String(row[2] || '').trim().toUpperCase();
-                         if (aprovisionamiento !== 'E' && aprovisionamiento !== 'X' && aprovisionamiento !== 'F') {
-                            return null;
-                         }
-                         
-                         return {
-                            código: String(row[0] || '').trim(),
-                            centro: String(row[1] || '').trim(),
-                            aprovisionamiento: aprovisionamiento as 'E' | 'X' | 'F',
-                         };
-                    }).filter((item): item is SupplyInfo => item !== null && !!item.código && !!item.centro)
-                );
-            }
-        }
-        
-        resolve({ times: productionTimes, supplyInfos });
-
-      } catch (error) {
-        console.error("Error processing Production Times Excel:", error);
-        reject(new Error('Formato de archivo Excel de tiempos/inventario inválido o corrupto. Revise las hojas "Tiempos_produccion" y "Tipo_suministro".'));
       }
     };
     reader.onerror = (error) => reject(error);
@@ -863,21 +785,19 @@ export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[]): voi
 };
 
 /**
- * A new function to correctly process production time data from the file
- * and integrate it into the existing constraints structure. This separates
- * file parsing from data processing, improving code clarity.
+ * Processes assembly data fetched from the API into the constraints structure.
+ * This replaces the old Excel-based processing.
  */
-export function processImportedProductionData(
-    parsedData: ParsedProductionData,
+export function processAssemblyDataFromApi(
+    apiData: TiempoEnsambleItem[],
     currentConstraints: AppConstraints,
-    uniqueProducts: { id: string, name: string }[]
+    salesData: SalesDataRow[] 
 ): {
     productProcessInfos: ProductProcessInfo[],
     inventorySettings: InventorySetting[],
     validationErrors: string[]
 } {
     const validationErrors: string[] = [];
-    const { times, supplyInfos } = parsedData;
 
     // --- Create helper maps for quick lookup of existing, active constraints ---
     const activeWorkCenters = currentConstraints.workCenters.filter(wc => wc.isActive !== false);
@@ -887,120 +807,114 @@ export function processImportedProductionData(
     const centerMap = new Map(activeWorkCenters.map(wc => [normalizeCenterName(wc.name), wc]));
     const lineMap = new Map(activeLines.map(pl => [`${pl.workCenterId}-${pl.name.toLowerCase()}`, pl]));
     const workstationDefMap = new Map(activeWorkstationDefs.map(wd => [wd.name.toLowerCase(), wd]));
-
-    // --- 1. Validation Phase ---
-    // This phase checks for inconsistencies before any data processing begins.
-    times.forEach(row => {
-        const center = centerMap.get(normalizeCenterName(row.centro));
-        if (!center) {
-            validationErrors.push(`Fila ${row.rowIndex}: El centro '${row.centro}' no existe o está inactivo en la configuración.`);
-            return; // No need to check line if center is invalid
-        }
-
-        const line = lineMap.get(`${center.id}-${row.linea.toLowerCase()}`);
-        if (!line) {
-            validationErrors.push(`Fila ${row.rowIndex}: La línea '${row.linea}' no existe en el centro '${row.centro}' o está inactiva.`);
-            return; // No need to check workstation if line is invalid
-        }
-
-        const workstationDef = workstationDefMap.get(row.puestoTrabajo.toLowerCase());
-        if (!workstationDef) {
-            validationErrors.push(`Fila ${row.rowIndex}: El puesto de trabajo '${row.puestoTrabajo}' no existe o está inactivo en la configuración.`);
-            return;
-        }
-
-        // CRITICAL CHECK: Ensure the workstation is actually assigned to the line in the configuration.
-        const isWorkstationAssigned = line.assignedWorkstations.some(as => as.definitionId === workstationDef.id);
-        if (!isWorkstationAssigned) {
-            validationErrors.push(`Fila ${row.rowIndex}: El puesto '${row.puestoTrabajo}' NO ESTÁ ASIGNADO a la línea '${row.linea}' en la configuración.`);
+    
+    // Create a map for product names from sales data
+    const productNamesMap = new Map<string, string>();
+    salesData.forEach(row => {
+        if (!productNamesMap.has(row.código)) {
+            productNamesMap.set(row.código, row.descripciónMaterial || row.etiqueta || row.código);
         }
     });
 
-    // If any validation errors were found, stop processing and return the errors.
+    // --- 1. Validation Phase ---
+    apiData.forEach((row, index) => {
+        const center = centerMap.get(normalizeCenterName(row.Centro));
+        if (!center) {
+            validationErrors.push(`Fila API ${index + 1}: El centro '${row.Centro}' no existe o está inactivo en la configuración.`);
+            return;
+        }
+
+        const line = lineMap.get(`${center.id}-${row.Linea.toLowerCase()}`);
+        if (!line) {
+            validationErrors.push(`Fila API ${index + 1}: La línea '${row.Linea}' no existe en el centro '${row.Centro}' o está inactiva.`);
+            return;
+        }
+
+        const workstationDef = workstationDefMap.get(row.PuestoTrabajo.toLowerCase());
+        if (!workstationDef) {
+            validationErrors.push(`Fila API ${index + 1}: El puesto de trabajo '${row.PuestoTrabajo}' no existe o está inactivo.`);
+            return;
+        }
+
+        const isWorkstationAssigned = line.assignedWorkstations.some(as => as.definitionId === workstationDef.id);
+        if (!isWorkstationAssigned) {
+            validationErrors.push(`Fila API ${index + 1}: El puesto '${row.PuestoTrabajo}' NO ESTÁ ASIGNADO a la línea '${row.Linea}' en la configuración.`);
+        }
+    });
+
     if (validationErrors.length > 0) {
-        return {
-            productProcessInfos: [],
-            inventorySettings: [],
-            validationErrors
-        };
+        return { productProcessInfos: [], inventorySettings: [], validationErrors };
     }
 
-    // --- 2. Processing Phase (only if validation passes) ---
-    // This aggregator groups all workstation times for a product on a specific line.
+    // --- 2. Processing Phase ---
     const processInfoAggregator = new Map<string, {
         productId: string;
         productionLineId: string;
         workstationTimes: { workstationDefinitionId: string; timeHours: number; }[];
-        rows: number[];
     }>();
 
-    times.forEach(row => {
-        const center = centerMap.get(normalizeCenterName(row.centro))!;
-        const line = lineMap.get(`${center.id}-${row.linea.toLowerCase()}`)!;
-        const workstationDef = workstationDefMap.get(row.puestoTrabajo.toLowerCase())!;
+    apiData.forEach(row => {
+        const center = centerMap.get(normalizeCenterName(row.Centro))!;
+        const line = lineMap.get(`${center.id}-${row.Linea.toLowerCase()}`)!;
+        const workstationDef = workstationDefMap.get(row.PuestoTrabajo.toLowerCase())!;
 
-        const key = `${row.códigoMaterial}-${line.id}`;
+        const key = `${row.CodMaterial}-${line.id}`;
         if (!processInfoAggregator.has(key)) {
             processInfoAggregator.set(key, {
-                productId: row.códigoMaterial,
+                productId: row.CodMaterial,
                 productionLineId: line.id,
                 workstationTimes: [],
-                rows: []
             });
         }
         const info = processInfoAggregator.get(key)!;
-        // The time from the Excel file is in minutes. Convert it to hours.
-        const timeInHours = row.tiempo / 60;
+        const timeInHours = row.Tiempo / 60; // API time is in minutes
         info.workstationTimes.push({ workstationDefinitionId: workstationDef.id, timeHours: timeInHours });
-        info.rows.push(row.rowIndex);
     });
 
-    const finalProcessInfoData = new Map<string, ProductProcessInfo>();
+    const finalProcessInfoData: ProductProcessInfo[] = [];
     processInfoAggregator.forEach((aggData, key) => {
         const line = activeLines.find(l => l.id === aggData.productionLineId)!;
         const center = activeWorkCenters.find(c => c.id === line.workCenterId)!;
-        const supply = supplyInfos.find(s => s.código === aggData.productId && normalizeCenterName(s.centro) === normalizeCenterName(center.name));
-        const totalTimeSum = aggData.workstationTimes.reduce((sum, wt) => sum + wt.timeHours, 0);
-        const productName = uniqueProducts.find(p => p.id === aggData.productId)?.name || aggData.productId;
+        const supplyInfo = apiData.find(d => d.CodMaterial === aggData.productId && normalizeCenterName(d.Centro) === normalizeCenterName(center.name));
 
-        finalProcessInfoData.set(key, {
+        finalProcessInfoData.push({
             id: `ppi-${aggData.productId}-${aggData.productionLineId}`,
             productId: aggData.productId,
-            productName: productName,
+            productName: productNamesMap.get(aggData.productId) || aggData.productId,
             productionLineId: aggData.productionLineId,
             workstationTimes: aggData.workstationTimes,
-            totalManufacturingTimeHours: totalTimeSum, // This will be recalculated dynamically in the planner.
-            aprovisionamientoEspecial: supply?.aprovisionamiento,
+            totalManufacturingTimeHours: 0, // Recalculated dynamically later
+            aprovisionamientoEspecial: supplyInfo?.TipoAprovisionamiento,
         });
     });
-    
-    // --- 3. Process Inventory Settings from the same file ---
+
+    // --- 3. Process Inventory Settings ---
     const inventoryMap = new Map<string, InventorySetting>();
-    times.forEach(row => {
-        const center = centerMap.get(normalizeCenterName(row.centro));
-        if (!center || !row.códigoMaterial) return;
-        const key = `${row.códigoMaterial}-${center.id}`;
+    apiData.forEach(row => {
+        const center = centerMap.get(normalizeCenterName(row.Centro));
+        if (!center || !row.CodMaterial) return;
+        const key = `${row.CodMaterial}-${center.id}`;
         if (!inventoryMap.has(key)) {
-            const productName = uniqueProducts.find(p => p.id === row.códigoMaterial)?.name || row.códigoMaterial;
             inventoryMap.set(key, {
-                id: `inv-${row.códigoMaterial}-${center.id}`,
-                itemId: row.códigoMaterial,
-                itemName: productName,
+                id: `inv-${row.CodMaterial}-${center.id}`,
+                itemId: row.CodMaterial,
+                itemName: productNamesMap.get(row.CodMaterial) || row.CodMaterial,
                 centerId: center.id,
                 isRawMaterial: false,
-                minStock: row.stockSeguridad,
-                maxStock: row.stockMaximo,
-                currentStock: row.saldoInicial,
+                minStock: row.StockSeguridad,
+                maxStock: row.StockMaximo,
+                currentStock: row.SaldoInicial,
             });
         }
     });
 
     return {
-        productProcessInfos: Array.from(finalProcessInfoData.values()),
+        productProcessInfos: finalProcessInfoData,
         inventorySettings: Array.from(inventoryMap.values()),
-        validationErrors: [] // No errors
+        validationErrors: []
     };
 }
+
 
 
 // --- Tactical Scheduling ---

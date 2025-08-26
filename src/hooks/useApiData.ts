@@ -68,6 +68,20 @@ export const fetchPresupuestoData = async (params: PresupuestoParams = {}): Prom
     return fetcher(url);
 };
 
+/**
+ * Obtiene los datos de tiempos de ensamble de la API.
+ * @param params Objeto con parámetros (actualmente solo soporta 'limit').
+ * @returns Los datos de tiempos de ensamble.
+ */
+export const fetchTiempoEnsambleData = async (params: { limit?: number } = {}): Promise<TiempoEnsambleItem[]> => {
+    const query = new URLSearchParams();
+    if (params.limit !== undefined) {
+      query.append('limit', params.limit.toString());
+    }
+    const url = `${API_BASE_URL}/tiempoensamble/?${query.toString()}`;
+    return fetcher(url);
+};
+
 
 // --- Hooks Específicos por Endpoint para Diccionario ---
 
@@ -106,5 +120,3 @@ export function useTiempoEnsambleData() {
     isLoading,
   };
 }
-
-    
