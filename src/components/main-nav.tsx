@@ -25,11 +25,11 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
                 dispatch({ type: 'SET_ACTIVE_VIEW', payload: viewId })
             }}
             className={cn(
-              'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20',
+              'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
               isActive && 'bg-white/25'
             )}
           >
-            {React.cloneElement(config.icon, { className: 'h-5 w-5 mr-4' })}
+            {React.cloneElement(config.icon, { className: 'h-5 w-5' })}
             {config.title}
           </a>
         );
