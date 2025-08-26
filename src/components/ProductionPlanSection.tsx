@@ -9,6 +9,7 @@ interface ProductionPlanSectionProps {
   onGeneratePlan: () => void;
   isLoading: boolean;
   constraints: AppConstraints;
+  isDataSynced: boolean; // New prop
 }
 
 const getStatusCellStyle = (status: ProductionPlanItem['status']): string => {
@@ -24,7 +25,7 @@ const getStatusCellStyle = (status: ProductionPlanItem['status']): string => {
   }
 };
 
-export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ plan, onGeneratePlan, isLoading, constraints }) => {
+export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ plan, onGeneratePlan, isLoading, constraints, isDataSynced }) => {
   const [activeTab, setActiveTab] = useState<'daily' | 'monthly' | 'log'>('daily');
 
   const { dailyPlan = [], monthlyPlan = [], auditLog = [] } = plan || {};
@@ -115,9 +116,10 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         </div>
         <button
           onClick={onGeneratePlan}
-          disabled={isLoading}
+          disabled={isLoading || !isDataSynced}
           className={`mt-4 md:mt-0 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center justify-center font-semibold
-            ${isLoading ? 'bg-indigo-400 cursor-not-allowed' : ''}`}
+            ${isLoading || !isDataSynced ? 'bg-indigo-300 cursor-not-allowed' : ''}`}
+          title={!isDataSynced ? 'Debe sincronizar los datos de ensamble en la pestaña de restricciones primero' : 'Generar plan de producción'}
         >
           {isLoading ? (
             <>
@@ -159,7 +161,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         {dailyPlan.length === 0 && activeTab !== 'log' && (
           <div className="text-center py-10">
             <h3 className="text-lg font-medium text-gray-900">El plan de producción está vacío.</h3>
-            <p className="mt-1 text-sm text-gray-500">Importe datos y genere un plan para ver los resultados aquí.</p>
+            <p className="mt-1 text-sm text-gray-500">Sincronice los datos y genere un plan para ver los resultados aquí.</p>
           </div>
         )}
 

@@ -14,83 +14,148 @@ import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 declare var XLSX: any; 
 
 /**
- * Finds a sheet in the workbook by name, ignoring case and accents.
- * @param workbook The XLSX workbook object.
- * @param nameToFind The desired sheet name (e.g., "PPTO_VTAS").
- * @returns The worksheet object or null if not found.
+ * Validates assembly data fetched from the API for data completeness and consistency with constraints.
  */
-const findSheetByName = (workbook: any, nameToFind: string): any | null => {
-    const normalizedNameToFind = nameToFind
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
+export function processAndValidateAssemblyData(
+    apiData: TiempoEnsambleItem[],
+    currentConstraints: AppConstraints,
+    salesData: SalesDataRow[] 
+): {
+    productProcessInfos: ProductProcessInfo[],
+    inventorySettings: InventorySetting[],
+    validationErrors: string[], // Errors for mismatches with configuration
+    dataCompletenessErrors: string[] // Errors for missing data in the API response itself
+} {
+    const validationErrors: string[] = [];
+    const dataCompletenessErrors: string[] = [];
 
-    for (const sheetName of workbook.SheetNames) {
-        const normalizedSheetName = sheetName
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "");
-        
-        if (normalizedSheetName === normalizedNameToFind) {
-            return workbook.Sheets[sheetName];
+    // --- Create helper maps for quick lookup of existing, active constraints ---
+    const activeWorkCenters = currentConstraints.workCenters.filter(wc => wc.isActive !== false);
+    const activeLines = currentConstraints.productionLines.filter(pl => pl.isActive !== false);
+    const activeWorkstationDefs = currentConstraints.workstationDefinitions.filter(wd => wd.isActive !== false);
+
+    const centerMap = new Map(activeWorkCenters.map(wc => [normalizeCenterName(wc.name), wc]));
+    const lineMap = new Map(activeLines.map(pl => [`${pl.workCenterId}-${pl.name.toLowerCase()}`, pl]));
+    const workstationDefMap = new Map(activeWorkstationDefs.map(wd => [wd.name.toLowerCase(), wd]));
+    
+    // Create a map for product names from sales data
+    const productNamesMap = new Map<string, string>();
+    salesData.forEach(row => {
+        if (!productNamesMap.has(row.código)) {
+            productNamesMap.set(row.código, row.descripciónMaterial || row.etiqueta || row.código);
         }
-    }
-    return null;
-};
+    });
 
+    // --- 1. Data Completeness and Validation Phase ---
+    apiData.forEach((row, index) => {
+        // Check for missing data in the API response
+        if (!row.CodMaterial) dataCompletenessErrors.push(`Fila API ${index + 1}: Falta 'CodMaterial'.`);
+        if (!row.Centro) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Centro'.`);
+        if (!row.Linea) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Linea'.`);
+        if (!row.PuestoTrabajo) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'PuestoTrabajo'.`);
+        if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
 
-export const parseExcelData = (file: File): Promise<SalesDataRow[]> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = event.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
-        
-        // Find sheet by name robustly, falling back to the first sheet.
-        const worksheet = findSheetByName(workbook, 'PPTO_VTAS') ?? workbook.Sheets[workbook.SheetNames[0]];
-        if (!worksheet) {
-            reject(new Error("No se encontró una hoja de cálculo válida en el archivo. Buscando 'PPTO_VTAS' o la primera hoja."));
+        if (dataCompletenessErrors.length > 0) return; // Stop validation for this row if essential data is missing
+
+        // Check for consistency with configured constraints
+        const center = centerMap.get(normalizeCenterName(row.Centro));
+        if (!center) {
+            validationErrors.push(`Fila API ${index + 1}: El centro '${row.Centro}' no existe o está inactivo en la configuración.`);
             return;
         }
 
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-
-        if (jsonData.length < 2) { 
-          resolve([]);
-          return;
+        const line = lineMap.get(`${center.id}-${row.Linea.toLowerCase()}`);
+        if (!line) {
+            validationErrors.push(`Fila API ${index + 1}: La línea '${row.Linea}' no existe en el centro '${row.Centro}' o está inactiva.`);
+            return;
         }
-        
-        const salesData: SalesDataRow[] = jsonData.slice(1).map((row, index) => {
-          if(row.filter(cell => cell !== null && cell !== undefined && cell !== '').length === 0) return null; 
 
-          return {
-            id: `row-${Date.now()}-${index}`,
-            año: parseInt(String(row[0]), 10) || 0,
-            mes: parseInt(String(row[1]), 10) || 0,
-            sector: String(row[2] || ''),
-            etiqueta: String(row[3] || ''),
-            código: String(row[4] || '').trim(),
-            centro: String(row[5] || '').trim(), // Demand Center
-            unidadesProyectado: parseFloat(String(row[6])) || 0,
-            dolaresProyectado: parseFloat(String(row[7])) || 0,
-            descripciónMaterial: String(row[8] || ''),
-            familia: String(row[9] || ''),
-            marca: String(row[10] || ''),
-            lineaProduccion: String(row[11] || '').trim(), // Suggested production line name (from import, map to ID)
-          };
-        }).filter(row => row !== null && row.unidadesProyectado >= 0 && row.código) as SalesDataRow[]; 
+        const workstationDef = workstationDefMap.get(row.PuestoTrabajo.toLowerCase());
+        if (!workstationDef) {
+            validationErrors.push(`Fila API ${index + 1}: El puesto de trabajo '${row.PuestoTrabajo}' no existe o está inactivo.`);
+            return;
+        }
 
-        resolve(salesData);
-      } catch (error) {
-        console.error("Error processing Sales Excel:", error);
-        reject(new Error('Formato de archivo Excel de ventas inválido o corrupto.'));
-      }
+        const isWorkstationAssigned = line.assignedWorkstations.some(as => as.definitionId === workstationDef.id);
+        if (!isWorkstationAssigned) {
+            validationErrors.push(`Fila API ${index + 1}: El puesto '${row.PuestoTrabajo}' NO ESTÁ ASIGNADO a la línea '${row.Linea}' en la configuración.`);
+        }
+    });
+
+    if (validationErrors.length > 0 || dataCompletenessErrors.length > 0) {
+        return { productProcessInfos: [], inventorySettings: [], validationErrors, dataCompletenessErrors };
+    }
+
+    // --- 2. Processing Phase (only if validation passes) ---
+    const processInfoAggregator = new Map<string, {
+        productId: string;
+        productionLineId: string;
+        workstationTimes: { workstationDefinitionId: string; timeHours: number; }[];
+    }>();
+
+    apiData.forEach(row => {
+        const center = centerMap.get(normalizeCenterName(row.Centro))!;
+        const line = lineMap.get(`${center.id}-${row.Linea.toLowerCase()}`)!;
+        const workstationDef = workstationDefMap.get(row.PuestoTrabajo.toLowerCase())!;
+
+        const key = `${row.CodMaterial}-${line.id}`;
+        if (!processInfoAggregator.has(key)) {
+            processInfoAggregator.set(key, {
+                productId: row.CodMaterial,
+                productionLineId: line.id,
+                workstationTimes: [],
+            });
+        }
+        const info = processInfoAggregator.get(key)!;
+        const timeInHours = row.Tiempo / 60; // API time is in minutes
+        info.workstationTimes.push({ workstationDefinitionId: workstationDef.id, timeHours: timeInHours });
+    });
+
+    const finalProcessInfoData: ProductProcessInfo[] = [];
+    processInfoAggregator.forEach((aggData, key) => {
+        const line = activeLines.find(l => l.id === aggData.productionLineId)!;
+        const center = activeWorkCenters.find(c => c.id === line.workCenterId)!;
+        const supplyInfo = apiData.find(d => d.CodMaterial === aggData.productId && normalizeCenterName(d.Centro) === normalizeCenterName(center.name));
+
+        finalProcessInfoData.push({
+            id: `ppi-${aggData.productId}-${aggData.productionLineId}`,
+            productId: aggData.productId,
+            productName: productNamesMap.get(aggData.productId) || aggData.productId,
+            productionLineId: aggData.productionLineId,
+            workstationTimes: aggData.workstationTimes,
+            totalManufacturingTimeHours: 0, // Recalculated dynamically later
+            aprovisionamientoEspecial: supplyInfo?.TipoAprovisionamiento || undefined,
+        });
+    });
+
+    // --- 3. Process Inventory Settings ---
+    const inventoryMap = new Map<string, InventorySetting>();
+    apiData.forEach(row => {
+        const center = centerMap.get(normalizeCenterName(row.Centro));
+        if (!center || !row.CodMaterial) return;
+        const key = `${row.CodMaterial}-${center.id}`;
+        if (!inventoryMap.has(key)) {
+            inventoryMap.set(key, {
+                id: `inv-${row.CodMaterial}-${center.id}`,
+                itemId: row.CodMaterial,
+                itemName: productNamesMap.get(row.CodMaterial) || row.CodMaterial,
+                centerId: center.id,
+                isRawMaterial: false,
+                minStock: row.StockSeguridad,
+                maxStock: row.StockMaximo,
+                currentStock: row.SaldoInicial,
+            });
+        }
+    });
+
+    return {
+        productProcessInfos: finalProcessInfoData,
+        inventorySettings: Array.from(inventoryMap.values()),
+        validationErrors: [],
+        dataCompletenessErrors: []
     };
-    reader.onerror = (error) => reject(error);
-    reader.readAsBinaryString(file);
-  });
-};
+}
+
 
 // Helper function to normalize center names for reliable matching
 const normalizeCenterName = (name: string): string => {
@@ -653,7 +718,7 @@ export const generateProductionPlan = (
     const mp = monthlyPlanMap.get(key)!;
     mp.totalQuantityToProduce += dp.quantityToProduce;
     mp.totalHoursWorked += dp.hoursWorked;
-    mp.totalEstimatedLaborCost += dp.totalEstimatedLaborCost;
+    mp.totalEstimatedLaborCost += dp.estimatedLaborCost;
   });
 
   // --- 8. FINAL AUDIT SUMMARY ---
@@ -783,138 +848,6 @@ export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[]): voi
 
     XLSX.writeFile(workbook, 'Plan_Produccion_Mensual.xlsx');
 };
-
-/**
- * Processes assembly data fetched from the API into the constraints structure.
- * This replaces the old Excel-based processing.
- */
-export function processAssemblyDataFromApi(
-    apiData: TiempoEnsambleItem[],
-    currentConstraints: AppConstraints,
-    salesData: SalesDataRow[] 
-): {
-    productProcessInfos: ProductProcessInfo[],
-    inventorySettings: InventorySetting[],
-    validationErrors: string[]
-} {
-    const validationErrors: string[] = [];
-
-    // --- Create helper maps for quick lookup of existing, active constraints ---
-    const activeWorkCenters = currentConstraints.workCenters.filter(wc => wc.isActive !== false);
-    const activeLines = currentConstraints.productionLines.filter(pl => pl.isActive !== false);
-    const activeWorkstationDefs = currentConstraints.workstationDefinitions.filter(wd => wd.isActive !== false);
-
-    const centerMap = new Map(activeWorkCenters.map(wc => [normalizeCenterName(wc.name), wc]));
-    const lineMap = new Map(activeLines.map(pl => [`${pl.workCenterId}-${pl.name.toLowerCase()}`, pl]));
-    const workstationDefMap = new Map(activeWorkstationDefs.map(wd => [wd.name.toLowerCase(), wd]));
-    
-    // Create a map for product names from sales data
-    const productNamesMap = new Map<string, string>();
-    salesData.forEach(row => {
-        if (!productNamesMap.has(row.código)) {
-            productNamesMap.set(row.código, row.descripciónMaterial || row.etiqueta || row.código);
-        }
-    });
-
-    // --- 1. Validation Phase ---
-    apiData.forEach((row, index) => {
-        const center = centerMap.get(normalizeCenterName(row.Centro));
-        if (!center) {
-            validationErrors.push(`Fila API ${index + 1}: El centro '${row.Centro}' no existe o está inactivo en la configuración.`);
-            return;
-        }
-
-        const line = lineMap.get(`${center.id}-${row.Linea.toLowerCase()}`);
-        if (!line) {
-            validationErrors.push(`Fila API ${index + 1}: La línea '${row.Linea}' no existe en el centro '${row.Centro}' o está inactiva.`);
-            return;
-        }
-
-        const workstationDef = workstationDefMap.get(row.PuestoTrabajo.toLowerCase());
-        if (!workstationDef) {
-            validationErrors.push(`Fila API ${index + 1}: El puesto de trabajo '${row.PuestoTrabajo}' no existe o está inactivo.`);
-            return;
-        }
-
-        const isWorkstationAssigned = line.assignedWorkstations.some(as => as.definitionId === workstationDef.id);
-        if (!isWorkstationAssigned) {
-            validationErrors.push(`Fila API ${index + 1}: El puesto '${row.PuestoTrabajo}' NO ESTÁ ASIGNADO a la línea '${row.Linea}' en la configuración.`);
-        }
-    });
-
-    if (validationErrors.length > 0) {
-        return { productProcessInfos: [], inventorySettings: [], validationErrors };
-    }
-
-    // --- 2. Processing Phase ---
-    const processInfoAggregator = new Map<string, {
-        productId: string;
-        productionLineId: string;
-        workstationTimes: { workstationDefinitionId: string; timeHours: number; }[];
-    }>();
-
-    apiData.forEach(row => {
-        const center = centerMap.get(normalizeCenterName(row.Centro))!;
-        const line = lineMap.get(`${center.id}-${row.Linea.toLowerCase()}`)!;
-        const workstationDef = workstationDefMap.get(row.PuestoTrabajo.toLowerCase())!;
-
-        const key = `${row.CodMaterial}-${line.id}`;
-        if (!processInfoAggregator.has(key)) {
-            processInfoAggregator.set(key, {
-                productId: row.CodMaterial,
-                productionLineId: line.id,
-                workstationTimes: [],
-            });
-        }
-        const info = processInfoAggregator.get(key)!;
-        const timeInHours = row.Tiempo / 60; // API time is in minutes
-        info.workstationTimes.push({ workstationDefinitionId: workstationDef.id, timeHours: timeInHours });
-    });
-
-    const finalProcessInfoData: ProductProcessInfo[] = [];
-    processInfoAggregator.forEach((aggData, key) => {
-        const line = activeLines.find(l => l.id === aggData.productionLineId)!;
-        const center = activeWorkCenters.find(c => c.id === line.workCenterId)!;
-        const supplyInfo = apiData.find(d => d.CodMaterial === aggData.productId && normalizeCenterName(d.Centro) === normalizeCenterName(center.name));
-
-        finalProcessInfoData.push({
-            id: `ppi-${aggData.productId}-${aggData.productionLineId}`,
-            productId: aggData.productId,
-            productName: productNamesMap.get(aggData.productId) || aggData.productId,
-            productionLineId: aggData.productionLineId,
-            workstationTimes: aggData.workstationTimes,
-            totalManufacturingTimeHours: 0, // Recalculated dynamically later
-            aprovisionamientoEspecial: supplyInfo?.TipoAprovisionamiento,
-        });
-    });
-
-    // --- 3. Process Inventory Settings ---
-    const inventoryMap = new Map<string, InventorySetting>();
-    apiData.forEach(row => {
-        const center = centerMap.get(normalizeCenterName(row.Centro));
-        if (!center || !row.CodMaterial) return;
-        const key = `${row.CodMaterial}-${center.id}`;
-        if (!inventoryMap.has(key)) {
-            inventoryMap.set(key, {
-                id: `inv-${row.CodMaterial}-${center.id}`,
-                itemId: row.CodMaterial,
-                itemName: productNamesMap.get(row.CodMaterial) || row.CodMaterial,
-                centerId: center.id,
-                isRawMaterial: false,
-                minStock: row.StockSeguridad,
-                maxStock: row.StockMaximo,
-                currentStock: row.SaldoInicial,
-            });
-        }
-    });
-
-    return {
-        productProcessInfos: finalProcessInfoData,
-        inventorySettings: Array.from(inventoryMap.values()),
-        validationErrors: []
-    };
-}
-
 
 
 // --- Tactical Scheduling ---

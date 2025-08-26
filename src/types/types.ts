@@ -1,5 +1,12 @@
 
 
+export type SyncStatus = {
+    isSynced: boolean;
+    lastSyncTimestamp: string | null;
+    errors: string[];
+}
+
+
 // Este AppState ya no será necesario, se moverá al hook useAppState
 export type AppState = {
   year: number | null;
@@ -14,6 +21,7 @@ export type AppState = {
   absenteeismEvents: AbsenteeismEvent[];
   workShifts: WorkShift[];
   tacticalPlanResult: TacticalPlanResult | null;
+  syncStatus: SyncStatus | null;
 };
 
 // Tipos de acción para el reducer
@@ -30,7 +38,8 @@ export type AppAction =
   | { type: 'SET_MAINTENANCE_EVENTS'; payload: MaintenanceEvent[] }
   | { type: 'SET_ABSENTEEISM_EVENTS'; payload: AbsenteeismEvent[] }
   | { type: 'SET_WORK_SHIFTS'; payload: WorkShift[] }
-  | { type: 'GENERATE_TACTICAL_PLAN'; payload: TacticalPlanResult | null };
+  | { type: 'GENERATE_TACTICAL_PLAN'; payload: TacticalPlanResult | null }
+  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
 
 export type AbsenteeismEvent = {
   id: string;
@@ -427,7 +436,7 @@ export interface TiempoEnsambleItem {
   StockSeguridad: number;
   StockMaximo: number;
   GrupoCompras: string;
-  TipoAprovisionamiento: 'E' | 'X' | 'F';
+  TipoAprovisionamiento: 'E' | 'X' | 'F' | null;
 }
 
 // Import ActiveView from constants

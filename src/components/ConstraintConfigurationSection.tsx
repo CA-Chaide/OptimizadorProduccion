@@ -13,6 +13,8 @@ interface ConstraintConfigurationSectionProps {
   onConstraintsUpdate: (newConstraints: AppConstraints) => void;
   salesDataProducts: SalesDataRow[];
   addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
+  onSyncAndValidate: () => Promise<boolean>; // New: Function to trigger validation
+  isDataSynced: boolean; // New: To know if data is ready
 }
 
 // --- Reusable Form Components ---
@@ -54,8 +56,9 @@ const normalizeCenterName = (name: string): string => {
 };
 
 
-export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSectionProps> = ({ constraints, onConstraintsUpdate, salesDataProducts, addNotification }) => {
-  const [activeTab, setActiveTab] = useState<string>('workstationDefs'); // Start with new global workstation defs tab
+export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSectionProps> = ({ constraints, onConstraintsUpdate, salesDataProducts, addNotification, onSyncAndValidate, isDataSynced }) => {
+  const [activeTab, setActiveTab] = useState<string>('workstationDefs');
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // States for forms
   const [wdName, setWdName] = useState(''); // WorkstationDefinition Name
@@ -130,21 +133,12 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   const [holidayForm, setHolidayForm] = useState<Omit<Holiday, 'id'>>({ date: '', name: '', appliesTo: 'Ambos', isProductionAllowed: false });
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
 
-  const uniqueProductsForDropdowns = useMemo(() => { 
-    if (!salesDataProducts) return [];
-    const productMap = new Map<string, { id: string, name: string }>();
-    salesDataProducts.forEach(p => {
-        if (p.código && !productMap.has(p.código)) {
-            let descriptiveName = p.descripciónMaterial;
-            if (!descriptiveName || descriptiveName === p.código) {
-                descriptiveName = p.etiqueta || p.familia || p.código;
-            }
-            productMap.set(p.código, { id: p.código, name: descriptiveName });
-        }
-    });
-    return Array.from(productMap.values()).sort((a,b) => a.name.localeCompare(b.name));
-  }, [salesDataProducts]);
-
+  const handleSyncClick = async () => {
+    setIsSyncing(true);
+    await onSyncAndValidate();
+    setIsSyncing(false);
+  };
+  
   // --- WorkstationDefinition Management (Global) ---
   const handleSaveWorkstationDefinition = () => {
     if (!wdName.trim() || wdEmployees < 1) {
@@ -376,7 +370,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   const tabs = [
     { id: 'workstationDefs', label: '1. Puestos Trabajo (Global)' },
     { id: 'workCentersAndLines', label: '2. Centros y Líneas' },
-    { id: 'costsAndShifts', label: '3. Costos y Turnos' },
+    { id: 'syncAndCosts', label: '3. Sincronización y Costos' },
     { id: 'holidays', label: '4. Feriados' },
   ];
   
@@ -542,8 +536,29 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                   </div>
               </div>
             )}
-            {activeTab === 'costsAndShifts' && (
+            {activeTab === 'syncAndCosts' && (
               <div className="space-y-8">
+                 <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Sincronización de Datos de Ensamble</h3>
+                    <p className="text-sm text-gray-600">
+                        Haga clic aquí para obtener los últimos tiempos de proceso, inventarios y reglas de suministro desde la API. 
+                        Este paso es necesario antes de generar un plan de producción. El sistema validará los datos por usted.
+                    </p>
+                    <div className="flex items-center gap-4 pt-2">
+                        <button 
+                            onClick={handleSyncClick} 
+                            disabled={isSyncing}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center disabled:bg-blue-300"
+                        >
+                            <DataImportIcon/>
+                            {isSyncing ? 'Sincronizando...' : 'Sincronizar y Validar Datos'}
+                        </button>
+                        {isDataSynced && (
+                            <span className="text-sm font-medium text-green-600">✓ Datos sincronizados y validados correctamente.</span>
+                        )}
+                    </div>
+                 </div>
+
                  <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
                     <h3 className="text-lg font-semibold text-gray-800">Parámetros de Turnos de Trabajo</h3>
                      <p className="text-sm text-gray-600">Define las horas base para cada tipo de día. Estos valores serán usados por el planificador de producción.</p>

@@ -4,6 +4,7 @@
 import React from 'react';
 import Image from 'next/image';
 import {
+  DashboardSection,
   DataImportSection,
   ConstraintConfigurationSection,
   PersonnelManagementSection,
@@ -13,7 +14,6 @@ import {
   TacticalPlanSection,
   WorkShiftPlanningSection,
   RealDataSection,
-  DashboardSection,
 } from '@/components';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -47,6 +47,8 @@ const ProductionOptimizerClient: React.FC = () => {
         handleGenerateTacticalPlan,
         tacticalPlanResult,
         addNotification,
+        handleSyncAndValidate,
+        syncStatus,
     } = useAppContext();
 
     const renderActiveView = () => {
@@ -56,7 +58,14 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.DATA_IMPORT:
                 return <DataImportSection onDataImported={handleDataImported} />;
             case ActiveView.CONSTRAINTS:
-                return <ConstraintConfigurationSection constraints={constraints} onConstraintsUpdate={setConstraints} salesDataProducts={salesData} addNotification={addNotification} />;
+                return <ConstraintConfigurationSection 
+                    constraints={constraints} 
+                    onConstraintsUpdate={setConstraints} 
+                    salesDataProducts={salesData} 
+                    addNotification={addNotification} 
+                    onSyncAndValidate={handleSyncAndValidate}
+                    isDataSynced={syncStatus?.isSynced || false}
+                />;
             case ActiveView.PERSONNEL:
                 return <PersonnelManagementSection employees={employees} setEmployees={setEmployees} skills={employeeSkills} setSkills={setSkills} constraints={constraints} />;
             case ActiveView.MAINTENANCE:
@@ -64,7 +73,7 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.ABSENTEEISM:
                 return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:
-                return <ProductionPlanSection plan={productionPlan} onGeneratePlan={handleGeneratePlan} isLoading={isLoading} constraints={constraints} />;
+                return <ProductionPlanSection plan={productionPlan} onGeneratePlan={handleGeneratePlan} isLoading={isLoading} constraints={constraints} isDataSynced={syncStatus?.isSynced || false} />;
             case ActiveView.TACTICAL_SCHEDULING:
                 return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} />;
             case ActiveView.WORK_SHIFT_PLANNING:

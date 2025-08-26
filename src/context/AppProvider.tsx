@@ -6,10 +6,10 @@ import { useToast } from "@/hooks/use-toast";
 import {
     AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
     TacticalPlanResult, Employee, EmployeeSkill, AbsenteeismEvent, MaintenanceEvent,
-    WorkShift, AppConstraints, NotificationMessage, TiempoEnsambleItem
+    WorkShift, AppConstraints, NotificationMessage, TiempoEnsambleItem, SyncStatus
 } from '@/types/types';
 import { ActiveView } from '@/constants/constants';
-import { generateProductionPlan, generateTacticalPlan, processAssemblyDataFromApi } from '@/services/OptimizationService';
+import { generateProductionPlan, generateTacticalPlan, processAndValidateAssemblyData } from '@/services/OptimizationService';
 import { fetchTiempoEnsambleData } from '@/hooks/useApiData';
 
 const initialState: AppState = {
@@ -39,6 +39,7 @@ const initialState: AppState = {
     absenteeismEvents: [],
     workShifts: [],
     tacticalPlanResult: null,
+    syncStatus: null,
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -48,7 +49,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_ACTIVE_VIEW':
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
-            return { ...state, salesData: action.payload };
+            return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan };
         case 'SET_CONSTRAINTS':
             return { ...state, constraints: action.payload };
         case 'SET_EMPLOYEES':
@@ -69,6 +70,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, isLoading: false };
         case 'GENERATE_TACTICAL_PLAN':
             return { ...state, tacticalPlanResult: action.payload };
+        case 'SET_SYNC_STATUS':
+            return { ...state, syncStatus: action.payload };
         default:
             return state;
     }
@@ -87,6 +90,7 @@ type AppContextType = {
     absenteeismEvents: AbsenteeismEvent[];
     workShifts: WorkShift[];
     tacticalPlanResult: TacticalPlanResult | null;
+    syncStatus: SyncStatus | null;
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
@@ -98,6 +102,7 @@ type AppContextType = {
     setMaintenanceEvents: (events: MaintenanceEvent[]) => void;
     setWorkShifts: (shifts: WorkShift[]) => void;
     setConstraints: (constraints: AppConstraints) => void;
+    handleSyncAndValidate: () => Promise<boolean>;
 };
 
 
@@ -145,35 +150,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_ACTIVE_VIEW', payload: ActiveView.CONSTRAINTS });
     };
 
-    const handleGeneratePlan = useCallback(async () => {
-        if (state.salesData.length === 0) {
-            addNotification('warning', 'Por favor, carga primero los datos de ventas.');
-            return;
-        }
-        dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
-        
+    const handleSyncAndValidate = useCallback(async (): Promise<boolean> => {
+        addNotification('info', 'Sincronizando y validando datos de ensamble desde la API...');
         try {
-            // 1. Fetch assembly times data from the API
-            addNotification('info', 'Sincronizando datos de ensamble desde la API...');
             const assemblyData: TiempoEnsambleItem[] = await fetchTiempoEnsambleData({ limit: 50000 });
-            
             if (assemblyData.length === 0) {
-                throw new Error("La API no devolvió datos de tiempos de ensamble.");
+                addNotification('warning', "La API no devolvió datos de tiempos de ensamble.");
+                dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: ["La API no devolvió datos."] }});
+                return false;
             }
-            addNotification('success', `Se sincronizaron ${assemblyData.length} registros de ensamble.`);
 
-            // 2. Process this data to update constraints (ProductProcessInfos and InventorySettings)
-            addNotification('info', 'Validando y procesando datos de ensamble...');
-            const { productProcessInfos, inventorySettings, validationErrors } = processAssemblyDataFromApi(
+            const { productProcessInfos, inventorySettings, validationErrors, dataCompletenessErrors } = processAndValidateAssemblyData(
                 assemblyData,
                 state.constraints,
                 state.salesData
             );
 
-            if (validationErrors.length > 0) {
-                addNotification('error', `La sincronización se detuvo por ${validationErrors.length} inconsistencia(s) entre la API y la configuración.`, validationErrors);
-                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
-                return;
+            const allErrors = [...validationErrors, ...dataCompletenessErrors];
+
+            if (allErrors.length > 0) {
+                const errorMessage = `La sincronización falló. Se encontraron ${allErrors.length} problema(s).`;
+                addNotification('error', errorMessage, allErrors);
+                dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: allErrors }});
+                return false;
             }
 
             const updatedConstraints: AppConstraints = {
@@ -182,12 +181,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 inventorySettings,
             };
             
-            // This dispatch is important to make sure the planner uses the latest data
             dispatch({ type: 'SET_CONSTRAINTS', payload: updatedConstraints });
+            dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: true, lastSyncTimestamp: new Date().toISOString(), errors: [] }});
+            addNotification('success', `Sincronización exitosa. Se procesaron y validaron ${assemblyData.length} registros.`);
+            return true;
+        } catch (error) {
+            console.error("Error during sync and validation:", error);
+            const errorMessage = `Error de red o de API al sincronizar: ${(error as Error).message}`;
+            addNotification('error', errorMessage);
+            dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: [errorMessage] }});
+            return false;
+        }
+    }, [state.constraints, state.salesData, addNotification]);
 
-            // 3. Generate the actual production plan with the updated constraints
+    const handleGeneratePlan = useCallback(async () => {
+        if (state.salesData.length === 0) {
+            addNotification('warning', 'Por favor, carga primero los datos de ventas.');
+            return;
+        }
+        if (!state.syncStatus?.isSynced) {
+            addNotification('error', 'Debe sincronizar y validar los datos de ensamble antes de generar el plan.');
+            return;
+        }
+
+        dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
+        
+        try {
             addNotification('info', 'Generando plan de producción... Esto puede tardar unos momentos.');
-            const plan = generateProductionPlan(state.salesData, updatedConstraints);
+            // We now use state.constraints directly, as it has been updated by the sync process.
+            const plan = generateProductionPlan(state.salesData, state.constraints);
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: plan });
             addNotification('success', 'Plan de producción generado exitosamente.');
 
@@ -196,7 +218,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
             addNotification('error', `Error al generar el plan: ${(error as Error).message}`);
         }
-    }, [state.salesData, state.constraints, addNotification]);
+    }, [state.salesData, state.constraints, state.syncStatus, addNotification]);
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
@@ -245,6 +267,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setMaintenanceEvents,
         setWorkShifts,
         setConstraints,
+        handleSyncAndValidate,
     };
 
   return (
