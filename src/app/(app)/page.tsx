@@ -84,7 +84,7 @@ const ProductionOptimizerClient: React.FC = () => {
                 <Image src="/logo.png" alt="Chaide Logo" width={150} height={50} />
             </div>
             <div className="flex flex-col flex-1 overflow-y-auto">
-                <nav className="flex-1 px-2 py-4">
+                <nav className="flex-1 px-2 py-4 space-y-2">
                   <MainNav />
                 </nav>
             </div>
