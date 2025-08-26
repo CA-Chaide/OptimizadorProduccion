@@ -17,9 +17,8 @@ import {
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 import { Toaster } from "@/components/ui/toaster";
-import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarRail } from '@/components/ui/sidebar';
-import { UserNav } from '@/components/user-nav';
 import { ClientProvider } from '@/context/ClientProvider';
+import { MainNav } from '@/components/main-nav';
 
 
 // The component that needs the context
@@ -77,47 +76,28 @@ const ProductionOptimizerClient: React.FC = () => {
     };
 
     return (
-        <SidebarProvider>
-            <Sidebar>
-                <SidebarHeader>
-                  <div className="flex items-center gap-2 p-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
-                      <span className="text-lg font-semibold">Chaide</span>
-                  </div>
-                </SidebarHeader>
-                <SidebarContent>
-                    <SidebarMenu>
-                        {Object.values(ActiveView).map(viewId => {
-                            const config = viewConfig[viewId];
-                            if (!config) return null;
-                            return (
-                                <SidebarMenuItem key={viewId}>
-                                    <SidebarMenuButton
-                                        onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: viewId })}
-                                        isActive={activeView === viewId}
-                                        tooltip={config.title}
-                                    >
-                                        {config.icon}
-                                        <span>{config.title}</span>
-                                    </SidebarMenuButton>
-                                </SidebarMenuItem>
-                            );
-                        })}
-                    </SidebarMenu>
-                </SidebarContent>
-                <SidebarFooter>
-                    <UserNav />
-                </SidebarFooter>
-            </Sidebar>
-             <SidebarInset>
-                <div className="flex h-full flex-col bg-background">
-                    <main className="flex-1 overflow-y-auto">
-                        {renderActiveView()}
-                    </main>
-                </div>
-            </SidebarInset>
-            <Toaster />
-        </SidebarProvider>
+      <div className="flex h-screen bg-gray-100">
+        {/* Sidebar */}
+        <div className="hidden md:flex flex-col w-64 bg-gray-800">
+            <div className="flex items-center justify-center h-16 bg-gray-900">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+                <span className="text-white font-bold uppercase ml-2">Chaide</span>
+            </div>
+            <div className="flex flex-col flex-1 overflow-y-auto">
+                <nav className="flex-1 px-2 py-4 bg-gray-800">
+                  <MainNav />
+                </nav>
+            </div>
+        </div>
+
+        {/* Main content */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+            <div className="p-4">
+              {renderActiveView()}
+            </div>
+        </div>
+        <Toaster />
+    </div>
     );
 };
 
