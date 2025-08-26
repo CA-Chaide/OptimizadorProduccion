@@ -10,7 +10,7 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
   const { activeView, dispatch } = useAppContext();
 
   return (
-    <nav className={cn('flex flex-col', className)} {...props}>
+    <nav className={cn('flex flex-col space-y-2', className)} {...props}>
       {Object.values(ActiveView).map(viewId => {
         const config = viewConfig[viewId];
         if (!config) return null;
