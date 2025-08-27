@@ -36,6 +36,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
     
     const summaryMap = new Map<string, CenterSummary>();
 
+    // Initialize map with all centers to ensure they appear even if they have no production
     constraints.workCenters.forEach(center => {
         summaryMap.set(center.id, {
             center,
@@ -47,7 +48,8 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
     const lineProductionMap = new Map<string, number>(); // key: lineId, value: totalProduction
 
     dailyPlan.forEach(item => {
-        const line = constraints.productionLines.find(l => l.name === item.assignedLineId && l.workCenterId === constraints.workCenters.find(c => c.name === item.producingCenterId)?.id);
+        // Find the line that corresponds to the item. Since assignedLineId can be a name, we must find the matching line object.
+        const line = constraints.productionLines.find(l => l.name === item.assignedLineId && constraints.workCenters.some(c => c.id === l.workCenterId && c.name === item.producingCenterId));
         if (line) {
             const currentTotal = lineProductionMap.get(line.id) || 0;
             lineProductionMap.set(line.id, currentTotal + item.quantityToProduce);
