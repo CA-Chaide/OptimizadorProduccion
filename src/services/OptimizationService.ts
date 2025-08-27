@@ -43,59 +43,62 @@ export function processAndValidateAssemblyData(
         return { newConstraints: currentConstraints, validationErrors, dataCompletenessErrors };
     }
 
-    // --- 2. Discover and Create Structure from API Data ---
+    // --- 2. Discover and Create Structure from API Data, preserving manual overrides ---
     const discoveredWorkCenters = new Map<string, WorkCenter>();
     const discoveredLines = new Map<string, ProductionLine>();
     const discoveredWorkstations = new Map<string, WorkstationDefinition>();
 
+    // Pre-load existing manual settings to preserve them
+    const existingWorkstations = new Map(currentConstraints.workstationDefinitions.map(wd => [wd.id, wd]));
+    const existingLines = new Map(currentConstraints.productionLines.map(pl => [pl.id, pl]));
+
     apiData.forEach(row => {
-        // Discover Work Centers
         const centerName = `Centro ${row.Centro}`;
         if (!discoveredWorkCenters.has(centerName)) {
             discoveredWorkCenters.set(centerName, {
-                id: `wc-${row.Centro}`,
-                name: centerName,
-                productionLineIds: [],
-                isActive: true
+                id: `wc-${row.Centro}`, name: centerName,
+                productionLineIds: [], isActive: true
             });
         }
         const centerId = `wc-${row.Centro}`;
 
-        // Discover Production Lines
-        const lineKey = `${centerId}-${row.Linea}`;
-        if (!discoveredLines.has(lineKey)) {
-            const existingLine = currentConstraints.productionLines.find(l => l.id === `pl-${lineKey}`);
-            discoveredLines.set(lineKey, {
-                id: `pl-${lineKey}`,
-                name: row.Linea,
-                workCenterId: centerId,
-                processType: existingLine?.processType || 'Colchones', // Default or preserve existing
-                assignedWorkstations: [],
-                capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
-                materialsHandled: [],
+        const workstationId = `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
+        if (!discoveredWorkstations.has(workstationId)) {
+            const existingWd = existingWorkstations.get(workstationId);
+            discoveredWorkstations.set(workstationId, {
+                id: workstationId,
+                name: row.PuestoTrabajo,
+                employeesPerWorkstation: existingWd?.employeesPerWorkstation || 1, // Preserve or default
+                machineCode: existingWd?.machineCode || null, // Preserve or default
                 isActive: true
             });
         }
-        const line = discoveredLines.get(lineKey)!;
+        
+        const lineKey = `${centerId}-${row.Linea}`;
+        const lineId = `pl-${lineKey}`;
+        if (!discoveredLines.has(lineId)) {
+            const existingLine = existingLines.get(lineId);
+            discoveredLines.set(lineId, {
+                id: lineId, name: row.Linea, workCenterId: centerId,
+                processType: existingLine?.processType || 'Colchones', // Preserve or default
+                assignedWorkstations: existingLine?.assignedWorkstations || [], // Preserve assignments
+                capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
+                materialsHandled: [], isActive: true
+            });
+        }
+        
+        const line = discoveredLines.get(lineId)!;
         if(!discoveredWorkCenters.get(centerName)!.productionLineIds.includes(line.id)){
             discoveredWorkCenters.get(centerName)!.productionLineIds.push(line.id);
         }
 
-        // Discover Workstation Definitions
-        if (!discoveredWorkstations.has(row.PuestoTrabajo)) {
-             discoveredWorkstations.set(row.PuestoTrabajo, {
-                id: `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`,
-                name: row.PuestoTrabajo,
-                employeesPerWorkstation: 1, // Default value, can be adjusted if needed
-                machineCode: null, // To be assigned by user
-                isActive: true
+        // Assign Workstation to Line, preserving quantity if it exists
+        if (!line.assignedWorkstations.some(as => as.definitionId === workstationId)) {
+             const existingAssignment = existingLines.get(lineId)?.assignedWorkstations.find(as => as.definitionId === workstationId);
+             line.assignedWorkstations.push({ 
+                definitionId: workstationId, 
+                quantity: existingAssignment?.quantity || 1 // Preserve or default
             });
-        }
-        const workstation = discoveredWorkstations.get(row.PuestoTrabajo)!;
-
-        // Assign Workstation to Line
-        if (!line.assignedWorkstations.some(as => as.definitionId === workstation.id)) {
-            line.assignedWorkstations.push({ definitionId: workstation.id, quantity: 1 }); // Default quantity
         }
     });
 
@@ -113,8 +116,9 @@ export function processAndValidateAssemblyData(
     apiData.forEach(row => {
         const centerId = `wc-${row.Centro}`;
         const lineKey = `${centerId}-${row.Linea}`;
-        const line = discoveredLines.get(lineKey)!;
-        const workstation = discoveredWorkstations.get(row.PuestoTrabajo)!;
+        const lineId = `pl-${lineKey}`;
+        const line = discoveredLines.get(lineId)!;
+        const workstationId = `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
 
         // Process Info
         const ppiKey = `${row.CodMaterial}-${line.id}`;
@@ -130,7 +134,7 @@ export function processAndValidateAssemblyData(
             });
         }
         const ppi = processInfoAggregator.get(ppiKey)!;
-        ppi.workstationTimes.push({ workstationDefinitionId: workstation.id, timeHours: row.Tiempo / 60 });
+        ppi.workstationTimes.push({ workstationDefinitionId: workstationId, timeHours: row.Tiempo / 60 });
 
         // Inventory Info
         const invKey = `${row.CodMaterial}-${centerId}`;
@@ -454,8 +458,8 @@ export const generateProductionPlan = (
   
   salesData.forEach(s => {
       if (s.código && s.centro) {
-          const normalizedCenterName = normalizeCenterName(s.centro);
-          const center = workCenters.find(wc => normalizeCenterName(wc.name) === normalizedCenterName);
+          const normalizedCenterCode = normalizeCenterName(s.centro); // '1000'
+          const center = workCenters.find(wc => wc.id === `wc-${normalizedCenterCode}`);
           if (center) {
               allProductCenterPairs.add(`${s.código}---${center.id}`);
           }
@@ -476,7 +480,7 @@ export const generateProductionPlan = (
 
     const demands = planningHorizon.map(({ year, month }) => 
         salesData
-            .filter(s => s.código === productId && normalizeCenterName(s.centro) === normalizeCenterName(center.name) && s.año === year && s.mes === month)
+            .filter(s => s.código === productId && `wc-${normalizeCenterName(s.centro)}` === centerId && s.año === year && s.mes === month)
             .reduce((sum, s) => sum + s.unidadesProyectado, 0)
     );
     

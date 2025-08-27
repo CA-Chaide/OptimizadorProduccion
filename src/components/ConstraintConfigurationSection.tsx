@@ -98,6 +98,28 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     );
     onConstraintsUpdate({ ...constraints, productionLines: updatedLines });
   };
+
+  const handleEmployeesPerWorkstationChange = (wdId: string, value: string) => {
+    const numValue = parseInt(value, 10);
+    const updatedWds = constraints.workstationDefinitions.map(wd => 
+      wd.id === wdId ? { ...wd, employeesPerWorkstation: isNaN(numValue) || numValue < 1 ? 1 : numValue } : wd
+    );
+    onConstraintsUpdate({ ...constraints, workstationDefinitions: updatedWds });
+  };
+
+  const handleWorkstationQuantityInLineChange = (lineId: string, wdId: string, value: string) => {
+    const numValue = parseInt(value, 10);
+    const updatedLines = constraints.productionLines.map(pl => {
+      if (pl.id === lineId) {
+        const updatedWorkstations = pl.assignedWorkstations.map(as => 
+          as.definitionId === wdId ? { ...as, quantity: isNaN(numValue) || numValue < 1 ? 1 : numValue } : as
+        );
+        return { ...pl, assignedWorkstations: updatedWorkstations };
+      }
+      return pl;
+    });
+    onConstraintsUpdate({ ...constraints, productionLines: updatedLines });
+  };
   
   const handleSaveGlobalCosts = () => {
     const baseCost = parseFloat(globalBaseCostDisplay);
@@ -186,7 +208,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                     <h3 className="text-lg font-semibold text-gray-800">Sincronización de Estructura y Tiempos</h3>
                     <p className="text-sm text-gray-600">
                         Presione este botón para obtener la estructura más reciente de Centros, Líneas, Puestos de Trabajo y sus respectivos tiempos de ensamble desde la API.
-                        Este paso es **obligatorio** antes de generar un plan de producción y descubrirá automáticamente la configuración.
+                        Este paso es **obligatorio** antes de generar un plan de producción. La estructura se descubrirá automáticamente. Después de sincronizar, puede ajustar los parámetros como el número de empleados o puestos por línea.
                     </p>
                     <div className="flex items-center gap-4 pt-2">
                         <button 
@@ -206,52 +228,78 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                     </div>
                  </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div className="bg-white p-6 rounded-xl shadow-lg">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Centros de Trabajo Descubiertos ({constraints.workCenters.length})</h3>
-                        <ul className="divide-y divide-gray-200 max-h-80 overflow-y-auto">
-                          {constraints.workCenters.map(wc => (
-                              <li key={wc.id} className="py-2"><p className="font-medium text-gray-900">{wc.name}</p></li>
-                          ))}
-                        </ul>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Workstation Definitions */}
+                  <div className="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Puestos de Trabajo Descubiertos ({constraints.workstationDefinitions.length})</h3>
+                    <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+                        {constraints.workstationDefinitions.map(wd => (
+                            <div key={wd.id} className="py-2 flex justify-between items-center">
+                                <p className="font-medium text-gray-900">{wd.name}</p>
+                                <div className="flex items-center gap-2">
+                                    <label htmlFor={`emp-qty-${wd.id}`} className="text-sm text-gray-600">Empl:</label>
+                                    <input 
+                                        type="number" 
+                                        id={`emp-qty-${wd.id}`}
+                                        value={wd.employeesPerWorkstation} 
+                                        onChange={e => handleEmployeesPerWorkstationChange(wd.id, e.target.value)}
+                                        className="w-16 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                        min="1"
+                                    />
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                     <div className="bg-white p-6 rounded-xl shadow-lg">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Líneas de Producción Descubiertas ({constraints.productionLines.length})</h3>
-                        <div className="divide-y divide-gray-200 max-h-80 overflow-y-auto">
+                  </div>
+
+                  {/* Production Lines and their workstations */}
+                  <div className="bg-white p-6 rounded-xl shadow-lg">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4">Líneas de Producción Descubiertas ({constraints.productionLines.length})</h3>
+                      <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
                           {constraints.productionLines.map(pl => (
-                              <div key={pl.id} className="py-2 flex justify-between items-center">
-                                  <div>
-                                    <p className="font-medium text-gray-900">{pl.name}</p>
-                                    <p className="text-xs text-gray-500">
-                                      Centro: {constraints.workCenters.find(c => c.id === pl.workCenterId)?.name || 'N/A'}
-                                    </p>
+                              <div key={pl.id} className="py-3">
+                                  <div className="flex justify-between items-center mb-2">
+                                      <div>
+                                          <p className="font-medium text-gray-900">{pl.name}</p>
+                                          <p className="text-xs text-gray-500">
+                                              Centro: {constraints.workCenters.find(c => c.id === pl.workCenterId)?.name || 'N/A'}
+                                          </p>
+                                      </div>
+                                      <select 
+                                          value={pl.processType} 
+                                          onChange={(e) => handleProcessTypeChange(pl.id, e.target.value as ProcessType)}
+                                          className="border border-gray-300 rounded-md text-xs py-1"
+                                          title="Asignar tipo de proceso a esta línea"
+                                      >
+                                          {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                      </select>
                                   </div>
-                                  <select 
-                                    value={pl.processType} 
-                                    onChange={(e) => handleProcessTypeChange(pl.id, e.target.value as ProcessType)}
-                                    className="border border-gray-300 rounded-md text-xs py-1"
-                                    title="Asignar tipo de proceso a esta línea"
-                                  >
-                                    {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                                  </select>
+                                  <div className="pl-4 mt-2 space-y-2">
+                                      {pl.assignedWorkstations.map(as => {
+                                          const wd = constraints.workstationDefinitions.find(w => w.id === as.definitionId);
+                                          return (
+                                              <div key={as.definitionId} className="flex justify-between items-center text-sm">
+                                                  <span className="text-gray-700">{wd?.name || 'Puesto desconocido'}</span>
+                                                  <div className="flex items-center gap-2">
+                                                      <label htmlFor={`line-qty-${pl.id}-${wd?.id}`} className="text-xs text-gray-600">Cant:</label>
+                                                      <input 
+                                                          type="number"
+                                                          id={`line-qty-${pl.id}-${wd?.id}`}
+                                                          value={as.quantity}
+                                                          onChange={e => handleWorkstationQuantityInLineChange(pl.id, as.definitionId, e.target.value)}
+                                                          className="w-16 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                                          min="1"
+                                                      />
+                                                  </div>
+                                              </div>
+                                          );
+                                      })}
+                                  </div>
                               </div>
                           ))}
-                        </div>
-                    </div>
-                     <div className="bg-white p-6 rounded-xl shadow-lg">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Puestos de Trabajo Descubiertos ({constraints.workstationDefinitions.length})</h3>
-                        <ul className="divide-y divide-gray-200 max-h-80 overflow-y-auto">
-                          {constraints.workstationDefinitions.map(wd => (
-                              <li key={wd.id} className="py-2">
-                                <p className="font-medium text-gray-900">{wd.name}</p>
-                                <p className="text-xs text-gray-500">
-                                  Empleados por Puesto: {wd.employeesPerWorkstation}
-                                </p>
-                              </li>
-                          ))}
-                        </ul>
-                    </div>
-                 </div>
+                      </div>
+                  </div>
+                </div>
               </div>
             )}
             {activeTab === 'costsAndShifts' && (
@@ -327,5 +375,3 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     </div>
   );
 };
-
-    
