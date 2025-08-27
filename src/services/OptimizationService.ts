@@ -359,34 +359,30 @@ export const generateProductionPlan = (
   auditLog.push('2. Se calculan las "Horas-Hombre" = (Horas de Funcionamiento de Línea) x (Total de Empleados).');
   auditLog.push('3. El costo es (Horas-Hombre) x (Tarifa por hora del día, con recargos).');
 
-  // --- Helper to get all valid production options, sorted by efficiency ---
   const getPpiOptionsForPair = (
     productId: string,
-    centerId: string, // now takes ID
+    centerId: string, 
     productProcessInfos: ProductProcessInfo[],
     activeLines: ProductionLine[]
-): ProductProcessInfo[] => {
-    const ppiCandidates = productProcessInfos.filter(ppi =>
-        ppi.productId === productId &&
-        activeLines.some(l => l.id === ppi.productionLineId && l.workCenterId === centerId)
-    );
-    // Dynamically calculate effective manufacturing time for each candidate
-    const candidatesWithEffectiveTime = ppiCandidates.map(ppi => {
-        const line = activeLines.find(l => l.id === ppi.productionLineId);
-        if (!line) return { ppi, effectiveTime: Infinity };
-        const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
-        return { ppi, effectiveTime };
-    });
+  ): ProductProcessInfo[] => {
+      const ppiCandidates = productProcessInfos.filter(ppi =>
+          ppi.productId === productId &&
+          activeLines.some(l => l.id === ppi.productionLineId && l.workCenterId === centerId)
+      );
 
-    // Sort by the newly calculated effective time, filtering out impossible options
-    return candidatesWithEffectiveTime
-        .filter(item => item.effectiveTime < Infinity)
-        .sort((a, b) => a.effectiveTime - b.effectiveTime)
-        .map(item => ({ ...item.ppi, totalManufacturingTimeHours: item.effectiveTime })); // Overwrite with dynamic time
-};
-
-
-
+      const candidatesWithEffectiveTime = ppiCandidates.map(ppi => {
+          const line = activeLines.find(l => l.id === ppi.productionLineId);
+          if (!line) return { ppi, effectiveTime: Infinity };
+          const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
+          return { ppi, effectiveTime };
+      });
+  
+      return candidatesWithEffectiveTime
+          .filter(item => item.effectiveTime < Infinity)
+          .sort((a, b) => a.effectiveTime - b.effectiveTime)
+          .map(item => ({ ...item.ppi, totalManufacturingTimeHours: item.effectiveTime })); 
+  };
+  
   // --- 1. SETUP & HORIZON ---
   const productDetails = new Map<string, {name: string}>();
   salesData.forEach(s => {
@@ -458,8 +454,7 @@ export const generateProductionPlan = (
   
   salesData.forEach(s => {
       if (s.código && s.centro) {
-          const normalizedCenterCode = normalizeCenterName(s.centro); // '1000'
-          const center = workCenters.find(wc => wc.id === `wc-${normalizedCenterCode}`);
+          const center = workCenters.find(wc => wc.id === `wc-${normalizeCenterName(s.centro)}`);
           if (center) {
               allProductCenterPairs.add(`${s.código}---${center.id}`);
           }
@@ -496,34 +491,35 @@ export const generateProductionPlan = (
     });
   }
 
-  // --- 4. CALCULATE MONTHLY PRODUCTION TARGETS (MRP-style Backwards Pass) ---
-  const productionNeeds = new Map<string, number[]>();
-  auditLog.push('\n--- FASE DE PLANIFICACIÓN MENSUAL (Hacia Atrás - Lógica MRP) ---');
-  auditLog.push('Calcula la producción necesaria desde el último mes al primero para anticipar correctamente la capacidad.');
-
+  // --- 4. CALCULATE MONTHLY PRODUCTION TARGETS (Forward Pass) ---
+  const productionNeeds = new Map<string, number[]>(); // key: `${productId}-${centerId}`, value: array of monthly needs
+  auditLog.push('\n--- FASE DE PLANIFICACIÓN MENSUAL (Hacia Adelante) ---');
+  auditLog.push('Calcula la producción necesaria para cada mes basándose en demanda y políticas de stock.');
+  
   for (const [pair, group] of planningGroups.entries()) {
-    const needs = Array(planningHorizon.length).fill(0);
-    let stockAtEndOfMonth = group.minStock; // Goal for the very end of the horizon
+      const needs = Array(planningHorizon.length).fill(0);
+      let stockAtStartOfMonth = group.initialStock;
 
-    for (let i = planningHorizon.length - 1; i >= 0; i--) {
-      const demandThisMonth = group.demands[i];
-      let projectedStockFromPrevious = (i === 0) 
-        ? group.initialStock 
-        : stockAtEndOfMonth; // Simplified start for this pass
-      
-      const productionNeeded = Math.max(0, demandThisMonth + group.minStock - projectedStockFromPrevious);
-      
-      // Cap production if it exceeds max stock
-      const cappedProduction = Math.min(productionNeeded, (group.maxStock - projectedStockFromPrevious) > 0 ? (group.maxStock - projectedStockFromPrevious) : 0);
-      
-      needs[i] = cappedProduction;
-      
-      // Update stock for PREVIOUS month's calculation
-      stockAtEndOfMonth = projectedStockFromPrevious + cappedProduction - demandThisMonth;
-    }
-     productionNeeds.set(pair, needs);
+      for (let i = 0; i < planningHorizon.length; i++) {
+          const demandThisMonth = group.demands[i];
+          const targetStock = group.minStock;
+
+          // Production needed to meet demand and replenish safety stock
+          const productionNeeded = Math.max(0, demandThisMonth + targetStock - stockAtStartOfMonth);
+          
+          // Production cannot cause stock to exceed max capacity
+          const maxAllowedProduction = group.maxStock - (stockAtStartOfMonth - demandThisMonth);
+          const cappedProduction = Math.max(0, Math.min(productionNeeded, maxAllowedProduction));
+
+          needs[i] = cappedProduction;
+
+          // Calculate stock for the beginning of the NEXT month
+          stockAtStartOfMonth += cappedProduction - demandThisMonth;
+      }
+      productionNeeds.set(pair, needs);
+      const [productId, centerId] = pair.split('---');
+      auditLog.push(`- [${productId} / ${workCenters.find(c=>c.id===centerId)?.name}]: Necesidades Mensuales: ${needs.map(n => Math.round(n)).join(', ')}`);
   }
-
 
   // --- 5. MONTHLY SCHEDULING (REVISED LOGIC WITH OVERFLOW) ---
   auditLog.push('\n\n--- INICIO DE ASIGNACIÓN MENSUAL (con plan anticipado y desborde inteligente) ---');
@@ -740,17 +736,19 @@ export const generateProductionPlan = (
     let totalDemand = 0;
     let totalProduction = 0;
     planningGroups.forEach((group, pair) => {
-        const [productId] = pair.split('---');
+        const [productId, centerId] = pair.split('---');
+        const centerName = workCenters.find(c => c.id === centerId)?.name || 'N/A';
         const demand = group.demands.reduce((a, b) => a + b, 0);
         const production = Array.from(monthlyPlanMap.values())
-            .filter(ppi => ppi.productId === productId)
+            .filter(ppi => ppi.productId === productId && ppi.producingCenterId === centerName)
             .reduce((sum, p) => sum + p.totalQuantityToProduce, 0);
-        totalDemand += demand;
-        totalProduction += production;
-        const difference = production - demand;
-        const status = difference >= -0.1 ? 'OK' : 'DÉFICIT';
+        
         if (demand > 0) {
-            auditLog.push(`- Prod [${productId}]: Demanda=${demand.toFixed(0)}, Prod=${production.toFixed(0)}, Dif=${difference.toFixed(0)} -> ${status}`);
+             totalDemand += demand;
+             totalProduction += production;
+            const difference = production - demand;
+            const status = difference >= -0.1 ? 'OK' : 'DÉFICIT';
+            auditLog.push(`- [${productId} / ${centerName}]: Demanda=${demand.toFixed(0)}, Prod=${production.toFixed(0)}, Dif=${difference.toFixed(0)} -> ${status}`);
         }
     });
     auditLog.push(`\n- RESUMEN GLOBAL: Demanda Total = ${totalDemand.toFixed(0)}, Producción Total = ${totalProduction.toFixed(0)}`);
