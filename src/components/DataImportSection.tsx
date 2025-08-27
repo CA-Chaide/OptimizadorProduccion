@@ -287,7 +287,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
           <div className="overflow-x-auto bg-gray-50 p-3 rounded-md shadow max-h-[50vh]">
             <table className="min-w-full text-sm divide-y divide-gray-200">
-              <thead className="bg-gray-200 sticky top-0">
+              <thead className="bg-gray-200 sticky top-0 z-10">
                 <tr>
                   <th className="p-2 w-10 text-left">
                       <input 
@@ -325,7 +325,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                   </tr>
                 ))}
               </tbody>
-               <tfoot className="bg-gray-200 sticky bottom-0">
+               <tfoot className="bg-gray-200 sticky bottom-0 z-10">
                     
                         <tr className="border-t-2 border-gray-400">
                             <td colSpan={2} className="px-4 py-2 text-left font-semibold text-gray-600 uppercase">Subtotal Sectores 01-03</td>
