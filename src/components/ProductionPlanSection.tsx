@@ -33,7 +33,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
 
   const centerSummaryData = useMemo<CenterSummary[]>(() => {
     if (!dailyPlan || dailyPlan.length === 0 || !constraints.workCenters || constraints.workCenters.length === 0) return [];
-
+    
     const summaryMap = new Map<string, CenterSummary>();
 
     // Initialize map with all centers to ensure they appear even if they have no production
@@ -44,25 +44,27 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
             totalCenterProduction: 0,
         });
     });
-
+    
+    // This map will correctly accumulate production per line ID
     const lineProductionMap = new Map<string, number>(); // key: lineId, value: totalProduction
 
     dailyPlan.forEach(item => {
-        // **CRITICAL FIX**: Match center by NAME, as that's what's stored in the daily plan item.
+        if (!item.producingCenterId || !item.assignedLineId || item.quantityToProduce <= 0) return;
+
+        // Find the center by NAME
         const producingCenter = constraints.workCenters.find(c => c.name === item.producingCenterId);
         if (!producingCenter) return;
 
-        // An item can be produced on multiple lines, so the name can be "Line A, Line B"
-        const assignedLineNames = (item.assignedLineId || '').split(',').map(name => name.trim());
-        if (assignedLineNames.length === 0) return;
-
-        // Find the line objects that match the names within the correct center
+        // An item can be produced on multiple lines, their names are comma-separated
+        const assignedLineNames = item.assignedLineId.split(',').map(name => name.trim());
+        
+        // Find the actual line objects corresponding to the names within that center
         const linesForThisItem = constraints.productionLines.filter(l => 
             l.workCenterId === producingCenter.id && assignedLineNames.includes(l.name)
         );
 
         if (linesForThisItem.length > 0) {
-            // Apportion the production quantity equally among the lines that produced it
+            // Distribute the production quantity equally among the lines that produced it
             const productionPerLine = item.quantityToProduce / linesForThisItem.length;
             
             linesForThisItem.forEach(line => {
@@ -72,6 +74,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         }
     });
 
+    // Now, populate the CenterSummary objects using the aggregated line production data
     lineProductionMap.forEach((totalProduction, lineId) => {
         const line = constraints.productionLines.find(l => l.id === lineId);
         if (line) {
@@ -88,6 +91,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         .sort((a,b) => a.center.name.localeCompare(b.center.name));
         
   }, [dailyPlan, constraints.workCenters, constraints.productionLines]);
+
 
   const grandTotalProduction = useMemo(() => {
     return centerSummaryData.reduce((acc, curr) => acc + curr.totalCenterProduction, 0);
