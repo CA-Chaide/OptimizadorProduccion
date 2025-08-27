@@ -98,14 +98,16 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
                 </div>
             </div>
         ))}
-        <div className="mt-8 pt-4 border-t-2 border-dashed">
-             <div className="flex justify-end items-baseline">
-                <h3 className="text-2xl font-bold text-gray-900">Total General Planificado:</h3>
-                <p className="text-2xl font-bold text-green-700 ml-4">
-                    {Math.round(grandTotalProduction).toLocaleString()} Unidades
-                </p>
-             </div>
-        </div>
+        {grandTotalProduction > 0 && (
+            <div className="mt-8 pt-4 border-t-2 border-dashed">
+                 <div className="flex justify-end items-baseline">
+                    <h3 className="text-2xl font-bold text-gray-900">Total General Planificado:</h3>
+                    <p className="text-2xl font-bold text-green-700 ml-4">
+                        {Math.round(grandTotalProduction).toLocaleString()} Unidades
+                    </p>
+                 </div>
+            </div>
+        )}
     </div>
   );
 
@@ -182,6 +184,30 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
       <pre>{auditLog.join('\n')}</pre>
     </div>
   );
+  
+  const renderContent = () => {
+    if (dailyPlan.length === 0 && activeTab !== 'log') {
+        return (
+            <div className="text-center py-10">
+                <h3 className="text-lg font-medium text-gray-900">El plan de producción está vacío.</h3>
+                <p className="mt-1 text-sm text-gray-500">Sincronice los datos y genere un plan para ver los resultados aquí.</p>
+            </div>
+        );
+    }
+    
+    switch (activeTab) {
+        case 'summary':
+            return renderSummary();
+        case 'daily':
+            return renderDailyPlan();
+        case 'monthly':
+            return renderMonthlyPlan();
+        case 'log':
+            return renderAuditLog();
+        default:
+            return null;
+    }
+  };
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -236,18 +262,9 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
                  </button>
             )}
         </div>
+        
+        {renderContent()}
 
-        {dailyPlan.length === 0 && activeTab !== 'log' && (
-          <div className="text-center py-10">
-            <h3 className="text-lg font-medium text-gray-900">El plan de producción está vacío.</h3>
-            <p className="mt-1 text-sm text-gray-500">Sincronice los datos y genere un plan para ver los resultados aquí.</p>
-          </div>
-        )}
-
-        {dailyPlan.length > 0 && activeTab === 'summary' && renderSummary()}
-        {dailyPlan.length > 0 && activeTab === 'daily' && renderDailyPlan()}
-        {monthlyPlan.length > 0 && activeTab === 'monthly' && renderMonthlyPlan()}
-        {activeTab === 'log' && renderAuditLog()}
       </div>
     </div>
   );
