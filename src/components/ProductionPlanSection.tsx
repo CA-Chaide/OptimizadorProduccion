@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { ProductionPlan, ProductionPlanItem, AppConstraints, MonthlyProductionPlanItem } from '@/types/types';
+
+import React, { useState, useMemo } from 'react';
+import { ProductionPlan, ProductionPlanItem, AppConstraints, MonthlyProductionPlanItem, WorkCenter, ProductionLine } from '@/types/types';
 import { PlanIcon, DataImportIcon } from '@/constants/constants';
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/OptimizationService';
 import { MONTH_NAMES } from '@/constants/constants';
@@ -12,26 +13,99 @@ interface ProductionPlanSectionProps {
   isDataSynced: boolean; // New prop
 }
 
-const getStatusCellStyle = (status: ProductionPlanItem['status']): string => {
-  switch (status) {
-    case 'Completado': return 'bg-green-100 text-green-800';
-    case 'En Progreso': return 'bg-blue-100 text-blue-800';
-    case 'Planificado': return 'bg-gray-100 text-gray-700';
-    case 'Retrasado': return 'bg-yellow-100 text-yellow-800';
-    case 'Error en Datos': return 'bg-red-100 text-red-800 font-bold';
-    case 'Factibilidad Baja': return 'bg-purple-100 text-purple-800';
-    case 'Transferencia': return 'bg-teal-100 text-teal-800';
-    default: return 'bg-white text-gray-900';
-  }
-};
+interface CenterSummary {
+    center: WorkCenter;
+    lines: Array<{
+        line: ProductionLine;
+        totalProduction: number;
+    }>;
+    totalCenterProduction: number;
+}
+
 
 export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ plan, onGeneratePlan, isLoading, constraints, isDataSynced }) => {
-  const [activeTab, setActiveTab] = useState<'daily' | 'monthly' | 'log'>('daily');
+  const [activeTab, setActiveTab] = useState<'summary' | 'daily' | 'monthly' | 'log'>('summary');
 
   const { dailyPlan = [], monthlyPlan = [], auditLog = [] } = plan || {};
   
   const handleExportDaily = () => exportDailyPlanToExcel(dailyPlan, constraints);
   const handleExportMonthly = () => exportMonthlyPlanToExcel(monthlyPlan);
+
+  const centerSummaryData = useMemo<CenterSummary[]>(() => {
+    if (dailyPlan.length === 0 || constraints.workCenters.length === 0) return [];
+    
+    const summaryMap = new Map<string, CenterSummary>();
+
+    constraints.workCenters.forEach(center => {
+        summaryMap.set(center.id, {
+            center,
+            lines: [],
+            totalCenterProduction: 0,
+        });
+    });
+
+    const lineProductionMap = new Map<string, number>(); // key: lineId, value: totalProduction
+
+    dailyPlan.forEach(item => {
+        const line = constraints.productionLines.find(l => l.name === item.assignedLineId && l.workCenterId === constraints.workCenters.find(c => c.name === item.producingCenterId)?.id);
+        if (line) {
+            const currentTotal = lineProductionMap.get(line.id) || 0;
+            lineProductionMap.set(line.id, currentTotal + item.quantityToProduce);
+        }
+    });
+
+    lineProductionMap.forEach((totalProduction, lineId) => {
+        const line = constraints.productionLines.find(l => l.id === lineId);
+        if (line) {
+            const centerSummary = summaryMap.get(line.workCenterId);
+            if (centerSummary) {
+                centerSummary.lines.push({ line, totalProduction });
+                centerSummary.totalCenterProduction += totalProduction;
+            }
+        }
+    });
+    
+    return Array.from(summaryMap.values())
+        .filter(summary => summary.totalCenterProduction > 0)
+        .sort((a,b) => a.center.name.localeCompare(b.center.name));
+        
+  }, [dailyPlan, constraints.workCenters, constraints.productionLines]);
+
+  const grandTotalProduction = useMemo(() => {
+    return centerSummaryData.reduce((acc, curr) => acc + curr.totalCenterProduction, 0);
+  }, [centerSummaryData]);
+
+
+  const renderSummary = () => (
+    <div className="space-y-6">
+        {centerSummaryData.map(({ center, lines, totalCenterProduction }) => (
+            <div key={center.id} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <div className="flex justify-between items-baseline mb-4">
+                    <h3 className="text-xl font-bold text-gray-800">{center.name}</h3>
+                    <p className="text-lg font-semibold text-indigo-600">
+                        Subtotal: {Math.round(totalCenterProduction).toLocaleString()} Unidades
+                    </p>
+                </div>
+                <div className="space-y-3">
+                    {lines.sort((a,b) => a.line.name.localeCompare(b.line.name)).map(({ line, totalProduction }) => (
+                         <div key={line.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                            <span className="font-medium text-gray-700">{line.name}</span>
+                            <span className="font-mono text-gray-900">{Math.round(totalProduction).toLocaleString()} unid.</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        ))}
+        <div className="mt-8 pt-4 border-t-2 border-dashed">
+             <div className="flex justify-end items-baseline">
+                <h3 className="text-2xl font-bold text-gray-900">Total General Planificado:</h3>
+                <p className="text-2xl font-bold text-green-700 ml-4">
+                    {Math.round(grandTotalProduction).toLocaleString()} Unidades
+                </p>
+             </div>
+        </div>
+    </div>
+  );
 
   const renderDailyPlan = () => (
     <div className="overflow-x-auto">
@@ -136,6 +210,9 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
       <div className="bg-white p-6 rounded-xl shadow-lg">
         <div className="flex justify-between items-center border-b border-gray-200 pb-3 mb-4">
              <nav className="flex space-x-2" aria-label="Tabs">
+                <button onClick={() => setActiveTab('summary')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'summary' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>
+                    Resumen por Centro ({centerSummaryData.length})
+                </button>
                 <button onClick={() => setActiveTab('daily')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>
                     Plan Diario ({dailyPlan.length})
                 </button>
@@ -165,6 +242,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
           </div>
         )}
 
+        {dailyPlan.length > 0 && activeTab === 'summary' && renderSummary()}
         {dailyPlan.length > 0 && activeTab === 'daily' && renderDailyPlan()}
         {monthlyPlan.length > 0 && activeTab === 'monthly' && renderMonthlyPlan()}
         {activeTab === 'log' && renderAuditLog()}

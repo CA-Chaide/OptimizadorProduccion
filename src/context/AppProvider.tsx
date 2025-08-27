@@ -164,10 +164,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return false;
             }
 
-            // Let the service discover the structure and process the data
             const { newConstraints, validationErrors, dataCompletenessErrors } = processAndValidateAssemblyData(
                 assemblyData,
-                state.constraints, // Pass current constraints to preserve manual settings
+                state.constraints, 
                 state.salesData
             );
 
@@ -206,7 +205,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         try {
             addNotification('info', 'Generando plan de producción... Esto puede tardar unos momentos.');
-            // We now use state.constraints directly, as it has been updated by the sync process.
             const plan = generateProductionPlan(state.salesData, state.constraints);
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: plan });
             addNotification('success', 'Plan de producción generado exitosamente.');
@@ -272,5 +270,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-
-    
