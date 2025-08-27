@@ -32,8 +32,8 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
   const handleExportMonthly = () => exportMonthlyPlanToExcel(monthlyPlan);
 
   const centerSummaryData = useMemo<CenterSummary[]>(() => {
-    if (dailyPlan.length === 0 || constraints.workCenters.length === 0) return [];
-    
+    if (!dailyPlan || dailyPlan.length === 0 || !constraints.workCenters || constraints.workCenters.length === 0) return [];
+
     const summaryMap = new Map<string, CenterSummary>();
 
     // Initialize map with all centers to ensure they appear even if they have no production
@@ -48,11 +48,27 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
     const lineProductionMap = new Map<string, number>(); // key: lineId, value: totalProduction
 
     dailyPlan.forEach(item => {
-        // Find the line that corresponds to the item. Since assignedLineId can be a name, we must find the matching line object.
-        const line = constraints.productionLines.find(l => l.name === item.assignedLineId && constraints.workCenters.some(c => c.id === l.workCenterId && c.name === item.producingCenterId));
-        if (line) {
-            const currentTotal = lineProductionMap.get(line.id) || 0;
-            lineProductionMap.set(line.id, currentTotal + item.quantityToProduce);
+        // **CRITICAL FIX**: Match center by NAME, as that's what's stored in the daily plan item.
+        const producingCenter = constraints.workCenters.find(c => c.name === item.producingCenterId);
+        if (!producingCenter) return;
+
+        // An item can be produced on multiple lines, so the name can be "Line A, Line B"
+        const assignedLineNames = (item.assignedLineId || '').split(',').map(name => name.trim());
+        if (assignedLineNames.length === 0) return;
+
+        // Find the line objects that match the names within the correct center
+        const linesForThisItem = constraints.productionLines.filter(l => 
+            l.workCenterId === producingCenter.id && assignedLineNames.includes(l.name)
+        );
+
+        if (linesForThisItem.length > 0) {
+            // Apportion the production quantity equally among the lines that produced it
+            const productionPerLine = item.quantityToProduce / linesForThisItem.length;
+            
+            linesForThisItem.forEach(line => {
+                const currentTotal = lineProductionMap.get(line.id) || 0;
+                lineProductionMap.set(line.id, currentTotal + productionPerLine);
+            });
         }
     });
 
@@ -205,7 +221,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         case 'log':
             return renderAuditLog();
         default:
-            return null;
+            return renderSummary(); // Default to summary view
     }
   };
 
@@ -239,7 +255,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         <div className="flex justify-between items-center border-b border-gray-200 pb-3 mb-4">
              <nav className="flex space-x-2" aria-label="Tabs">
                 <button onClick={() => setActiveTab('summary')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'summary' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>
-                    Resumen por Centro ({centerSummaryData.length})
+                    Resumen por Centro y Línea
                 </button>
                 <button onClick={() => setActiveTab('daily')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>
                     Plan Diario ({dailyPlan.length})
