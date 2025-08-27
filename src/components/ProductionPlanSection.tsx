@@ -51,20 +51,16 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
     dailyPlan.forEach(item => {
         if (!item.producingCenterId || !item.assignedLineId || item.quantityToProduce <= 0) return;
 
-        // Find the center by NAME
         const producingCenter = constraints.workCenters.find(c => c.name === item.producingCenterId);
         if (!producingCenter) return;
 
-        // An item can be produced on multiple lines, their names are comma-separated
         const assignedLineNames = item.assignedLineId.split(',').map(name => name.trim());
         
-        // Find the actual line objects corresponding to the names within that center
         const linesForThisItem = constraints.productionLines.filter(l => 
             l.workCenterId === producingCenter.id && assignedLineNames.includes(l.name)
         );
 
         if (linesForThisItem.length > 0) {
-            // Distribute the production quantity equally among the lines that produced it
             const productionPerLine = item.quantityToProduce / linesForThisItem.length;
             
             linesForThisItem.forEach(line => {
@@ -74,7 +70,6 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         }
     });
 
-    // Now, populate the CenterSummary objects using the aggregated line production data
     lineProductionMap.forEach((totalProduction, lineId) => {
         const line = constraints.productionLines.find(l => l.id === lineId);
         if (line) {
@@ -236,23 +231,34 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
             <PlanIcon />
             <h2 className="text-2xl font-semibold text-gray-700">Plan de Producción a Mediano Plazo</h2>
         </div>
-        <button
-          onClick={onGeneratePlan}
-          disabled={isLoading || !isDataSynced}
-          className={`mt-4 md:mt-0 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center justify-center font-semibold
-            ${isLoading || !isDataSynced ? 'bg-indigo-300 cursor-not-allowed' : ''}`}
-          title={!isDataSynced ? 'Debe sincronizar los datos de ensamble en la pestaña de restricciones primero' : 'Generar plan de producción'}
-        >
-          {isLoading ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Generando...
-            </>
-          ) : 'Generar / Regenerar Plan'}
-        </button>
+        <div className="flex items-center space-x-2 mt-4 md:mt-0">
+          <button
+              onClick={handleExportDaily}
+              disabled={dailyPlan.length === 0}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center justify-center font-semibold disabled:bg-green-300 disabled:cursor-not-allowed"
+              title="Descargar el plan detallado a Excel"
+          >
+              <DataImportIcon />
+              <span className="ml-2">Descargar Plan (Excel)</span>
+          </button>
+          <button
+            onClick={onGeneratePlan}
+            disabled={isLoading || !isDataSynced}
+            className={`px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center justify-center font-semibold
+              ${isLoading || !isDataSynced ? 'bg-indigo-300 cursor-not-allowed' : ''}`}
+            title={!isDataSynced ? 'Debe sincronizar los datos de ensamble en la pestaña de restricciones primero' : 'Generar plan de producción'}
+          >
+            {isLoading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Generando...
+              </>
+            ) : 'Generar / Regenerar Plan'}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-lg">
