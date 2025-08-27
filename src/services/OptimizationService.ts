@@ -14,31 +14,91 @@ import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 declare var XLSX: any; 
 
 /**
- * Validates assembly data fetched from the API for data completeness and consistency with constraints.
+ * Discovers the production structure (Centers, Lines, Workstations) from API data,
+ * validates it, and processes it into the application's constraint format.
  */
 export function processAndValidateAssemblyData(
     apiData: TiempoEnsambleItem[],
     currentConstraints: AppConstraints,
     salesData: SalesDataRow[] 
 ): {
-    productProcessInfos: ProductProcessInfo[],
-    inventorySettings: InventorySetting[],
-    validationErrors: string[], // Errors for mismatches with configuration
-    dataCompletenessErrors: string[] // Errors for missing data in the API response itself
+    newConstraints: AppConstraints,
+    validationErrors: string[],
+    dataCompletenessErrors: string[]
 } {
     const validationErrors: string[] = [];
     const dataCompletenessErrors: string[] = [];
-
-    // --- Create helper maps for quick lookup of existing, active constraints ---
-    const activeWorkCenters = currentConstraints.workCenters.filter(wc => wc.isActive !== false);
-    const activeLines = currentConstraints.productionLines.filter(pl => pl.isActive !== false);
-    const activeWorkstationDefs = currentConstraints.workstationDefinitions.filter(wd => wd.isActive !== false);
-
-    const centerMap = new Map(activeWorkCenters.map(wc => [normalizeCenterName(wc.name), wc]));
-    const lineMap = new Map(activeLines.map(pl => [`${pl.workCenterId}-${pl.name.toLowerCase()}`, pl]));
-    const workstationDefMap = new Map(activeWorkstationDefs.map(wd => [wd.name.toLowerCase(), wd]));
     
-    // Create a map for product names from sales data
+    // --- 1. Data Completeness Check on Raw API Data ---
+    apiData.forEach((row, index) => {
+        if (!row.CodMaterial) dataCompletenessErrors.push(`Fila API ${index + 1}: Falta 'CodMaterial'.`);
+        if (!row.Centro) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Centro'.`);
+        if (!row.Linea) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Linea'.`);
+        if (!row.PuestoTrabajo) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'PuestoTrabajo'.`);
+        if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
+    });
+
+    if (dataCompletenessErrors.length > 0) {
+        return { newConstraints: currentConstraints, validationErrors, dataCompletenessErrors };
+    }
+
+    // --- 2. Discover and Create Structure from API Data ---
+    const discoveredWorkCenters = new Map<string, WorkCenter>();
+    const discoveredLines = new Map<string, ProductionLine>();
+    const discoveredWorkstations = new Map<string, WorkstationDefinition>();
+
+    apiData.forEach(row => {
+        // Discover Work Centers
+        const centerName = `Centro ${row.Centro}`;
+        if (!discoveredWorkCenters.has(centerName)) {
+            discoveredWorkCenters.set(centerName, {
+                id: `wc-${row.Centro}`,
+                name: centerName,
+                productionLineIds: [],
+                isActive: true
+            });
+        }
+        const centerId = `wc-${row.Centro}`;
+
+        // Discover Production Lines
+        const lineKey = `${centerId}-${row.Linea}`;
+        if (!discoveredLines.has(lineKey)) {
+            const existingLine = currentConstraints.productionLines.find(l => l.id === `pl-${lineKey}`);
+            discoveredLines.set(lineKey, {
+                id: `pl-${lineKey}`,
+                name: row.Linea,
+                workCenterId: centerId,
+                processType: existingLine?.processType || 'Colchones', // Default or preserve existing
+                assignedWorkstations: [],
+                capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
+                materialsHandled: [],
+                isActive: true
+            });
+        }
+        const line = discoveredLines.get(lineKey)!;
+        if(!discoveredWorkCenters.get(centerName)!.productionLineIds.includes(line.id)){
+            discoveredWorkCenters.get(centerName)!.productionLineIds.push(line.id);
+        }
+
+        // Discover Workstation Definitions
+        if (!discoveredWorkstations.has(row.PuestoTrabajo)) {
+             discoveredWorkstations.set(row.PuestoTrabajo, {
+                id: `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`,
+                name: row.PuestoTrabajo,
+                employeesPerWorkstation: 1, // Default value, can be adjusted if needed
+                machineCode: null, // To be assigned by user
+                isActive: true
+            });
+        }
+        const workstation = discoveredWorkstations.get(row.PuestoTrabajo)!;
+
+        // Assign Workstation to Line
+        if (!line.assignedWorkstations.some(as => as.definitionId === workstation.id)) {
+            line.assignedWorkstations.push({ definitionId: workstation.id, quantity: 1 }); // Default quantity
+        }
+    });
+
+    // --- 3. Create Final Process and Inventory Info ---
     const productNamesMap = new Map<string, string>();
     salesData.forEach(row => {
         if (!productNamesMap.has(row.código)) {
@@ -46,100 +106,39 @@ export function processAndValidateAssemblyData(
         }
     });
 
-    // --- 1. Data Completeness and Validation Phase ---
-    apiData.forEach((row, index) => {
-        // Check for missing data in the API response
-        if (!row.CodMaterial) dataCompletenessErrors.push(`Fila API ${index + 1}: Falta 'CodMaterial'.`);
-        if (!row.Centro) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Centro'.`);
-        if (!row.Linea) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Linea'.`);
-        if (!row.PuestoTrabajo) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'PuestoTrabajo'.`);
-        if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
-
-        if (dataCompletenessErrors.length > 0) return; // Stop validation for this row if essential data is missing
-
-        // Check for consistency with configured constraints
-        const center = centerMap.get(normalizeCenterName(row.Centro));
-        if (!center) {
-            validationErrors.push(`Fila API ${index + 1}: El centro '${row.Centro}' no existe o está inactivo en la configuración.`);
-            return;
-        }
-
-        const line = lineMap.get(`${center.id}-${row.Linea.toLowerCase()}`);
-        if (!line) {
-            validationErrors.push(`Fila API ${index + 1}: La línea '${row.Linea}' no existe en el centro '${row.Centro}' o está inactiva.`);
-            return;
-        }
-
-        const workstationDef = workstationDefMap.get(row.PuestoTrabajo.toLowerCase());
-        if (!workstationDef) {
-            validationErrors.push(`Fila API ${index + 1}: El puesto de trabajo '${row.PuestoTrabajo}' no existe o está inactivo.`);
-            return;
-        }
-
-        const isWorkstationAssigned = line.assignedWorkstations.some(as => as.definitionId === workstationDef.id);
-        if (!isWorkstationAssigned) {
-            validationErrors.push(`Fila API ${index + 1}: El puesto '${row.PuestoTrabajo}' NO ESTÁ ASIGNADO a la línea '${row.Linea}' en la configuración.`);
-        }
-    });
-
-    if (validationErrors.length > 0 || dataCompletenessErrors.length > 0) {
-        return { productProcessInfos: [], inventorySettings: [], validationErrors, dataCompletenessErrors };
-    }
-
-    // --- 2. Processing Phase (only if validation passes) ---
-    const processInfoAggregator = new Map<string, {
-        productId: string;
-        productionLineId: string;
-        workstationTimes: { workstationDefinitionId: string; timeHours: number; }[];
-    }>();
+    const processInfoAggregator = new Map<string, ProductProcessInfo>();
+    const inventoryMap = new Map<string, InventorySetting>();
 
     apiData.forEach(row => {
-        const center = centerMap.get(normalizeCenterName(row.Centro))!;
-        const line = lineMap.get(`${center.id}-${row.Linea.toLowerCase()}`)!;
-        const workstationDef = workstationDefMap.get(row.PuestoTrabajo.toLowerCase())!;
+        const centerId = `wc-${row.Centro}`;
+        const lineKey = `${centerId}-${row.Linea}`;
+        const line = discoveredLines.get(lineKey)!;
+        const workstation = discoveredWorkstations.get(row.PuestoTrabajo)!;
 
-        const key = `${row.CodMaterial}-${line.id}`;
-        if (!processInfoAggregator.has(key)) {
-            processInfoAggregator.set(key, {
+        // Process Info
+        const ppiKey = `${row.CodMaterial}-${line.id}`;
+        if (!processInfoAggregator.has(ppiKey)) {
+            processInfoAggregator.set(ppiKey, {
+                id: `ppi-${row.CodMaterial}-${line.id}`,
                 productId: row.CodMaterial,
+                productName: productNamesMap.get(row.CodMaterial) || row.CodMaterial,
                 productionLineId: line.id,
                 workstationTimes: [],
+                totalManufacturingTimeHours: 0,
+                aprovisionamientoEspecial: row.TipoAprovisionamiento || undefined,
             });
         }
-        const info = processInfoAggregator.get(key)!;
-        const timeInHours = row.Tiempo / 60; // API time is in minutes
-        info.workstationTimes.push({ workstationDefinitionId: workstationDef.id, timeHours: timeInHours });
-    });
+        const ppi = processInfoAggregator.get(ppiKey)!;
+        ppi.workstationTimes.push({ workstationDefinitionId: workstation.id, timeHours: row.Tiempo / 60 });
 
-    const finalProcessInfoData: ProductProcessInfo[] = [];
-    processInfoAggregator.forEach((aggData, key) => {
-        const line = activeLines.find(l => l.id === aggData.productionLineId)!;
-        const center = activeWorkCenters.find(c => c.id === line.workCenterId)!;
-        const supplyInfo = apiData.find(d => d.CodMaterial === aggData.productId && normalizeCenterName(d.Centro) === normalizeCenterName(center.name));
-
-        finalProcessInfoData.push({
-            id: `ppi-${aggData.productId}-${aggData.productionLineId}`,
-            productId: aggData.productId,
-            productName: productNamesMap.get(aggData.productId) || aggData.productId,
-            productionLineId: aggData.productionLineId,
-            workstationTimes: aggData.workstationTimes,
-            totalManufacturingTimeHours: 0, // Recalculated dynamically later
-            aprovisionamientoEspecial: supplyInfo?.TipoAprovisionamiento || undefined,
-        });
-    });
-
-    // --- 3. Process Inventory Settings ---
-    const inventoryMap = new Map<string, InventorySetting>();
-    apiData.forEach(row => {
-        const center = centerMap.get(normalizeCenterName(row.Centro));
-        if (!center || !row.CodMaterial) return;
-        const key = `${row.CodMaterial}-${center.id}`;
-        if (!inventoryMap.has(key)) {
-            inventoryMap.set(key, {
-                id: `inv-${row.CodMaterial}-${center.id}`,
+        // Inventory Info
+        const invKey = `${row.CodMaterial}-${centerId}`;
+        if (!inventoryMap.has(invKey)) {
+            inventoryMap.set(invKey, {
+                id: `inv-${row.CodMaterial}-${centerId}`,
                 itemId: row.CodMaterial,
                 itemName: productNamesMap.get(row.CodMaterial) || row.CodMaterial,
-                centerId: center.id,
+                centerId: centerId,
                 isRawMaterial: false,
                 minStock: row.StockSeguridad,
                 maxStock: row.StockMaximo,
@@ -148,10 +147,19 @@ export function processAndValidateAssemblyData(
         }
     });
 
-    return {
-        productProcessInfos: finalProcessInfoData,
+    // --- 4. Assemble the new constraints object ---
+    const newConstraints: AppConstraints = {
+        ...currentConstraints, // Preserve manual settings like costs, holidays
+        workCenters: Array.from(discoveredWorkCenters.values()),
+        productionLines: Array.from(discoveredLines.values()),
+        workstationDefinitions: Array.from(discoveredWorkstations.values()),
+        productProcessInfos: Array.from(processInfoAggregator.values()),
         inventorySettings: Array.from(inventoryMap.values()),
-        validationErrors: [],
+    };
+
+    return {
+        newConstraints,
+        validationErrors: [], // No validation errors if discovery is the source of truth
         dataCompletenessErrors: []
     };
 }
@@ -354,7 +362,7 @@ export const generateProductionPlan = (
     activeLines: ProductionLine[]
   ): ProductProcessInfo[] => {
       const [productId, centerName] = pair.split('---');
-      const center = workCenters.find(wc => normalizeCenterName(wc.name) === centerName);
+      const center = workCenters.find(wc => wc.name === centerName);
       if (!center) return [];
 
       const ppiCandidates = productProcessInfos.filter(ppi =>
@@ -447,16 +455,16 @@ export const generateProductionPlan = (
   const planningGroups = new Map<string, { demands: number[]; initialStock: number; minStock: number; maxStock: number; }>();
   const allProductCenterPairs = new Set<string>();
   salesData.forEach(s => {
-    if (s.código && s.centro) allProductCenterPairs.add(`${s.código}---${normalizeCenterName(s.centro)}`);
+    if (s.código && s.centro) allProductCenterPairs.add(`${s.código}---${s.centro}`);
   });
   inventorySettings.forEach(is => {
     const center = workCenters.find(c => c.id === is.centerId);
-    if(center) allProductCenterPairs.add(`${is.itemId}---${normalizeCenterName(center.name)}`);
+    if(center) allProductCenterPairs.add(`${is.itemId}---${center.name}`);
   });
 
   for (const pair of allProductCenterPairs) {
     const [productId, centerName] = pair.split('---');
-    const center = workCenters.find(wc => normalizeCenterName(wc.name) === centerName);
+    const center = workCenters.find(wc => wc.name === centerName);
     if (!center) continue;
 
     const ppiOptions = getPpiOptionsForPair(pair, productProcessInfos, workCenters, activeLines);
@@ -464,7 +472,7 @@ export const generateProductionPlan = (
 
     const demands = planningHorizon.map(({ year, month }) => 
         salesData
-            .filter(s => s.código === productId && normalizeCenterName(s.centro) === centerName && s.año === year && s.mes === month)
+            .filter(s => s.código === productId && s.centro === centerName && s.año === year && s.mes === month)
             .reduce((sum, s) => sum + s.unidadesProyectado, 0)
     );
 
@@ -537,7 +545,7 @@ export const generateProductionPlan = (
     for(const prod of productsToPlanThisMonth) {
         let unitsLeftToPlan = prod.units;
         const [productId, centerName] = prod.pair.split('---');
-        const center = workCenters.find(c => normalizeCenterName(c.name) === centerName);
+        const center = workCenters.find(c => c.name === centerName);
         if (!center) continue;
 
 
@@ -593,7 +601,7 @@ export const generateProductionPlan = (
   let stockState = new Map<string, number>(); // key: `${productId}-${centerId}`, value: currentStock
   planningGroups.forEach((group, pair) => {
     const [productId, centerName] = pair.split('---');
-    const center = workCenters.find(wc => normalizeCenterName(wc.name) === centerName)!;
+    const center = workCenters.find(wc => wc.name === centerName)!;
     stockState.set(`${productId}-${center.id}`, group.initialStock);
   });
   
@@ -622,7 +630,7 @@ export const generateProductionPlan = (
       
       planningGroups.forEach((group, pair) => {
         const [productId, centerName] = pair.split('---');
-        const center = workCenters.find(wc => normalizeCenterName(wc.name) === centerName)!;
+        const center = workCenters.find(wc => wc.name === centerName)!;
         const stockKey = `${productId}-${center.id}`;
         const initialStockOnDay = stockState.get(stockKey)!;
         const dailyDemand = isDistributionDay ? (group.demands[monthIndex] / distributionDaysInMonth) : 0;
@@ -1201,3 +1209,5 @@ export const exportSkillsToExcel = (
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Calificaciones Técnicas');
   XLSX.writeFile(workbook, 'Calificaciones_Tecnicas_Personal.xlsx');
 };
+
+    

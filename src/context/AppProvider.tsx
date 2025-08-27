@@ -151,7 +151,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const handleSyncAndValidate = useCallback(async (): Promise<boolean> => {
-        addNotification('info', 'Sincronizando y validando datos de ensamble desde la API...');
+        addNotification('info', 'Sincronizando y validando estructura y tiempos desde la API...');
         try {
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
@@ -164,9 +164,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return false;
             }
 
-            const { productProcessInfos, inventorySettings, validationErrors, dataCompletenessErrors } = processAndValidateAssemblyData(
+            // Let the service discover the structure and process the data
+            const { newConstraints, validationErrors, dataCompletenessErrors } = processAndValidateAssemblyData(
                 assemblyData,
-                state.constraints,
+                state.constraints, // Pass current constraints to preserve manual settings
                 state.salesData
             );
 
@@ -178,16 +179,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: allErrors }});
                 return false;
             }
-
-            const updatedConstraints: AppConstraints = {
-                ...state.constraints,
-                productProcessInfos,
-                inventorySettings,
-            };
             
-            dispatch({ type: 'SET_CONSTRAINTS', payload: updatedConstraints });
+            dispatch({ type: 'SET_CONSTRAINTS', payload: newConstraints });
             dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: true, lastSyncTimestamp: new Date().toISOString(), errors: [] }});
-            addNotification('success', `Sincronización exitosa. Se procesaron y validaron ${assemblyData.length} registros.`);
+            addNotification('success', `Sincronización exitosa. Se descubrieron y validaron ${assemblyData.length} registros.`);
             return true;
         } catch (error) {
             const errorMessage = `Error de red o de API al sincronizar: ${(error as Error).message}`;
@@ -277,3 +272,5 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
+
+    

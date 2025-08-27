@@ -6,6 +6,7 @@ import {
     NotificationMessage, ProductionTimeImportRow, Holiday, ProcessType, WorkstationDefinition, ShiftParameters
 } from '@/types/types';
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
+import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 
 
 interface ConstraintConfigurationSectionProps {
@@ -22,13 +23,6 @@ const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label
   <div className={containerClassName || "mb-3"}>
     <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
     <input id={id} {...props} className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm ${props.disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} />
-  </div>
-);
-
-const TextareaField: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; containerClassName?: string }> = ({ label, id, containerClassName, ...props }) => (
-  <div className={containerClassName || "mb-3"}>
-    <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    <textarea id={id} {...props} rows={2} className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm ${props.disabled ? 'bg-gray-100' : ''}`} />
   </div>
 );
 
@@ -50,32 +44,9 @@ const CheckboxField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { la
 );
 // --- End Reusable Form Components ---
 
-// Helper function to normalize center names for reliable matching
-const normalizeCenterName = (name: string): string => {
-  return (name || '').toLowerCase().replace('centro', '').trim();
-};
-
-
 export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSectionProps> = ({ constraints, onConstraintsUpdate, salesDataProducts, addNotification, onSyncAndValidate, isDataSynced }) => {
-  const [activeTab, setActiveTab] = useState<string>('workstationDefs');
+  const [activeTab, setActiveTab] = useState<string>('syncAndConfig');
   const [isSyncing, setIsSyncing] = useState(false);
-  
-  // States for forms
-  const [wdName, setWdName] = useState(''); // WorkstationDefinition Name
-  const [wdEmployees, setWdEmployees] = useState<number>(1); // WorkstationDefinition Employees
-  const [editingWd, setEditingWd] = useState<WorkstationDefinition | null>(null);
-
-  const [wcName, setWcName] = useState('');
-  const [editingWc, setEditingWc] = useState<WorkCenter | null>(null);
-
-  const [plName, setPlName] = useState('');
-  const [plWorkCenterId, setPlWorkCenterId] = useState('');
-  const [plProcessType, setPlProcessType] = useState<ProcessType>(PROCESS_TYPE_OPTIONS[0].value);
-  const [editingPl, setEditingPl] = useState<ProductionLine | null>(null);
-
-  const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
-  const [assignedWsDefId, setAssignedWsDefId] = useState<string>(''); // ID of WorkstationDefinition to assign
-  const [assignedWsQuantity, setAssignedWsQuantity] = useState<number>(1); // Quantity for this assignment
   
   const [globalBaseCostDisplay, setGlobalBaseCostDisplay] = useState<string>('');
   const [laborFactorsDisplay, setLaborFactorsDisplay] = useState({
@@ -91,12 +62,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   });
 
   useEffect(() => {
-    // When the expanded line changes, reset the assignment form state for a clean slate.
-    setAssignedWsDefId('');
-    setAssignedWsQuantity(1);
-  }, [expandedLineId]);
-  
-  useEffect(() => {
     setGlobalBaseCostDisplay(
       constraints.globalBaseCostPerHour === null || constraints.globalBaseCostPerHour === undefined
         ? ''
@@ -108,24 +73,12 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
         factorRecargoNocturno: String(constraints.laborCostFactors.factorRecargoNocturno),
         factorFinSemanaFeriado: String(constraints.laborCostFactors.factorFinSemanaFeriado),
       });
-    } else {
-      setLaborFactorsDisplay({
-        factorAdicionalDiurno: '',
-        factorRecargoNocturno: '',
-        factorFinSemanaFeriado: '',
-      });
     }
     if (constraints.shiftParameters) {
       setShiftParamsDisplay({
         regularHoursPerDay: String(constraints.shiftParameters.regularHoursPerDay),
         extraHoursPerDay: String(constraints.shiftParameters.extraHoursPerDay),
         saturdayAndHolidayHours: String(constraints.shiftParameters.saturdayAndHolidayHours),
-      });
-    } else {
-      setShiftParamsDisplay({
-        regularHoursPerDay: '',
-        extraHoursPerDay: '',
-        saturdayAndHolidayHours: '',
       });
     }
   }, [constraints.globalBaseCostPerHour, constraints.laborCostFactors, constraints.shiftParameters]);
@@ -138,184 +91,12 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     await onSyncAndValidate();
     setIsSyncing(false);
   };
-  
-  // --- WorkstationDefinition Management (Global) ---
-  const handleSaveWorkstationDefinition = () => {
-    if (!wdName.trim() || wdEmployees < 1) {
-        addNotification('warning', 'Nombre de definición y empleados (>=1) son requeridos.');
-        return;
-    }
-    const trimmedWdName = wdName.trim();
-    if (editingWd) {
-        if (constraints.workstationDefinitions.some(wd => wd.id !== editingWd.id && wd.name.toLowerCase() === trimmedWdName.toLowerCase())) {
-            addNotification('error', `Definición de puesto '${trimmedWdName}' ya existe.`);
-            return;
-        }
-        const updatedWds = constraints.workstationDefinitions.map(wd => 
-            wd.id === editingWd.id ? { ...wd, name: trimmedWdName, employeesPerWorkstation: wdEmployees, isActive: editingWd.isActive, machineCode: wd.machineCode } : wd
-        );
-        onConstraintsUpdate({ ...constraints, workstationDefinitions: updatedWds });
-        addNotification('success', `Definición '${trimmedWdName}' actualizada.`);
-    } else {
-        if (constraints.workstationDefinitions.some(wd => wd.name.toLowerCase() === trimmedWdName.toLowerCase())) {
-            addNotification('error', `Definición de puesto '${trimmedWdName}' ya existe.`);
-            return;
-        }
-        const newWd: WorkstationDefinition = { id: Date.now().toString(), name: trimmedWdName, employeesPerWorkstation: wdEmployees, isActive: true, machineCode: null };
-        onConstraintsUpdate({ ...constraints, workstationDefinitions: [...constraints.workstationDefinitions, newWd] });
-        addNotification('success', `Definición '${trimmedWdName}' agregada.`);
-    }
-    setWdName(''); setWdEmployees(1); setEditingWd(null);
-  };
-  const handleEditWorkstationDefinition = (wd: WorkstationDefinition) => { setEditingWd(wd); setWdName(wd.name); setWdEmployees(wd.employeesPerWorkstation); };
-  const toggleWdActive = (wdId: string) => {
-    onConstraintsUpdate({ ...constraints, workstationDefinitions: constraints.workstationDefinitions.map(wd => wd.id === wdId ? {...wd, isActive: !(wd.isActive ?? true)} : wd) });
-  };
-  const handleDeleteWorkstationDefinition = (id: string) => {
-    if (constraints.productionLines.some(pl => pl.assignedWorkstations.some(as => as.definitionId === id))) {
-        addNotification('error', `No se puede eliminar: Definición asignada a una o más líneas de producción.`); return;
-    }
-    if (constraints.productProcessInfos.some(ppi => ppi.workstationTimes.some(wt => wt.workstationDefinitionId === id))) {
-        addNotification('error', `No se puede eliminar: Definición referenciada en Tiempos de Proceso.`); return;
-    }
-    onConstraintsUpdate({ ...constraints, workstationDefinitions: constraints.workstationDefinitions.filter(wd => wd.id !== id) });
-    addNotification('info', `Definición de puesto eliminada.`);
-  };
 
-
-  // --- Work Center Management ---
-  const handleSaveWorkCenter = () => {
-    if (!wcName.trim()) { addNotification('warning', 'El nombre del centro de trabajo no puede estar vacío.'); return; }
-    if (editingWc) {
-        const updatedWcs = constraints.workCenters.map(wc => wc.id === editingWc.id ? {...wc, name: wcName.trim(), isActive: editingWc.isActive} : wc);
-        onConstraintsUpdate({ ...constraints, workCenters: updatedWcs });
-        addNotification('success', `Centro de trabajo '${wcName.trim()}' actualizado.`);
-    } else {
-        if (constraints.workCenters.some(wc => wc.name.toLowerCase() === wcName.trim().toLowerCase())) {
-            addNotification('error', `El centro de trabajo '${wcName.trim()}' ya existe.`); return;
-        }
-        const newWorkCenter: WorkCenter = { id: Date.now().toString(), name: wcName.trim(), productionLineIds: [], isActive: true };
-        onConstraintsUpdate({ ...constraints, workCenters: [...constraints.workCenters, newWorkCenter] });
-        addNotification('success', `Centro de trabajo '${wcName.trim()}' agregado.`);
-    }
-    setWcName(''); setEditingWc(null);
-  };
-  const handleEditWorkCenter = (wc: WorkCenter) => { setEditingWc(wc); setWcName(wc.name); };
-  const toggleWcActive = (wcId: string) => {
-    onConstraintsUpdate({ ...constraints, workCenters: constraints.workCenters.map(wc => wc.id === wcId ? {...wc, isActive: !(wc.isActive ?? true)} : wc) });
-  };
-  const handleDeleteWorkCenter = (id: string) => {
-    if (constraints.productionLines.some(pl => pl.workCenterId === id)) { addNotification('error', `No se puede eliminar: Centro asociado a líneas.`); return; }
-    if (constraints.inventorySettings.some(is => is.centerId === id)) { addNotification('error', `No se puede eliminar: Centro en inventario.`); return; }
-    onConstraintsUpdate({ ...constraints, workCenters: constraints.workCenters.filter(wc => wc.id !== id) });
-    addNotification('info', `Centro de trabajo eliminado.`);
-  };
-
-  // --- Production Line Management ---
-  const handleSaveProductionLine = () => { 
-    if (!plName.trim() || !plWorkCenterId || !plProcessType) { addNotification('warning', 'Nombre de línea, centro y tipo de proceso son req.'); return; }
-    const trimmedPlName = plName.trim();
-    if (editingPl) {
-        const updatedPls = constraints.productionLines.map(pl => 
-            pl.id === editingPl.id ? {
-                ...pl, name: trimmedPlName, workCenterId: plWorkCenterId, processType: plProcessType, isActive: editingPl.isActive,
-                capacity: pl.capacity || { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
-                materialsHandled: pl.materialsHandled || [],
-                assignedWorkstations: pl.assignedWorkstations || [], // Preserve assignments
-            } : pl
-        );
-        onConstraintsUpdate({...constraints, productionLines: updatedPls});
-        addNotification('success', `Línea '${trimmedPlName}' actualizada.`);
-    } else {
-        if (constraints.productionLines.some(pl => pl.workCenterId === plWorkCenterId && pl.name.toLowerCase() === trimmedPlName.toLowerCase())) {
-            const wcName = constraints.workCenters.find(wc => wc.id === plWorkCenterId)?.name || plWorkCenterId;
-            addNotification('error', `La línea '${trimmedPlName}' ya existe en '${wcName}'.`); return;
-        }
-        const newPL: ProductionLine = { 
-            id: Date.now().toString(), name: trimmedPlName, workCenterId: plWorkCenterId, processType: plProcessType,
-            assignedWorkstations: [], 
-            capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 }, 
-            materialsHandled: [], isActive: true,
-        };
-        const updatedWorkCenters = constraints.workCenters.map(wc => 
-            wc.id === plWorkCenterId ? { ...wc, productionLineIds: [...wc.productionLineIds, newPL.id] } : wc
-        );
-        onConstraintsUpdate({ ...constraints, productionLines: [...constraints.productionLines, newPL], workCenters: updatedWorkCenters });
-        addNotification('success', `Línea '${trimmedPlName}' agregada.`);
-    }
-    setPlName(''); setPlWorkCenterId(''); setPlProcessType(PROCESS_TYPE_OPTIONS[0].value); setEditingPl(null);
-  };
-  const handleEditProductionLine = (pl: ProductionLine) => { 
-      setEditingPl(pl); 
-      setPlName(pl.name); 
-      setPlWorkCenterId(pl.workCenterId); 
-      setPlProcessType(pl.processType || PROCESS_TYPE_OPTIONS[0].value); 
-  };
-  const togglePlActive = (plId: string) => {
-    onConstraintsUpdate({ ...constraints, productionLines: constraints.productionLines.map(pl => pl.id === plId ? {...pl, isActive: !(pl.isActive ?? true)} : pl) });
-  };
-  const handleDeleteProductionLine = (id: string) => { 
-    const lineToDelete = constraints.productionLines.find(pl => pl.id === id);
-    if (!lineToDelete) return;
-    if (lineToDelete.assignedWorkstations.length > 0) { addNotification('error', `Elimine puestos asignados primero.`); return; }
-    if (constraints.productProcessInfos.some(ppi => ppi.productionLineId === id)) { addNotification('error', `Línea en Tiempos de Proceso.`); return;}
-    const updatedWorkCenters = constraints.workCenters.map(wc => wc.id === lineToDelete.workCenterId ? { ...wc, productionLineIds: wc.productionLineIds.filter(plId => plId !== id) } : wc);
-    onConstraintsUpdate({ ...constraints, productionLines: constraints.productionLines.filter(pl => pl.id !== id), workCenters: updatedWorkCenters });
-    if(expandedLineId === id) setExpandedLineId(null); 
-    addNotification('info', `Línea eliminada.`);
-  };
-
-  // --- AssignedWorkstation Management (On ProductionLine) ---
-  const handleAssignWorkstationToLine = (lineId: string) => {
-    if (!lineId || !assignedWsDefId || assignedWsQuantity < 1) {
-        addNotification('warning', 'Seleccione un tipo de puesto y cantidad (>=1).'); return;
-    }
-    const targetPlIndex = constraints.productionLines.findIndex(pl => pl.id === lineId);
-    if (targetPlIndex === -1) { addNotification('error', 'Línea no encontrada.'); return; }
-
-    const updatedProductionLines = [...constraints.productionLines];
-    let targetPl = { ...updatedProductionLines[targetPlIndex] };
-    
-    if (targetPl.assignedWorkstations.some(as => as.definitionId === assignedWsDefId)) {
-        addNotification('error', `Este tipo de puesto ya está asignado a la línea. Edite la cantidad existente.`);
-        return;
-    }
-
-    targetPl.assignedWorkstations = [...targetPl.assignedWorkstations, { definitionId: assignedWsDefId, quantity: assignedWsQuantity }];
-    updatedProductionLines[targetPlIndex] = targetPl;
-    onConstraintsUpdate({ ...constraints, productionLines: updatedProductionLines });
-    const wdName = constraints.workstationDefinitions.find(wd => wd.id === assignedWsDefId)?.name;
-    addNotification('success', `Puesto '${wdName}' (x${assignedWsQuantity}) asignado a línea '${targetPl.name}'.`);
-    setAssignedWsDefId(''); setAssignedWsQuantity(1);
-  };
-  const handleUpdateAssignedWorkstationQuantity = (lineId: string, definitionId: string, newQuantity: number) => {
-    if (newQuantity < 1) { addNotification('warning', 'Cantidad debe ser >= 1.'); return; }
-    const updatedPls = constraints.productionLines.map(pl => {
-        if (pl.id === lineId) {
-            return {
-                ...pl,
-                assignedWorkstations: pl.assignedWorkstations.map(as => 
-                    as.definitionId === definitionId ? { ...as, quantity: newQuantity } : as
-                )
-            };
-        }
-        return pl;
-    });
-    onConstraintsUpdate({ ...constraints, productionLines: updatedPls });
-    addNotification('info', 'Cantidad de puesto actualizada.');
-  };
-  const handleRemoveAssignedWorkstationFromLine = (lineId: string, definitionId: string) => {
-    if (constraints.productProcessInfos.some(ppi => ppi.productionLineId === lineId && ppi.workstationTimes.some(wt => wt.workstationDefinitionId === definitionId))) {
-        addNotification('error', `Este tipo de puesto está referenciado en Tiempos de Proceso para esta línea. No se puede remover.`); return;
-    }
-    const updatedPls = constraints.productionLines.map(pl => {
-        if (pl.id === lineId) {
-            return { ...pl, assignedWorkstations: pl.assignedWorkstations.filter(as => as.definitionId !== definitionId) };
-        }
-        return pl;
-    });
-    onConstraintsUpdate({ ...constraints, productionLines: updatedPls });
-    addNotification('info', 'Puesto desasignado de la línea.');
+  const handleProcessTypeChange = (lineId: string, newProcessType: ProcessType) => {
+    const updatedLines = constraints.productionLines.map(pl => 
+      pl.id === lineId ? { ...pl, processType: newProcessType } : pl
+    );
+    onConstraintsUpdate({ ...constraints, productionLines: updatedLines });
   };
   
   const handleSaveGlobalCosts = () => {
@@ -368,21 +149,16 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   const handleDeleteHoliday = (id: string) => { onConstraintsUpdate({ ...constraints, holidays: constraints.holidays.filter(h => h.id !== id) }); addNotification('info', 'Feriado eliminado.'); };
 
   const tabs = [
-    { id: 'workstationDefs', label: '1. Puestos Trabajo (Global)' },
-    { id: 'workCentersAndLines', label: '2. Centros y Líneas' },
-    { id: 'syncAndCosts', label: '3. Sincronización y Costos' },
-    { id: 'holidays', label: '4. Feriados' },
+    { id: 'syncAndConfig', label: '1. Sincronización y Configuración' },
+    { id: 'costsAndShifts', label: '2. Costos y Turnos' },
+    { id: 'holidays', label: '3. Feriados' },
   ];
-  
-  const activeWorkCenters = useMemo(() => constraints.workCenters.filter(wc => wc.isActive !== false), [constraints.workCenters]);
-  const activeWorkstationDefs = useMemo(() => constraints.workstationDefinitions.filter(wd => wd.isActive !== false), [constraints.workstationDefinitions]);
-
 
   return (
     <div className="p-6 md:p-8 space-y-6">
         <div className="flex items-center space-x-3">
             <ConstraintsIcon />
-            <h2 className="text-2xl font-semibold text-gray-700">Definir Restricciones</h2>
+            <h2 className="text-2xl font-semibold text-gray-700">Configuración del Entorno de Producción</h2>
         </div>
 
         <div className="border-b border-gray-200">
@@ -404,145 +180,13 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
         </div>
         
         <div className="mt-6">
-            {activeTab === 'workstationDefs' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {/* Form */}
-                  <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-800">{editingWd ? 'Editar' : 'Agregar'} Puesto de Trabajo Global</h3>
-                      <InputField label="Nombre del Puesto (Ej: Cerrador, Soldador)" id="wdName" value={wdName} onChange={e => setWdName(e.target.value)} placeholder="Cerrador"/>
-                      <InputField label="Cantidad de Empleados por Puesto" id="wdEmployees" type="number" min="1" value={String(wdEmployees)} onChange={e => setWdEmployees(Number(e.target.value) || 1)} />
-                      <div className="flex justify-end space-x-3">
-                          {editingWd && <button onClick={() => { setEditingWd(null); setWdName(''); setWdEmployees(1); }} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancelar</button>}
-                          <button onClick={handleSaveWorkstationDefinition} className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center"><PlusIcon /> {editingWd ? 'Guardar Cambios' : 'Agregar'}</button>
-                      </div>
-                  </div>
-                  {/* List */}
-                  <div className="bg-white p-6 rounded-xl shadow-lg space-y-3">
-                      <h3 className="text-lg font-semibold text-gray-800">Puestos Globales Existentes ({constraints.workstationDefinitions.length})</h3>
-                      <ul className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-                          {constraints.workstationDefinitions.map(wd => (
-                              <li key={wd.id} className="py-3 flex justify-between items-center">
-                                  <div>
-                                      <p className={`font-medium ${wd.isActive === false ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{wd.name}</p>
-                                      <p className="text-sm text-gray-500">Empleados: {wd.employeesPerWorkstation}</p>
-                                  </div>
-                                  <div className="flex items-center space-x-3">
-                                      <CheckboxField id={`wd-active-${wd.id}`} checked={wd.isActive !== false} onChange={() => toggleWdActive(wd.id)} label="Activo" containerClassName="!my-0" />
-                                      <button onClick={() => handleEditWorkstationDefinition(wd)} className="text-indigo-600 hover:text-indigo-800"><EditIcon/></button>
-                                      <button onClick={() => handleDeleteWorkstationDefinition(wd.id)} className="text-red-500 hover:text-red-700"><DeleteIcon/></button>
-                                  </div>
-                              </li>
-                          ))}
-                      </ul>
-                  </div>
-              </div>
-            )}
-            {activeTab === 'workCentersAndLines' && (
+            {activeTab === 'syncAndConfig' && (
               <div className="space-y-8">
-                {/* --- Work Centers --- */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-800">{editingWc ? 'Editar' : 'Agregar'} Centro de Trabajo</h3>
-                      <InputField label="Nombre Centro" id="wcName" value={wcName} onChange={e => setWcName(e.target.value)} placeholder="Ej: Centro 1000" />
-                      <div className="flex justify-end space-x-3">
-                          {editingWc && <button onClick={() => { setEditingWc(null); setWcName(''); }} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancelar</button>}
-                          <button onClick={handleSaveWorkCenter} className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center"><PlusIcon /> {editingWc ? 'Guardar' : 'Agregar'}</button>
-                      </div>
-                  </div>
-                   <div className="bg-white p-6 rounded-xl shadow-lg space-y-3">
-                      <h3 className="text-lg font-semibold text-gray-800">Centros Existentes ({constraints.workCenters.length})</h3>
-                      <ul className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-                          {constraints.workCenters.map(wc => (
-                              <li key={wc.id} className="py-3 flex justify-between items-center">
-                                <p className={`font-medium ${wc.isActive === false ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{wc.name}</p>
-                                <div className="flex items-center space-x-3">
-                                  <CheckboxField id={`wc-active-${wc.id}`} checked={wc.isActive !== false} onChange={() => toggleWcActive(wc.id)} label="Activo" containerClassName="!my-0" />
-                                  <button onClick={() => handleEditWorkCenter(wc)} className="text-indigo-600 hover:text-indigo-800"><EditIcon /></button>
-                                  <button onClick={() => handleDeleteWorkCenter(wc.id)} className="text-red-500 hover:text-red-700"><DeleteIcon /></button>
-                                </div>
-                              </li>
-                          ))}
-                      </ul>
-                  </div>
-                </div>
-
-                {/* --- Production Lines --- */}
                 <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">{editingPl ? 'Editar' : 'Agregar'} Línea de Producción</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                        <SelectField label="Asignar a Centro" id="plWorkCenterId" value={plWorkCenterId} onChange={e => setPlWorkCenterId(e.target.value)} options={activeWorkCenters.map(wc => ({ value: wc.id, label: wc.name }))} />
-                        <InputField label="Nombre Línea" id="plName" value={plName} onChange={e => setPlName(e.target.value)} placeholder="Ej: Línea Alpha" />
-                        <SelectField label="Tipo de Proceso" id="plProcessType" value={plProcessType} onChange={e => setPlProcessType(e.target.value as ProcessType)} options={PROCESS_TYPE_OPTIONS} />
-                    </div>
-                     <div className="flex justify-end space-x-3">
-                        {editingPl && <button onClick={() => { setEditingPl(null); setPlName(''); setPlWorkCenterId(''); setPlProcessType(PROCESS_TYPE_OPTIONS[0].value);}} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancelar</button>}
-                        <button onClick={handleSaveProductionLine} className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center"><PlusIcon /> {editingPl ? 'Guardar' : 'Agregar'}</button>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-lg space-y-3">
-                      <h3 className="text-lg font-semibold text-gray-800">Líneas Existentes ({constraints.productionLines.length})</h3>
-                      <ul className="divide-y divide-gray-200">
-                          {constraints.productionLines.map(pl => {
-                              const wcName = constraints.workCenters.find(wc => wc.id === pl.workCenterId)?.name;
-                              return (
-                                <li key={pl.id} className="py-3 flex flex-col">
-                                    <div className="flex justify-between items-center w-full">
-                                        <div>
-                                            <p className={`font-medium ${pl.isActive === false ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{pl.name}</p>
-                                            <p className="text-sm text-gray-500">(Centro: {wcName}, Proceso: {pl.processType})</p>
-                                        </div>
-                                        <div className="flex items-center space-x-3">
-                                            <button onClick={() => setExpandedLineId(expandedLineId === pl.id ? null : pl.id)} className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">
-                                                Administrar Puestos ({pl.assignedWorkstations.length})
-                                            </button>
-                                            <CheckboxField id={`pl-active-${pl.id}`} checked={pl.isActive !== false} onChange={() => togglePlActive(pl.id)} label="Activa" containerClassName="!my-0"/>
-                                            <button onClick={() => handleEditProductionLine(pl)} className="text-indigo-600 hover:text-indigo-800"><EditIcon/></button>
-                                            <button onClick={() => handleDeleteProductionLine(pl.id)} className="text-red-500 hover:text-red-700"><DeleteIcon/></button>
-                                        </div>
-                                    </div>
-                                    {expandedLineId === pl.id && (
-                                      <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
-                                        <h4 className="font-semibold text-md">Asignar Puesto de Trabajo a Línea: {pl.name}</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                            <SelectField label="Tipo de Puesto Global" id={`assign-ws-def-${pl.id}`} value={assignedWsDefId} onChange={e => setAssignedWsDefId(e.target.value)} options={activeWorkstationDefs.map(wd => ({ value: wd.id, label: wd.name }))} />
-                                            <InputField label="Cantidad en esta Línea" id={`assign-ws-qty-${pl.id}`} type="number" min="1" value={String(assignedWsQuantity)} onChange={e => setAssignedWsQuantity(Number(e.target.value))} />
-                                            <button onClick={() => handleAssignWorkstationToLine(pl.id)} className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 h-10">Asignar</button>
-                                        </div>
-                                        <h5 className="font-semibold text-sm pt-2">Puestos Asignados ({pl.assignedWorkstations.length}):</h5>
-                                        {pl.assignedWorkstations.length > 0 ? (
-                                            <ul className="divide-y divide-gray-200">
-                                            {pl.assignedWorkstations.map(as => {
-                                                const def = constraints.workstationDefinitions.find(wd => wd.id === as.definitionId);
-                                                return (
-                                                <li key={as.definitionId} className="py-2 flex justify-between items-center">
-                                                    <p className="font-medium text-gray-700">{def?.name}</p>
-                                                    <div className="flex items-center space-x-3">
-                                                        <label htmlFor={`update-qty-${pl.id}-${as.definitionId}`} className="text-sm">Cantidad:</label>
-                                                        <input type="number" id={`update-qty-${pl.id}-${as.definitionId}`} value={as.quantity} onChange={e => handleUpdateAssignedWorkstationQuantity(pl.id, as.definitionId, Number(e.target.value))} className="w-20 px-2 py-1 border border-gray-300 rounded-md shadow-sm sm:text-sm"/>
-                                                        <button onClick={() => handleRemoveAssignedWorkstationFromLine(pl.id, as.definitionId)} className="text-red-500 hover:text-red-700"><DeleteIcon/></button>
-                                                    </div>
-                                                </li>
-                                                )
-                                            })}
-                                            </ul>
-                                        ) : <p className="text-sm text-gray-500">No hay puestos asignados a esta línea.</p>}
-                                      </div>
-                                    )}
-                                </li>
-                              )
-                          })}
-                      </ul>
-                  </div>
-              </div>
-            )}
-            {activeTab === 'syncAndCosts' && (
-              <div className="space-y-8">
-                 <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Sincronización de Datos de Ensamble</h3>
+                    <h3 className="text-lg font-semibold text-gray-800">Sincronización de Estructura y Tiempos</h3>
                     <p className="text-sm text-gray-600">
-                        Haga clic aquí para obtener los últimos tiempos de proceso, inventarios y reglas de suministro desde la API. 
-                        Este paso es necesario antes de generar un plan de producción. El sistema validará los datos por usted.
+                        Presione este botón para obtener la estructura más reciente de Centros, Líneas, Puestos de Trabajo y sus respectivos tiempos de ensamble desde la API.
+                        Este paso es **obligatorio** antes de generar un plan de producción y descubrirá automáticamente la configuración.
                     </p>
                     <div className="flex items-center gap-4 pt-2">
                         <button 
@@ -554,11 +198,64 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                             {isSyncing ? 'Sincronizando...' : 'Sincronizar y Validar Datos'}
                         </button>
                         {isDataSynced && (
-                            <span className="text-sm font-medium text-green-600">✓ Datos sincronizados y validados correctamente.</span>
+                            <span className="text-sm font-medium text-green-600">✓ Estructura y tiempos sincronizados y validados correctamente.</span>
+                        )}
+                        {!isDataSynced && constraints.productProcessInfos.length > 0 && (
+                             <span className="text-sm font-medium text-yellow-600">⚠️ La estructura podría estar desactualizada. Se recomienda sincronizar.</span>
                         )}
                     </div>
                  </div>
 
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="bg-white p-6 rounded-xl shadow-lg">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Centros de Trabajo Descubiertos ({constraints.workCenters.length})</h3>
+                        <ul className="divide-y divide-gray-200 max-h-80 overflow-y-auto">
+                          {constraints.workCenters.map(wc => (
+                              <li key={wc.id} className="py-2"><p className="font-medium text-gray-900">{wc.name}</p></li>
+                          ))}
+                        </ul>
+                    </div>
+                     <div className="bg-white p-6 rounded-xl shadow-lg">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Líneas de Producción Descubiertas ({constraints.productionLines.length})</h3>
+                        <div className="divide-y divide-gray-200 max-h-80 overflow-y-auto">
+                          {constraints.productionLines.map(pl => (
+                              <div key={pl.id} className="py-2 flex justify-between items-center">
+                                  <div>
+                                    <p className="font-medium text-gray-900">{pl.name}</p>
+                                    <p className="text-xs text-gray-500">
+                                      Centro: {constraints.workCenters.find(c => c.id === pl.workCenterId)?.name || 'N/A'}
+                                    </p>
+                                  </div>
+                                  <select 
+                                    value={pl.processType} 
+                                    onChange={(e) => handleProcessTypeChange(pl.id, e.target.value as ProcessType)}
+                                    className="border border-gray-300 rounded-md text-xs py-1"
+                                    title="Asignar tipo de proceso a esta línea"
+                                  >
+                                    {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                  </select>
+                              </div>
+                          ))}
+                        </div>
+                    </div>
+                     <div className="bg-white p-6 rounded-xl shadow-lg">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Puestos de Trabajo Descubiertos ({constraints.workstationDefinitions.length})</h3>
+                        <ul className="divide-y divide-gray-200 max-h-80 overflow-y-auto">
+                          {constraints.workstationDefinitions.map(wd => (
+                              <li key={wd.id} className="py-2">
+                                <p className="font-medium text-gray-900">{wd.name}</p>
+                                <p className="text-xs text-gray-500">
+                                  Empleados por Puesto: {wd.employeesPerWorkstation}
+                                </p>
+                              </li>
+                          ))}
+                        </ul>
+                    </div>
+                 </div>
+              </div>
+            )}
+            {activeTab === 'costsAndShifts' && (
+              <div className="space-y-8">
                  <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
                     <h3 className="text-lg font-semibold text-gray-800">Parámetros de Turnos de Trabajo</h3>
                      <p className="text-sm text-gray-600">Define las horas base para cada tipo de día. Estos valores serán usados por el planificador de producción.</p>
@@ -630,3 +327,5 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     </div>
   );
 };
+
+    
