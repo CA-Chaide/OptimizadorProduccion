@@ -1,4 +1,5 @@
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -356,34 +357,30 @@ export const generateProductionPlan = (
 
   // --- Helper to get all valid production options, sorted by efficiency ---
   const getPpiOptionsForPair = (
-    pair: string,
+    productId: string,
+    centerId: string, // now takes ID
     productProcessInfos: ProductProcessInfo[],
-    workCenters: WorkCenter[],
     activeLines: ProductionLine[]
-  ): ProductProcessInfo[] => {
-      const [productId, centerName] = pair.split('---');
-      const center = workCenters.find(wc => wc.name === centerName);
-      if (!center) return [];
+): ProductProcessInfo[] => {
+    const ppiCandidates = productProcessInfos.filter(ppi =>
+        ppi.productId === productId &&
+        activeLines.some(l => l.id === ppi.productionLineId && l.workCenterId === centerId)
+    );
+    // Dynamically calculate effective manufacturing time for each candidate
+    const candidatesWithEffectiveTime = ppiCandidates.map(ppi => {
+        const line = activeLines.find(l => l.id === ppi.productionLineId);
+        if (!line) return { ppi, effectiveTime: Infinity };
+        const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
+        return { ppi, effectiveTime };
+    });
 
-      const ppiCandidates = productProcessInfos.filter(ppi =>
-          ppi.productId === productId &&
-          activeLines.some(l => l.id === ppi.productionLineId && l.workCenterId === center.id)
-      );
+    // Sort by the newly calculated effective time, filtering out impossible options
+    return candidatesWithEffectiveTime
+        .filter(item => item.effectiveTime < Infinity)
+        .sort((a, b) => a.effectiveTime - b.effectiveTime)
+        .map(item => ({ ...item.ppi, totalManufacturingTimeHours: item.effectiveTime })); // Overwrite with dynamic time
+};
 
-      // Dynamically calculate effective manufacturing time for each candidate
-      const candidatesWithEffectiveTime = ppiCandidates.map(ppi => {
-          const line = activeLines.find(l => l.id === ppi.productionLineId);
-          if (!line) return { ppi, effectiveTime: Infinity };
-          const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
-          return { ppi, effectiveTime };
-      });
-
-      // Sort by the newly calculated effective time, filtering out impossible options
-      return candidatesWithEffectiveTime
-          .filter(item => item.effectiveTime < Infinity)
-          .sort((a, b) => a.effectiveTime - b.effectiveTime)
-          .map(item => ({ ...item.ppi, totalManufacturingTimeHours: item.effectiveTime })); // Overwrite with dynamic time
-  };
 
 
   // --- 1. SETUP & HORIZON ---
@@ -454,31 +451,39 @@ export const generateProductionPlan = (
   // --- 3. AGGREGATE DEMAND & STOCK BY PRODUCT/CENTER ---
   const planningGroups = new Map<string, { demands: number[]; initialStock: number; minStock: number; maxStock: number; }>();
   const allProductCenterPairs = new Set<string>();
+  
   salesData.forEach(s => {
-    if (s.código && s.centro) allProductCenterPairs.add(`${s.código}---${s.centro}`);
+      if (s.código && s.centro) {
+          const normalizedCenterName = normalizeCenterName(s.centro);
+          const center = workCenters.find(wc => normalizeCenterName(wc.name) === normalizedCenterName);
+          if (center) {
+              allProductCenterPairs.add(`${s.código}---${center.id}`);
+          }
+      }
   });
+
   inventorySettings.forEach(is => {
-    const center = workCenters.find(c => c.id === is.centerId);
-    if(center) allProductCenterPairs.add(`${is.itemId}---${center.name}`);
+      allProductCenterPairs.add(`${is.itemId}---${is.centerId}`);
   });
 
   for (const pair of allProductCenterPairs) {
-    const [productId, centerName] = pair.split('---');
-    const center = workCenters.find(wc => wc.name === centerName);
+    const [productId, centerId] = pair.split('---');
+    const center = workCenters.find(wc => wc.id === centerId);
     if (!center) continue;
 
-    const ppiOptions = getPpiOptionsForPair(pair, productProcessInfos, workCenters, activeLines);
+    const ppiOptions = getPpiOptionsForPair(productId, centerId, productProcessInfos, activeLines);
     if (ppiOptions.length === 0) continue;
 
     const demands = planningHorizon.map(({ year, month }) => 
         salesData
-            .filter(s => s.código === productId && s.centro === centerName && s.año === year && s.mes === month)
+            .filter(s => s.código === productId && normalizeCenterName(s.centro) === normalizeCenterName(center.name) && s.año === year && s.mes === month)
             .reduce((sum, s) => sum + s.unidadesProyectado, 0)
     );
+    
+    const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
 
-    const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === center.id);
     if (!demands.some(d => d > 0) && (!invSetting || invSetting.currentStock === 0)) continue;
-
+    
     planningGroups.set(pair, {
         demands,
         initialStock: invSetting?.currentStock || 0,
@@ -534,7 +539,8 @@ export const generateProductionPlan = (
     const productsToPlanThisMonth: { pair: string, units: number, ppiOptions: ProductProcessInfo[] }[] = [];
     productionNeeds.forEach((needs, pair) => { 
         if (needs[monthIndex] > 0) {
-            const ppiOptions = getPpiOptionsForPair(pair, productProcessInfos, workCenters, activeLines);
+            const [productId, centerId] = pair.split('---');
+            const ppiOptions = getPpiOptionsForPair(productId, centerId, productProcessInfos, activeLines);
             if(ppiOptions.length > 0) {
                  productsToPlanThisMonth.push({ pair, units: needs[monthIndex], ppiOptions });
             }
@@ -544,10 +550,7 @@ export const generateProductionPlan = (
     // Schedule products on their most efficient lines first
     for(const prod of productsToPlanThisMonth) {
         let unitsLeftToPlan = prod.units;
-        const [productId, centerName] = prod.pair.split('---');
-        const center = workCenters.find(c => c.name === centerName);
-        if (!center) continue;
-
+        const [productId, centerId] = prod.pair.split('---');
 
         for (const ppi of prod.ppiOptions) { // Iterate through efficient lines
             if (unitsLeftToPlan < 0.1) break;
@@ -574,7 +577,7 @@ export const generateProductionPlan = (
             }
 
             const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
-            const assignmentKey = `${monthIndex}-${lineId}-${productId}-${center.id}`;
+            const assignmentKey = `${monthIndex}-${lineId}-${productId}-${centerId}`;
             const assignment = monthlyAssignments.get(assignmentKey) || { units: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
             assignment.units += unitsToMake;
             assignment.hours.regular += consumedHours.regular;
@@ -600,9 +603,7 @@ export const generateProductionPlan = (
   // --- 6. CREATE DAILY PLAN ITEMS (Using a sequential "mini-scheduler") ---
   let stockState = new Map<string, number>(); // key: `${productId}-${centerId}`, value: currentStock
   planningGroups.forEach((group, pair) => {
-    const [productId, centerName] = pair.split('---');
-    const center = workCenters.find(wc => wc.name === centerName)!;
-    stockState.set(`${productId}-${center.id}`, group.initialStock);
+    stockState.set(pair, group.initialStock);
   });
   
   const rawDailyPlan: ProductionPlanItem[] = []; // Store transactions before consolidation
@@ -629,8 +630,8 @@ export const generateProductionPlan = (
       const isDistributionDay = getDayTypeForProduction(currentDate, holidays) !== 'Sunday' && getDayTypeForProduction(currentDate, holidays) !== 'NonProductiveHoliday';
       
       planningGroups.forEach((group, pair) => {
-        const [productId, centerName] = pair.split('---');
-        const center = workCenters.find(wc => wc.name === centerName)!;
+        const [productId, centerId] = pair.split('---');
+        const center = workCenters.find(wc => wc.id === centerId)!;
         const stockKey = `${productId}-${center.id}`;
         const initialStockOnDay = stockState.get(stockKey)!;
         const dailyDemand = isDistributionDay ? (group.demands[monthIndex] / distributionDaysInMonth) : 0;
@@ -726,7 +727,7 @@ export const generateProductionPlan = (
     const mp = monthlyPlanMap.get(key)!;
     mp.totalQuantityToProduce += dp.quantityToProduce;
     mp.totalHoursWorked += dp.hoursWorked;
-    mp.totalEstimatedLaborCost += dp.estimatedLaborCost;
+    mp.totalEstimatedLaborCost += dp.totalEstimatedLaborCost;
   });
 
   // --- 8. FINAL AUDIT SUMMARY ---
