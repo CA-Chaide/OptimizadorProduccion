@@ -44,7 +44,7 @@ const CheckboxField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { la
 export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSectionProps> = () => {
   const { 
     constraints, 
-    setConstraints: onConstraintsUpdate, // Renaming for clarity within the component
+    setConstraints: onConstraintsUpdate,
     addNotification, 
     handleSyncAndValidate, 
     syncStatus 

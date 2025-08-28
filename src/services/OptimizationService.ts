@@ -4,6 +4,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -20,6 +21,7 @@ declare var XLSX: any;
 
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
+    // Return the last 8 characters, which is the clean product code.
     return codeStr.slice(-8);
 };
 
@@ -62,7 +64,11 @@ export function processAndValidateAssemblyData(
     const existingLines = new Map(currentConstraints.productionLines.map(pl => [pl.id, pl]));
 
     apiData.forEach(row => {
-        const centerId = String(row.Centro).trim(); // Use direct name as ID
+        const centerId = String(row.Centro).trim();
+        const lineName = String(row.Linea).trim();
+        const workstationName = String(row.PuestoTrabajo).trim();
+
+        // Work Center
         if (!discoveredWorkCenters.has(centerId)) {
             discoveredWorkCenters.set(centerId, {
                 id: centerId, 
@@ -72,27 +78,27 @@ export function processAndValidateAssemblyData(
             });
         }
         
-        // **RULE IMPLEMENTED**: Unique Workstation ID is a combination of Center + Workstation Name
-        const workstationId = `wd-${centerId}-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
+        // Workstation Definition (ID = Center + Name)
+        const workstationId = `wd-${centerId}-${workstationName.toLowerCase().replace(/\s/g, '')}`;
         if (!discoveredWorkstations.has(workstationId)) {
             const existingWd = existingWorkstations.get(workstationId);
             discoveredWorkstations.set(workstationId, {
                 id: workstationId,
-                name: row.PuestoTrabajo,
-                employeesPerWorkstation: existingWd?.employeesPerWorkstation || 1, // Preserve or default
-                machineCode: existingWd?.machineCode || null, // Preserve or default
+                name: workstationName,
+                employeesPerWorkstation: existingWd?.employeesPerWorkstation || 1,
+                machineCode: existingWd?.machineCode || null,
                 isActive: true
             });
         }
         
-        // **RULE IMPLEMENTED**: Unique Line ID is a combination of Center + Line Name
-        const lineId = `pl-${centerId}-${row.Linea}`;
+        // Production Line (ID = Center + Name)
+        const lineId = `pl-${centerId}-${lineName}`;
         if (!discoveredLines.has(lineId)) {
             const existingLine = existingLines.get(lineId);
             discoveredLines.set(lineId, {
-                id: lineId, name: row.Linea, workCenterId: centerId,
-                processType: existingLine?.processType || 'Colchones', // Preserve or default
-                assignedWorkstations: [], // CRITICAL: Start with an empty array to be populated now
+                id: lineId, name: lineName, workCenterId: centerId,
+                processType: existingLine?.processType || 'Colchones',
+                assignedWorkstations: [],
                 capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
                 materialsHandled: [], isActive: true
             });
@@ -107,7 +113,7 @@ export function processAndValidateAssemblyData(
              const existingAssignment = existingLines.get(lineId)?.assignedWorkstations.find(as => as.definitionId === workstationId);
              line.assignedWorkstations.push({ 
                 definitionId: workstationId, 
-                quantity: existingAssignment?.quantity || 1 // Preserve or default
+                quantity: existingAssignment?.quantity || 1
             });
         }
     });
@@ -126,15 +132,17 @@ export function processAndValidateAssemblyData(
 
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
-        const lineId = `pl-${centerId}-${row.Linea}`;
-        const workstationId = `wd-${centerId}-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
+        const lineName = String(row.Linea).trim();
+        const lineId = `pl-${centerId}-${lineName}`;
+        const workstationName = String(row.PuestoTrabajo).trim();
+        const workstationId = `wd-${centerId}-${workstationName.toLowerCase().replace(/\s/g, '')}`;
         const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
 
         // Process Info
         const ppiKey = `${normalizedProductId}-${lineId}`;
         if (!processInfoAggregator.has(ppiKey)) {
             processInfoAggregator.set(ppiKey, {
-                id: `ppi-${normalizedProductId}-${lineId}`,
+                id: ppiKey,
                 productId: normalizedProductId,
                 productName: productNamesMap.get(normalizedProductId) || normalizedProductId,
                 productionLineId: lineId,
@@ -150,7 +158,7 @@ export function processAndValidateAssemblyData(
         const invKey = `${normalizedProductId}-${centerId}`;
         if (!inventoryMap.has(invKey)) {
             inventoryMap.set(invKey, {
-                id: `inv-${normalizedProductId}-${centerId}`,
+                id: invKey,
                 itemId: normalizedProductId,
                 itemName: productNamesMap.get(normalizedProductId) || normalizedProductId,
                 centerId: centerId,
@@ -254,16 +262,22 @@ export const generateProductionPlan = (
       return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
   
+  // --- New, Robust getPpiOptionsForPair Function ---
   const getPpiOptionsForPair = (
     productId: string,
     centerId: string
   ): ProductProcessInfo[] => {
+      // 1. Find all processes for the given product ID
       const ppiCandidates = productProcessInfos.filter(ppi => ppi.productId === productId);
+      
+      // 2. Filter those candidates to only include ones that belong to the correct center.
       const candidatesInCenter = ppiCandidates.filter(ppi => {
           const line = productionLines.find(l => l.id === ppi.productionLineId);
+          // A process is valid if its line exists and that line's workCenterId matches the demand center.
           return line && line.workCenterId === centerId;
       });
 
+      // 3. Calculate effective time and sort by efficiency (fastest first)
       return candidatesInCenter
           .map(ppi => {
               const line = productionLines.find(l => l.id === ppi.productionLineId)!;
@@ -276,12 +290,14 @@ export const generateProductionPlan = (
   };
   
   const planningGroupDetails: PlanningGroupMonthlyDetail[] = [];
-  const demandMap = new Map<string, number[]>();
+  const demandMap = new Map<string, { [monthKey: string]: number }>();
 
+  // Determine the planning horizon from the sales data.
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
-    const firstSaleDate = new Date(Math.min(...salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime())));
-    const lastSaleDate = new Date(Math.max(...salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime())));
+    const dates = salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime());
+    const firstSaleDate = new Date(Math.min(...dates));
+    const lastSaleDate = new Date(Math.max(...dates));
     let currentHorizonDate = new Date(firstSaleDate);
     while(currentHorizonDate <= lastSaleDate) {
         planningHorizon.push({ year: currentHorizonDate.getFullYear(), month: currentHorizonDate.getMonth() + 1 });
@@ -302,22 +318,23 @@ export const generateProductionPlan = (
       }
 
       if (!demandMap.has(pairKey)) {
-          demandMap.set(pairKey, Array(planningHorizon.length).fill(0));
+          demandMap.set(pairKey, {});
       }
 
-      const monthIndex = planningHorizon.findIndex(h => h.year === s.año && h.mes === s.mes);
-      if (monthIndex !== -1) {
-          demandMap.get(pairKey)![monthIndex] += s.unidadesProyectado;
-      }
+      const monthKey = `${s.año}-${s.mes}`;
+      const currentDemand = demandMap.get(pairKey)![monthKey] || 0;
+      demandMap.get(pairKey)![monthKey] = currentDemand + s.unidadesProyectado;
   });
 
-  demandMap.forEach((demands, pairKey) => {
+  demandMap.forEach((monthlyDemands, pairKey) => {
       const [productId, centerId] = pairKey.split('---');
       const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       
-      demands.forEach((demand, monthIndex) => {
+      Object.entries(monthlyDemands).forEach(([monthKey, demand]) => {
           if (demand > 0) {
-              const { year, month } = planningHorizon[monthIndex];
+              const [yearStr, monthStr] = monthKey.split('-');
+              const year = parseInt(yearStr);
+              const month = parseInt(monthStr);
               planningGroupDetails.push({
                   pairKey,
                   productId,
@@ -335,17 +352,20 @@ export const generateProductionPlan = (
   auditLog.push(`Se han consolidado ${planningGroupDetails.length} grupos de planificación (producto-centro-mes).`);
   
   const productionNeedsMap = new Map<string, number[]>();
-  demandMap.forEach((demands, pairKey) => {
+  demandMap.forEach((monthlyDemands, pairKey) => {
       const [productId, centerId] = pairKey.split('---');
       const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       const initialStock = invSetting?.currentStock || 0;
       const minStock = invSetting?.minStock || 0;
       const maxStock = invSetting?.maxStock === 0 || !invSetting?.maxStock ? Infinity : invSetting.maxStock;
-
+      
       const needs = Array(planningHorizon.length).fill(0);
       let stockAtStartOfMonth = initialStock;
+
       for (let i = 0; i < planningHorizon.length; i++) {
-          const demandThisMonth = demands[i];
+          const { year, month } = planningHorizon[i];
+          const monthKey = `${year}-${month}`;
+          const demandThisMonth = monthlyDemands[monthKey] || 0;
           const productionNeeded = Math.max(0, demandThisMonth + minStock - stockAtStartOfMonth);
           const maxAllowedByStorage = (maxStock === Infinity) ? Infinity : maxStock - (stockAtStartOfMonth - demandThisMonth);
           const cappedProduction = Math.max(0, Math.min(productionNeeded, maxAllowedByStorage));
@@ -354,9 +374,10 @@ export const generateProductionPlan = (
       }
       productionNeedsMap.set(pairKey, needs);
   });
+  
   const productionNeeds: MonthlyNeed[] = Array.from(productionNeedsMap.entries()).map(([pairKey, needs]) => {
-      const [productId, centerId] = pairKey.split('---');
-      return { pairKey, productId, centerName: centerId, needs };
+      const [productId, centerName] = pairKey.split('---');
+      return { pairKey, productId, centerName, needs };
   });
 
   const monthlyAssignmentsMap = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>();
