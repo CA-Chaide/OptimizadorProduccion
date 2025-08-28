@@ -117,14 +117,15 @@ export function processAndValidateAssemblyData(
         const centerId = `wc-${row.Centro}`;
         const lineId = `pl-${row.Centro}-${row.Linea}`;
         const workstationId = `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
+        const normalizedProductId = String(Number(row.CodMaterial)); // <-- NORMALIZATION HERE
 
         // Process Info
-        const ppiKey = `${row.CodMaterial}-${lineId}`;
+        const ppiKey = `${normalizedProductId}-${lineId}`;
         if (!processInfoAggregator.has(ppiKey)) {
             processInfoAggregator.set(ppiKey, {
-                id: `ppi-${row.CodMaterial}-${lineId}`,
-                productId: row.CodMaterial,
-                productName: productNamesMap.get(row.CodMaterial) || row.CodMaterial,
+                id: `ppi-${normalizedProductId}-${lineId}`,
+                productId: normalizedProductId,
+                productName: productNamesMap.get(normalizedProductId) || normalizedProductId,
                 productionLineId: lineId,
                 workstationTimes: [],
                 totalManufacturingTimeHours: 0,
@@ -135,12 +136,12 @@ export function processAndValidateAssemblyData(
         ppi.workstationTimes.push({ workstationDefinitionId: workstationId, timeHours: row.Tiempo / 60 });
 
         // Inventory Info
-        const invKey = `${row.CodMaterial}-${centerId}`;
+        const invKey = `${normalizedProductId}-${centerId}`;
         if (!inventoryMap.has(invKey)) {
             inventoryMap.set(invKey, {
-                id: `inv-${row.CodMaterial}-${centerId}`,
-                itemId: row.CodMaterial,
-                itemName: productNamesMap.get(row.CodMaterial) || row.CodMaterial,
+                id: `inv-${normalizedProductId}-${centerId}`,
+                itemId: normalizedProductId,
+                itemName: productNamesMap.get(normalizedProductId) || normalizedProductId,
                 centerId: centerId,
                 isRawMaterial: false,
                 minStock: row.StockSeguridad,
