@@ -58,14 +58,7 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.DATA_IMPORT:
                 return <DataImportSection onDataImported={handleDataImported} />;
             case ActiveView.CONSTRAINTS:
-                return <ConstraintConfigurationSection 
-                    constraints={constraints} 
-                    onConstraintsUpdate={setConstraints} 
-                    salesDataProducts={salesData} 
-                    addNotification={addNotification} 
-                    onSyncAndValidate={handleSyncAndValidate}
-                    isDataSynced={syncStatus?.isSynced || false}
-                />;
+                return <ConstraintConfigurationSection />;
             case ActiveView.PERSONNEL:
                 return <PersonnelManagementSection employees={employees} setEmployees={setEmployees} skills={employeeSkills} setSkills={setSkills} constraints={constraints} />;
             case ActiveView.MAINTENANCE:
@@ -73,7 +66,7 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.ABSENTEEISM:
                 return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:
-                return <ProductionPlanSection isDataSynced={syncStatus?.isSynced || false} />;
+                return <ProductionPlanSection />;
             case ActiveView.TACTICAL_SCHEDULING:
                 return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} />;
             case ActiveView.WORK_SHIFT_PLANNING:

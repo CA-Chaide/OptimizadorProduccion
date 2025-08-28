@@ -13,17 +13,20 @@ import { useAppContext } from '@/context/AppProvider';
 type PlanningStep = 'idle' | 'groups' | 'needs' | 'assignments' | 'finalPlan';
 
 interface ProductionPlanSectionProps {
-  isDataSynced: boolean;
+  // Props removed, data comes from context now
 }
 
-export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ isDataSynced }) => {
+export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () => {
   const { 
     productionPlan, 
     handleGeneratePlan, 
     isLoading, 
     constraints, 
-    detailedProductionPlan, // From context
+    detailedProductionPlan,
+    syncStatus, // Get syncStatus from context
   } = useAppContext();
+
+  const isDataSynced = syncStatus?.isSynced || false;
 
   const [activeTab, setActiveTab] = useState<'summary' | 'daily' | 'monthly' | 'log'>('summary');
   const [planningStep, setPlanningStep] = useState<PlanningStep>('idle');
@@ -387,7 +390,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ is
         {renderWizard()}
       </div>
 
-       {planningStep === 'finalPlan' && <div className="bg-white p-6 rounded-xl shadow-lg">{renderAuditLog()}</div>}
+       {planningStep === 'finalPlan' && detailedProductionPlan && detailedProductionPlan.finalPlan.auditLog.length > 0 && <div className="bg-white p-6 rounded-xl shadow-lg">{renderAuditLog()}</div>}
     </div>
   );
 };

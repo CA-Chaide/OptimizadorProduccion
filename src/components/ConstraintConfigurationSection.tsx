@@ -8,15 +8,11 @@ import {
 } from '@/types/types';
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
+import { useAppContext } from '@/context/AppProvider';
 
 
 interface ConstraintConfigurationSectionProps {
-  constraints: AppConstraints;
-  onConstraintsUpdate: (newConstraints: AppConstraints) => void;
-  salesDataProducts: SalesDataRow[];
-  addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
-  onSyncAndValidate: () => Promise<boolean>; // New: Function to trigger validation
-  isDataSynced: boolean; // New: To know if data is ready
+  // All props are removed, data will come from context
 }
 
 // --- Reusable Form Components ---
@@ -45,7 +41,17 @@ const CheckboxField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { la
 );
 // --- End Reusable Form Components ---
 
-export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSectionProps> = ({ constraints, onConstraintsUpdate, salesDataProducts, addNotification, onSyncAndValidate, isDataSynced }) => {
+export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSectionProps> = () => {
+  const { 
+    constraints, 
+    setConstraints: onConstraintsUpdate, // Renaming for clarity within the component
+    addNotification, 
+    handleSyncAndValidate: onSyncAndValidate, 
+    syncStatus 
+  } = useAppContext();
+  
+  const isDataSynced = syncStatus?.isSynced || false;
+
   const [activeTab, setActiveTab] = useState<string>('syncAndConfig');
   const [isSyncing, setIsSyncing] = useState(false);
   
@@ -376,5 +382,3 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     </div>
   );
 };
-
-    
