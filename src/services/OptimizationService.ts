@@ -433,41 +433,44 @@ export const generateProductionPlan = (
   
   // --- 3. AGGREGATE DEMAND & STOCK (ROBUST LOGIC) ---
   const planningGroups = new Map<string, { demands: number[]; initialStock: number; minStock: number; maxStock: number; }>();
-  // Create a reliable map from normalized center name from API to internal center ID
   const centerNameToIdMap = new Map<string, string>();
   workCenters.forEach(wc => centerNameToIdMap.set(normalizeCenterName(wc.name), wc.id));
-
+  
   salesData.forEach(s => {
-    const normalizedCenterName = normalizeCenterName(s.centro);
-    const centerId = centerNameToIdMap.get(normalizedCenterName);
-    
-    // Skip if the sales center doesn't match any known production center
-    if (!centerId) return;
-
-    const pairKey = `${s.código}---${centerId}`;
-    if (!planningGroups.has(pairKey)) {
-        const invSetting = inventorySettings.find(is => is.itemId === s.código && is.centerId === centerId);
-        // Only add if there are PPI options, otherwise it cannot be planned.
-        const ppiOptions = getPpiOptionsForPair(s.código, centerId, productProcessInfos, activeLines);
-        if (ppiOptions.length > 0) {
-            planningGroups.set(pairKey, {
-                demands: Array(planningHorizon.length).fill(0),
-                initialStock: invSetting?.currentStock || 0,
-                minStock: invSetting?.minStock || 0,
-                maxStock: invSetting?.maxStock === 0 || !invSetting?.maxStock ? Infinity : invSetting.maxStock,
-            });
-        }
-    }
-
-    const group = planningGroups.get(pairKey);
-    if (group) {
-        const monthIndex = planningHorizon.findIndex(h => h.year === s.año && h.month === s.mes);
-        if (monthIndex !== -1) {
-            group.demands[monthIndex] += s.unidadesProyectado;
-        }
-    }
+      // Use the raw center name from sales data as the definitive key.
+      const salesCenterName = s.centro.trim();
+      const centerId = centerNameToIdMap.get(normalizeCenterName(s.centro));
+  
+      if (!centerId) return;
+  
+      const pairKey = `${s.código}---${centerId}`;
+  
+      // Only create a planning group if the product can actually be made in that center.
+      const ppiOptions = getPpiOptionsForPair(s.código, centerId, productProcessInfos, activeLines);
+      if (ppiOptions.length === 0) {
+          return; // Cannot be planned, so we don't create a group.
+      }
+  
+      if (!planningGroups.has(pairKey)) {
+          const invSetting = inventorySettings.find(is => is.itemId === s.código && is.centerId === centerId);
+          planningGroups.set(pairKey, {
+              demands: Array(planningHorizon.length).fill(0),
+              initialStock: invSetting?.currentStock || 0,
+              minStock: invSetting?.minStock || 0,
+              maxStock: invSetting?.maxStock === 0 || !invSetting?.maxStock ? Infinity : invSetting.maxStock,
+          });
+      }
+  
+      const group = planningGroups.get(pairKey);
+      if (group) {
+          const monthIndex = planningHorizon.findIndex(h => h.year === s.año && h.mes === s.mes);
+          if (monthIndex !== -1) {
+              group.demands[monthIndex] += s.unidadesProyectado;
+          }
+      }
   });
-  auditLog.push(`\nSe han consolidado ${planningGroups.size} grupos de planificación (producto-centro) con demanda y capacidad de producción.`);
+  auditLog.push(`\nSe han consolidado ${planningGroups.size} grupos de planificación (producto-centro).`);
+
 
   // --- 4. CALCULATE MONTHLY PRODUCTION TARGETS (Forward Pass) ---
   const productionNeeds = new Map<string, number[]>(); // key: `${productId}-${centerId}`, value: array of monthly needs
@@ -1185,5 +1188,6 @@ export const exportSkillsToExcel = (
     
 
     
+
 
 
