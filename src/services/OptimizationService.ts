@@ -601,7 +601,7 @@ export const generateProductionPlan = (
 
 
   // --- 6. CREATE DAILY PLAN ITEMS (Using a sequential "mini-scheduler") ---
-  let stockState = new Map<string, number>(); // key: `${productId}-${centerId}`, value: currentStock
+  const stockState = new Map<string, number>(); // key: `${productId}-${centerId}`, value: currentStock
   planningGroups.forEach((group, pair) => {
     stockState.set(pair, group.initialStock);
   });
@@ -1212,5 +1212,7 @@ export const exportSkillsToExcel = (
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Calificaciones Técnicas');
   XLSX.writeFile(workbook, 'Calificaciones_Tecnicas_Personal.xlsx');
 };
+
+    
 
     
