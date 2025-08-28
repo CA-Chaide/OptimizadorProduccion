@@ -1,6 +1,5 @@
 
 
-
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -54,11 +53,11 @@ export function processAndValidateAssemblyData(
     const existingLines = new Map(currentConstraints.productionLines.map(pl => [pl.id, pl]));
 
     apiData.forEach(row => {
-        const centerId = `wc-${row.Centro}`;
+        const centerId = row.Centro; // Use direct name as ID
         if (!discoveredWorkCenters.has(centerId)) {
             discoveredWorkCenters.set(centerId, {
                 id: centerId, 
-                name: row.Centro,
+                name: centerId, // Name and ID are the same
                 productionLineIds: [], 
                 isActive: true
             });
@@ -116,7 +115,7 @@ export function processAndValidateAssemblyData(
     const inventoryMap = new Map<string, InventorySetting>();
 
     apiData.forEach(row => {
-        const centerId = `wc-${row.Centro}`;
+        const centerId = row.Centro;
         const lineId = `pl-${row.Centro}-${row.Linea}`;
         const workstationId = `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
         const normalizedProductId = String(Number(row.CodMaterial));
@@ -274,13 +273,15 @@ export const generateProductionPlan = (
   });
 
   const planningHorizon: { year: number, month: number }[] = [];
-  const firstSaleDate = new Date(Math.min(...salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime())));
-  const lastSaleDate = new Date(Math.max(...salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime())));
-  
-  let currentHorizonDate = new Date(firstSaleDate);
-  while(currentHorizonDate <= lastSaleDate) {
-      planningHorizon.push({ year: currentHorizonDate.getFullYear(), month: currentHorizonDate.getMonth() + 1 });
-      currentHorizonDate.setMonth(currentHorizonDate.getMonth() + 1);
+  if (salesData.length > 0) {
+    const firstSaleDate = new Date(Math.min(...salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime())));
+    const lastSaleDate = new Date(Math.max(...salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime())));
+    
+    let currentHorizonDate = new Date(firstSaleDate);
+    while(currentHorizonDate <= lastSaleDate) {
+        planningHorizon.push({ year: currentHorizonDate.getFullYear(), month: currentHorizonDate.getMonth() + 1 });
+        currentHorizonDate.setMonth(currentHorizonDate.getMonth() + 1);
+    }
   }
   auditLog.push(`Horizonte de planificación: ${planningHorizon.length} meses.`);
 
@@ -306,14 +307,12 @@ export const generateProductionPlan = (
   });
   
   const planningGroupsMap = new Map<string, { demands: number[]; initialStock: number; minStock: number; maxStock: number; }>();
-  const centerNameToIdMap = new Map<string, string>();
-  workCenters.forEach(wc => centerNameToIdMap.set(wc.name, wc.id));
   
+  // This part remains mostly the same, it sets up the groups
   salesData.forEach(s => {
       const normalizedProductId = String(Number(s.código));
-      const centerId = centerNameToIdMap.get(s.centro.trim());
-      if (!centerId) return;
-
+      const centerId = s.centro.trim();
+      
       const ppiOptions = getPpiOptionsForPair(normalizedProductId, centerId, activeLines);
       if (ppiOptions.length === 0) return;
       
@@ -327,11 +326,24 @@ export const generateProductionPlan = (
               maxStock: invSetting?.maxStock === 0 || !invSetting?.maxStock ? Infinity : invSetting.maxStock,
           });
       }
-  
+  });
+
+  // CORRECTED DEMAND AGGREGATION LOGIC
+  salesData.forEach(s => {
+    const normalizedProductId = String(Number(s.código));
+    const centerId = s.centro.trim();
+    const pairKey = `${normalizedProductId}---${centerId}`;
+    
+    if (planningGroupsMap.has(pairKey)) {
       const group = planningGroupsMap.get(pairKey)!;
       const monthIndex = planningHorizon.findIndex(h => h.year === s.año && h.mes === s.mes);
-      if (monthIndex !== -1) group.demands[monthIndex] += s.unidadesProyectado;
+      if (monthIndex !== -1) {
+        group.demands[monthIndex] += s.unidadesProyectado;
+      }
+    }
   });
+
+
   auditLog.push(`Se han consolidado ${planningGroupsMap.size} grupos de planificación (producto-centro).`);
   
   const planningGroups: PlanningGroup[] = Array.from(planningGroupsMap.entries()).map(([pairKey, data]) => {
@@ -571,3 +583,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
