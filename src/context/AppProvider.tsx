@@ -6,7 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
     AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
     TacticalPlanResult, Employee, EmployeeSkill, AbsenteeismEvent, MaintenanceEvent,
-    WorkShift, AppConstraints, NotificationMessage, TiempoEnsambleItem, SyncStatus
+    WorkShift, AppConstraints, NotificationMessage, TiempoEnsambleItem, SyncStatus,
+    DetailedProductionPlan
 } from '@/types/types';
 import { ActiveView } from '@/constants/constants';
 import { generateProductionPlan, generateTacticalPlan, processAndValidateAssemblyData } from '@/services/OptimizationService';
@@ -18,6 +19,7 @@ const initialState: AppState = {
     salesData: [],
     isLoading: false,
     productionPlan: { dailyPlan: [], monthlyPlan: [], auditLog: [] },
+    detailedProductionPlan: null, // New state for step-by-step results
     constraints: {
         workstationDefinitions: [],
         workCenters: [],
@@ -49,7 +51,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_ACTIVE_VIEW':
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
-            return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan };
+            return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
         case 'SET_CONSTRAINTS':
             return { ...state, constraints: action.payload };
         case 'SET_EMPLOYEES':
@@ -63,9 +65,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_WORK_SHIFTS':
             return { ...state, workShifts: action.payload };
         case 'GENERATE_PRODUCTION_PLAN_START':
-            return { ...state, isLoading: true };
+            return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan };
         case 'GENERATE_PRODUCTION_PLAN_SUCCESS':
-            return { ...state, isLoading: false, productionPlan: action.payload, activeView: ActiveView.PRODUCTION_PLAN };
+            return { 
+                ...state, 
+                isLoading: false, 
+                productionPlan: action.payload.finalPlan,
+                detailedProductionPlan: action.payload,
+            };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
             return { ...state, isLoading: false };
         case 'GENERATE_TACTICAL_PLAN':
@@ -83,6 +90,7 @@ type AppContextType = {
     salesData: SalesDataRow[];
     isLoading: boolean;
     productionPlan: ProductionPlan;
+    detailedProductionPlan: DetailedProductionPlan | null;
     constraints: AppConstraints;
     employees: Employee[];
     employeeSkills: EmployeeSkill[];
@@ -94,7 +102,7 @@ type AppContextType = {
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
-    handleGeneratePlan: () => void;
+    handleGeneratePlan: () => Promise<boolean>;
     handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
     setEmployees: (employees: Employee[]) => void;
     setSkills: (skills: EmployeeSkill[]) => void;
@@ -194,24 +202,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const handleGeneratePlan = useCallback(async () => {
         if (state.salesData.length === 0) {
             addNotification('warning', 'Por favor, carga primero los datos de ventas.');
-            return;
+            return false;
         }
         if (!state.syncStatus?.isSynced) {
             addNotification('error', 'Debe sincronizar y validar los datos de ensamble antes de generar el plan.');
-            return;
+            return false;
         }
 
         dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
         
         try {
             addNotification('info', 'Generando plan de producción... Esto puede tardar unos momentos.');
-            const plan = generateProductionPlan(state.salesData, state.constraints);
-            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: plan });
-            addNotification('success', 'Plan de producción generado exitosamente.');
+            const detailedPlan = generateProductionPlan(state.salesData, state.constraints);
+            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
+            addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');
+            return true;
 
         } catch (error) {
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
             addNotification('error', `Error al generar el plan: ${(error as Error).message}`);
+            return false;
         }
     }, [state.salesData, state.constraints, state.syncStatus, addNotification]);
 

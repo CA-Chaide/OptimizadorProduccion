@@ -1,5 +1,6 @@
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -14,6 +15,7 @@ export type AppState = {
   salesData: SalesDataRow[];
   isLoading: boolean;
   productionPlan: ProductionPlan;
+  detailedProductionPlan: DetailedProductionPlan | null; // New
   constraints: AppConstraints;
   employees: Employee[];
   employeeSkills: EmployeeSkill[];
@@ -30,7 +32,7 @@ export type AppAction =
   | { type: 'SET_ACTIVE_VIEW'; payload: ActiveView }
   | { type: 'SET_SALES_DATA'; payload: SalesDataRow[] }
   | { type: 'GENERATE_PRODUCTION_PLAN_START' }
-  | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: ProductionPlan }
+  | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: DetailedProductionPlan } // Modified
   | { type: 'GENERATE_PRODUCTION_PLAN_ERROR' }
   | { type: 'SET_CONSTRAINTS'; payload: AppConstraints }
   | { type: 'SET_EMPLOYEES'; payload: Employee[] }
@@ -145,14 +147,13 @@ export interface ProductionLine {
 
 export interface WorkCenter {
   id: string;
-  name: string; // e.g., "Centro 1000", "Centro 2000"
+  name: string; // e.g., "1000", "2000"
   productionLineIds: string[];
   isActive?: boolean;
 }
 
 // New structure for Labor Cost Settings
 export interface LaborCostSettings {
-  // id: string; // No longer needed if it's a single object in AppConstraints
   factorAdicionalDiurno: number; // Percentage, e.g., 50 for 50% extra on base for these hours
   factorRecargoNocturno: number; // Percentage, e.g., 25 for 25% extra on night hours
   factorFinSemanaFeriado: number; // Percentage, e.g., 100 for 100% extra on base for weekend/holiday hours
@@ -257,6 +258,45 @@ export interface ProductionPlan {
     monthlyPlan: MonthlyProductionPlanItem[];
     auditLog: string[];
 }
+
+// --- New Types for Step-by-Step Debugging ---
+export interface PlanningGroup {
+  pairKey: string;
+  productId: string;
+  centerName: string;
+  demands: number[];
+  initialStock: number;
+  minStock: number;
+  maxStock: number;
+}
+
+export interface MonthlyNeed {
+  pairKey: string;
+  productId: string;
+  centerName: string;
+  needs: number[];
+}
+type LineHourAvailability = { regular: number; extra: number; holiday: number };
+
+export interface MonthlyAssignment {
+  assignmentKey: string;
+  monthIndex: number;
+  lineName: string;
+  productId: string;
+  centerName: string;
+  units: number;
+  hours: LineHourAvailability;
+  laborCost: number;
+}
+
+export interface DetailedProductionPlan {
+  finalPlan: ProductionPlan;
+  planningGroups: PlanningGroup[];
+  productionNeeds: MonthlyNeed[];
+  monthlyAssignments: MonthlyAssignment[];
+}
+// --- End New Types ---
+
 
 // New: Type for the summary sheet in Excel export
 export interface LineMonthlySummary {
