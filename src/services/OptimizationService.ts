@@ -3,6 +3,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -70,8 +71,9 @@ export function processAndValidateAssemblyData(
                 isActive: true
             });
         }
-
-        const workstationId = `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
+        
+        // **RULE IMPLEMENTED**: Unique Workstation ID is a combination of Center + Workstation Name
+        const workstationId = `wd-${centerId}-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
         if (!discoveredWorkstations.has(workstationId)) {
             const existingWd = existingWorkstations.get(workstationId);
             discoveredWorkstations.set(workstationId, {
@@ -83,7 +85,8 @@ export function processAndValidateAssemblyData(
             });
         }
         
-        const lineId = `pl-${row.Centro}-${row.Linea}`;
+        // **RULE IMPLEMENTED**: Unique Line ID is a combination of Center + Line Name
+        const lineId = `pl-${centerId}-${row.Linea}`;
         if (!discoveredLines.has(lineId)) {
             const existingLine = existingLines.get(lineId);
             discoveredLines.set(lineId, {
@@ -123,8 +126,8 @@ export function processAndValidateAssemblyData(
 
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
-        const lineId = `pl-${row.Centro}-${row.Linea}`;
-        const workstationId = `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
+        const lineId = `pl-${centerId}-${row.Linea}`;
+        const workstationId = `wd-${centerId}-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
         const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
 
         // Process Info
