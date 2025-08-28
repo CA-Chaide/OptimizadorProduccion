@@ -57,7 +57,7 @@ export function processAndValidateAssemblyData(
         if (!discoveredWorkCenters.has(centerId)) {
             discoveredWorkCenters.set(centerId, {
                 id: centerId, 
-                name: row.Centro, // CRITICAL FIX: The name IS the identifier (e.g., '1000')
+                name: row.Centro,
                 productionLineIds: [], 
                 isActive: true
             });
@@ -362,14 +362,18 @@ export const generateProductionPlan = (
     productProcessInfos: ProductProcessInfo[],
     activeLines: ProductionLine[]
   ): ProductProcessInfo[] => {
-      const ppiCandidates = productProcessInfos.filter(ppi =>
-          ppi.productId === productId &&
-          activeLines.some(l => l.id === ppi.productionLineId && l.workCenterId === centerId)
-      );
+      // Find all ppi's for the product.
+      const ppiCandidates = productProcessInfos.filter(ppi => ppi.productId === productId);
+      
+      const candidatesInCenter = ppiCandidates.filter(ppi => {
+          // Check if the line specified in the ppi exists in the provided activeLines
+          // AND belongs to the correct center.
+          return activeLines.some(line => line.id === ppi.productionLineId && line.workCenterId === centerId);
+      });
 
-      const candidatesWithEffectiveTime = ppiCandidates.map(ppi => {
+      const candidatesWithEffectiveTime = candidatesInCenter.map(ppi => {
           const line = activeLines.find(l => l.id === ppi.productionLineId);
-          if (!line) return { ppi, effectiveTime: Infinity };
+          if (!line) return { ppi, effectiveTime: Infinity }; // Should not happen due to the filter above, but safe
           const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
           return { ppi, effectiveTime };
       });
@@ -1196,3 +1200,6 @@ export const exportSkillsToExcel = (
 
 
 
+
+
+    
