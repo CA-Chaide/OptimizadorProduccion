@@ -81,7 +81,7 @@ export function processAndValidateAssemblyData(
             discoveredLines.set(lineId, {
                 id: lineId, name: row.Linea, workCenterId: centerId,
                 processType: existingLine?.processType || 'Colchones', // Preserve or default
-                assignedWorkstations: existingLine?.assignedWorkstations || [], // Preserve assignments
+                assignedWorkstations: [], // CRITICAL: Start with an empty array to be populated now
                 capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
                 materialsHandled: [], isActive: true
             });
@@ -92,7 +92,7 @@ export function processAndValidateAssemblyData(
             discoveredWorkCenters.get(centerName)!.productionLineIds.push(line.id);
         }
 
-        // Assign Workstation to Line, preserving quantity if it exists
+        // CORRECTED LOGIC: Assign Workstation to Line, preserving quantity if it exists
         if (!line.assignedWorkstations.some(as => as.definitionId === workstationId)) {
              const existingAssignment = existingLines.get(lineId)?.assignedWorkstations.find(as => as.definitionId === workstationId);
              line.assignedWorkstations.push({ 
@@ -454,7 +454,8 @@ export const generateProductionPlan = (
   
   salesData.forEach(s => {
       if (s.código && s.centro) {
-          const center = workCenters.find(wc => normalizeCenterName(wc.name) === normalizeCenterName(s.centro));
+          const normalizedCenterName = normalizeCenterName(s.centro)
+          const center = workCenters.find(wc => normalizeCenterName(wc.name) === normalizedCenterName);
           if (center) {
               allProductCenterPairs.add(`${s.código}---${center.id}`);
           }
