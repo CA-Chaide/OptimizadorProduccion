@@ -431,14 +431,17 @@ export const generateProductionPlan = (
     lineMonthlyHours.set(line.id, monthlyAvailability);
   });
   
-  // --- 3. AGGREGATE DEMAND & STOCK (REVISED & ROBUST LOGIC) ---
+  // --- 3. AGGREGATE DEMAND & STOCK (ROBUST LOGIC) ---
   const planningGroups = new Map<string, { demands: number[]; initialStock: number; minStock: number; maxStock: number; }>();
+  // Create a reliable map from normalized center name from API to internal center ID
   const centerNameToIdMap = new Map<string, string>();
   workCenters.forEach(wc => centerNameToIdMap.set(normalizeCenterName(wc.name), wc.id));
 
   salesData.forEach(s => {
-    const normalizedName = normalizeCenterName(s.centro);
-    const centerId = centerNameToIdMap.get(normalizedName);
+    const normalizedCenterName = normalizeCenterName(s.centro);
+    const centerId = centerNameToIdMap.get(normalizedCenterName);
+    
+    // Skip if the sales center doesn't match any known production center
     if (!centerId) return;
 
     const pairKey = `${s.código}---${centerId}`;
@@ -464,6 +467,7 @@ export const generateProductionPlan = (
         }
     }
   });
+  auditLog.push(`\nSe han consolidado ${planningGroups.size} grupos de planificación (producto-centro) con demanda y capacidad de producción.`);
 
   // --- 4. CALCULATE MONTHLY PRODUCTION TARGETS (Forward Pass) ---
   const productionNeeds = new Map<string, number[]>(); // key: `${productId}-${centerId}`, value: array of monthly needs
@@ -478,9 +482,15 @@ export const generateProductionPlan = (
           const demandThisMonth = group.demands[i];
           const targetStock = group.minStock;
 
+          // Required production to meet demand and safety stock
           const productionNeeded = Math.max(0, demandThisMonth + targetStock - stockAtStartOfMonth);
-          const maxAllowedProduction = group.maxStock - (stockAtStartOfMonth - demandThisMonth);
-          const cappedProduction = Math.max(0, Math.min(productionNeeded, maxAllowedProduction));
+          
+          // Max production allowed to not exceed max stock
+          const maxAllowedByStorage = (group.maxStock === Infinity) 
+              ? Infinity 
+              : group.maxStock - (stockAtStartOfMonth - demandThisMonth);
+
+          const cappedProduction = Math.max(0, Math.min(productionNeeded, maxAllowedByStorage));
 
           needs[i] = cappedProduction;
           stockAtStartOfMonth += cappedProduction - demandThisMonth;
@@ -1175,4 +1185,5 @@ export const exportSkillsToExcel = (
     
 
     
+
 
