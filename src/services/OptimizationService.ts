@@ -56,8 +56,10 @@ export function processAndValidateAssemblyData(
         const centerId = `wc-${row.Centro}`;
         if (!discoveredWorkCenters.has(centerId)) {
             discoveredWorkCenters.set(centerId, {
-                id: centerId, name: `Centro ${row.Centro}`,
-                productionLineIds: [], isActive: true
+                id: centerId, 
+                name: row.Centro, // CRITICAL FIX: The name IS the identifier (e.g., '1000')
+                productionLineIds: [], 
+                isActive: true
             });
         }
 
@@ -229,8 +231,11 @@ function generateLineSummaryData(plan: ProductionPlanItem[], constraints: AppCon
         if (!item.assignedLineId || !item.producingCenterId) return;
 
         const lineNames = item.assignedLineId.split(', ');
+        const center = constraints.workCenters.find(c => c.name === item.producingCenterId);
+        if (!center) return;
+
         for (const lineName of lineNames) {
-            const line = constraints.productionLines.find(l => l.name === lineName && l.workCenterId === constraints.workCenters.find(c => c.name === item.producingCenterId)?.id);
+            const line = constraints.productionLines.find(l => l.name === lineName && l.workCenterId === center.id);
             if (!line) continue;
     
             const key = `${item.year}-${item.month}-${line.id}`;
@@ -434,12 +439,11 @@ export const generateProductionPlan = (
   // --- 3. AGGREGATE DEMAND & STOCK (ROBUST LOGIC) ---
   const planningGroups = new Map<string, { demands: number[]; initialStock: number; minStock: number; maxStock: number; }>();
   const centerNameToIdMap = new Map<string, string>();
-  workCenters.forEach(wc => centerNameToIdMap.set(normalizeCenterName(wc.name), wc.id));
+  workCenters.forEach(wc => centerNameToIdMap.set(wc.name, wc.id));
   
   salesData.forEach(s => {
-      // Use the raw center name from sales data as the definitive key.
       const salesCenterName = s.centro.trim();
-      const centerId = centerNameToIdMap.get(normalizeCenterName(s.centro));
+      const centerId = centerNameToIdMap.get(salesCenterName);
   
       if (!centerId) return;
   
@@ -997,7 +1001,7 @@ export const generateTacticalPlan = (
     const [tYear, tMonth, tDay] = targetDate.split('-').map(Number);
     context.dailyPlan.forEach(item => {
         if(item.year === tYear && item.month === tMonth && item.day === tDay && item.quantityToProduce > 0) {
-            const key = `${item.productId}-${normalizeCenterName(item.producingCenterId!)}`;
+            const key = `${item.productId}-${item.producingCenterId!}`;
             tacticalDemand.set(key, (tacticalDemand.get(key) || 0) + item.quantityToProduce);
         }
     });
@@ -1005,7 +1009,7 @@ export const generateTacticalPlan = (
     // From provisional orders file
     provisionalOrders.forEach(order => {
         if (order.FECHAINICIO === targetDate) {
-            const key = `${order.MATERIAL}-${normalizeCenterName(order.CENTRO)}`;
+            const key = `${order.MATERIAL}-${order.CENTRO}`;
             const currentDemand = tacticalDemand.get(key) || 0;
             tacticalDemand.set(key, Math.max(currentDemand, order.CANTIDAD));
         }
@@ -1031,7 +1035,7 @@ export const generateTacticalPlan = (
             return;
         }
         
-        const center = constraints.workCenters.find(c => normalizeCenterName(c.name) === centerName);
+        const center = constraints.workCenters.find(c => c.name === centerName);
         if(!center) {
             alerts.push(`Alerta de Datos: No se encontró el centro '${centerName}' para el producto '${productId}'.`);
             return;
@@ -1188,6 +1192,7 @@ export const exportSkillsToExcel = (
     
 
     
+
 
 
 

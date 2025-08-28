@@ -98,7 +98,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ pl
         {centerSummaryData.map(({ center, lines, totalCenterProduction }) => (
             <div key={center.id} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
                 <div className="flex justify-between items-baseline mb-4">
-                    <h3 className="text-xl font-bold text-gray-800">{center.name}</h3>
+                    <h3 className="text-xl font-bold text-gray-800">Centro {center.name}</h3>
                     <p className="text-lg font-semibold text-indigo-600">
                         Subtotal: {Math.round(totalCenterProduction).toLocaleString()} Unidades
                     </p>
