@@ -1,6 +1,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -260,14 +261,15 @@ export interface ProductionPlan {
 }
 
 // --- New Types for Step-by-Step Debugging ---
-export interface PlanningGroup {
+export interface PlanningGroupMonthlyDetail {
   pairKey: string;
   productId: string;
   centerName: string;
-  demands: number[];
+  year: number;
+  month: number;
+  demand: number;
   initialStock: number;
   minStock: number;
-  maxStock: number;
 }
 
 export interface MonthlyNeed {
@@ -291,7 +293,7 @@ export interface MonthlyAssignment {
 
 export interface DetailedProductionPlan {
   finalPlan: ProductionPlan;
-  planningGroups: PlanningGroup[];
+  planningGroupDetails: PlanningGroupMonthlyDetail[];
   productionNeeds: MonthlyNeed[];
   monthlyAssignments: MonthlyAssignment[];
 }

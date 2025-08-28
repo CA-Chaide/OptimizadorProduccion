@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
-    PlanningGroup, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan 
+    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan 
 } from '@/types/types';
 import { PlanIcon, DataImportIcon } from '@/constants/constants';
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/OptimizationService';
@@ -23,13 +23,14 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     isLoading, 
     constraints, 
     detailedProductionPlan,
-    syncStatus, // Get syncStatus from context
+    syncStatus,
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
 
   const [activeTab, setActiveTab] = useState<'summary' | 'daily' | 'monthly' | 'log'>('summary');
   const [planningStep, setPlanningStep] = useState<PlanningStep>('idle');
+  const [filters, setFilters] = useState<Record<string, string>>({});
 
   const { dailyPlan = [], monthlyPlan = [], auditLog = [] } = productionPlan || {};
   
@@ -56,6 +57,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
   
   const handleReset = () => {
     setPlanningStep('idle');
+    setFilters({});
   };
 
   const centerSummaryData = useMemo(() => {
@@ -69,7 +71,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     const lineProductionMap = new Map<string, number>();
     dailyPlan.forEach(item => {
         if (!item.producingCenterId || !item.assignedLineId || item.quantityToProduce <= 0) return;
-        const line = constraints.productionLines.find(l => l.name === item.assignedLineId && l.workCenterId === constraints.workCenters.find(c=>c.name === item.producingCenterId)?.id);
+        const line = constraints.productionLines.find(l => l.name === item.assignedLineId && l.workCenterId === item.producingCenterId);
         if(line) {
             const currentTotal = lineProductionMap.get(line.id) || 0;
             lineProductionMap.set(line.id, currentTotal + item.quantityToProduce);
@@ -98,39 +100,64 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     return centerSummaryData.reduce((acc, curr) => acc + curr.totalCenterProduction, 0);
   }, [centerSummaryData]);
 
+  const filteredPlanningGroups = useMemo(() => {
+    if (!detailedProductionPlan?.planningGroupDetails) return [];
+    let data = detailedProductionPlan.planningGroupDetails;
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) {
+        data = data.filter(row => String(row[key as keyof PlanningGroupMonthlyDetail]).toLowerCase().includes(value.toLowerCase()));
+      }
+    });
+    return data;
+  }, [detailedProductionPlan?.planningGroupDetails, filters]);
+
+  const handleFilterChange = (columnId: string, value: string) => {
+    setFilters(prev => ({ ...prev, [columnId]: value }));
+  };
+
+
   // --- Step Rendering Components ---
   const renderStep1_Groups = () => (
     <div>
       <h3 className="text-lg font-semibold text-gray-800 mb-2">Paso 1: Consolidación de Demanda y Stock</h3>
       <p className="text-sm text-gray-600 mb-4">
-        A continuación se muestran los grupos únicos de `Producto-Centro` encontrados, con su demanda mensual total y el stock inicial y de seguridad configurado.
-        Si esta tabla está vacía, significa que el sistema no pudo encontrar una coincidencia válida entre los datos de ventas y los datos de producción/inventario.
+        A continuación se muestra el desglose mensual de la demanda para cada par `Producto-Centro`. Use los filtros para investigar.
+        Si esta tabla está vacía, el sistema no pudo encontrar una coincidencia válida entre los datos de ventas y los de producción/inventario.
       </p>
       <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
         <table className="min-w-full text-sm divide-y divide-gray-200">
-          <thead className="bg-gray-100 sticky top-0">
+          <thead className="bg-gray-100 sticky top-0 z-10">
             <tr>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600">Producto (ID)</th>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-600">Stock Inicial</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-600">Stock Seguridad</th>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600">Demanda Mensual</th>
+              {['productId', 'centerName', 'year', 'month', 'demand', 'initialStock', 'minStock'].map(col => (
+                <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
+                  <div>{col.replace('Name', '').replace('Id','')}</div>
+                  <input
+                    type="text"
+                    value={filters[col] || ''}
+                    onChange={(e) => handleFilterChange(col, e.target.value)}
+                    className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
+                    placeholder={`Filtrar ${col}...`}
+                  />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {detailedProductionPlan?.planningGroups && detailedProductionPlan.planningGroups.length > 0 ? (
-              detailedProductionPlan.planningGroups.map(group => (
-                <tr key={group.pairKey}>
+            {filteredPlanningGroups && filteredPlanningGroups.length > 0 ? (
+              filteredPlanningGroups.map((group, index) => (
+                <tr key={`${group.pairKey}-${group.month}-${index}`}>
                   <td className="px-3 py-2 font-mono">{group.productId}</td>
                   <td className="px-3 py-2">{group.centerName}</td>
+                  <td className="px-3 py-2">{group.year}</td>
+                  <td className="px-3 py-2">{MONTH_NAMES[group.month - 1]}</td>
+                  <td className="px-3 py-2 text-right font-bold text-blue-600">{group.demand.toLocaleString()}</td>
                   <td className="px-3 py-2 text-right">{group.initialStock.toLocaleString()}</td>
                   <td className="px-3 py-2 text-right">{group.minStock.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-mono text-xs">[{group.demands.map(d => d.toFixed(0)).join(', ')}]</td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={5} className="text-center py-4 text-red-600 font-bold">
+                <td colSpan={7} className="text-center py-4 text-red-600 font-bold">
                   Se han consolidado 0 grupos de planificación. El proceso no puede continuar.
                   <span className="block font-normal text-gray-600">Causa probable: No hay coincidencia entre el `CodMaterial` y `Centro` de los datos de ventas y los datos de Tiempos de Ensamble/Inventario. Verifique la normalización de datos.</span>
                 </td>
@@ -258,7 +285,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
         {centerSummaryData.map(({ center, lines, totalCenterProduction }) => (
             <div key={center.id} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
                 <div className="flex justify-between items-baseline mb-4">
-                    <h3 className="text-xl font-bold text-gray-800">Centro {center.name}</h3>
+                    <h3 className="text-xl font-bold text-gray-800">{center.name}</h3>
                     <p className="text-lg font-semibold text-indigo-600">Subtotal: {Math.round(totalCenterProduction).toLocaleString()} Unidades</p>
                 </div>
                 <div className="space-y-3">
@@ -345,7 +372,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
   };
   
   const isNextDisabled = () => {
-      if (planningStep === 'groups' && (!detailedProductionPlan?.planningGroups || detailedProductionPlan.planningGroups.length === 0)) return true;
+      if (planningStep === 'groups' && (!detailedProductionPlan?.planningGroupDetails || detailedProductionPlan.planningGroupDetails.length === 0)) return true;
       if (planningStep === 'needs' && (!detailedProductionPlan?.productionNeeds || detailedProductionPlan.productionNeeds.length === 0)) return true;
       if (planningStep === 'assignments' && (!detailedProductionPlan?.monthlyAssignments || detailedProductionPlan.monthlyAssignments.length === 0)) return true;
       return false;
@@ -390,7 +417,9 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
         {renderWizard()}
       </div>
 
-       {planningStep === 'finalPlan' && detailedProductionPlan && detailedProductionPlan.finalPlan.auditLog.length > 0 && <div className="bg-white p-6 rounded-xl shadow-lg">{renderAuditLog()}</div>}
+       {detailedProductionPlan?.finalPlan?.auditLog && detailedProductionPlan.finalPlan.auditLog.length > 0 && 
+         <div className="bg-white p-6 rounded-xl shadow-lg">{renderAuditLog()}</div>
+       }
     </div>
   );
 };

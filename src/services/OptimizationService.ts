@@ -6,7 +6,7 @@ import {
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
-    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroup, MonthlyNeed, MonthlyAssignment
+    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -57,7 +57,7 @@ export function processAndValidateAssemblyData(
         if (!discoveredWorkCenters.has(centerId)) {
             discoveredWorkCenters.set(centerId, {
                 id: centerId, 
-                name: centerId, // Name and ID are the same
+                name: centerId,
                 productionLineIds: [], 
                 isActive: true
             });
@@ -92,7 +92,6 @@ export function processAndValidateAssemblyData(
             discoveredWorkCenters.get(centerId)!.productionLineIds.push(line.id);
         }
 
-        // CORRECTED LOGIC: Assign Workstation to Line, preserving quantity if it exists
         if (!line.assignedWorkstations.some(as => as.definitionId === workstationId)) {
              const existingAssignment = existingLines.get(lineId)?.assignedWorkstations.find(as => as.definitionId === workstationId);
              line.assignedWorkstations.push({ 
@@ -241,7 +240,7 @@ export const generateProductionPlan = (
   
   if (!salesData || salesData.length === 0) {
       auditLog.push('Error: No hay datos de ventas para procesar.');
-      return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroups: [], productionNeeds: [], monthlyAssignments: [] };
+      return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
 
   const getPpiOptionsForPair = (
@@ -306,59 +305,68 @@ export const generateProductionPlan = (
     }));
   });
   
-  const planningGroupsMap = new Map<string, { demands: number[]; initialStock: number; minStock: number; maxStock: number; }>();
+  // NEW: Create a detailed list instead of a map
+  const planningGroupDetails: PlanningGroupMonthlyDetail[] = [];
   
-  // This part remains mostly the same, it sets up the groups
+  // Create a map to aggregate demand first
+  const demandMap = new Map<string, number[]>();
+
   salesData.forEach(s => {
       const normalizedProductId = String(Number(s.código));
       const centerId = s.centro.trim();
-      
+      const pairKey = `${normalizedProductId}---${centerId}`;
+
       const ppiOptions = getPpiOptionsForPair(normalizedProductId, centerId, activeLines);
       if (ppiOptions.length === 0) return;
-      
-      const pairKey = `${normalizedProductId}---${centerId}`;
-      if (!planningGroupsMap.has(pairKey)) {
-          const invSetting = inventorySettings.find(is => is.itemId === normalizedProductId && is.centerId === centerId);
-          planningGroupsMap.set(pairKey, {
-              demands: Array(planningHorizon.length).fill(0),
-              initialStock: invSetting?.currentStock || 0,
-              minStock: invSetting?.minStock || 0,
-              maxStock: invSetting?.maxStock === 0 || !invSetting?.maxStock ? Infinity : invSetting.maxStock,
-          });
-      }
-  });
 
-  // CORRECTED DEMAND AGGREGATION LOGIC
-  salesData.forEach(s => {
-    const normalizedProductId = String(Number(s.código));
-    const centerId = s.centro.trim();
-    const pairKey = `${normalizedProductId}---${centerId}`;
-    
-    if (planningGroupsMap.has(pairKey)) {
-      const group = planningGroupsMap.get(pairKey)!;
+      if (!demandMap.has(pairKey)) {
+          demandMap.set(pairKey, Array(planningHorizon.length).fill(0));
+      }
+
       const monthIndex = planningHorizon.findIndex(h => h.year === s.año && h.mes === s.mes);
       if (monthIndex !== -1) {
-        group.demands[monthIndex] += s.unidadesProyectado;
+          demandMap.get(pairKey)![monthIndex] += s.unidadesProyectado;
       }
-    }
   });
 
-
-  auditLog.push(`Se han consolidado ${planningGroupsMap.size} grupos de planificación (producto-centro).`);
-  
-  const planningGroups: PlanningGroup[] = Array.from(planningGroupsMap.entries()).map(([pairKey, data]) => {
+  // Now, create the detailed flat list for the UI
+  demandMap.forEach((demands, pairKey) => {
       const [productId, centerId] = pairKey.split('---');
-      return { pairKey, productId, centerName: workCenters.find(wc => wc.id === centerId)!.name, ...data };
+      const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
+      
+      demands.forEach((demand, monthIndex) => {
+          if (demand > 0) { // Only add rows for months with demand
+              const { year, month } = planningHorizon[monthIndex];
+              planningGroupDetails.push({
+                  pairKey,
+                  productId,
+                  centerName: workCenters.find(wc => wc.id === centerId)!.name,
+                  year,
+                  month,
+                  demand,
+                  initialStock: invSetting?.currentStock || 0,
+                  minStock: invSetting?.minStock || 0,
+              });
+          }
+      });
   });
 
+  auditLog.push(`Se han consolidado ${planningGroupDetails.length} grupos de planificación (producto-centro-mes).`);
+  
+  // The rest of the logic needs to be adapted to use the aggregated demand map
   const productionNeedsMap = new Map<string, number[]>();
-  planningGroupsMap.forEach((group, pairKey) => {
+  demandMap.forEach((demands, pairKey) => {
+      const invSetting = inventorySettings.find(is => is.itemId === pairKey.split('---')[0] && is.centerId === pairKey.split('---')[1]);
+      const initialStock = invSetting?.currentStock || 0;
+      const minStock = invSetting?.minStock || 0;
+      const maxStock = invSetting?.maxStock === 0 || !invSetting?.maxStock ? Infinity : invSetting.maxStock;
+
       const needs = Array(planningHorizon.length).fill(0);
-      let stockAtStartOfMonth = group.initialStock;
+      let stockAtStartOfMonth = initialStock;
       for (let i = 0; i < planningHorizon.length; i++) {
-          const demandThisMonth = group.demands[i];
-          const productionNeeded = Math.max(0, demandThisMonth + group.minStock - stockAtStartOfMonth);
-          const maxAllowedByStorage = (group.maxStock === Infinity) ? Infinity : group.maxStock - (stockAtStartOfMonth - demandThisMonth);
+          const demandThisMonth = demands[i];
+          const productionNeeded = Math.max(0, demandThisMonth + minStock - stockAtStartOfMonth);
+          const maxAllowedByStorage = (maxStock === Infinity) ? Infinity : maxStock - (stockAtStartOfMonth - demandThisMonth);
           const cappedProduction = Math.max(0, Math.min(productionNeeded, maxAllowedByStorage));
           needs[i] = cappedProduction;
           stockAtStartOfMonth += cappedProduction - demandThisMonth;
@@ -435,7 +443,10 @@ export const generateProductionPlan = (
   });
 
   const stockState = new Map<string, number>();
-  planningGroupsMap.forEach((group, pairKey) => stockState.set(pairKey, group.initialStock));
+  demandMap.forEach((_, pairKey) => {
+    const invSetting = inventorySettings.find(is => is.itemId === pairKey.split('---')[0] && is.centerId === pairKey.split('---')[1]);
+    stockState.set(pairKey, invSetting?.currentStock || 0);
+  });
   const dailyPlan: ProductionPlanItem[] = [];
   
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
@@ -510,7 +521,7 @@ export const generateProductionPlan = (
   
   return { 
     finalPlan: { dailyPlan: finalDailyPlan, monthlyPlan, auditLog },
-    planningGroups,
+    planningGroupDetails,
     productionNeeds,
     monthlyAssignments,
   };
@@ -583,4 +594,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
