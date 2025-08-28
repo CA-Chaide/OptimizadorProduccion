@@ -167,7 +167,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
               etiqueta: item.Etiqueta || 'Sin Etiqueta', 
               código: normalizeMaterialCode(item.CodMaterial), // <-- NORMALIZATION HERE
-              centro: item.Centro.trim(), unidadesProyectado: item.UnidadesProyectado,
+              centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
               dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
               familia: item.Familia, marca: item.Marca, lineaProduccion: '',
           }));
@@ -402,5 +402,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
-
-    

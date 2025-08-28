@@ -2,6 +2,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -60,7 +61,7 @@ export function processAndValidateAssemblyData(
     const existingLines = new Map(currentConstraints.productionLines.map(pl => [pl.id, pl]));
 
     apiData.forEach(row => {
-        const centerId = row.Centro; // Use direct name as ID
+        const centerId = String(row.Centro).trim(); // Use direct name as ID
         if (!discoveredWorkCenters.has(centerId)) {
             discoveredWorkCenters.set(centerId, {
                 id: centerId, 
@@ -121,7 +122,7 @@ export function processAndValidateAssemblyData(
     const inventoryMap = new Map<string, InventorySetting>();
 
     apiData.forEach(row => {
-        const centerId = row.Centro;
+        const centerId = String(row.Centro).trim();
         const lineId = `pl-${row.Centro}-${row.Linea}`;
         const workstationId = `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
         const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
@@ -288,7 +289,7 @@ export const generateProductionPlan = (
 
   salesData.forEach(s => {
       const normalizedProductId = normalizeMaterialCode(s.código);
-      const centerId = s.centro.trim();
+      const centerId = String(s.centro).trim();
       const pairKey = `${normalizedProductId}---${centerId}`;
 
       const ppiOptions = getPpiOptionsForPair(normalizedProductId, centerId);
@@ -601,5 +602,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-    
