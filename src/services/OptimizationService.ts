@@ -1,6 +1,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -14,6 +15,11 @@ import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 
 // XLSX type will be available globally from CDN script in index.html
 declare var XLSX: any; 
+
+const normalizeMaterialCode = (code: string | number): string => {
+    const codeStr = String(code);
+    return codeStr.slice(-8);
+};
 
 /**
  * Discovers the production structure (Centers, Lines, Workstations) from API data,
@@ -105,7 +111,7 @@ export function processAndValidateAssemblyData(
     // --- 3. Create Final Process and Inventory Info ---
     const productNamesMap = new Map<string, string>();
     salesData.forEach(row => {
-        const normalizedProductId = String(Number(row.código));
+        const normalizedProductId = normalizeMaterialCode(row.código);
         if (!productNamesMap.has(normalizedProductId)) {
             productNamesMap.set(normalizedProductId, row.descripciónMaterial || row.etiqueta || row.código);
         }
@@ -118,7 +124,7 @@ export function processAndValidateAssemblyData(
         const centerId = row.Centro;
         const lineId = `pl-${row.Centro}-${row.Linea}`;
         const workstationId = `wd-${row.PuestoTrabajo.toLowerCase().replace(/\s/g, '')}`;
-        const normalizedProductId = String(Number(row.CodMaterial));
+        const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
 
         // Process Info
         const ppiKey = `${normalizedProductId}-${lineId}`;
@@ -248,16 +254,12 @@ export const generateProductionPlan = (
     productId: string,
     centerId: string
   ): ProductProcessInfo[] => {
-      // 1. Find all processes for the given product ID.
       const ppiCandidates = productProcessInfos.filter(ppi => ppi.productId === productId);
-      
-      // 2. For each candidate, check if its line belongs to the correct center.
       const candidatesInCenter = ppiCandidates.filter(ppi => {
           const line = productionLines.find(l => l.id === ppi.productionLineId);
           return line && line.workCenterId === centerId;
       });
 
-      // 3. Calculate effective time and sort by efficiency.
       return candidatesInCenter
           .map(ppi => {
               const line = productionLines.find(l => l.id === ppi.productionLineId)!;
@@ -269,19 +271,13 @@ export const generateProductionPlan = (
           .map(item => ({ ...item.ppi, totalManufacturingTimeHours: item.effectiveTime })); 
   };
   
-  const productDetails = new Map<string, {name: string}>();
-  salesData.forEach(s => {
-    const normalizedProductId = String(Number(s.código));
-    if (!productDetails.has(normalizedProductId)) {
-      productDetails.set(normalizedProductId, { name: s.descripciónMaterial || s.etiqueta || s.código });
-    }
-  });
+  const planningGroupDetails: PlanningGroupMonthlyDetail[] = [];
+  const demandMap = new Map<string, number[]>();
 
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
     const firstSaleDate = new Date(Math.min(...salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime())));
     const lastSaleDate = new Date(Math.max(...salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime())));
-    
     let currentHorizonDate = new Date(firstSaleDate);
     while(currentHorizonDate <= lastSaleDate) {
         planningHorizon.push({ year: currentHorizonDate.getFullYear(), month: currentHorizonDate.getMonth() + 1 });
@@ -290,33 +286,8 @@ export const generateProductionPlan = (
   }
   auditLog.push(`Horizonte de planificación: ${planningHorizon.length} meses.`);
 
-  const lineMonthlyHours = new Map<string, LineHourAvailability[]>();
-  const activeLines = productionLines.filter(l => l.isActive !== false);
-
-  activeLines.forEach(line => {
-    lineMonthlyHours.set(line.id, planningHorizon.map(({ year, month }) => {
-      const availability: LineHourAvailability = { regular: 0, extra: 0, holiday: 0 };
-      const daysInMonth = new Date(year, month, 0).getDate();
-      for (let day = 1; day <= daysInMonth; day++) {
-        const d = new Date(year, month - 1, day);
-        const dayType = getDayTypeForProduction(d, holidays);
-        if (dayType === 'Weekday') {
-          availability.regular += shiftParameters.regularHoursPerDay;
-          availability.extra += shiftParameters.extraHoursPerDay;
-        } else if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') {
-          availability.holiday += shiftParameters.saturdayAndHolidayHours;
-        }
-      }
-      return availability;
-    }));
-  });
-  
-  const planningGroupDetails: PlanningGroupMonthlyDetail[] = [];
-  
-  const demandMap = new Map<string, { demands: number[], productName: string }>();
-
   salesData.forEach(s => {
-      const normalizedProductId = String(Number(s.código));
+      const normalizedProductId = normalizeMaterialCode(s.código);
       const centerId = s.centro.trim();
       const pairKey = `${normalizedProductId}---${centerId}`;
 
@@ -327,19 +298,16 @@ export const generateProductionPlan = (
       }
 
       if (!demandMap.has(pairKey)) {
-          demandMap.set(pairKey, {
-              demands: Array(planningHorizon.length).fill(0),
-              productName: s.descripciónMaterial || s.etiqueta || s.código
-          });
+          demandMap.set(pairKey, Array(planningHorizon.length).fill(0));
       }
 
       const monthIndex = planningHorizon.findIndex(h => h.year === s.año && h.mes === s.mes);
       if (monthIndex !== -1) {
-          demandMap.get(pairKey)!.demands[monthIndex] += s.unidadesProyectado;
+          demandMap.get(pairKey)![monthIndex] += s.unidadesProyectado;
       }
   });
 
-  demandMap.forEach(({ demands, productName }, pairKey) => {
+  demandMap.forEach((demands, pairKey) => {
       const [productId, centerId] = pairKey.split('---');
       const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       
@@ -363,8 +331,7 @@ export const generateProductionPlan = (
   auditLog.push(`Se han consolidado ${planningGroupDetails.length} grupos de planificación (producto-centro-mes).`);
   
   const productionNeedsMap = new Map<string, number[]>();
-  demandMap.forEach((data, pairKey) => {
-      const { demands } = data;
+  demandMap.forEach((demands, pairKey) => {
       const [productId, centerId] = pairKey.split('---');
       const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       const initialStock = invSetting?.currentStock || 0;
@@ -389,6 +356,26 @@ export const generateProductionPlan = (
   });
 
   const monthlyAssignmentsMap = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>();
+  const activeLines = productionLines.filter(l => l.isActive !== false);
+  const lineMonthlyHours = new Map<string, LineHourAvailability[]>();
+  activeLines.forEach(line => {
+    lineMonthlyHours.set(line.id, planningHorizon.map(({ year, month }) => {
+      const availability: LineHourAvailability = { regular: 0, extra: 0, holiday: 0 };
+      const daysInMonth = new Date(year, month, 0).getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const d = new Date(year, month - 1, day);
+        const dayType = getDayTypeForProduction(d, holidays);
+        if (dayType === 'Weekday') {
+          availability.regular += shiftParameters.regularHoursPerDay;
+          availability.extra += shiftParameters.extraHoursPerDay;
+        } else if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') {
+          availability.holiday += shiftParameters.saturdayAndHolidayHours;
+        }
+      }
+      return availability;
+    }));
+  });
+
   for (let monthIndex = planningHorizon.length - 1; monthIndex >= 0; monthIndex--) {
     const availableHoursThisMonth = new Map<string, LineHourAvailability>();
     lineMonthlyHours.forEach((monthlyAvail, lineId) => availableHoursThisMonth.set(lineId, { ...monthlyAvail[monthIndex] }));
@@ -461,6 +448,14 @@ export const generateProductionPlan = (
   });
   const dailyPlan: ProductionPlanItem[] = [];
   
+  const productDetails = new Map<string, {name: string}>();
+  salesData.forEach(s => {
+    const normalizedProductId = normalizeMaterialCode(s.código);
+    if (!productDetails.has(normalizedProductId)) {
+      productDetails.set(normalizedProductId, { name: s.descripciónMaterial || s.etiqueta || s.código });
+    }
+  });
+
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -606,3 +601,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
+    

@@ -9,7 +9,7 @@ interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
 }
 
-type GroupByOption = 'sector' | 'etiqueta';
+type GroupByOption = 'sector' | 'etiqueta' | 'material';
 
 // Updated data structure to hold totals per center
 interface AggregatedData {
@@ -20,6 +20,11 @@ interface AggregatedData {
     dataRows: SalesDataRow[];
   };
 }
+
+const normalizeMaterialCode = (code: string | number): string => {
+    const codeStr = String(code);
+    return codeStr.slice(-8);
+};
 
 // --- Componentes UI Reutilizables ---
 const SelectField: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; options: Array<{value: string | number; label: string}>; containerClassName?: string }> = ({ label, id, options, containerClassName, ...props }) => (
@@ -101,7 +106,21 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     const aggregationResult: AggregatedData = {};
     fetchedData.forEach(row => {
-        const key = (groupBy === 'sector' ? row.sector : row.etiqueta) || 'Sin Asignar';
+        let key: string;
+        switch (groupBy) {
+            case 'sector':
+                key = row.sector || 'Sin Sector';
+                break;
+            case 'etiqueta':
+                key = row.etiqueta || 'Sin Etiqueta';
+                break;
+            case 'material':
+                key = `${row.código} - ${row.descripciónMaterial}`;
+                break;
+            default:
+                key = 'Sin Asignar';
+        }
+
         if (!aggregationResult[key]) {
             aggregationResult[key] = { totalUnits: 0, unitsByCenter: {}, dataRows: [] };
         }
@@ -147,7 +166,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               id: `row-${Date.now()}-${index}`,
               año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
               etiqueta: item.Etiqueta || 'Sin Etiqueta', 
-              código: String(Number(item.CodMaterial)), // <-- NORMALIZATION HERE
+              código: normalizeMaterialCode(item.CodMaterial), // <-- NORMALIZATION HERE
               centro: item.Centro.trim(), unidadesProyectado: item.UnidadesProyectado,
               dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
               familia: item.Familia, marca: item.Marca, lineaProduccion: '',
@@ -177,8 +196,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             addNotification('warning', 'Debe seleccionar al menos un grupo para cargar.');
             return;
         }
+        
+        const dataToLoad = fetchedData.filter(row => {
+             let key: string;
+            switch (groupBy) {
+                case 'sector':
+                    key = row.sector || 'Sin Sector';
+                    break;
+                case 'etiqueta':
+                    key = row.etiqueta || 'Sin Etiqueta';
+                    break;
+                case 'material':
+                    key = `${row.código} - ${row.descripciónMaterial}`;
+                    break;
+                default:
+                    key = 'Sin Asignar';
+            }
+            return selectedGroups.has(key);
+        });
 
-        const dataToLoad = fetchedData.filter(row => selectedGroups.has((groupBy === 'sector' ? row.sector : row.etiqueta) || 'Sin Asignar'));
         
         onDataImported(dataToLoad);
         setFetchedData([]);
@@ -219,9 +255,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       if (!aggregatedData) return result;
 
       // Calculate subtotal for specific sectors (01, 02, 03) directly from the source data
-      const targetSectors = new Set(['01', '02', '03']);
+      const targetSectorPrefixes = ['01', '02', '03'];
       fetchedData.forEach(row => {
-          if (targetSectors.has(row.sector)) {
+          if (targetSectorPrefixes.some(prefix => row.sector.startsWith(prefix))) {
               result.subtotalSectors.total += row.unidadesProyectado;
               if (result.subtotalSectors[row.centro] !== undefined) {
                   result.subtotalSectors[row.centro] += row.unidadesProyectado;
@@ -281,6 +317,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     <select id="groupBy" value={groupBy} onChange={e => setGroupBy(e.target.value as GroupByOption)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                         <option value="sector">Sector</option>
                         <option value="etiqueta">Etiqueta</option>
+                        <option value="material">Material</option>
                     </select>
                 </div>
             </div>
@@ -298,7 +335,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         onChange={(e) => handleSelectAllGroups(e.target.checked)}
                       />
                   </th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">{groupBy === 'sector' ? 'Sector' : 'Etiqueta'}</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">{groupBy === 'sector' ? 'Sector' : (groupBy === 'etiqueta' ? 'Etiqueta' : 'Material')}</th>
                   {uniqueCentersInFetchedData.map(center => (
                     <th key={center} className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{center}</th>
                   ))}
@@ -357,7 +394,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     className="w-full md:w-auto px-6 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                     disabled={selectedGroups.size === 0}
                 >
-                    Aceptar y Continuar ({selectedGroups.size} {groupBy}s)
+                    Aceptar y Continuar ({selectedGroups.size} grupos)
                 </button>
            </div>
         </div>
@@ -365,3 +402,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
+
+    
