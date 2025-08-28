@@ -1,5 +1,6 @@
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -242,19 +243,24 @@ export const generateProductionPlan = (
       auditLog.push('Error: No hay datos de ventas para procesar.');
       return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
-
+  
   const getPpiOptionsForPair = (
     productId: string,
-    centerId: string, 
-    activeLines: ProductionLine[]
+    centerId: string
   ): ProductProcessInfo[] => {
+      // 1. Find all processes for the given product ID.
       const ppiCandidates = productProcessInfos.filter(ppi => ppi.productId === productId);
+      
+      // 2. For each candidate, check if its line belongs to the correct center.
       const candidatesInCenter = ppiCandidates.filter(ppi => {
-          return activeLines.some(line => line.id === ppi.productionLineId && line.workCenterId === centerId);
+          const line = productionLines.find(l => l.id === ppi.productionLineId);
+          return line && line.workCenterId === centerId;
       });
+
+      // 3. Calculate effective time and sort by efficiency.
       return candidatesInCenter
           .map(ppi => {
-              const line = activeLines.find(l => l.id === ppi.productionLineId)!;
+              const line = productionLines.find(l => l.id === ppi.productionLineId)!;
               const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
               return { ppi, effectiveTime };
           })
@@ -305,42 +311,45 @@ export const generateProductionPlan = (
     }));
   });
   
-  // NEW: Create a detailed list instead of a map
   const planningGroupDetails: PlanningGroupMonthlyDetail[] = [];
   
-  // Create a map to aggregate demand first
-  const demandMap = new Map<string, number[]>();
+  const demandMap = new Map<string, { demands: number[], productName: string }>();
 
   salesData.forEach(s => {
       const normalizedProductId = String(Number(s.código));
       const centerId = s.centro.trim();
       const pairKey = `${normalizedProductId}---${centerId}`;
 
-      const ppiOptions = getPpiOptionsForPair(normalizedProductId, centerId, activeLines);
-      if (ppiOptions.length === 0) return;
+      const ppiOptions = getPpiOptionsForPair(normalizedProductId, centerId);
+      if (ppiOptions.length === 0) {
+          auditLog.push(`Info: Producto ${normalizedProductId} en centro ${centerId} no tiene opciones de PPI válidas. Descartado.`);
+          return;
+      }
 
       if (!demandMap.has(pairKey)) {
-          demandMap.set(pairKey, Array(planningHorizon.length).fill(0));
+          demandMap.set(pairKey, {
+              demands: Array(planningHorizon.length).fill(0),
+              productName: s.descripciónMaterial || s.etiqueta || s.código
+          });
       }
 
       const monthIndex = planningHorizon.findIndex(h => h.year === s.año && h.mes === s.mes);
       if (monthIndex !== -1) {
-          demandMap.get(pairKey)![monthIndex] += s.unidadesProyectado;
+          demandMap.get(pairKey)!.demands[monthIndex] += s.unidadesProyectado;
       }
   });
 
-  // Now, create the detailed flat list for the UI
-  demandMap.forEach((demands, pairKey) => {
+  demandMap.forEach(({ demands, productName }, pairKey) => {
       const [productId, centerId] = pairKey.split('---');
       const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       
       demands.forEach((demand, monthIndex) => {
-          if (demand > 0) { // Only add rows for months with demand
+          if (demand > 0) {
               const { year, month } = planningHorizon[monthIndex];
               planningGroupDetails.push({
                   pairKey,
                   productId,
-                  centerName: workCenters.find(wc => wc.id === centerId)!.name,
+                  centerName: centerId,
                   year,
                   month,
                   demand,
@@ -353,10 +362,11 @@ export const generateProductionPlan = (
 
   auditLog.push(`Se han consolidado ${planningGroupDetails.length} grupos de planificación (producto-centro-mes).`);
   
-  // The rest of the logic needs to be adapted to use the aggregated demand map
   const productionNeedsMap = new Map<string, number[]>();
-  demandMap.forEach((demands, pairKey) => {
-      const invSetting = inventorySettings.find(is => is.itemId === pairKey.split('---')[0] && is.centerId === pairKey.split('---')[1]);
+  demandMap.forEach((data, pairKey) => {
+      const { demands } = data;
+      const [productId, centerId] = pairKey.split('---');
+      const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       const initialStock = invSetting?.currentStock || 0;
       const minStock = invSetting?.minStock || 0;
       const maxStock = invSetting?.maxStock === 0 || !invSetting?.maxStock ? Infinity : invSetting.maxStock;
@@ -375,7 +385,7 @@ export const generateProductionPlan = (
   });
   const productionNeeds: MonthlyNeed[] = Array.from(productionNeedsMap.entries()).map(([pairKey, needs]) => {
       const [productId, centerId] = pairKey.split('---');
-      return { pairKey, productId, centerName: workCenters.find(wc => wc.id === centerId)!.name, needs };
+      return { pairKey, productId, centerName: centerId, needs };
   });
 
   const monthlyAssignmentsMap = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>();
@@ -387,7 +397,7 @@ export const generateProductionPlan = (
         .filter(([_, needs]) => needs[monthIndex] > 0)
         .map(([pairKey, needs]) => {
             const [productId, centerId] = pairKey.split('---');
-            const ppiOptions = getPpiOptionsForPair(productId, centerId, activeLines);
+            const ppiOptions = getPpiOptionsForPair(productId, centerId);
             return { pairKey, units: needs[monthIndex], ppiOptions };
         })
         .filter(p => p.ppiOptions.length > 0)
@@ -433,18 +443,20 @@ export const generateProductionPlan = (
   }
   const monthlyAssignments: MonthlyAssignment[] = Array.from(monthlyAssignmentsMap.entries()).map(([assignmentKey, data]) => {
       const [monthIndex, lineId, productId, centerId] = assignmentKey.split('-');
+      const line = activeLines.find(l=>l.id === lineId);
       return { 
           assignmentKey, monthIndex: parseInt(monthIndex), 
-          lineName: activeLines.find(l=>l.id === lineId)!.name,
+          lineName: line ? line.name : 'Unknown Line',
           productId, 
-          centerName: workCenters.find(wc => wc.id === centerId)!.name,
+          centerName: centerId,
           ...data 
       };
   });
 
   const stockState = new Map<string, number>();
   demandMap.forEach((_, pairKey) => {
-    const invSetting = inventorySettings.find(is => is.itemId === pairKey.split('---')[0] && is.centerId === pairKey.split('---')[1]);
+    const [productId, centerId] = pairKey.split('---');
+    const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
     stockState.set(pairKey, invSetting?.currentStock || 0);
   });
   const dailyPlan: ProductionPlanItem[] = [];
@@ -476,7 +488,7 @@ export const generateProductionPlan = (
             const line = activeLines.find(l => l.id === lineId)!;
             const ppi = productProcessInfos.find(p => p.productId === productId && p.productionLineId === lineId)!;
 
-            if (!capacityForDay[lineId] || capacityForDay[lineId] <= 0 || ppi.totalManufacturingTimeHours <= 0) continue;
+            if (!capacityForDay[lineId] || capacityForDay[lineId] <= 0 || !ppi || ppi.totalManufacturingTimeHours <= 0) continue;
             
             const maxUnitsForDay = capacityForDay[lineId] / ppi.totalManufacturingTimeHours;
             const unitsToProduce = Math.min(bucket.units, maxUnitsForDay);
