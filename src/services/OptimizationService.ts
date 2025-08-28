@@ -454,7 +454,7 @@ export const generateProductionPlan = (
   
   salesData.forEach(s => {
       if (s.código && s.centro) {
-          const center = workCenters.find(wc => wc.id === `wc-${normalizeCenterName(s.centro)}`);
+          const center = workCenters.find(wc => normalizeCenterName(wc.name) === normalizeCenterName(s.centro));
           if (center) {
               allProductCenterPairs.add(`${s.código}---${center.id}`);
           }
@@ -475,7 +475,7 @@ export const generateProductionPlan = (
 
     const demands = planningHorizon.map(({ year, month }) => 
         salesData
-            .filter(s => s.código === productId && `wc-${normalizeCenterName(s.centro)}` === centerId && s.año === year && s.mes === month)
+            .filter(s => s.código === productId && normalizeCenterName(s.centro) === normalizeCenterName(center.name) && s.año === year && s.mes === month)
             .reduce((sum, s) => sum + s.unidadesProyectado, 0)
     );
     
@@ -487,7 +487,7 @@ export const generateProductionPlan = (
         demands,
         initialStock: invSetting?.currentStock || 0,
         minStock: invSetting?.minStock || 0,
-        maxStock: invSetting?.maxStock === 0 ? Infinity : invSetting?.maxStock || Infinity,
+        maxStock: invSetting?.maxStock === 0 || !invSetting?.maxStock ? Infinity : invSetting.maxStock,
     });
   }
 
@@ -559,7 +559,7 @@ export const generateProductionPlan = (
             const lineAvailability = availableHoursThisMonth.get(lineId)!;
             const totalAvailable = lineAvailability.regular + lineAvailability.extra + lineAvailability.holiday;
             
-            if (totalAvailable < 0.1 || ppi.totalManufacturingTimeHours < 0.001) continue;
+            if (totalAvailable < 0.1 || ppi.totalManufacturingTimeHours <= 0) continue;
             
             const maxUnitsCanMake = totalAvailable / ppi.totalManufacturingTimeHours;
             const unitsToMake = Math.min(unitsLeftToPlan, maxUnitsCanMake);
@@ -727,7 +727,7 @@ export const generateProductionPlan = (
     const mp = monthlyPlanMap.get(key)!;
     mp.totalQuantityToProduce += dp.quantityToProduce;
     mp.totalHoursWorked += dp.hoursWorked;
-    mp.totalEstimatedLaborCost += dp.totalEstimatedLaborCost;
+    mp.totalEstimatedLaborCost += dp.estimatedLaborCost;
   });
 
   // --- 8. FINAL AUDIT SUMMARY ---
