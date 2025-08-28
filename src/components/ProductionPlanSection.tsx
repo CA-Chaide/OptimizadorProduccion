@@ -12,13 +12,16 @@ import { useAppContext } from '@/context/AppProvider';
 
 type PlanningStep = 'idle' | 'groups' | 'needs' | 'assignments' | 'finalPlan';
 
-export const ProductionPlanSection: React.FC = () => {
+interface ProductionPlanSectionProps {
+  isDataSynced: boolean;
+}
+
+export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = ({ isDataSynced }) => {
   const { 
     productionPlan, 
     handleGeneratePlan, 
     isLoading, 
     constraints, 
-    isDataSynced,
     detailedProductionPlan, // From context
   } = useAppContext();
 

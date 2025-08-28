@@ -73,7 +73,7 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.ABSENTEEISM:
                 return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:
-                return <ProductionPlanSection />;
+                return <ProductionPlanSection isDataSynced={syncStatus?.isSynced || false} />;
             case ActiveView.TACTICAL_SCHEDULING:
                 return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} />;
             case ActiveView.WORK_SHIFT_PLANNING:
