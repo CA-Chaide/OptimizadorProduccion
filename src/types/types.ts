@@ -4,6 +4,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -36,7 +37,7 @@ export type AppAction =
   | { type: 'SET_SALES_DATA'; payload: SalesDataRow[] }
   | { type: 'GENERATE_PRODUCTION_PLAN_START' }
   | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: DetailedProductionPlan } // Modified
-  | { type: 'GENERATE_PRODUCTION_PLAN_ERROR' }
+  | { type: 'GENERATE_PRODUCTION_PLAN_ERROR'; payload?: string } // Allow error message
   | { type: 'SET_CONSTRAINTS'; payload: AppConstraints }
   | { type: 'SET_EMPLOYEES'; payload: Employee[] }
   | { type: 'SET_EMPLOYEE_SKILLS'; payload: EmployeeSkill[] }
@@ -287,8 +288,6 @@ export interface MonthlyNeed {
 type LineHourAvailability = { regular: number; extra: number; holiday: number };
 
 export interface MonthlyAssignment {
-  // A unique key is still useful for React rendering, but won't be used for logic.
-  // It's a combination of all fields to ensure uniqueness.
   id: string; 
   monthIndex: number;
   lineId: string;
@@ -482,6 +481,29 @@ export interface TiempoEnsambleItem {
   GrupoCompras: string;
   TipoAprovisionamiento: 'E' | 'X' | 'F' | null;
 }
+
+// --- New Types for Daily Scheduling Logic ---
+export interface DailyProductionTarget {
+    productId: string;
+    lineId: string;
+    targetQuantity: number;
+    totalMonthDemand: number; // For tie-breaking
+    basePlanItem: ProductionPlanItem; // Template for creating final items
+}
+
+export interface WorkstationWIP {
+    [workstationId: string]: {
+        currentWIP: number;
+        maxWIP: number;
+    };
+}
+
+export interface DailySchedulingResult {
+    planItems: ProductionPlanItem[];
+    totalWIP: number;
+    bottleneckUtilization: number;
+}
+
 
 // Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';

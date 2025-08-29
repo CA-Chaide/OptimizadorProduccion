@@ -74,7 +74,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 detailedProductionPlan: action.payload,
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
-            return { ...state, isLoading: false };
+            return { 
+                ...state, 
+                isLoading: false, 
+                productionPlan: { dailyPlan: [], monthlyPlan: [], auditLog: [action.payload || 'Error desconocido'] },
+                detailedProductionPlan: null 
+            };
         case 'GENERATE_TACTICAL_PLAN':
             return { ...state, tacticalPlanResult: action.payload };
         case 'SET_SYNC_STATUS':
@@ -219,8 +224,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return true;
 
         } catch (error) {
-            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
-            addNotification('error', `Error al generar el plan: ${(error as Error).message}`);
+            const errorMessage = (error as Error).message;
+            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: errorMessage });
+            addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
         }
     }, [state.salesData, state.constraints, state.syncStatus, addNotification]);
