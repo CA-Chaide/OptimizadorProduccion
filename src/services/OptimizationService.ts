@@ -9,6 +9,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -392,7 +393,7 @@ export const generateProductionPlan = (
       });
   });
 
-  const monthlyAssignmentsMap = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>();
+  const monthlyAssignmentsMap = new Map<string, { units: number; originalNeedUnits: number; advancedUnits: number; hours: LineHourAvailability; laborCost: number }>();
   const activeLines = productionLines.filter(l => l.isActive !== false);
   const lineMonthlyHours = new Map<string, LineHourAvailability[]>();
   activeLines.forEach(line => {
@@ -411,6 +412,15 @@ export const generateProductionPlan = (
       }
       return availability;
     }));
+  });
+  
+  const monthlyOriginalNeeds = new Map<string, number>();
+  productionNeedsMap.forEach((needs, pairKey) => {
+      needs.forEach((need, index) => {
+          const { year, month } = planningHorizon[index];
+          const key = `${pairKey}---${year}-${month}`;
+          monthlyOriginalNeeds.set(key, need);
+      });
   });
 
   for (let monthIndex = planningHorizon.length - 1; monthIndex >= 0; monthIndex--) {
@@ -449,10 +459,22 @@ export const generateProductionPlan = (
                 if (remainingHoursToAssign < 0.01) break;
             }
 
+            const { year, month } = planningHorizon[monthIndex];
+            const originalNeedKey = `${prod.pairKey}---${year}-${month}`;
+            const originalNeed = monthlyOriginalNeeds.get(originalNeedKey) || 0;
+            const advancedUnits = Math.max(0, prod.units - originalNeed);
+            const originalUnitsToMake = Math.min(unitsToMake, originalNeed);
+            const advancedUnitsToMake = Math.max(0, unitsToMake - originalUnitsToMake);
+
+
             const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
             const assignmentKey = `${monthIndex}---${ppi.productionLineId}---${productId}---${centerId}`;
-            const assignment = monthlyAssignmentsMap.get(assignmentKey) || { units: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
+            const assignment = monthlyAssignmentsMap.get(assignmentKey) || { units: 0, originalNeedUnits: 0, advancedUnits: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
+            
             assignment.units += unitsToMake;
+            assignment.originalNeedUnits += originalUnitsToMake;
+            assignment.advancedUnits += advancedUnitsToMake;
+            
             assignment.hours.regular += consumedHours.regular;
             assignment.hours.extra += consumedHours.extra;
             assignment.hours.holiday += consumedHours.holiday;
@@ -474,6 +496,8 @@ export const generateProductionPlan = (
           productId, 
           centerName: centerId,
           units: data.units,
+          originalNeedUnits: data.originalNeedUnits,
+          advancedUnits: data.advancedUnits,
           totalHours: data.hours.regular + data.hours.extra + data.hours.holiday,
           laborCost: data.laborCost 
       };

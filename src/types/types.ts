@@ -293,6 +293,8 @@ export interface MonthlyAssignment {
   productId: string;
   centerName: string;
   units: number;
+  originalNeedUnits: number;
+  advancedUnits: number;
   totalHours: number;
   laborCost: number;
 }

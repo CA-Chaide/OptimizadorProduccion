@@ -239,16 +239,16 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
   );
   
   const renderStep3_Assignments = () => {
-    const columns: (keyof MonthlyAssignment)[] = ['monthIndex', 'lineName', 'productId', 'centerName', 'units', 'totalHours'];
-    const columnLabels: Record<keyof MonthlyAssignment, string> = {
+    const columns: (keyof MonthlyAssignment | 'custom')[] = ['monthIndex', 'lineName', 'productId', 'centerName', 'units', 'originalNeedUnits', 'advancedUnits', 'totalHours'];
+    const columnLabels: Record<string, string> = {
         monthIndex: 'Mes',
         lineName: 'Línea',
         productId: 'Producto',
         centerName: 'Centro',
-        units: 'Unidades',
+        units: 'U. Planificadas',
+        originalNeedUnits: 'U. Mes',
+        advancedUnits: 'U. Adelanto',
         totalHours: 'Horas Totales',
-        assignmentKey: '',
-        laborCost: '',
     };
 
     return (
@@ -262,14 +262,14 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                     <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
                             {columns.map(col => (
-                                <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
-                                    <div>{columnLabels[col]}</div>
+                                <th key={String(col)} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
+                                    <div>{columnLabels[String(col)]}</div>
                                     <input
                                         type="text"
-                                        value={filters[col] || ''}
-                                        onChange={(e) => handleFilterChange(col, e.target.value)}
+                                        value={filters[String(col)] || ''}
+                                        onChange={(e) => handleFilterChange(String(col), e.target.value)}
                                         className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
-                                        placeholder={`Filtrar ${columnLabels[col]}...`}
+                                        placeholder={`Filtrar ${columnLabels[String(col)]}...`}
                                     />
                                 </th>
                             ))}
@@ -283,7 +283,9 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                                     <td className="px-3 py-2">{as.lineName}</td>
                                     <td className="px-3 py-2 font-mono">{as.productId}</td>
                                     <td className="px-3 py-2">{as.centerName}</td>
-                                    <td className="px-3 py-2 text-right">{as.units.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                    <td className="px-3 py-2 text-right font-bold">{as.units.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                    <td className="px-3 py-2 text-right text-blue-600">{as.originalNeedUnits.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                    <td className="px-3 py-2 text-right text-purple-600">{as.advancedUnits.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                                     <td className="px-3 py-2 text-right">{as.totalHours.toFixed(2)}</td>
                                 </tr>
                             ))
