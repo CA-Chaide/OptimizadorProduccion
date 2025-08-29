@@ -5,6 +5,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -285,8 +286,6 @@ export interface MonthlyNeed {
   productionNeeded: number;
 }
 
-type LineHourAvailability = { regular: number; extra: number; holiday: number };
-
 export interface MonthlyAssignment {
   id: string; 
   monthIndex: number;
@@ -482,27 +481,7 @@ export interface TiempoEnsambleItem {
   TipoAprovisionamiento: 'E' | 'X' | 'F' | null;
 }
 
-// --- New Types for Daily Scheduling Logic ---
-export interface DailyProductionTarget {
-    productId: string;
-    lineId: string;
-    targetQuantity: number;
-    totalMonthDemand: number; // For tie-breaking
-    basePlanItem: ProductionPlanItem; // Template for creating final items
-}
 
-export interface WorkstationWIP {
-    [workstationId: string]: {
-        currentWIP: number;
-        maxWIP: number;
-    };
-}
-
-export interface DailySchedulingResult {
-    planItems: ProductionPlanItem[];
-    totalWIP: number;
-    bottleneckUtilization: number;
-}
 
 
 // Import ActiveView from constants

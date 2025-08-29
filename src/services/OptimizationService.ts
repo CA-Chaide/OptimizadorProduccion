@@ -14,16 +14,14 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
-    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment,
-    DailyProductionTarget,
-    WorkstationWIP,
-    DailySchedulingResult
+    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -260,112 +258,6 @@ const calculateEffectiveManufacturingTime = (
     const maxTime = Math.max(0, ...effectiveWorkstationTimes);
     return maxTime === Infinity ? Infinity : maxTime;
 };
-
-// --- Daily Sequencing Logic (New for Step 4) ---
-
-/**
- * Placeholder for setup time logic. Currently returns 0 as per user request.
- * The architecture is ready for future business rules.
- */
-function getSetupTime(lineId: string, fromProductId: string | null, toProductId: string): number {
-    // Future logic: Look up setup time in a rules table based on line, product family, etc.
-    if (fromProductId && fromProductId !== toProductId) {
-        return 0; // Per instruction, this is currently 0.
-    }
-    return 0;
-}
-
-/**
- * Simulates the production for a given sequence of products and calculates WIP and bottleneck utilization.
- */
-function simulateProductionSequence(
-    sequence: DailyProductionTarget[],
-    line: ProductionLine,
-    linePpis: Map<string, ProductProcessInfo>,
-    totalHoursAvailable: number,
-    constraints: AppConstraints
-): DailySchedulingResult {
-    let currentTime = 0;
-    let lastProductId: string | null = null;
-    const workstationWIP: WorkstationWIP = {};
-    const workstationUtilization: { [wsId: string]: number } = {};
-    const productionResults: ProductionPlanItem[] = [];
-    const orderedPpiWorkstations = new Map<string, { workstationDefinitionId: string, timeHours: number }[]>();
-
-    line.assignedWorkstations.forEach(ws => {
-        workstationWIP[ws.definitionId] = { currentWIP: 0, maxWIP: 0 };
-        workstationUtilization[ws.definitionId] = 0;
-    });
-
-    for (const target of sequence) {
-        const ppi = linePpis.get(target.productId);
-        if (!ppi) {
-            throw new Error(`Datos de proceso (PPI) no encontrados para el producto ${target.productId}`);
-        }
-        
-        // Data validation check
-        if(!ppi.workstationTimes || ppi.workstationTimes.length === 0){
-             throw new Error(`El producto ${target.productId} no tiene tiempos de estación definidos en su ruta de proceso.`);
-        }
-
-        // Ensure workstation times are ordered for simulation
-        if (!orderedPpiWorkstations.has(ppi.id)) {
-            const lineWsIds = new Set(line.assignedWorkstations.map(aws => aws.definitionId));
-            const sortedWsTimes = [...ppi.workstationTimes].sort((a, b) => {
-                const idxA = Array.from(lineWsIds).indexOf(a.workstationDefinitionId);
-                const idxB = Array.from(lineWsIds).indexOf(b.workstationDefinitionId);
-                return idxA - idxB;
-            });
-            // Validate that all PPI workstations are actually on the line
-            if(sortedWsTimes.some(wt => !lineWsIds.has(wt.workstationDefinitionId))) {
-                 throw new Error(`Inconsistencia de datos: El producto ${ppi.productId} tiene estaciones que no pertenecen a la línea ${line.name}.`);
-            }
-            orderedPpiWorkstations.set(ppi.id, sortedWsTimes);
-        }
-        const ppiWorkstations = orderedPpiWorkstations.get(ppi.id)!;
-        
-        let unitsToProduce = target.targetQuantity;
-        
-        const setupTime = getSetupTime(line.id, lastProductId, target.productId);
-        if (currentTime + setupTime > totalHoursAvailable) break;
-        currentTime += setupTime;
-        lastProductId = target.productId;
-
-        const timeForOneUnit = ppi.totalManufacturingTimeHours;
-        if(timeForOneUnit <= 0) continue;
-
-        let producedUnitsInTarget = 0;
-        while (unitsToProduce > 0 && currentTime + timeForOneUnit <= totalHoursAvailable) {
-            currentTime += timeForOneUnit;
-            producedUnitsInTarget++;
-            
-            // Simplified WIP calculation
-            let upstreamWIP = 1;
-            for(const wsTime of ppiWorkstations) {
-                 workstationUtilization[wsTime.workstationDefinitionId] += wsTime.timeHours;
-            }
-            unitsToProduce -= 1;
-        }
-
-        if (producedUnitsInTarget > 0) {
-            productionResults.push({
-                ...target.basePlanItem,
-                quantityToProduce: producedUnitsInTarget, 
-                hoursWorked: producedUnitsInTarget * timeForOneUnit
-            });
-        }
-    }
-
-    const bottleneckId = line.assignedWorkstations.reduce((bottleneck, ws) => {
-        return workstationUtilization[ws.definitionId] > workstationUtilization[bottleneck.definitionId] ? ws : bottleneck;
-    }, line.assignedWorkstations[0]).definitionId;
-    
-    return {
-        planItems: productionResults,
-        totalWIP: Object.values(workstationWIP).reduce((sum, wip) => sum + wip.maxWIP, 0),
-        bottleneckUtilization: workstationUtilization[bottleneckId] || 0,
-    };
-}
 
 
 export const generateProductionPlan = (
@@ -610,128 +502,13 @@ export const generateProductionPlan = (
     }
   }
 
-    // --- NEW STEP 4 LOGIC: DAILY PLAN GENERATION ---
-    const dailyPlan: ProductionPlanItem[] = [];
-    const stockState = new Map<string, number>();
-    inventorySettings.forEach(is => stockState.set(`${is.itemId}---${is.centerId}`, is.currentStock));
-    const productDetails = new Map<string, {name: string}>();
-    salesData.forEach(s => {
-        const normalizedProductId = normalizeMaterialCode(s.código);
-        if (!productDetails.has(normalizedProductId)) {
-            productDetails.set(normalizedProductId, { name: s.descripciónMaterial || s.etiqueta || String(s.código) });
-        }
-    });
+  // Final aggregation for daily and monthly plans (simplified for now)
+  const dailyPlan: ProductionPlanItem[] = []; // Placeholder - full logic needed here
+  const monthlyPlan: MonthlyProductionPlanItem[] = []; // Placeholder
 
-    for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
-        const { year, month } = planningHorizon[monthIndex];
-        const daysInMonth = new Date(year, month, 0).getDate();
-        
-        // 1. Unify monthly demands per line/product
-        const monthlyProductionGoals = new Map<string, { totalUnits: number, totalDemand: number }>();
-        monthlyAssignments.filter(a => a.monthIndex === monthIndex).forEach(a => {
-            const key = `${a.lineId}---${a.productId}`;
-            const existing = monthlyProductionGoals.get(key) || { totalUnits: 0, totalDemand: 0 };
-            existing.totalUnits += a.units;
-            existing.totalDemand += a.originalNeedUnits + a.advancedUnits; // Total demand for tie-breaker
-            monthlyProductionGoals.set(key, existing);
-        });
-
-        // 2. Calculate daily targets based on proportional distribution
-        const workingDaysInMonth = Array.from({length: daysInMonth}, (_, i) => i + 1)
-            .filter(d => getDayTypeForProduction(new Date(year, month-1, d), holidays) !== 'Sunday' && getDayTypeForProduction(new Date(year, month-1, d), holidays) !== 'NonProductiveHoliday').length;
-        
-        const dailyTargets: DailyProductionTarget[] = [];
-        monthlyProductionGoals.forEach(({ totalUnits, totalDemand }, key) => {
-            const [lineId, productId] = key.split('---');
-            const assignment = monthlyAssignments.find(a => a.monthIndex === monthIndex && a.lineId === lineId && a.productId === productId);
-            if (!assignment) {
-                // This case should not happen if logic is correct, but it's a safe guard.
-                throw new Error(`No se encontró una asignación mensual para la clave ${key} en el mes ${monthIndex + 1}`);
-            }
-            const centerId = assignment.centerName;
-            
-            dailyTargets.push({
-                productId, lineId,
-                targetQuantity: workingDaysInMonth > 0 ? totalUnits / workingDaysInMonth : 0,
-                totalMonthDemand: totalDemand,
-                 basePlanItem: {
-                    id: '', year, month, day: 0, week: 0,
-                    productId, productName: productDetails.get(productId)?.name || productId,
-                    producingCenterId: centerId, assignedLineId: activeLines.find(l=>l.id===lineId)!.name,
-                    initialStockOnDay: 0, demandOnDay: 0, quantityToProduce: 0, finalStockOnDay: 0,
-                    estimatedLaborCost: 0, hoursWorked: 0, status: 'Planificado'
-                }
-            });
-        });
-        
-        const linePpis = new Map<string, ProductProcessInfo>();
-        productProcessInfos.forEach(ppi => linePpis.set(`${ppi.productId}---${ppi.productionLineId}`, ppi));
-
-        // 3. Loop through days and schedule production
-        for (let day = 1; day <= daysInMonth; day++) {
-            const currentDate = new Date(year, month - 1, day);
-            const dayType = getDayTypeForProduction(currentDate, holidays);
-            if (dayType === 'Sunday' || dayType === 'NonProductiveHoliday') continue;
-
-            const hoursAvailable = dayType === 'Weekday' ? (shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay) : shiftParameters.saturdayAndHolidayHours;
-            
-            const linesWithProductionToday = new Set(dailyTargets.map(t => t.lineId));
-
-            for (const lineId of linesWithProductionToday) {
-                const line = activeLines.find(l => l.id === lineId)!;
-                const productsForLine = dailyTargets.filter(t => t.lineId === lineId);
-                
-                // Heuristic for sequencing
-                const sequences: DailySchedulingResult[] = [];
-                // This is a simplified permutation. A real scenario would need a more advanced algorithm.
-                // For now, we'll just test one sequence based on the tie-breaker rule.
-                const sortedProducts = productsForLine.sort((a,b) => b.totalMonthDemand - a.totalMonthDemand);
-
-                const simulationResult = simulateProductionSequence(sortedProducts, line, linePpis, hoursAvailable, constraints);
-                sequences.push(simulationResult);
-                
-                // Here we would sort sequences by WIP, then by bottleneck utilization, then by volume.
-                // Since we only have one sequence, we just use its result.
-                const bestSequenceResult = sequences[0];
-
-                bestSequenceResult.planItems.forEach(item => {
-                     const stockKey = `${item.productId}---${item.producingCenterId}`;
-                     const initialStock = stockState.get(stockKey) || 0;
-                     const finalStock = initialStock + item.quantityToProduce;
-                     stockState.set(stockKey, finalStock);
-                     
-                     dailyPlan.push({
-                         ...item,
-                         id: `${year}-${month}-${day}-${lineId}-${item.productId}`,
-                         day,
-                         week: Math.ceil(day / 7),
-                         initialStockOnDay: initialStock,
-                         finalStockOnDay: finalStock,
-                     });
-                });
-            }
-        }
-    }
-
-
-  const consolidatedDailyPlanMap = new Map<string, ProductionPlanItem>();
-  dailyPlan.forEach(item => {
-      const key = `${item.year}-${item.month}-${item.day}-${item.productId}-${item.producingCenterId}`;
-      const existing = consolidatedDailyPlanMap.get(key);
-      if (!existing) {
-          consolidatedDailyPlanMap.set(key, { ...item, id: key });
-      } else {
-          existing.quantityToProduce += item.quantityToProduce;
-          existing.hoursWorked += item.hoursWorked;
-          existing.finalStockOnDay = item.finalStockOnDay; // last update wins, which is fine
-      }
-  });
-  
-  const finalDailyPlan = Array.from(consolidatedDailyPlanMap.values()).sort((a,b) => new Date(a.year, a.month-1, a.day).getTime() - new Date(b.year, b.month-1, b.day).getTime() || a.productId.localeCompare(b.productId));
-  const monthlyPlan: MonthlyProductionPlanItem[] = []; // Simplified
   
   return { 
-    finalPlan: { dailyPlan: finalDailyPlan, monthlyPlan, auditLog },
+    finalPlan: { dailyPlan, monthlyPlan, auditLog },
     planningGroupDetails,
     productionNeeds,
     monthlyAssignments,
@@ -805,4 +582,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
