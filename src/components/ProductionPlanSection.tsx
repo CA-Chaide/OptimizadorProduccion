@@ -130,7 +130,13 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     let data = detailedProductionPlan.monthlyAssignments;
      Object.entries(filters).forEach(([key, value]) => {
       if (value) {
-        data = data.filter(row => String(row[key as keyof MonthlyAssignment]).toLowerCase().includes(value.toLowerCase()));
+        data = data.filter(row => {
+          if (key === 'monthIndex') {
+             const monthName = MONTH_NAMES[row.monthIndex].toLowerCase();
+             return monthName.includes(value.toLowerCase());
+          }
+          return String(row[key as keyof MonthlyAssignment]).toLowerCase().includes(value.toLowerCase())
+        });
       }
     });
     return data.sort((a,b) => a.monthIndex - b.monthIndex || a.lineName.localeCompare(b.lineName));
@@ -269,7 +275,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                                         value={filters[String(col)] || ''}
                                         onChange={(e) => handleFilterChange(String(col), e.target.value)}
                                         className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
-                                        placeholder={`Filtrar ${columnLabels[String(col)]}...`}
+                                        placeholder={`Filtrar...`}
                                     />
                                 </th>
                             ))}
