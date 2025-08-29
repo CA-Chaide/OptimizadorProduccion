@@ -54,6 +54,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
       if (prev === 'assignments') return 'finalPlan';
       return prev;
     });
+    setFilters({}); // Reset filters when moving to the next step
   };
   
   const handleReset = () => {
@@ -101,6 +102,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     return centerSummaryData.reduce((acc, curr) => acc + curr.totalCenterProduction, 0);
   }, [centerSummaryData]);
 
+  // --- Filtered Data Memos ---
   const filteredPlanningGroups = useMemo(() => {
     if (!detailedProductionPlan?.planningGroupDetails) return [];
     let data = detailedProductionPlan.planningGroupDetails;
@@ -123,6 +125,16 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     return data;
   }, [detailedProductionPlan?.productionNeeds, filters]);
 
+  const filteredMonthlyAssignments = useMemo(() => {
+    if (!detailedProductionPlan?.monthlyAssignments) return [];
+    let data = detailedProductionPlan.monthlyAssignments;
+     Object.entries(filters).forEach(([key, value]) => {
+      if (value) {
+        data = data.filter(row => String(row[key as keyof MonthlyAssignment]).toLowerCase().includes(value.toLowerCase()));
+      }
+    });
+    return data.sort((a,b) => a.monthIndex - b.monthIndex || a.lineName.localeCompare(b.lineName));
+  }, [detailedProductionPlan?.monthlyAssignments, filters]);
 
   const handleFilterChange = (columnId: string, value: string) => {
     setFilters(prev => ({ ...prev, [columnId]: value }));
@@ -234,26 +246,32 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
       </p>
       <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
         <table className="min-w-full text-sm divide-y divide-gray-200">
-          <thead className="bg-gray-100 sticky top-0">
+          <thead className="bg-gray-100 sticky top-0 z-10">
             <tr>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600">Mes</th>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600">Línea</th>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600">Producto</th>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-600">Unidades Asignadas</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-600">Horas Requeridas</th>
+              {['monthIndex', 'lineName', 'productId', 'centerName', 'units', 'totalHours'].map(col => (
+                <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
+                  <div>{col === 'monthIndex' ? 'Mes' : col.replace('Name','').replace('Id','')}</div>
+                   <input
+                      type="text"
+                      value={filters[col] || ''}
+                      onChange={(e) => handleFilterChange(col, e.target.value)}
+                      className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
+                      placeholder={`Filtrar ${col}...`}
+                    />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {detailedProductionPlan?.monthlyAssignments && detailedProductionPlan.monthlyAssignments.length > 0 ? (
-              detailedProductionPlan.monthlyAssignments.sort((a,b) => a.monthIndex - b.monthIndex || a.lineName.localeCompare(b.lineName)).map(as => (
+            {filteredMonthlyAssignments && filteredMonthlyAssignments.length > 0 ? (
+              filteredMonthlyAssignments.map(as => (
                 <tr key={as.assignmentKey}>
                   <td className="px-3 py-2">{MONTH_NAMES[as.monthIndex]}</td>
                   <td className="px-3 py-2">{as.lineName}</td>
                   <td className="px-3 py-2 font-mono">{as.productId}</td>
                   <td className="px-3 py-2">{as.centerName}</td>
-                  <td className="px-3 py-2 text-right">{as.units.toFixed(0)}</td>
-                  <td className="px-3 py-2 text-right">{(as.hours.regular + as.hours.extra + as.hours.holiday).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">{as.units.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                  <td className="px-3 py-2 text-right">{as.totalHours.toFixed(2)}</td>
                 </tr>
               ))
             ) : (

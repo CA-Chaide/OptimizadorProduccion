@@ -3,6 +3,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -292,7 +293,7 @@ export interface MonthlyAssignment {
   productId: string;
   centerName: string;
   units: number;
-  hours: LineHourAvailability;
+  totalHours: number;
   laborCost: number;
 }
 

@@ -8,6 +8,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -82,7 +83,7 @@ export function processAndValidateAssemblyData(
         }
         
         // Workstation Definition (ID = Center + Name)
-        const workstationId = `wd-${centerId}-${workstationName}`;
+        const workstationId = `wd---${centerId}---${workstationName}`;
         if (!discoveredWorkstations.has(workstationId)) {
             const existingWd = existingWorkstations.get(workstationId);
             discoveredWorkstations.set(workstationId, {
@@ -95,7 +96,7 @@ export function processAndValidateAssemblyData(
         }
         
         // Production Line (ID = Center + Name)
-        const lineId = `pl-${centerId}-${lineName}`;
+        const lineId = `pl---${centerId}---${lineName}`;
         if (!discoveredLines.has(lineId)) {
             const existingLine = existingLines.get(lineId);
             discoveredLines.set(lineId, {
@@ -126,7 +127,7 @@ export function processAndValidateAssemblyData(
     salesData.forEach(row => {
         const normalizedProductId = normalizeMaterialCode(row.código);
         if (!productNamesMap.has(normalizedProductId)) {
-            productNamesMap.set(normalizedProductId, row.descripciónMaterial || row.etiqueta || row.código);
+            productNamesMap.set(normalizedProductId, row.descripciónMaterial || row.etiqueta || String(row.código));
         }
     });
 
@@ -136,13 +137,13 @@ export function processAndValidateAssemblyData(
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
         const lineName = String(row.Linea).trim();
-        const lineId = `pl-${centerId}-${lineName}`;
+        const lineId = `pl---${centerId}---${lineName}`;
         const workstationName = String(row.PuestoTrabajo).trim();
-        const workstationId = `wd-${centerId}-${workstationName}`;
+        const workstationId = `wd---${centerId}---${workstationName}`;
         const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
 
         // Process Info
-        const ppiKey = `${normalizedProductId}-${lineId}`;
+        const ppiKey = `${normalizedProductId}---${lineId}`;
         if (!processInfoAggregator.has(ppiKey)) {
             processInfoAggregator.set(ppiKey, {
                 id: ppiKey,
@@ -158,7 +159,7 @@ export function processAndValidateAssemblyData(
         ppi.workstationTimes.push({ workstationDefinitionId: workstationId, timeHours: row.Tiempo / 60 });
 
         // Inventory Info
-        const invKey = `${normalizedProductId}-${centerId}`;
+        const invKey = `${normalizedProductId}---${centerId}`;
         if (!inventoryMap.has(invKey)) {
             inventoryMap.set(invKey, {
                 id: invKey,
@@ -339,7 +340,7 @@ export const generateProductionPlan = (
                   centerName: centerId,
                   year,
                   month,
-                  demand: demand,
+                  demand,
                   initialStock: invSetting?.currentStock || 0,
                   minStock: invSetting?.minStock || 0,
               });
@@ -449,7 +450,7 @@ export const generateProductionPlan = (
             }
 
             const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
-            const assignmentKey = `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`;
+            const assignmentKey = `${monthIndex}---${ppi.productionLineId}---${productId}---${centerId}`;
             const assignment = monthlyAssignmentsMap.get(assignmentKey) || { units: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
             assignment.units += unitsToMake;
             assignment.hours.regular += consumedHours.regular;
@@ -465,14 +466,16 @@ export const generateProductionPlan = (
     }
   }
   const monthlyAssignments: MonthlyAssignment[] = Array.from(monthlyAssignmentsMap.entries()).map(([assignmentKey, data]) => {
-      const [monthIndex, lineId, productId, centerId] = assignmentKey.split('-');
+      const [monthIndex, lineId, productId, centerId] = assignmentKey.split('---');
       const line = activeLines.find(l=>l.id === lineId);
       return { 
           assignmentKey, monthIndex: parseInt(monthIndex), 
           lineName: line ? line.name : 'Unknown Line',
           productId, 
           centerName: centerId,
-          ...data 
+          units: data.units,
+          totalHours: data.hours.regular + data.hours.extra + data.hours.holiday,
+          laborCost: data.laborCost 
       };
   });
 
@@ -488,7 +491,7 @@ export const generateProductionPlan = (
   salesData.forEach(s => {
     const normalizedProductId = normalizeMaterialCode(s.código);
     if (!productDetails.has(normalizedProductId)) {
-      productDetails.set(normalizedProductId, { name: s.descripciónMaterial || s.etiqueta || s.código });
+      productDetails.set(normalizedProductId, { name: s.descripciónMaterial || s.etiqueta || String(s.código) });
     }
   });
 
@@ -497,9 +500,9 @@ export const generateProductionPlan = (
     const daysInMonth = new Date(year, month, 0).getDate();
     const monthlyProductionBucket = new Map<string, { units: number; hours: number; cost: number }>();
     monthlyAssignmentsMap.forEach((assignment, key) => {
-        const [mIdx, lineId, productId, centerId] = key.split('-');
+        const [mIdx, lineId, productId, centerId] = key.split('---');
         if (parseInt(mIdx) !== monthIndex) return;
-        monthlyProductionBucket.set(`${lineId}-${productId}-${centerId}`, { 
+        monthlyProductionBucket.set(`${lineId}---${productId}---${centerId}`, { 
             units: assignment.units, 
             hours: assignment.hours.regular + assignment.hours.extra + assignment.hours.holiday,
             cost: assignment.laborCost 
@@ -515,7 +518,7 @@ export const generateProductionPlan = (
 
         for (const [bucketKey, bucket] of monthlyProductionBucket.entries()) {
             if (bucket.units <= 0) continue;
-            const [lineId, productId, centerId] = bucketKey.split('-');
+            const [lineId, productId, centerId] = bucketKey.split('---');
             const line = activeLines.find(l => l.id === lineId)!;
             const ppi = productProcessInfos.find(p => p.productId === productId && p.productionLineId === lineId)!;
 
