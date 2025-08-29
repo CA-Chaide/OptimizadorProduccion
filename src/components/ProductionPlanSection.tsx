@@ -155,7 +155,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
         A continuación se muestra el desglose mensual de la demanda para cada par `Producto-Centro`. Use los filtros para investigar.
         Si esta tabla está vacía, el sistema no pudo encontrar una coincidencia válida entre los datos de ventas y los de producción/inventario.
       </p>
-      <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
+      <div className="overflow-y-auto max-h-[60vh] border rounded-lg">
         <table className="min-w-full text-sm divide-y divide-gray-200">
           <thead className="bg-gray-100 sticky top-0 z-10">
             <tr>
@@ -206,7 +206,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
         <p className="text-sm text-gray-600 mb-4">
             Basado en la demanda y políticas de stock, el sistema ha calculado la cantidad de unidades que se deben producir cada mes.
         </p>
-         <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
+         <div className="overflow-y-auto max-h-[60vh] border rounded-lg">
             <table className="min-w-full text-sm divide-y divide-gray-200">
                 <thead className="bg-gray-100 sticky top-0">
                     <tr>
@@ -263,7 +263,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
             <p className="text-sm text-gray-600 mb-4">
                 Las necesidades de producción se han asignado a las líneas más eficientes disponibles en cada centro, considerando la capacidad de horas.
             </p>
-            <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
+            <div className="overflow-y-auto max-h-[60vh] border rounded-lg">
                 <table className="min-w-full text-sm divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
@@ -367,7 +367,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
   );
 
   const renderDailyPlan = () => (
-    <div className="overflow-x-auto max-h-[60vh]">
+    <div className="overflow-y-auto max-h-[60vh]">
        <table className="min-w-full text-sm divide-y divide-gray-200">
         <thead className="bg-gray-50 sticky top-0">
           <tr>
@@ -390,7 +390,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
   );
   
   const renderMonthlyPlan = () => (
-     <div className="overflow-x-auto max-h-[60vh]">
+     <div className="overflow-y-auto max-h-[60vh]">
        <table className="min-w-full text-sm divide-y divide-gray-200">
         <thead className="bg-gray-50 sticky top-0">
           <tr>
