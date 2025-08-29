@@ -238,50 +238,65 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     </div>
   );
   
-  const renderStep3_Assignments = () => (
-    <div>
-      <h3 className="text-lg font-semibold text-gray-800 mb-2">Paso 3: Asignación a Líneas de Producción</h3>
-      <p className="text-sm text-gray-600 mb-4">
-        Las necesidades de producción se han asignado a las líneas más eficientes disponibles en cada centro, considerando la capacidad de horas.
-      </p>
-      <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
-        <table className="min-w-full text-sm divide-y divide-gray-200">
-          <thead className="bg-gray-100 sticky top-0 z-10">
-            <tr>
-              {['monthIndex', 'lineName', 'productId', 'centerName', 'units', 'totalHours'].map(col => (
-                <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
-                  <div>{col === 'monthIndex' ? 'Mes' : col.replace('Name','').replace('Id','')}</div>
-                   <input
-                      type="text"
-                      value={filters[col] || ''}
-                      onChange={(e) => handleFilterChange(col, e.target.value)}
-                      className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
-                      placeholder={`Filtrar ${col}...`}
-                    />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredMonthlyAssignments && filteredMonthlyAssignments.length > 0 ? (
-              filteredMonthlyAssignments.map(as => (
-                <tr key={as.assignmentKey}>
-                  <td className="px-3 py-2">{MONTH_NAMES[as.monthIndex]}</td>
-                  <td className="px-3 py-2">{as.lineName}</td>
-                  <td className="px-3 py-2 font-mono">{as.productId}</td>
-                  <td className="px-3 py-2">{as.centerName}</td>
-                  <td className="px-3 py-2 text-right">{as.units.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
-                  <td className="px-3 py-2 text-right">{as.totalHours.toFixed(2)}</td>
-                </tr>
-              ))
-            ) : (
-              <tr><td colSpan={6} className="text-center py-4 text-gray-500">No se realizaron asignaciones de producción a las líneas.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  const renderStep3_Assignments = () => {
+    const columns: (keyof MonthlyAssignment)[] = ['monthIndex', 'lineName', 'productId', 'centerName', 'units', 'totalHours'];
+    const columnLabels: Record<keyof MonthlyAssignment, string> = {
+        monthIndex: 'Mes',
+        lineName: 'Línea',
+        productId: 'Producto',
+        centerName: 'Centro',
+        units: 'Unidades',
+        totalHours: 'Horas Totales',
+        assignmentKey: '',
+        laborCost: '',
+    };
+
+    return (
+        <div>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Paso 3: Asignación a Líneas de Producción</h3>
+            <p className="text-sm text-gray-600 mb-4">
+                Las necesidades de producción se han asignado a las líneas más eficientes disponibles en cada centro, considerando la capacidad de horas.
+            </p>
+            <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
+                <table className="min-w-full text-sm divide-y divide-gray-200">
+                    <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                            {columns.map(col => (
+                                <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
+                                    <div>{columnLabels[col]}</div>
+                                    <input
+                                        type="text"
+                                        value={filters[col] || ''}
+                                        onChange={(e) => handleFilterChange(col, e.target.value)}
+                                        className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
+                                        placeholder={`Filtrar ${columnLabels[col]}...`}
+                                    />
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredMonthlyAssignments && filteredMonthlyAssignments.length > 0 ? (
+                            filteredMonthlyAssignments.map(as => (
+                                <tr key={as.assignmentKey}>
+                                    <td className="px-3 py-2">{MONTH_NAMES[as.monthIndex]}</td>
+                                    <td className="px-3 py-2">{as.lineName}</td>
+                                    <td className="px-3 py-2 font-mono">{as.productId}</td>
+                                    <td className="px-3 py-2">{as.centerName}</td>
+                                    <td className="px-3 py-2 text-right">{as.units.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                    <td className="px-3 py-2 text-right">{as.totalHours.toFixed(2)}</td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr><td colSpan={columns.length} className="text-center py-4 text-gray-500">No se realizaron asignaciones de producción a las líneas.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
 
   const renderStep4_FinalPlan = () => (
     <div>
