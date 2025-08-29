@@ -301,11 +301,8 @@ export interface DetailedProductionPlan {
 }
 // --- End New Types ---
 
-// New type for daily planning context
-export interface DailyPlanContext {
-    ppiId: string;
-    productId: string;
-    centerName: string;
+// New type for daily planning context, inherits from MonthlyAssignment
+export interface DailyPlanContext extends MonthlyAssignment {
     remainingUnits: number;
     dailyGoal: number;
 }

@@ -244,8 +244,14 @@ const calculateEffectiveManufacturingTime = (
 /**
  * Calculates the bottleneck rate (units per hour) for a given product on a given line.
  * This is the maximum sustainable output rate of the entire line for that product.
+ * Returns 0 if the line is not properly configured for the product.
  */
-function getLineBottleneckRate(ppi: ProductProcessInfo, line: ProductionLine, workstationDefs: WorkstationDefinition[]): number {
+function getLineBottleneckRate(
+    ppi: ProductProcessInfo,
+    line: ProductionLine,
+    workstationDefs: WorkstationDefinition[],
+    auditLog: string[]
+): number {
     if (!ppi.workstationTimes || ppi.workstationTimes.length === 0) return 0;
 
     let minRate = Infinity;
@@ -254,9 +260,12 @@ function getLineBottleneckRate(ppi: ProductProcessInfo, line: ProductionLine, wo
         const workstationDef = workstationDefs.find(wd => wd.id === wt.workstationDefinitionId);
         const assignment = line.assignedWorkstations.find(as => as.definitionId === wt.workstationDefinitionId);
 
-        if (!workstationDef || !assignment || wt.timeHours <= 0) {
-             throw new Error(`Inconsistencia de datos: No se pudo encontrar la definición o asignación del puesto de trabajo '${wt.workstationDefinitionId}' en la línea '${line.name}' para el producto '${ppi.productId}'.`);
+        if (!workstationDef || !assignment) {
+            auditLog.push(`ALERTA: Inconsistencia de datos. El producto '${ppi.productId}' requiere el puesto '${workstationDef?.name || wt.workstationDefinitionId}' que no está asignado a la línea '${line.name}'. Esta combinación de producción no es viable.`);
+            return 0; // Inviable to produce, so rate is 0.
         }
+        
+        if(wt.timeHours <= 0) continue; // Skip workstations with no time, they are not bottlenecks
 
         const ratePerPost = 1 / wt.timeHours; // units per hour for a single post
         const totalRateForStation = ratePerPost * assignment.quantity;
@@ -276,8 +285,8 @@ function getLineBottleneckRate(ppi: ProductProcessInfo, line: ProductionLine, wo
 function sequenceDailyProduction(
     dailyGoals: DailyPlanContext[],
     line: ProductionLine,
-    availableHours: number,
-    constraints: AppConstraints
+    constraints: AppConstraints,
+    auditLog: string[]
 ): DailyPlanContext[] {
      if (dailyGoals.length <= 1) {
         return dailyGoals; // No sequencing needed for one or zero items
@@ -290,8 +299,8 @@ function sequenceDailyProduction(
         const ppiA = constraints.productProcessInfos.find(p => p.id === a.ppiId)!;
         const ppiB = constraints.productProcessInfos.find(p => p.id === b.ppiId)!;
 
-        const bottleneckA = getLineBottleneckRate(ppiA, line, constraints.workstationDefinitions);
-        const bottleneckB = getLineBottleneckRate(ppiB, line, constraints.workstationDefinitions);
+        const bottleneckA = getLineBottleneckRate(ppiA, line, constraints.workstationDefinitions, auditLog);
+        const bottleneckB = getLineBottleneckRate(ppiB, line, constraints.workstationDefinitions, auditLog);
 
         // Higher bottleneck rate is better (less WIP), so sort descending
         if (bottleneckA !== bottleneckB) {
@@ -331,16 +340,6 @@ export const generateProductionPlan = (
       return ppiCandidates
           .map(ppi => {
               const line = productionLines.find(l => l.id === ppi.productionLineId)!;
-              ppi.workstationTimes.forEach(wt => {
-                  const wsDef = workstationDefinitions.find(wd=>wd.id === wt.workstationDefinitionId);
-                  if(!wsDef) {
-                       throw new Error(`Error de datos: El puesto con ID '${wt.workstationDefinitionId}' no existe en las definiciones globales.`);
-                  }
-                  if(!line.assignedWorkstations.some(as => as.definitionId === wt.workstationDefinitionId)) {
-                      throw new Error(`Error de datos: El puesto '${wsDef.name}' del producto '${ppi.productId}' no está asignado a la línea '${line.name}'.`);
-                  }
-              });
-
               const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
               if (effectiveTime === Infinity) {
                   auditLog.push(`Alerta: Tiempo de manufactura infinito para ${ppi.productId} en línea ${line.name}. Verifique asignación de puestos.`);
@@ -560,8 +559,8 @@ export const generateProductionPlan = (
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
-    const assignmentsForThisMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
-    const linesUsedThisMonth = [...new Set(assignmentsForThisMonth.map(a => a.lineId))];
+    const monthlyAssignmentsForMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
+    const linesUsedThisMonth = [...new Set(monthlyAssignmentsForMonth.map(a => a.lineId))];
     const daysInMonth = new Date(year, month, 0).getDate();
     const workingDaysInMonth = Array.from({ length: daysInMonth }, (_, i) => getDayTypeForProduction(new Date(year, month - 1, i + 1), holidays))
         .filter(type => type === 'Weekday' || type === 'Saturday' || type === 'ProductiveHoliday').length;
@@ -570,14 +569,12 @@ export const generateProductionPlan = (
 
     // Create a mutable copy of production goals for the month for each line
     const monthlyLineGoals = new Map<string, DailyPlanContext[]>();
-    for (const assignment of assignmentsForThisMonth) {
+    for (const assignment of monthlyAssignmentsForMonth) {
         if (!monthlyLineGoals.has(assignment.lineId)) {
             monthlyLineGoals.set(assignment.lineId, []);
         }
         monthlyLineGoals.get(assignment.lineId)!.push({
-            ppiId: assignment.ppiId,
-            productId: assignment.productId,
-            centerName: assignment.centerName,
+            ...assignment,
             remainingUnits: assignment.units,
             dailyGoal: assignment.units / workingDaysInMonth,
         });
@@ -597,50 +594,49 @@ export const generateProductionPlan = (
             const goalsForLine = monthlyLineGoals.get(lineId) || [];
             let hoursRemainingToday = hoursPerDay;
 
-            const sequencedGoals = sequenceDailyProduction(goalsForLine, line, hoursRemainingToday, constraints);
+            const sequencedGoals = sequenceDailyProduction(goalsForLine, line, constraints, auditLog);
 
             for (const goal of sequencedGoals) {
                 if (hoursRemainingToday <= 0) break;
-                if (goal.remainingUnits <= 0) continue;
+                if (goal.remainingUnits <= 0.1) continue;
 
                 const ppi = productProcessInfos.find(p => p.id === goal.ppiId)!;
                 if(ppi.totalManufacturingTimeHours <= 0) continue;
 
                 const maxUnitsInTime = hoursRemainingToday / ppi.totalManufacturingTimeHours;
                 const unitsToProduce = Math.min(goal.remainingUnits, goal.dailyGoal, maxUnitsInTime);
+                
+                if (unitsToProduce <= 0.1) continue;
 
-                if (unitsToProduce > 0) {
-                    const hoursConsumed = unitsToProduce * ppi.totalManufacturingTimeHours;
-                    
-                    const stockKey = `${goal.productId}---${goal.centerName}`;
-                    const initialStockOnDay = currentStock.get(stockKey) || 0;
-                    const demandOnDay = (salesData
-                        .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === goal.centerName)
-                        .reduce((sum, s) => sum + s.unidadesProyectado, 0)
-                    ) / workingDaysInMonth;
+                const hoursConsumed = unitsToProduce * ppi.totalManufacturingTimeHours;
+                
+                const stockKey = `${goal.productId}---${goal.centerName}`;
+                const initialStockOnDay = currentStock.get(stockKey) || 0;
+                const demandOnDay = (salesData
+                    .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === goal.centerName)
+                    .reduce((sum, s) => sum + s.unidadesProyectado, 0)
+                ) / workingDaysInMonth;
 
-                    const finalStockOnDay = initialStockOnDay + unitsToProduce - demandOnDay;
-                    currentStock.set(stockKey, finalStockOnDay);
+                const finalStockOnDay = initialStockOnDay + unitsToProduce - demandOnDay;
+                currentStock.set(stockKey, finalStockOnDay);
+                
+                const basePlanItem = {
+                    id: `${year}-${month}-${day}-${goal.productId}-${line.id}`,
+                    year, month, day, week: 0, // week can be calculated if needed
+                    productId: goal.productId,
+                    productName: ppi.productName || goal.productId,
+                    quantityToProduce: unitsToProduce,
+                    demandOnDay, initialStockOnDay, finalStockOnDay,
+                    assignedLineId: line.id,
+                    producingCenterId: goal.centerName,
+                    estimatedLaborCost: 0, // Placeholder, can be calculated
+                    hoursWorked: hoursConsumed,
+                    status: 'Planificado' as const,
+                };
+                dailyPlan.push(basePlanItem);
 
-                    dailyPlan.push({
-                        id: `${year}-${month}-${day}-${goal.productId}-${line.id}`,
-                        year, month, day, week: 0,
-                        productId: goal.productId,
-                        productName: ppi.productName || goal.productId,
-                        quantityToProduce: unitsToProduce,
-                        demandOnDay: demandOnDay,
-                        initialStockOnDay: initialStockOnDay,
-                        finalStockOnDay: finalStockOnDay,
-                        assignedLineId: line.id,
-                        producingCenterId: goal.centerName,
-                        estimatedLaborCost: 0, // Labor cost can be calculated later if needed
-                        hoursWorked: hoursConsumed,
-                        status: 'Planificado',
-                    });
-
-                    goal.remainingUnits -= unitsToProduce;
-                    hoursRemainingToday -= hoursConsumed;
-                }
+                goal.remainingUnits -= unitsToProduce;
+                hoursRemainingToday -= hoursConsumed;
             }
         }
     }
