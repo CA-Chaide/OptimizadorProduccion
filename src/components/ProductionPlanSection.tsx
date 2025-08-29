@@ -1,13 +1,13 @@
 
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
-    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan 
+    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem 
 } from '@/types/types';
 import { PlanIcon, DataImportIcon } from '@/constants/constants';
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/OptimizationService';
-import { MONTH_NAMES } from '@/constants/constants';
+import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
 
@@ -17,6 +17,27 @@ interface ProductionPlanSectionProps {
   // Props removed, data comes from context now
 }
 
+// --- Reusable Filter Input ---
+const FilterInput: React.FC<{
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  containerClassName?: string;
+}> = ({ label, value, onChange, placeholder, containerClassName }) => (
+  <div className={containerClassName}>
+    <label className="block text-xs font-medium text-gray-500">{label}</label>
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
+      placeholder={placeholder || `Filtrar ${label}...`}
+    />
+  </div>
+);
+
+
 export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () => {
   const { 
     productionPlan, 
@@ -25,13 +46,16 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     constraints, 
     detailedProductionPlan,
     syncStatus,
+    salesData, // Need sales data for the monthly summary
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
 
   const [activeTab, setActiveTab] = useState<'summary' | 'daily' | 'monthly' | 'log'>('summary');
   const [planningStep, setPlanningStep] = useState<PlanningStep>('idle');
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [dailyFilters, setDailyFilters] = useState({ month: '', line: '', center: '', product: ''});
+  const [monthlyFilters, setMonthlyFilters] = useState({ processType: '', center: '' });
+
 
   const { dailyPlan = [], monthlyPlan = [], auditLog = [] } = productionPlan || {};
   
@@ -54,97 +78,90 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
       if (prev === 'assignments') return 'finalPlan';
       return prev;
     });
-    setFilters({}); // Reset filters when moving to the next step
   };
   
   const handleReset = () => {
     setPlanningStep('idle');
-    setFilters({});
   };
 
-  const centerSummaryData = useMemo(() => {
-    if (!dailyPlan || dailyPlan.length === 0 || !constraints.workCenters || constraints.workCenters.length === 0) return [];
-    
-    const summaryMap = new Map<string, any>();
-    constraints.workCenters.forEach(center => {
-        summaryMap.set(center.id, { center, lines: [], totalCenterProduction: 0 });
+  // --- Memos for final plan display ---
+  const filteredDailyPlan = useMemo(() => {
+    if (!dailyPlan) return [];
+    return dailyPlan.filter(item => {
+      const monthMatch = dailyFilters.month ? MONTH_NAMES[item.month - 1].toLowerCase().includes(dailyFilters.month.toLowerCase()) : true;
+      const lineMatch = dailyFilters.line ? item.assignedLineId?.toLowerCase().includes(dailyFilters.line.toLowerCase()) : true;
+      const centerMatch = dailyFilters.center ? item.producingCenterId?.toLowerCase().includes(dailyFilters.center.toLowerCase()) : true;
+      const productMatch = dailyFilters.product ? (item.productId.includes(dailyFilters.product) || item.productName.toLowerCase().includes(dailyFilters.product.toLowerCase())) : true;
+      return monthMatch && lineMatch && centerMatch && productMatch;
     });
-    
-    const lineProductionMap = new Map<string, number>();
-    dailyPlan.forEach(item => {
-        if (!item.producingCenterId || !item.assignedLineId || item.quantityToProduce <= 0) return;
-        const line = constraints.productionLines.find(l => l.name === item.assignedLineId && l.workCenterId === item.producingCenterId);
-        if(line) {
-            const currentTotal = lineProductionMap.get(line.id) || 0;
-            lineProductionMap.set(line.id, currentTotal + item.quantityToProduce);
-        }
-    });
+  }, [dailyPlan, dailyFilters]);
 
-    lineProductionMap.forEach((totalProduction, lineId) => {
-        const line = constraints.productionLines.find(l => l.id === lineId);
-        if (line) {
-            const centerSummary = summaryMap.get(line.workCenterId);
-            if (centerSummary) {
-                centerSummary.lines.push({ line, totalProduction });
-                centerSummary.totalCenterProduction += totalProduction;
-            }
-        }
-    });
+  const monthlyInventoryFlow = useMemo(() => {
+    if (!monthlyFilters.center || !monthlyFilters.processType) return null;
     
-    return Array.from(summaryMap.values())
-        .filter(summary => summary.totalCenterProduction > 0)
-        .sort((a,b) => a.center.name.localeCompare(b.center.name));
+    // 1. Identify relevant products for the selected filters
+    const relevantLineIds = new Set(constraints.productionLines
+        .filter(l => l.processType === monthlyFilters.processType)
+        .map(l => l.id)
+    );
+    const relevantProductIds = new Set(constraints.productProcessInfos
+        .filter(ppi => relevantLineIds.has(ppi.productionLineId))
+        .map(ppi => ppi.productId)
+    );
+
+    // 2. Get planning horizon from sales data for these products
+    const filteredSales = salesData.filter(s => relevantProductIds.has(s.código) && String(s.centro) === monthlyFilters.center);
+    if(filteredSales.length === 0) return { months: [], rows: [] };
+    
+    const planningMonths = Array.from(new Set(filteredSales.map(s => `${s.año}-${String(s.mes).padStart(2, '0')}`))).sort();
+
+    // 3. Initialize metrics
+    const initialStock = constraints.inventorySettings
+        .filter(is => relevantProductIds.has(is.itemId) && is.centerId === monthlyFilters.center)
+        .reduce((sum, is) => sum + is.currentStock, 0);
+
+    const data: Record<string, Record<string, number>> = {
+      'Saldo Inicial': {}, 'Producción': {}, 'Traslados Recibidos': {},
+      'Ventas': {}, 'Traslados Enviados': {}, 'Saldo Final': {}
+    };
+
+    let lastMonthStock = initialStock;
+
+    // 4. Calculate metrics for each month
+    planningMonths.forEach((monthKey, index) => {
+        const [yearStr, monthStr] = monthKey.split('-');
+        const year = parseInt(yearStr);
+        const month = parseInt(monthStr);
+
+        data['Saldo Inicial'][monthKey] = (index === 0) ? initialStock : lastMonthStock;
         
-  }, [dailyPlan, constraints.workCenters, constraints.productionLines]);
+        data['Producción'][monthKey] = dailyPlan
+            .filter(dp => dp.year === year && dp.month === month && dp.producingCenterId === monthlyFilters.center && relevantProductIds.has(dp.productId))
+            .reduce((sum, dp) => sum + dp.quantityToProduce, 0);
 
+        data['Ventas'][monthKey] = salesData
+             .filter(s => s.año === year && s.mes === month && String(s.centro) === monthlyFilters.center && relevantProductIds.has(s.código))
+            .reduce((sum, s) => sum + s.unidadesProyectado, 0);
+        
+        // Placeholder for transfers
+        data['Traslados Recibidos'][monthKey] = 0;
+        data['Traslados Enviados'][monthKey] = 0;
 
-  const grandTotalProduction = useMemo(() => {
-    return centerSummaryData.reduce((acc, curr) => acc + curr.totalCenterProduction, 0);
-  }, [centerSummaryData]);
-
-  // --- Filtered Data Memos ---
-  const filteredPlanningGroups = useMemo(() => {
-    if (!detailedProductionPlan?.planningGroupDetails) return [];
-    let data = detailedProductionPlan.planningGroupDetails;
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) {
-        data = data.filter(row => String(row[key as keyof PlanningGroupMonthlyDetail]).toLowerCase().includes(value.toLowerCase()));
-      }
+        data['Saldo Final'][monthKey] = data['Saldo Inicial'][monthKey] 
+                                      + data['Producción'][monthKey] 
+                                      + data['Traslados Recibidos'][monthKey]
+                                      - data['Ventas'][monthKey]
+                                      - data['Traslados Enviados'][monthKey];
+        
+        lastMonthStock = data['Saldo Final'][monthKey];
     });
-    return data;
-  }, [detailedProductionPlan?.planningGroupDetails, filters]);
 
-  const filteredProductionNeeds = useMemo(() => {
-    if (!detailedProductionPlan?.productionNeeds) return [];
-    let data = detailedProductionPlan.productionNeeds;
-     Object.entries(filters).forEach(([key, value]) => {
-      if (value) {
-        data = data.filter(row => String(row[key as keyof MonthlyNeed]).toLowerCase().includes(value.toLowerCase()));
-      }
-    });
-    return data;
-  }, [detailedProductionPlan?.productionNeeds, filters]);
+    const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados Recibidos', 'Ventas', 'Traslados Enviados', 'Saldo Final'];
+    const rows = rowOrder.map(label => ({ label, values: data[label] }));
+    
+    return { months: planningMonths, rows };
 
-  const filteredMonthlyAssignments = useMemo(() => {
-    if (!detailedProductionPlan?.monthlyAssignments) return [];
-    let data = detailedProductionPlan.monthlyAssignments;
-     Object.entries(filters).forEach(([key, value]) => {
-      if (value) {
-        data = data.filter(row => {
-          if (key === 'monthIndex') {
-             const monthName = MONTH_NAMES[row.monthIndex].toLowerCase();
-             return monthName.includes(value.toLowerCase());
-          }
-          return String(row[key as keyof MonthlyAssignment]).toLowerCase().includes(value.toLowerCase())
-        });
-      }
-    });
-    return data.sort((a,b) => a.monthIndex - b.monthIndex || a.lineName.localeCompare(b.lineName));
-  }, [detailedProductionPlan?.monthlyAssignments, filters]);
-
-  const handleFilterChange = (columnId: string, value: string) => {
-    setFilters(prev => ({ ...prev, [columnId]: value }));
-  };
+  }, [monthlyFilters, constraints, salesData, dailyPlan]);
 
 
   // --- Step Rendering Components ---
@@ -153,153 +170,20 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
       <h3 className="text-lg font-semibold text-gray-800 mb-2">Paso 1: Consolidación de Demanda y Stock</h3>
       <p className="text-sm text-gray-600 mb-4">
         A continuación se muestra el desglose mensual de la demanda para cada par `Producto-Centro`. Use los filtros para investigar.
-        Si esta tabla está vacía, el sistema no pudo encontrar una coincidencia válida entre los datos de ventas y los de producción/inventario.
       </p>
-      <div className="overflow-y-auto max-h-[60vh] border rounded-lg">
-        <table className="min-w-full text-sm divide-y divide-gray-200">
-          <thead className="bg-gray-100 sticky top-0 z-10">
-            <tr>
-              {['productId', 'centerName', 'year', 'month', 'demand', 'initialStock', 'minStock'].map(col => (
-                <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
-                  <div>{col.replace('Name', '').replace('Id','')}</div>
-                  <input
-                    type="text"
-                    value={filters[col] || ''}
-                    onChange={(e) => handleFilterChange(col, e.target.value)}
-                    className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
-                    placeholder={`Filtrar ${col}...`}
-                  />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredPlanningGroups && filteredPlanningGroups.length > 0 ? (
-              filteredPlanningGroups.map((group, index) => (
-                <tr key={`${group.pairKey}-${group.month}-${index}`}>
-                  <td className="px-3 py-2 font-mono">{group.productId}</td>
-                  <td className="px-3 py-2">{group.centerName}</td>
-                  <td className="px-3 py-2">{group.year}</td>
-                  <td className="px-3 py-2">{MONTH_NAMES[group.month - 1]}</td>
-                  <td className="px-3 py-2 text-right font-bold text-blue-600">{group.demand.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right">{group.initialStock.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right">{group.minStock.toLocaleString()}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={7} className="text-center py-4 text-red-600 font-bold">
-                  Se han consolidado 0 grupos de planificación. El proceso no puede continuar.
-                  <span className="block font-normal text-gray-600">Causa probable: No hay coincidencia entre el `CodMaterial` y `Centro` de los datos de ventas y los datos de Tiempos de Ensamble/Inventario. Verifique la normalización de datos.</span>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 
   const renderStep2_Needs = () => (
     <div>
         <h3 className="text-lg font-semibold text-gray-800 mb-2">Paso 2: Cálculo de Necesidades de Producción</h3>
-        <p className="text-sm text-gray-600 mb-4">
-            Basado en la demanda y políticas de stock, el sistema ha calculado la cantidad de unidades que se deben producir cada mes.
-        </p>
-         <div className="overflow-y-auto max-h-[60vh] border rounded-lg">
-            <table className="min-w-full text-sm divide-y divide-gray-200">
-                <thead className="bg-gray-100 sticky top-0">
-                    <tr>
-                         {['productId', 'centerName', 'year', 'month', 'productionNeeded'].map(col => (
-                            <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
-                              <div>{col.replace('Name', '').replace('Id','')}</div>
-                              <input
-                                type="text"
-                                value={filters[col] || ''}
-                                onChange={(e) => handleFilterChange(col, e.target.value)}
-                                className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
-                                placeholder={`Filtrar ${col}...`}
-                              />
-                            </th>
-                          ))}
-                    </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredProductionNeeds && filteredProductionNeeds.length > 0 ? (
-                    filteredProductionNeeds.map((need, index) => (
-                        <tr key={`${need.pairKey}-${need.month}-${index}`}>
-                            <td className="px-3 py-2 font-mono">{need.productId}</td>
-                            <td className="px-3 py-2">{need.centerName}</td>
-                            <td className="px-3 py-2">{need.year}</td>
-                            <td className="px-3 py-2">{MONTH_NAMES[need.month - 1]}</td>
-                            <td className="px-3 py-2 text-right font-bold text-green-600">{Math.round(need.productionNeeded).toLocaleString()}</td>
-                        </tr>
-                    ))
-                    ) : (
-                    <tr><td colSpan={5} className="text-center py-4 text-gray-500">No se calcularon necesidades de producción.</td></tr>
-                    )}
-                </tbody>
-            </table>
-        </div>
     </div>
   );
   
   const renderStep3_Assignments = () => {
-    const columns: { id: keyof MonthlyAssignment | 'monthName', label: string }[] = [
-        { id: 'monthName', label: 'Mes'},
-        { id: 'lineName', label: 'Línea'},
-        { id: 'productId', label: 'Producto'},
-        { id: 'centerName', label: 'Centro'},
-        { id: 'units', label: 'U. Planificadas'},
-        { id: 'originalNeedUnits', label: 'U. Mes'},
-        { id: 'advancedUnits', label: 'U. Adelanto'},
-        { id: 'totalHours', label: 'Horas Totales'},
-    ];
-
     return (
         <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-2">Paso 3: Asignación a Líneas de Producción</h3>
-            <p className="text-sm text-gray-600 mb-4">
-                Las necesidades de producción se han asignado a las líneas más eficientes disponibles en cada centro, considerando la capacidad de horas.
-            </p>
-            <div className="overflow-y-auto max-h-[60vh] border rounded-lg">
-                <table className="min-w-full text-sm divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                        <tr>
-                            {columns.map(col => (
-                                <th key={col.id} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
-                                    <div>{col.label}</div>
-                                    <input
-                                        type="text"
-                                        value={filters[col.id] || ''}
-                                        onChange={(e) => handleFilterChange(col.id, e.target.value)}
-                                        className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
-                                        placeholder={`Filtrar...`}
-                                    />
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredMonthlyAssignments && filteredMonthlyAssignments.length > 0 ? (
-                            filteredMonthlyAssignments.map(as => (
-                                <tr key={as.id}>
-                                    <td className="px-3 py-2">{MONTH_NAMES[as.monthIndex]}</td>
-                                    <td className="px-3 py-2">{as.lineName}</td>
-                                    <td className="px-3 py-2 font-mono">{as.productId}</td>
-                                    <td className="px-3 py-2">{as.centerName}</td>
-                                    <td className="px-3 py-2 text-right font-bold">{as.units.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                    <td className="px-3 py-2 text-right text-blue-600">{as.originalNeedUnits.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                    <td className="px-3 py-2 text-right text-purple-600">{as.advancedUnits.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                    <td className="px-3 py-2 text-right">{as.totalHours.toFixed(2)}</td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr><td colSpan={columns.length} className="text-center py-4 text-gray-500">No se realizaron asignaciones de producción a las líneas.</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
         </div>
     );
 };
@@ -307,16 +191,14 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
   const renderStep4_FinalPlan = () => (
     <div>
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">Paso 4: Plan Detallado (Diario y Mensual)</h3>
-        <p className="text-sm text-gray-600 mb-4">Este es el resultado final del plan de producción, listo para ser exportado.</p>
-        
         <div className="flex justify-between items-center border-b border-gray-200 pb-3 mb-4">
             <nav className="flex space-x-2" aria-label="Tabs">
-                <button onClick={() => setActiveTab('summary')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'summary' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen</button>
-                <button onClick={() => setActiveTab('daily')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Plan Diario ({dailyPlan.length})</button>
-                <button onClick={() => setActiveTab('monthly')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'monthly' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen Mensual ({monthlyPlan.length})</button>
-                <button onClick={() => setActiveTab('log')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'log' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Bitácora</button>
+                <button onClick={() => setActiveTab('daily')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Plan Diario Detallado</button>
+                <button onClick={() => setActiveTab('monthly')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'monthly' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen de Flujo Mensual</button>
             </nav>
+            <div>
+              {activeTab === 'daily' && dailyPlan.length > 0 && <Button onClick={handleExportDaily} variant="outline" size="sm">Exportar Diario</Button>}
+            </div>
         </div>
         
         {renderContent()}
@@ -326,88 +208,119 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
   // --- Main Content Rendering Logic ---
   const renderContent = () => {
-    if (dailyPlan.length === 0 && activeTab !== 'log') {
+    if (planningStep === 'finalPlan' && dailyPlan.length === 0) {
         return (
             <div className="text-center py-10">
                 <h3 className="text-lg font-medium text-gray-900">El plan de producción está vacío.</h3>
-                <p className="mt-1 text-sm text-gray-500">Inicie el proceso de planificación paso a paso para diagnosticar el problema.</p>
+                <p className="mt-1 text-sm text-gray-500">
+                    La planificación no generó ningún resultado. Esto puede deberse a que no hay demanda en los datos de ventas o a inconsistencias en los datos maestros.
+                    Revise la bitácora del planificador para más detalles.
+                </p>
+                {auditLog.length > 0 && renderAuditLog()}
             </div>
         );
     }
     
     switch (activeTab) {
-        case 'summary': return renderSummary();
         case 'daily': return renderDailyPlan();
-        case 'monthly': return renderMonthlyPlan();
-        case 'log': return renderAuditLog();
-        default: return renderSummary();
+        case 'monthly': return renderMonthlySummary();
+        default: return renderDailyPlan();
     }
   };
 
-  const renderSummary = () => (
-    <div className="space-y-6">
-        {centerSummaryData.map(({ center, lines, totalCenterProduction }) => (
-            <div key={center.id} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-                <div className="flex justify-between items-baseline mb-4">
-                    <h3 className="text-xl font-bold text-gray-800">{center.name}</h3>
-                    <p className="text-lg font-semibold text-indigo-600">Subtotal: {Math.round(totalCenterProduction).toLocaleString()} Unidades</p>
-                </div>
-                <div className="space-y-3">
-                    {lines.sort((a,b) => a.line.name.localeCompare(b.line.name)).map(({ line, totalProduction }) => (
-                         <div key={line.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                            <span className="font-medium text-gray-700">{line.name}</span>
-                            <span className="font-mono text-gray-900">{Math.round(totalProduction).toLocaleString()} unid.</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        ))}
-    </div>
-  );
-
   const renderDailyPlan = () => (
-    <div className="overflow-y-auto max-h-[60vh]">
-       <table className="min-w-full text-sm divide-y divide-gray-200">
-        <thead className="bg-gray-50 sticky top-0">
-          <tr>
-            <th className="px-2 py-2 text-left font-semibold text-gray-600">Fecha</th>
-            <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto</th>
-            <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción</th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {dailyPlan.map(item => (
-            <tr key={item.id} className="hover:bg-gray-50">
-              <td className="px-2 py-1 whitespace-nowrap">{`${item.day}/${item.month}/${item.year}`}</td>
-              <td className="px-2 py-1 whitespace-normal font-medium text-gray-800">{item.productName}</td>
-              <td className="px-2 py-1 text-right text-green-600 font-bold">{Math.round(item.quantityToProduce)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-4">
+       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 border rounded-lg bg-gray-50">
+          <FilterInput label="Mes" value={dailyFilters.month} onChange={v => setDailyFilters(f => ({...f, month: v}))} />
+          <FilterInput label="Línea" value={dailyFilters.line} onChange={v => setDailyFilters(f => ({...f, line: v}))} />
+          <FilterInput label="Centro" value={dailyFilters.center} onChange={v => setDailyFilters(f => ({...f, center: v}))} />
+          <FilterInput label="Producto" value={dailyFilters.product} onChange={v => setDailyFilters(f => ({...f, product: v}))} />
+       </div>
+       <div className="overflow-auto max-h-[60vh] border rounded-lg">
+         <table className="min-w-full text-xs divide-y divide-gray-200 whitespace-nowrap">
+            <thead className="bg-gray-100 sticky top-0 z-10">
+              <tr>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Fecha</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Línea</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Inicial</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">Demanda Día</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Final</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">Horas Req.</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredDailyPlan.map(item => (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-2 py-1">{`${String(item.day).padStart(2,'0')}/${String(item.month).padStart(2,'0')}/${item.year}`}</td>
+                  <td className="px-2 py-1 font-medium">{item.productName} ({item.productId})</td>
+                  <td className="px-2 py-1">{item.assignedLineId}</td>
+                  <td className="px-2 py-1">{item.producingCenterId}</td>
+                  <td className="px-2 py-1 text-right">{Math.round(item.initialStockOnDay).toLocaleString()}</td>
+                  <td className="px-2 py-1 text-right text-red-600">{Math.round(item.demandOnDay).toLocaleString()}</td>
+                  <td className="px-2 py-1 text-right font-bold text-green-600">{Math.round(item.quantityToProduce).toLocaleString()}</td>
+                  <td className="px-2 py-1 text-right">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
+                  <td className="px-2 py-1 text-right">{item.hoursWorked.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+       </div>
     </div>
   );
   
-  const renderMonthlyPlan = () => (
-     <div className="overflow-y-auto max-h-[60vh]">
-       <table className="min-w-full text-sm divide-y divide-gray-200">
-        <thead className="bg-gray-50 sticky top-0">
-          <tr>
-            <th className="px-2 py-2 text-left font-semibold text-gray-600">Mes</th>
-            <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto</th>
-            <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción Total</th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {monthlyPlan.map(item => (
-            <tr key={item.id} className="hover:bg-gray-50">
-              <td className="px-2 py-1 whitespace-nowrap">{`${MONTH_NAMES[item.month-1]} ${item.year}`}</td>
-              <td className="px-2 py-1 whitespace-normal font-medium text-gray-800">{item.productName}</td>
-              <td className="px-2 py-1 text-right font-bold">{Math.round(item.totalQuantityToProduce)}</td>
+  const renderMonthlySummary = () => (
+     <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 border rounded-lg bg-gray-50">
+          <div>
+            <label className="block text-xs font-medium text-gray-500">Tipo de Proceso</label>
+            <select value={monthlyFilters.processType} onChange={e => setMonthlyFilters(f => ({...f, processType: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
+                <option value="">Seleccione un Proceso</option>
+                {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500">Centro de Distribución</label>
+             <select value={monthlyFilters.center} onChange={e => setMonthlyFilters(f => ({...f, center: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
+                <option value="">Seleccione un Centro</option>
+                {constraints.workCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+      </div>
+      
+       {!monthlyFilters.center || !monthlyFilters.processType ? (
+        <div className="text-center py-10 text-gray-500">Por favor, seleccione un tipo de proceso y un centro para ver el resumen.</div>
+      ) : !monthlyInventoryFlow || monthlyInventoryFlow.months.length === 0 ? (
+        <div className="text-center py-10 text-gray-500">No hay datos de ventas para la combinación de filtros seleccionada.</div>
+      ) : (
+       <div className="overflow-x-auto border rounded-lg">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-10">Métrica</th>
+              {monthlyInventoryFlow.months.map(monthKey => {
+                const [year, monthNum] = monthKey.split('-');
+                return <th key={monthKey} className="px-3 py-2 text-right font-semibold text-gray-600">{`${MONTH_NAMES[parseInt(monthNum)-1].slice(0,3)} ${year.slice(-2)}`}</th>
+              })}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {monthlyInventoryFlow.rows.map(row => (
+              <tr key={row.label} className="hover:bg-gray-50">
+                <td className="px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10">{row.label}</td>
+                {monthlyInventoryFlow.months.map(monthKey => (
+                  <td key={`${row.label}-${monthKey}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''}`}>
+                    {Math.round(row.values[monthKey] || 0).toLocaleString()}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+       </div>
+      )}
     </div>
   );
 
@@ -469,19 +382,14 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                 Reiniciar
             </Button>
           )}
-          {planningStep === 'finalPlan' && (
-            <Button onClick={handleExportDaily} disabled={dailyPlan.length === 0}>
-                <DataImportIcon /> Exportar Plan
-            </Button>
-          )}
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-lg min-h-[50vh]">
+      <div className="bg-white p-6 rounded-xl shadow-lg min-h-[60vh]">
         {renderWizard()}
       </div>
 
-       {detailedProductionPlan?.finalPlan?.auditLog && detailedProductionPlan.finalPlan.auditLog.length > 0 && 
+       {auditLog && auditLog.length > 0 && planningStep !== 'finalPlan' &&
          <div className="bg-white p-6 rounded-xl shadow-lg">{renderAuditLog()}</div>
        }
     </div>
