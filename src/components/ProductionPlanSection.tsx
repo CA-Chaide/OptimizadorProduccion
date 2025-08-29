@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
@@ -111,6 +112,18 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     return data;
   }, [detailedProductionPlan?.planningGroupDetails, filters]);
 
+  const filteredProductionNeeds = useMemo(() => {
+    if (!detailedProductionPlan?.productionNeeds) return [];
+    let data = detailedProductionPlan.productionNeeds;
+     Object.entries(filters).forEach(([key, value]) => {
+      if (value) {
+        data = data.filter(row => String(row[key as keyof MonthlyNeed]).toLowerCase().includes(value.toLowerCase()));
+      }
+    });
+    return data;
+  }, [detailedProductionPlan?.productionNeeds, filters]);
+
+
   const handleFilterChange = (columnId: string, value: string) => {
     setFilters(prev => ({ ...prev, [columnId]: value }));
   };
@@ -177,26 +190,37 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
         </p>
          <div className="overflow-x-auto max-h-[60vh] border rounded-lg">
             <table className="min-w-full text-sm divide-y divide-gray-200">
-            <thead className="bg-gray-100 sticky top-0">
-                <tr>
-                <th className="px-3 py-2 text-left font-semibold text-gray-600">Producto (ID)</th>
-                <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro</th>
-                <th className="px-3 py-2 text-left font-semibold text-gray-600">Necesidad de Producción Mensual</th>
-                </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-                {detailedProductionPlan?.productionNeeds && detailedProductionPlan.productionNeeds.length > 0 ? (
-                detailedProductionPlan.productionNeeds.map(need => (
-                    <tr key={need.pairKey}>
-                    <td className="px-3 py-2 font-mono">{need.productId}</td>
-                    <td className="px-3 py-2">{need.centerName}</td>
-                    <td className="px-3 py-2 font-mono text-xs">[{need.needs.map(n => Math.round(n)).join(', ')}]</td>
+                <thead className="bg-gray-100 sticky top-0">
+                    <tr>
+                         {['productId', 'centerName', 'year', 'month', 'productionNeeded'].map(col => (
+                            <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
+                              <div>{col.replace('Name', '').replace('Id','')}</div>
+                              <input
+                                type="text"
+                                value={filters[col] || ''}
+                                onChange={(e) => handleFilterChange(col, e.target.value)}
+                                className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
+                                placeholder={`Filtrar ${col}...`}
+                              />
+                            </th>
+                          ))}
                     </tr>
-                ))
-                ) : (
-                <tr><td colSpan={3} className="text-center py-4 text-gray-500">No se calcularon necesidades de producción.</td></tr>
-                )}
-            </tbody>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredProductionNeeds && filteredProductionNeeds.length > 0 ? (
+                    filteredProductionNeeds.map((need, index) => (
+                        <tr key={`${need.pairKey}-${need.month}-${index}`}>
+                            <td className="px-3 py-2 font-mono">{need.productId}</td>
+                            <td className="px-3 py-2">{need.centerName}</td>
+                            <td className="px-3 py-2">{need.year}</td>
+                            <td className="px-3 py-2">{MONTH_NAMES[need.month - 1]}</td>
+                            <td className="px-3 py-2 text-right font-bold text-green-600">{Math.round(need.productionNeeded).toLocaleString()}</td>
+                        </tr>
+                    ))
+                    ) : (
+                    <tr><td colSpan={5} className="text-center py-4 text-gray-500">No se calcularon necesidades de producción.</td></tr>
+                    )}
+                </tbody>
             </table>
         </div>
     </div>

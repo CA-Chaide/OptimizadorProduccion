@@ -2,6 +2,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -272,12 +273,16 @@ export interface PlanningGroupMonthlyDetail {
   minStock: number;
 }
 
+// Changed to represent a single monthly need, not an array
 export interface MonthlyNeed {
   pairKey: string;
   productId: string;
   centerName: string;
-  needs: number[];
+  year: number;
+  month: number;
+  productionNeeded: number;
 }
+
 type LineHourAvailability = { regular: number; extra: number; holiday: number };
 
 export interface MonthlyAssignment {

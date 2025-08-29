@@ -7,6 +7,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -81,7 +82,7 @@ export function processAndValidateAssemblyData(
         }
         
         // Workstation Definition (ID = Center + Name)
-        const workstationId = `wd-${centerId}-${workstationName.toLowerCase().replace(/\s/g, '')}`;
+        const workstationId = `wd-${centerId}-${workstationName}`;
         if (!discoveredWorkstations.has(workstationId)) {
             const existingWd = existingWorkstations.get(workstationId);
             discoveredWorkstations.set(workstationId, {
@@ -137,7 +138,7 @@ export function processAndValidateAssemblyData(
         const lineName = String(row.Linea).trim();
         const lineId = `pl-${centerId}-${lineName}`;
         const workstationName = String(row.PuestoTrabajo).trim();
-        const workstationId = `wd-${centerId}-${workstationName.toLowerCase().replace(/\s/g, '')}`;
+        const workstationId = `wd-${centerId}-${workstationName}`;
         const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
 
         // Process Info
@@ -165,9 +166,9 @@ export function processAndValidateAssemblyData(
                 itemName: productNamesMap.get(normalizedProductId) || normalizedProductId,
                 centerId: centerId,
                 isRawMaterial: false,
-                minStock: row.StockSeguridad || 0,
-                maxStock: row.StockMaximo || 0,
-                currentStock: row.SaldoInicial || 0,
+                minStock: parseInt(String(row.StockSeguridad || 0), 10),
+                maxStock: parseInt(String(row.StockMaximo || 0), 10),
+                currentStock: parseInt(String(row.SaldoInicial || 0), 10),
             });
         }
     });
@@ -264,18 +265,17 @@ export const generateProductionPlan = (
       return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
   
-  // --- New, Robust getPpiOptionsForPair Function ---
   const getPpiOptionsForPair = (
     productId: string,
     centerId: string
   ): ProductProcessInfo[] => {
-      // 1. Find all processes for the given product ID that are in the correct center.
+      // Direct search in productProcessInfos based on productId and the centerId of the assigned line.
       const ppiCandidates = productProcessInfos.filter(ppi => {
+            if (ppi.productId !== productId) return false;
             const line = productionLines.find(l => l.id === ppi.productionLineId);
-            return ppi.productId === productId && line && line.workCenterId === centerId;
+            return line && line.workCenterId === centerId;
       });
       
-      // 2. Calculate effective time and sort by efficiency (fastest first)
       return ppiCandidates
           .map(ppi => {
               const line = productionLines.find(l => l.id === ppi.productionLineId)!;
@@ -373,9 +373,22 @@ export const generateProductionPlan = (
       productionNeedsMap.set(pairKey, needs);
   });
   
-  const productionNeeds: MonthlyNeed[] = Array.from(productionNeedsMap.entries()).map(([pairKey, needs]) => {
+  const productionNeeds: MonthlyNeed[] = [];
+  productionNeedsMap.forEach((needs, pairKey) => {
       const [productId, centerName] = pairKey.split('---');
-      return { pairKey, productId, centerName, needs };
+      needs.forEach((need, index) => {
+          if (need > 0) {
+              const { year, month } = planningHorizon[index];
+              productionNeeds.push({
+                  pairKey,
+                  productId,
+                  centerName,
+                  year,
+                  month,
+                  productionNeeded: need,
+              });
+          }
+      });
   });
 
   const monthlyAssignmentsMap = new Map<string, { units: number; hours: LineHourAvailability; laborCost: number }>();
