@@ -13,6 +13,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -268,9 +269,8 @@ const calculateEffectiveManufacturingTime = (
  */
 function getSetupTime(lineId: string, fromProductId: string | null, toProductId: string): number {
     // Future logic: Look up setup time in a rules table based on line, product family, etc.
-    // For now, if there is a change of product, we could add a nominal time, but per instruction, it's 0.
     if (fromProductId && fromProductId !== toProductId) {
-        return 0; // As per instruction
+        return 0; // Per instruction, this is currently 0.
     }
     return 0;
 }
@@ -299,7 +299,14 @@ function simulateProductionSequence(
 
     for (const target of sequence) {
         const ppi = linePpis.get(target.productId);
-        if (!ppi) continue;
+        if (!ppi) {
+            throw new Error(`Datos de proceso (PPI) no encontrados para el producto ${target.productId}`);
+        }
+        
+        // Data validation check
+        if(!ppi.workstationTimes || ppi.workstationTimes.length === 0){
+             throw new Error(`El producto ${target.productId} no tiene tiempos de estación definidos en su ruta de proceso.`);
+        }
 
         // Ensure workstation times are ordered for simulation
         if (!orderedPpiWorkstations.has(ppi.id)) {
@@ -309,6 +316,10 @@ function simulateProductionSequence(
                 const idxB = Array.from(lineWsIds).indexOf(b.workstationDefinitionId);
                 return idxA - idxB;
             });
+            // Validate that all PPI workstations are actually on the line
+            if(sortedWsTimes.some(wt => !lineWsIds.has(wt.workstationDefinitionId))) {
+                 throw new Error(`Inconsistencia de datos: El producto ${ppi.productId} tiene estaciones que no pertenecen a la línea ${line.name}.`);
+            }
             orderedPpiWorkstations.set(ppi.id, sortedWsTimes);
         }
         const ppiWorkstations = orderedPpiWorkstations.get(ppi.id)!;
@@ -320,36 +331,34 @@ function simulateProductionSequence(
         currentTime += setupTime;
         lastProductId = target.productId;
 
-        let timeForOneUnit = ppi.totalManufacturingTimeHours;
+        const timeForOneUnit = ppi.totalManufacturingTimeHours;
         if(timeForOneUnit <= 0) continue;
 
+        let producedUnitsInTarget = 0;
         while (unitsToProduce > 0 && currentTime + timeForOneUnit <= totalHoursAvailable) {
             currentTime += timeForOneUnit;
-             productionResults.push({
-                ...target.basePlanItem,
-                quantityToProduce: 1, 
-                hoursWorked: timeForOneUnit
-            });
+            producedUnitsInTarget++;
             
-            // Simplified WIP calculation for now
+            // Simplified WIP calculation
             let upstreamWIP = 1;
             for(const wsTime of ppiWorkstations) {
-                 workstationWIP[wsTime.workstationDefinitionId].currentWIP += upstreamWIP;
-                 workstationWIP[wsTime.workstationDefinitionId].maxWIP = Math.max(workstationWIP[wsTime.workstationDefinitionId].maxWIP, workstationWIP[wsTime.workstationDefinitionId].currentWIP);
                  workstationUtilization[wsTime.workstationDefinitionId] += wsTime.timeHours;
-
-                const wsDef = line.assignedWorkstations.find(aws => aws.definitionId === wsTime.workstationDefinitionId)!;
-                const capacityThisWs = wsTime.timeHours > 0 ? (timeForOneUnit / wsTime.timeHours) * wsDef.quantity : Infinity;
-                const processedUnits = Math.min(upstreamWIP, capacityThisWs);
-                workstationWIP[wsTime.workstationDefinitionId].currentWIP -= processedUnits;
-                upstreamWIP = processedUnits;
             }
-
             unitsToProduce -= 1;
+        }
+
+        if (producedUnitsInTarget > 0) {
+            productionResults.push({
+                ...target.basePlanItem,
+                quantityToProduce: producedUnitsInTarget, 
+                hoursWorked: producedUnitsInTarget * timeForOneUnit
+            });
         }
     }
 
-    const bottleneckId = linePpis.get(sequence[0].productId)!.totalManufacturingTimeHours > 0 ? ppi.workstationTimes.find(wt => wt.timeHours / ppi.totalManufacturingTimeHours > 0.99)!.workstationDefinitionId : ppi.workstationTimes[0]!.workstationDefinitionId;
+    const bottleneckId = line.assignedWorkstations.reduce((bottleneck, ws) => {
+        return workstationUtilization[ws.definitionId] > workstationUtilization[bottleneck.definitionId] ? ws : bottleneck;
+    }, line.assignedWorkstations[0]).definitionId;
     
     return {
         planItems: productionResults,
@@ -384,7 +393,6 @@ export const generateProductionPlan = (
       return ppiCandidates
           .map(ppi => {
               const line = productionLines.find(l => l.id === ppi.productionLineId)!;
-              // Data validation check
               ppi.workstationTimes.forEach(wt => {
                   if(!line.assignedWorkstations.some(as => as.definitionId === wt.workstationDefinitionId)) {
                       throw new Error(`Error de datos: El puesto '${workstationDefinitions.find(wd=>wd.id === wt.workstationDefinitionId)?.name}' del producto '${ppi.productId}' no está asignado a la línea '${line.name}'.`);
@@ -395,11 +403,10 @@ export const generateProductionPlan = (
               if (effectiveTime === Infinity) {
                   auditLog.push(`Alerta: Tiempo de manufactura infinito para ${ppi.productId} en línea ${line.name}. Verifique asignación de puestos.`);
               }
-              return { ppi, effectiveTime };
+              return { ...ppi, totalManufacturingTimeHours: effectiveTime };
           })
-          .filter(item => item.effectiveTime < Infinity)
-          .sort((a, b) => a.effectiveTime - b.effectiveTime)
-          .map(item => ({ ...item.ppi, totalManufacturingTimeHours: item.effectiveTime })); 
+          .filter(ppi => ppi.totalManufacturingTimeHours < Infinity)
+          .sort((a, b) => a.totalManufacturingTimeHours - b.totalManufacturingTimeHours);
   };
   
   const planningGroupDetails: PlanningGroupMonthlyDetail[] = [];
@@ -636,7 +643,13 @@ export const generateProductionPlan = (
         const dailyTargets: DailyProductionTarget[] = [];
         monthlyProductionGoals.forEach(({ totalUnits, totalDemand }, key) => {
             const [lineId, productId] = key.split('---');
-            const centerId = monthlyAssignments.find(a=>a.lineId===lineId && a.productId===productId)!.centerName;
+            const assignment = monthlyAssignments.find(a => a.monthIndex === monthIndex && a.lineId === lineId && a.productId === productId);
+            if (!assignment) {
+                // This case should not happen if logic is correct, but it's a safe guard.
+                throw new Error(`No se encontró una asignación mensual para la clave ${key} en el mes ${monthIndex + 1}`);
+            }
+            const centerId = assignment.centerName;
+            
             dailyTargets.push({
                 productId, lineId,
                 targetQuantity: workingDaysInMonth > 0 ? totalUnits / workingDaysInMonth : 0,
@@ -652,7 +665,7 @@ export const generateProductionPlan = (
         });
         
         const linePpis = new Map<string, ProductProcessInfo>();
-        productProcessInfos.forEach(ppi => linePpis.set(ppi.productId, ppi));
+        productProcessInfos.forEach(ppi => linePpis.set(`${ppi.productId}---${ppi.productionLineId}`, ppi));
 
         // 3. Loop through days and schedule production
         for (let day = 1; day <= daysInMonth; day++) {
@@ -668,40 +681,34 @@ export const generateProductionPlan = (
                 const line = activeLines.find(l => l.id === lineId)!;
                 const productsForLine = dailyTargets.filter(t => t.lineId === lineId);
                 
-                // Heuristic for sequencing: sort by the tie-breaking rule (volume) for simplicity now.
-                // A full simulation would be more complex.
-                productsForLine.sort((a, b) => b.totalMonthDemand - a.totalMonthDemand);
+                // Heuristic for sequencing
+                const sequences: DailySchedulingResult[] = [];
+                // This is a simplified permutation. A real scenario would need a more advanced algorithm.
+                // For now, we'll just test one sequence based on the tie-breaker rule.
+                const sortedProducts = productsForLine.sort((a,b) => b.totalMonthDemand - a.totalMonthDemand);
 
-                // For now, simple proportional allocation of time
-                let remainingHours = hoursAvailable;
-                for (const target of productsForLine) {
-                     const ppi = linePpis.get(target.productId);
-                     if(!ppi || ppi.totalManufacturingTimeHours <= 0) {
-                         throw new Error(`Datos de proceso faltantes o inválidos para el producto ${target.productId} en la línea ${line.name}`);
-                     }
-                     
-                     const unitsToProduce = Math.min(target.targetQuantity, remainingHours / ppi.totalManufacturingTimeHours);
-                     if (unitsToProduce <= 0) continue;
+                const simulationResult = simulateProductionSequence(sortedProducts, line, linePpis, hoursAvailable, constraints);
+                sequences.push(simulationResult);
+                
+                // Here we would sort sequences by WIP, then by bottleneck utilization, then by volume.
+                // Since we only have one sequence, we just use its result.
+                const bestSequenceResult = sequences[0];
 
-                     const hoursConsumed = unitsToProduce * ppi.totalManufacturingTimeHours;
-                     remainingHours -= hoursConsumed;
-
-                     const stockKey = `${target.productId}---${target.basePlanItem.producingCenterId}`;
+                bestSequenceResult.planItems.forEach(item => {
+                     const stockKey = `${item.productId}---${item.producingCenterId}`;
                      const initialStock = stockState.get(stockKey) || 0;
-                     const finalStock = initialStock + unitsToProduce;
+                     const finalStock = initialStock + item.quantityToProduce;
                      stockState.set(stockKey, finalStock);
                      
                      dailyPlan.push({
-                         ...target.basePlanItem,
-                         id: `${year}-${month}-${day}-${lineId}-${target.productId}`,
+                         ...item,
+                         id: `${year}-${month}-${day}-${lineId}-${item.productId}`,
                          day,
                          week: Math.ceil(day / 7),
-                         quantityToProduce: unitsToProduce,
                          initialStockOnDay: initialStock,
                          finalStockOnDay: finalStock,
-                         hoursWorked: hoursConsumed,
                      });
-                }
+                });
             }
         }
     }
@@ -798,3 +805,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
