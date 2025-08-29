@@ -5,6 +5,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -163,9 +164,9 @@ export function processAndValidateAssemblyData(
                 itemName: productNamesMap.get(normalizedProductId) || normalizedProductId,
                 centerId: centerId,
                 isRawMaterial: false,
-                minStock: row.StockSeguridad,
-                maxStock: row.StockMaximo,
-                currentStock: row.SaldoInicial,
+                minStock: parseInt(String(row.StockSeguridad), 10) || 0,
+                maxStock: parseInt(String(row.StockMaximo), 10) || 0,
+                currentStock: parseInt(String(row.SaldoInicial), 10) || 0,
             });
         }
     });
@@ -341,7 +342,7 @@ export const generateProductionPlan = (
                   centerName: centerId,
                   year,
                   month,
-                  demand,
+                  demand: parseInt(String(demand), 10),
                   initialStock: invSetting?.currentStock || 0,
                   minStock: invSetting?.minStock || 0,
               });
