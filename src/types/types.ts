@@ -283,6 +283,7 @@ export interface MonthlyAssignment {
   monthIndex: number;
   lineId: string;
   lineName: string;
+  ppiId: string;
   productId: string;
   centerName: string;
   units: number;
@@ -299,6 +300,15 @@ export interface DetailedProductionPlan {
   monthlyAssignments: MonthlyAssignment[];
 }
 // --- End New Types ---
+
+// New type for daily planning context
+export interface DailyPlanContext {
+    ppiId: string;
+    productId: string;
+    centerName: string;
+    remainingUnits: number;
+    dailyGoal: number;
+}
 
 
 // New: Type for the summary sheet in Excel export

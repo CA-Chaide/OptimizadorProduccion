@@ -4,7 +4,7 @@ import {
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
-    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment
+    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DailyPlanContext
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -237,6 +237,74 @@ const calculateEffectiveManufacturingTime = (
     return maxTime === Infinity ? Infinity : maxTime;
 };
 
+// ==========================================================================================
+// --- PASO 4: Daily Plan Generation (Rebuilt Logic) ---
+// ==========================================================================================
+
+/**
+ * Calculates the bottleneck rate (units per hour) for a given product on a given line.
+ * This is the maximum sustainable output rate of the entire line for that product.
+ */
+function getLineBottleneckRate(ppi: ProductProcessInfo, line: ProductionLine, workstationDefs: WorkstationDefinition[]): number {
+    if (!ppi.workstationTimes || ppi.workstationTimes.length === 0) return 0;
+
+    let minRate = Infinity;
+
+    for (const wt of ppi.workstationTimes) {
+        const workstationDef = workstationDefs.find(wd => wd.id === wt.workstationDefinitionId);
+        const assignment = line.assignedWorkstations.find(as => as.definitionId === wt.workstationDefinitionId);
+
+        if (!workstationDef || !assignment || wt.timeHours <= 0) {
+             throw new Error(`Inconsistencia de datos: No se pudo encontrar la definición o asignación del puesto de trabajo '${wt.workstationDefinitionId}' en la línea '${line.name}' para el producto '${ppi.productId}'.`);
+        }
+
+        const ratePerPost = 1 / wt.timeHours; // units per hour for a single post
+        const totalRateForStation = ratePerPost * assignment.quantity;
+        if (totalRateForStation < minRate) {
+            minRate = totalRateForStation;
+        }
+    }
+
+    return minRate === Infinity ? 0 : minRate;
+}
+
+
+/**
+ * Determines the optimal sequence of production for a single day on a single line
+ * to minimize Work-In-Process (WIP).
+ */
+function sequenceDailyProduction(
+    dailyGoals: DailyPlanContext[],
+    line: ProductionLine,
+    availableHours: number,
+    constraints: AppConstraints
+): DailyPlanContext[] {
+     if (dailyGoals.length <= 1) {
+        return dailyGoals; // No sequencing needed for one or zero items
+    }
+
+    // Sort by a multi-level heuristic:
+    // 1. WIP Minimization (approximated by bottleneck rate - higher rate is better as it clears faster)
+    // 2. Volume (higher volume first to tackle the biggest chunks)
+    dailyGoals.sort((a, b) => {
+        const ppiA = constraints.productProcessInfos.find(p => p.id === a.ppiId)!;
+        const ppiB = constraints.productProcessInfos.find(p => p.id === b.ppiId)!;
+
+        const bottleneckA = getLineBottleneckRate(ppiA, line, constraints.workstationDefinitions);
+        const bottleneckB = getLineBottleneckRate(ppiB, line, constraints.workstationDefinitions);
+
+        // Higher bottleneck rate is better (less WIP), so sort descending
+        if (bottleneckA !== bottleneckB) {
+            return bottleneckB - bottleneckA;
+        }
+
+        // If bottleneck rates are equal, prioritize the one with higher daily volume
+        return b.dailyGoal - a.dailyGoal;
+    });
+
+    return dailyGoals;
+}
+
 
 export const generateProductionPlan = (
   salesData: SalesDataRow[],
@@ -466,6 +534,7 @@ export const generateProductionPlan = (
                 monthIndex,
                 lineId: line.id,
                 lineName: line.name,
+                ppiId: ppi.id,
                 productId,
                 centerName: centerId,
                 units: unitsToMake,
@@ -483,106 +552,122 @@ export const generateProductionPlan = (
     }
   }
 
-  // --- Start of Step 4: Daily Plan Generation ---
+  // --- Daily Plan Generation ---
   const dailyPlan: ProductionPlanItem[] = [];
   const monthlyPlan: MonthlyProductionPlanItem[] = [];
-  const currentStock = new Map<string, number>(); // key: "productId---centerId"
+  const currentStock = new Map<string, number>();
   inventorySettings.forEach(inv => currentStock.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock));
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
-    const assignmentsForMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
-    const salesForMonth = salesData.filter(s => s.año === year && s.mes === month);
-    
-    // Unify demands for the month
-    const monthlyProductionGoals = new Map<string, { totalUnits: number, centerName: string }>(); // key: "productId---lineId"
-    assignmentsForMonth.forEach(a => {
-        const key = `${a.productId}---${a.lineId}`;
-        const current = monthlyProductionGoals.get(key) || { totalUnits: 0, centerName: a.centerName };
-        current.totalUnits += a.units;
-        monthlyProductionGoals.set(key, current);
-    });
-
+    const assignmentsForThisMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
+    const linesUsedThisMonth = [...new Set(assignmentsForThisMonth.map(a => a.lineId))];
     const daysInMonth = new Date(year, month, 0).getDate();
     const workingDaysInMonth = Array.from({ length: daysInMonth }, (_, i) => getDayTypeForProduction(new Date(year, month - 1, i + 1), holidays))
         .filter(type => type === 'Weekday' || type === 'Saturday' || type === 'ProductiveHoliday').length;
-    
-    const dailyProductionTargets = new Map<string, number>(); // key: "productId---lineId"
-    monthlyProductionGoals.forEach((data, key) => {
-        dailyProductionTargets.set(key, workingDaysInMonth > 0 ? data.totalUnits / workingDaysInMonth : 0);
-    });
+
+    if (workingDaysInMonth === 0) continue;
+
+    // Create a mutable copy of production goals for the month for each line
+    const monthlyLineGoals = new Map<string, DailyPlanContext[]>();
+    for (const assignment of assignmentsForThisMonth) {
+        if (!monthlyLineGoals.has(assignment.lineId)) {
+            monthlyLineGoals.set(assignment.lineId, []);
+        }
+        monthlyLineGoals.get(assignment.lineId)!.push({
+            ppiId: assignment.ppiId,
+            productId: assignment.productId,
+            centerName: assignment.centerName,
+            remainingUnits: assignment.units,
+            dailyGoal: assignment.units / workingDaysInMonth,
+        });
+    }
 
     for (let day = 1; day <= daysInMonth; day++) {
         const currentDate = new Date(year, month - 1, day);
         const dayType = getDayTypeForProduction(currentDate, holidays);
         if (dayType === 'Sunday' || dayType === 'NonProductiveHoliday') continue;
 
-        // WIP logic will go here. For now, simple proportional production.
-        dailyProductionTargets.forEach((dailyTarget, key) => {
-            const [productId, lineId] = key.split('---');
-            const centerName = monthlyProductionGoals.get(key)!.centerName;
-            const ppi = productProcessInfos.find(p => p.productId === productId && p.productionLineId === lineId)!;
-            const productName = ppi.productName || productId;
-            
-            const stockKey = `${productId}---${centerName}`;
-            const initialStockOnDay = currentStock.get(stockKey) || 0;
-            const demandOnDay = salesForMonth.filter(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === centerName).reduce((sum, s) => sum + s.unidadesProyectado, 0) / workingDaysInMonth;
-            
-            // This is a simplification; full WIP logic would be complex.
-            // For now, we just produce the daily target.
-            const quantityToProduce = dailyTarget;
-            const hoursWorked = quantityToProduce * ppi.totalManufacturingTimeHours;
-            
-            const finalStockOnDay = initialStockOnDay + quantityToProduce - demandOnDay;
-            currentStock.set(stockKey, finalStockOnDay);
+        let hoursPerDay: number;
+        if (dayType === 'Weekday') hoursPerDay = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
+        else hoursPerDay = shiftParameters.saturdayAndHolidayHours;
 
-            dailyPlan.push({
-                id: `${year}-${month}-${day}-${productId}-${lineId}`,
-                year, month, day, week: 0, // Week calculation can be added if needed
-                productId, productName,
-                quantityToProduce,
-                demandOnDay,
-                initialStockOnDay,
-                finalStockOnDay,
-                assignedLineId: lineId,
-                producingCenterId: centerName,
-                estimatedLaborCost: 0, // Placeholder
-                hoursWorked,
-                status: 'Planificado',
-            });
-        });
-    }
+        for (const lineId of linesUsedThisMonth) {
+            const line = activeLines.find(l => l.id === lineId)!;
+            const goalsForLine = monthlyLineGoals.get(lineId) || [];
+            let hoursRemainingToday = hoursPerDay;
 
-    // Aggregate monthly plan from daily results
-    assignmentsForMonth.forEach(assignment => {
-        const { productId, centerName, lineName } = assignment;
-        const productName = productProcessInfos.find(p => p.productId === productId)?.productName || productId;
-        
-        const monthlyItems = dailyPlan.filter(d => d.month === month && d.productId === productId && d.producingCenterId === centerName);
-        const totalQuantity = monthlyItems.reduce((sum, item) => sum + item.quantityToProduce, 0);
-        const totalHours = monthlyItems.reduce((sum, item) => sum + item.hoursWorked, 0);
-        const totalCost = monthlyItems.reduce((sum, item) => sum + item.estimatedLaborCost, 0);
+            const sequencedGoals = sequenceDailyProduction(goalsForLine, line, hoursRemainingToday, constraints);
 
-        const existingMonthlyItem = monthlyPlan.find(m => m.year === year && m.month === month && m.productId === productId && m.producingCenterId === centerName);
-        if (existingMonthlyItem) {
-            existingMonthlyItem.totalQuantityToProduce += totalQuantity;
-            existingMonthlyItem.totalHoursWorked += totalHours;
-            existingMonthlyItem.totalEstimatedLaborCost += totalCost;
-        } else {
-             monthlyPlan.push({
-                id: `${year}-${month}-${productId}-${centerName}`,
-                year, month, productId, productName, producingCenterId: centerName,
-                totalQuantityToProduce: totalQuantity,
-                totalHoursWorked: totalHours,
-                totalEstimatedLaborCost: totalCost
-            });
+            for (const goal of sequencedGoals) {
+                if (hoursRemainingToday <= 0) break;
+                if (goal.remainingUnits <= 0) continue;
+
+                const ppi = productProcessInfos.find(p => p.id === goal.ppiId)!;
+                if(ppi.totalManufacturingTimeHours <= 0) continue;
+
+                const maxUnitsInTime = hoursRemainingToday / ppi.totalManufacturingTimeHours;
+                const unitsToProduce = Math.min(goal.remainingUnits, goal.dailyGoal, maxUnitsInTime);
+
+                if (unitsToProduce > 0) {
+                    const hoursConsumed = unitsToProduce * ppi.totalManufacturingTimeHours;
+                    
+                    const stockKey = `${goal.productId}---${goal.centerName}`;
+                    const initialStockOnDay = currentStock.get(stockKey) || 0;
+                    const demandOnDay = (salesData
+                        .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === goal.centerName)
+                        .reduce((sum, s) => sum + s.unidadesProyectado, 0)
+                    ) / workingDaysInMonth;
+
+                    const finalStockOnDay = initialStockOnDay + unitsToProduce - demandOnDay;
+                    currentStock.set(stockKey, finalStockOnDay);
+
+                    dailyPlan.push({
+                        id: `${year}-${month}-${day}-${goal.productId}-${line.id}`,
+                        year, month, day, week: 0,
+                        productId: goal.productId,
+                        productName: ppi.productName || goal.productId,
+                        quantityToProduce: unitsToProduce,
+                        demandOnDay: demandOnDay,
+                        initialStockOnDay: initialStockOnDay,
+                        finalStockOnDay: finalStockOnDay,
+                        assignedLineId: line.id,
+                        producingCenterId: goal.centerName,
+                        estimatedLaborCost: 0, // Labor cost can be calculated later if needed
+                        hoursWorked: hoursConsumed,
+                        status: 'Planificado',
+                    });
+
+                    goal.remainingUnits -= unitsToProduce;
+                    hoursRemainingToday -= hoursConsumed;
+                }
+            }
         }
-    });
-
+    }
   }
+
+  // Aggregate monthly plan from daily results
+  const aggregatedMonthlyPlan = new Map<string, MonthlyProductionPlanItem>();
+  dailyPlan.forEach(item => {
+    const key = `${item.year}-${item.month}-${item.productId}-${item.producingCenterId}`;
+    let entry = aggregatedMonthlyPlan.get(key);
+    if (!entry) {
+        entry = {
+            id: key,
+            year: item.year, month: item.month,
+            productId: item.productId, productName: item.productName,
+            producingCenterId: item.producingCenterId,
+            totalQuantityToProduce: 0, totalHoursWorked: 0, totalEstimatedLaborCost: 0
+        };
+    }
+    entry.totalQuantityToProduce += item.quantityToProduce;
+    entry.totalHoursWorked += item.hoursWorked;
+    entry.totalEstimatedLaborCost += item.estimatedLaborCost;
+    aggregatedMonthlyPlan.set(key, entry);
+  });
   
   return { 
-    finalPlan: { dailyPlan, monthlyPlan, auditLog },
+    finalPlan: { dailyPlan, monthlyPlan: Array.from(aggregatedMonthlyPlan.values()), auditLog },
     planningGroupDetails,
     productionNeeds,
     monthlyAssignments,
