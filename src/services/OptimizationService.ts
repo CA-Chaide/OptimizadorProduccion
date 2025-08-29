@@ -6,6 +6,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -164,9 +165,9 @@ export function processAndValidateAssemblyData(
                 itemName: productNamesMap.get(normalizedProductId) || normalizedProductId,
                 centerId: centerId,
                 isRawMaterial: false,
-                minStock: parseInt(String(row.StockSeguridad), 10) || 0,
-                maxStock: parseInt(String(row.StockMaximo), 10) || 0,
-                currentStock: parseInt(String(row.SaldoInicial), 10) || 0,
+                minStock: row.StockSeguridad || 0,
+                maxStock: row.StockMaximo || 0,
+                currentStock: row.SaldoInicial || 0,
             });
         }
     });
@@ -268,18 +269,14 @@ export const generateProductionPlan = (
     productId: string,
     centerId: string
   ): ProductProcessInfo[] => {
-      // 1. Find all processes for the given product ID
-      const ppiCandidates = productProcessInfos.filter(ppi => ppi.productId === productId);
-      
-      // 2. Filter those candidates to only include ones that belong to the correct center.
-      const candidatesInCenter = ppiCandidates.filter(ppi => {
-          const line = productionLines.find(l => l.id === ppi.productionLineId);
-          // A process is valid if its line exists and that line's workCenterId matches the demand center.
-          return line && line.workCenterId === centerId;
+      // 1. Find all processes for the given product ID that are in the correct center.
+      const ppiCandidates = productProcessInfos.filter(ppi => {
+            const line = productionLines.find(l => l.id === ppi.productionLineId);
+            return ppi.productId === productId && line && line.workCenterId === centerId;
       });
-
-      // 3. Calculate effective time and sort by efficiency (fastest first)
-      return candidatesInCenter
+      
+      // 2. Calculate effective time and sort by efficiency (fastest first)
+      return ppiCandidates
           .map(ppi => {
               const line = productionLines.find(l => l.id === ppi.productionLineId)!;
               const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
@@ -342,7 +339,7 @@ export const generateProductionPlan = (
                   centerName: centerId,
                   year,
                   month,
-                  demand: parseInt(String(demand), 10),
+                  demand: demand,
                   initialStock: invSetting?.currentStock || 0,
                   minStock: invSetting?.minStock || 0,
               });
