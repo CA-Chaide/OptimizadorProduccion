@@ -10,6 +10,8 @@
 
 
 
+
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -271,11 +273,11 @@ export const generateProductionPlan = (
     productId: string,
     centerId: string
   ): ProductProcessInfo[] => {
-      // Direct search in productProcessInfos based on productId and the centerId of the assigned line.
       const ppiCandidates = productProcessInfos.filter(ppi => {
-            if (ppi.productId !== productId) return false;
-            const line = productionLines.find(l => l.id === ppi.productionLineId);
-            return line && line.workCenterId === centerId;
+          if (ppi.productId !== productId) return false;
+          const line = productionLines.find(l => l.id === ppi.productionLineId);
+          // This is the direct link: the line must belong to the center of demand.
+          return line && line.workCenterId === centerId;
       });
       
       return ppiCandidates
@@ -292,7 +294,6 @@ export const generateProductionPlan = (
   const planningGroupDetails: PlanningGroupMonthlyDetail[] = [];
   const demandMap = new Map<string, { [monthKey: string]: number }>();
 
-  // Determine the planning horizon from the sales data.
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
     const dates = salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime());
@@ -393,7 +394,7 @@ export const generateProductionPlan = (
       });
   });
 
-  const monthlyAssignmentsMap = new Map<string, { units: number; originalNeedUnits: number; advancedUnits: number; hours: LineHourAvailability; laborCost: number }>();
+  const monthlyAssignments: MonthlyAssignment[] = [];
   const activeLines = productionLines.filter(l => l.isActive !== false);
   const lineMonthlyHours = new Map<string, LineHourAvailability[]>();
   activeLines.forEach(line => {
@@ -462,24 +463,27 @@ export const generateProductionPlan = (
             const { year, month } = planningHorizon[monthIndex];
             const originalNeedKey = `${prod.pairKey}---${year}-${month}`;
             const originalNeed = monthlyOriginalNeeds.get(originalNeedKey) || 0;
-            const advancedUnits = Math.max(0, prod.units - originalNeed);
             const originalUnitsToMake = Math.min(unitsToMake, originalNeed);
             const advancedUnitsToMake = Math.max(0, unitsToMake - originalUnitsToMake);
 
 
             const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
-            const assignmentKey = `${monthIndex}---${ppi.productionLineId}---${productId}---${centerId}`;
-            const assignment = monthlyAssignmentsMap.get(assignmentKey) || { units: 0, originalNeedUnits: 0, advancedUnits: 0, hours: { regular: 0, extra: 0, holiday: 0 }, laborCost: 0 };
-            
-            assignment.units += unitsToMake;
-            assignment.originalNeedUnits += originalUnitsToMake;
-            assignment.advancedUnits += advancedUnitsToMake;
-            
-            assignment.hours.regular += consumedHours.regular;
-            assignment.hours.extra += consumedHours.extra;
-            assignment.hours.holiday += consumedHours.holiday;
-            assignment.laborCost += laborCost;
-            monthlyAssignmentsMap.set(assignmentKey, assignment);
+            const line = activeLines.find(l=>l.id === ppi.productionLineId)!;
+
+            monthlyAssignments.push({
+                id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`,
+                monthIndex,
+                lineId: line.id,
+                lineName: line.name,
+                productId,
+                centerName: centerId,
+                units: unitsToMake,
+                originalNeedUnits: originalUnitsToMake,
+                advancedUnits: advancedUnitsToMake,
+                totalHours: hoursToConsume,
+                laborCost: laborCost
+            });
+
             unitsLeftToPlan -= unitsToMake;
         }
         if (unitsLeftToPlan > 0.1 && monthIndex > 0) {
@@ -487,21 +491,6 @@ export const generateProductionPlan = (
         }
     }
   }
-  const monthlyAssignments: MonthlyAssignment[] = Array.from(monthlyAssignmentsMap.entries()).map(([assignmentKey, data]) => {
-      const [monthIndex, lineId, productId, centerId] = assignmentKey.split('---');
-      const line = activeLines.find(l=>l.id === lineId);
-      return { 
-          assignmentKey, monthIndex: parseInt(monthIndex), 
-          lineName: line ? line.name : 'Unknown Line',
-          productId, 
-          centerName: centerId,
-          units: data.units,
-          originalNeedUnits: data.originalNeedUnits,
-          advancedUnits: data.advancedUnits,
-          totalHours: data.hours.regular + data.hours.extra + data.hours.holiday,
-          laborCost: data.laborCost 
-      };
-  });
 
   const stockState = new Map<string, number>();
   demandMap.forEach((_, pairKey) => {
@@ -519,18 +508,26 @@ export const generateProductionPlan = (
     }
   });
 
+  const monthlyProductionMap = new Map<string, number>();
+  monthlyAssignments.forEach(as => {
+      const key = `${as.monthIndex}-${as.lineId}-${as.productId}-${as.centerName}`;
+      const current = monthlyProductionMap.get(key) || 0;
+      monthlyProductionMap.set(key, current + as.units);
+  });
+
+
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
     const daysInMonth = new Date(year, month, 0).getDate();
-    const monthlyProductionBucket = new Map<string, { units: number; hours: number; cost: number }>();
-    monthlyAssignmentsMap.forEach((assignment, key) => {
-        const [mIdx, lineId, productId, centerId] = key.split('---');
-        if (parseInt(mIdx) !== monthIndex) return;
-        monthlyProductionBucket.set(`${lineId}---${productId}---${centerId}`, { 
-            units: assignment.units, 
-            hours: assignment.hours.regular + assignment.hours.extra + assignment.hours.holiday,
-            cost: assignment.laborCost 
-        });
+    
+    // Create a mutable copy of the monthly production bucket for this month.
+    const monthlyProductionBucket = new Map<string, number>();
+    monthlyAssignments.forEach(as => {
+        if(as.monthIndex === monthIndex) {
+            const key = `${as.lineId}-${as.productId}-${as.centerName}`;
+            const current = monthlyProductionBucket.get(key) || 0;
+            monthlyProductionBucket.set(key, current + as.units);
+        }
     });
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -540,8 +537,8 @@ export const generateProductionPlan = (
         if (dayType === 'Weekday') activeLines.forEach(l => capacityForDay[l.id] = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay);
         if (dayType === 'Saturday' || dayType === 'ProductiveHoliday') activeLines.forEach(l => capacityForDay[l.id] = shiftParameters.saturdayAndHolidayHours);
 
-        for (const [bucketKey, bucket] of monthlyProductionBucket.entries()) {
-            if (bucket.units <= 0) continue;
+        for (const [bucketKey, bucketUnits] of monthlyProductionBucket.entries()) {
+            if (bucketUnits <= 0) continue;
             const [lineId, productId, centerId] = bucketKey.split('---');
             const line = activeLines.find(l => l.id === lineId)!;
             const ppi = productProcessInfos.find(p => p.productId === productId && p.productionLineId === lineId)!;
@@ -549,10 +546,10 @@ export const generateProductionPlan = (
             if (!capacityForDay[lineId] || capacityForDay[lineId] <= 0 || !ppi || ppi.totalManufacturingTimeHours <= 0) continue;
             
             const maxUnitsForDay = capacityForDay[lineId] / ppi.totalManufacturingTimeHours;
-            const unitsToProduce = Math.min(bucket.units, maxUnitsForDay);
+            const unitsToProduce = Math.min(bucketUnits, maxUnitsForDay);
             const hoursToSchedule = unitsToProduce * ppi.totalManufacturingTimeHours;
             
-            bucket.units -= unitsToProduce;
+            monthlyProductionBucket.set(bucketKey, bucketUnits - unitsToProduce);
             capacityForDay[lineId] -= hoursToSchedule;
 
             const stockKey = `${productId}---${centerId}`;

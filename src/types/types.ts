@@ -287,8 +287,11 @@ export interface MonthlyNeed {
 type LineHourAvailability = { regular: number; extra: number; holiday: number };
 
 export interface MonthlyAssignment {
-  assignmentKey: string;
+  // A unique key is still useful for React rendering, but won't be used for logic.
+  // It's a combination of all fields to ensure uniqueness.
+  id: string; 
   monthIndex: number;
+  lineId: string;
   lineName: string;
   productId: string;
   centerName: string;

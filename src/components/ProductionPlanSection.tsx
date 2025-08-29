@@ -245,17 +245,16 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
   );
   
   const renderStep3_Assignments = () => {
-    const columns: (keyof MonthlyAssignment | 'custom')[] = ['monthIndex', 'lineName', 'productId', 'centerName', 'units', 'originalNeedUnits', 'advancedUnits', 'totalHours'];
-    const columnLabels: Record<string, string> = {
-        monthIndex: 'Mes',
-        lineName: 'Línea',
-        productId: 'Producto',
-        centerName: 'Centro',
-        units: 'U. Planificadas',
-        originalNeedUnits: 'U. Mes',
-        advancedUnits: 'U. Adelanto',
-        totalHours: 'Horas Totales',
-    };
+    const columns: { id: keyof MonthlyAssignment | 'monthName', label: string }[] = [
+        { id: 'monthName', label: 'Mes'},
+        { id: 'lineName', label: 'Línea'},
+        { id: 'productId', label: 'Producto'},
+        { id: 'centerName', label: 'Centro'},
+        { id: 'units', label: 'U. Planificadas'},
+        { id: 'originalNeedUnits', label: 'U. Mes'},
+        { id: 'advancedUnits', label: 'U. Adelanto'},
+        { id: 'totalHours', label: 'Horas Totales'},
+    ];
 
     return (
         <div>
@@ -268,12 +267,12 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                     <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
                             {columns.map(col => (
-                                <th key={String(col)} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
-                                    <div>{columnLabels[String(col)]}</div>
+                                <th key={col.id} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">
+                                    <div>{col.label}</div>
                                     <input
                                         type="text"
-                                        value={filters[String(col)] || ''}
-                                        onChange={(e) => handleFilterChange(String(col), e.target.value)}
+                                        value={filters[col.id] || ''}
+                                        onChange={(e) => handleFilterChange(col.id, e.target.value)}
                                         className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
                                         placeholder={`Filtrar...`}
                                     />
@@ -284,7 +283,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {filteredMonthlyAssignments && filteredMonthlyAssignments.length > 0 ? (
                             filteredMonthlyAssignments.map(as => (
-                                <tr key={as.assignmentKey}>
+                                <tr key={as.id}>
                                     <td className="px-3 py-2">{MONTH_NAMES[as.monthIndex]}</td>
                                     <td className="px-3 py-2">{as.lineName}</td>
                                     <td className="px-3 py-2 font-mono">{as.productId}</td>
