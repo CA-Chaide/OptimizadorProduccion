@@ -13,18 +13,16 @@ import { useAppContext } from '@/context/AppProvider';
 
 type PlanningStep = 'idle' | 'groups' | 'needs' | 'assignments' | 'finalPlan';
 
-interface ProductionPlanSectionProps {
-  // Props removed, data comes from context now
-}
-
-// --- Reusable Filter Input ---
-const FilterInput: React.FC<{
+interface FilterInputProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   containerClassName?: string;
-}> = ({ label, value, onChange, placeholder, containerClassName }) => (
+}
+
+// --- Reusable Filter Input ---
+const FilterInput: React.FC<FilterInputProps> = ({ label, value, onChange, placeholder, containerClassName }) => (
   <div className={containerClassName}>
     <label className="block text-xs font-medium text-gray-500">{label}</label>
     <input
@@ -37,8 +35,25 @@ const FilterInput: React.FC<{
   </div>
 );
 
+// --- Memoized Row for Performance ---
+const DailyPlanRow = React.memo(({ item, lineName }: { item: ProductionPlanItem; lineName: string }) => (
+    <tr key={item.id} className="hover:bg-gray-50">
+        <td className="px-2 py-1">{`${String(item.day).padStart(2,'0')}/${String(item.month).padStart(2,'0')}/${item.year}`}</td>
+        <td className="px-2 py-1 font-medium">{item.productName}</td>
+        <td className="px-2 py-1 font-mono">{item.productId}</td>
+        <td className="px-2 py-1 text-right">{Math.round(item.initialStockOnDay).toLocaleString()}</td>
+        <td className="px-2 py-1 text-right text-red-600">{Math.round(item.demandOnDay).toLocaleString()}</td>
+        <td className="px-2 py-1 text-right font-bold text-green-600">{Math.round(item.quantityToProduce).toLocaleString()}</td>
+        <td className="px-2 py-1 text-right">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
+        <td className="px-2 py-1">{lineName}</td>
+        <td className="px-2 py-1">{item.producingCenterId}</td>
+        <td className="px-2 py-1 text-right">{item.hoursWorked.toFixed(2)}</td>
+    </tr>
+));
+DailyPlanRow.displayName = 'DailyPlanRow';
 
-export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () => {
+
+export const ProductionPlanSection: React.FC = () => {
   const { 
     productionPlan, 
     handleGeneratePlan, 
@@ -101,13 +116,16 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
   const filteredDailyPlan = useMemo(() => {
     if (!dailyPlan) return [];
     return dailyPlan.filter(item => {
-      const monthMatch = dailyFilters.month ? MONTH_NAMES[item.month - 1].toLowerCase().includes(dailyFilters.month.toLowerCase()) : true;
-      const lineMatch = dailyFilters.line ? item.assignedLineId?.toLowerCase().includes(dailyFilters.line.toLowerCase()) : true;
-      const centerMatch = dailyFilters.center ? item.producingCenterId?.toLowerCase().includes(dailyFilters.center.toLowerCase()) : true;
-      const productMatch = dailyFilters.product ? (item.productId.includes(dailyFilters.product) || item.productName.toLowerCase().includes(dailyFilters.product.toLowerCase())) : true;
-      return monthMatch && lineMatch && centerMatch && productMatch;
+        const lineName = constraints.productionLines.find(l => l.id === item.assignedLineId)?.name || item.assignedLineId;
+        const monthMatch = dailyFilters.month ? MONTH_NAMES[item.month - 1].toLowerCase().includes(dailyFilters.month.toLowerCase()) : true;
+        const lineMatch = dailyFilters.line ? lineName?.toLowerCase().includes(dailyFilters.line.toLowerCase()) : true;
+        const centerMatch = dailyFilters.center ? item.producingCenterId?.toLowerCase().includes(dailyFilters.center.toLowerCase()) : true;
+        const productMatch = dailyFilters.product
+            ? item.productId.toLowerCase().includes(dailyFilters.product.toLowerCase()) || item.productName.toLowerCase().includes(dailyFilters.product.toLowerCase())
+            : true;
+        return monthMatch && lineMatch && centerMatch && productMatch;
     });
-  }, [dailyPlan, dailyFilters]);
+  }, [dailyPlan, dailyFilters, constraints.productionLines]);
 
   const monthlyInventoryFlow = useMemo(() => {
     if (!monthlyFilters.center || !monthlyFilters.processType) return null;
@@ -355,7 +373,8 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
             <thead className="bg-gray-100 sticky top-0 z-10">
               <tr>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Fecha</th>
-                <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Nombre Producto</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto (Cód)</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Inicial</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Demanda Día</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción</th>
@@ -366,19 +385,10 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredDailyPlan.map(item => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-2 py-1">{`${String(item.day).padStart(2,'0')}/${String(item.month).padStart(2,'0')}/${item.year}`}</td>
-                  <td className="px-2 py-1 font-medium">{item.productName} ({item.productId})</td>
-                  <td className="px-2 py-1 text-right">{Math.round(item.initialStockOnDay).toLocaleString()}</td>
-                  <td className="px-2 py-1 text-right text-red-600">{Math.round(item.demandOnDay).toLocaleString()}</td>
-                  <td className="px-2 py-1 text-right font-bold text-green-600">{Math.round(item.quantityToProduce).toLocaleString()}</td>
-                  <td className="px-2 py-1 text-right">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
-                  <td className="px-2 py-1">{item.assignedLineId}</td>
-                  <td className="px-2 py-1">{item.producingCenterId}</td>
-                  <td className="px-2 py-1 text-right">{item.hoursWorked.toFixed(2)}</td>
-                </tr>
-              ))}
+                {filteredDailyPlan.map(item => {
+                    const lineName = constraints.productionLines.find(l => l.id === item.assignedLineId)?.name || item.assignedLineId || 'N/A';
+                    return <DailyPlanRow key={item.id} item={item} lineName={lineName} />;
+                })}
             </tbody>
           </table>
        </div>
@@ -528,3 +538,5 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     </div>
   );
 };
+
+    
