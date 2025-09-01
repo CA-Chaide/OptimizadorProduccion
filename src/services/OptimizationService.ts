@@ -122,7 +122,6 @@ export function processAndValidateAssemblyData(
         }
     });
     
-    // **CORRECTION**: Use a single, authoritative map for inventory that includes the initial stock.
     const inventoryMap = new Map<string, InventorySetting>();
     
     apiData.forEach(row => {
@@ -131,8 +130,6 @@ export function processAndValidateAssemblyData(
         
         const invKey = `${normalizedProductId}---${centerId}`;
         
-        // **CORRECTION**: Only set inventory info if it doesn't exist, to avoid overwriting.
-        // The first row for a product-center pair will set the stock values.
         if (!inventoryMap.has(invKey)) {
             inventoryMap.set(invKey, {
                 id: invKey,
@@ -142,7 +139,7 @@ export function processAndValidateAssemblyData(
                 isRawMaterial: false,
                 minStock: parseInt(String(row.StockSeguridad || 0), 10),
                 maxStock: parseInt(String(row.StockMaximo || 0), 10),
-                currentStock: parseInt(String(row.SaldoInicial || 0), 10), // Capture the initial stock here
+                currentStock: parseInt(String(row.SaldoInicial || 0), 10),
             });
         }
 
@@ -163,7 +160,7 @@ export function processAndValidateAssemblyData(
         productionLines: Array.from(discoveredLines.values()),
         workstationDefinitions: Array.from(discoveredWorkstations.values()),
         productProcessInfos: [], // This will be generated dynamically inside the planner
-        inventorySettings: Array.from(inventoryMap.values()), // **CORRECTION**: This now correctly contains the initial stock.
+        inventorySettings: Array.from(inventoryMap.values()),
     };
 
     return {
@@ -451,7 +448,6 @@ export const generateProductionPlan = async (
               const year = parseInt(yearStr);
               const month = parseInt(monthStr);
 
-              // **CORRECTION**: Correctly find the inventory setting for the product in its demand center.
               const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
               
               planningGroupDetails.push({
@@ -461,7 +457,7 @@ export const generateProductionPlan = async (
                   year,
                   month,
                   demand,
-                  initialStock: invSetting?.currentStock || 0, // **CORRECTION**: Use the found stock.
+                  initialStock: invSetting?.currentStock || 0,
                   minStock: invSetting?.minStock || 0,
               });
           }
