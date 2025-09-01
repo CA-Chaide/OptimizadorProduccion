@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
@@ -219,7 +218,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         try {
             addNotification('info', 'Generando plan de producción... Esto puede tardar unos momentos.');
-            const detailedPlan = generateProductionPlan(state.salesData, state.constraints);
+            const detailedPlan = await generateProductionPlan(state.salesData, state.constraints);
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');
             return true;
@@ -287,5 +286,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-
-    

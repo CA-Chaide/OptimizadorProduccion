@@ -311,10 +311,10 @@ function sequenceDailyProduction(
 }
 
 
-export const generateProductionPlan = (
+export const generateProductionPlan = async (
   salesData: SalesDataRow[],
   constraints: AppConstraints
-): DetailedProductionPlan => {
+): Promise<DetailedProductionPlan> => {
   const auditLog: string[] = [];
   const { inventorySettings, holidays, productProcessInfos, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
   
@@ -477,7 +477,7 @@ export const generateProductionPlan = (
       monthlyOriginalNeeds.set(key, need.productionNeeded);
   });
 
-  for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex--) {
+  for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
     const availableHoursThisMonth = new Map<string, LineHourAvailability>();
     lineMonthlyHours.forEach((monthlyAvail, lineId) => availableHoursThisMonth.set(lineId, { ...monthlyAvail[monthIndex] }));
     
@@ -584,6 +584,7 @@ export const generateProductionPlan = (
     });
 
     for (let day = 1; day <= daysInMonth; day++) {
+        await new Promise(resolve => setTimeout(resolve, 0)); // Unblock UI thread
         const currentDate = new Date(year, month - 1, day);
         const dayType = getDayTypeForProduction(currentDate, holidays);
         if (dayType === 'Sunday' || dayType === 'NonProductiveHoliday') continue;
@@ -737,5 +738,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-    
