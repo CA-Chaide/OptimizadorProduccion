@@ -1,4 +1,5 @@
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -279,20 +280,46 @@ function getPpiOptionsForProduct(
     auditLog: string[]
 ): ProductProcessInfo[] {
     const { productionLines, workstationDefinitions } = constraints;
-
     const ppiCandidates: ProductProcessInfo[] = [];
 
-    // Find all lines that can produce this product, regardless of center
-    const allCapableLines = productionLines.filter(line => {
-        return apiData.some(row => 
+    // Find the provisioning rule for the product in the demanding center.
+    const ruleRow = apiData.find(row => 
+        normalizeMaterialCode(row.CodMaterial) === productId && 
+        String(row.Centro).trim() === demandCenterId
+    );
+    const provisioningRule = ruleRow?.ClaseAprovisionamiento || 'E'; // Default to 'E' if not found
+
+    let allowedProductionCenters: string[];
+
+    switch(provisioningRule) {
+        case 'E': // Must be produced in the same center
+            allowedProductionCenters = [demandCenterId];
+            break;
+        case 'F': // Must be sourced from a different center (e.g., center '1000')
+            allowedProductionCenters = productionLines.map(l => l.workCenterId).filter(id => id !== demandCenterId);
+            // Specific business rule: if demand is at 2000, source from 1000
+            if (demandCenterId === '2000') {
+                allowedProductionCenters = ['1000'];
+            }
+            break;
+        case 'X': // Can be produced in any center
+        default:
+            allowedProductionCenters = productionLines.map(l => l.workCenterId);
+            break;
+    }
+
+    // Find all lines in the allowed centers that can produce this product
+    const allCapableLines = productionLines.filter(line => 
+        allowedProductionCenters.includes(line.workCenterId) &&
+        apiData.some(row => 
             normalizeMaterialCode(row.CodMaterial) === productId &&
             String(row.Centro).trim() === line.workCenterId &&
             String(row.Linea).trim() === line.name
-        );
-    });
+        )
+    );
 
     if (allCapableLines.length === 0) {
-        auditLog.push(`Info: Producto ${productId} no tiene ninguna línea de producción asociada en los datos de ensamble.`);
+        auditLog.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
         return [];
     }
 
@@ -301,7 +328,6 @@ function getPpiOptionsForProduct(
 
         if (manufacturingTime < Infinity) {
             const ppiId = `${productId}---${line.id}`;
-            // Find all workstations and times for this product on this line
             const workstationTimes = line.assignedWorkstations.map(as => {
                  const workstationDef = workstationDefinitions.find(wd => wd.id === as.definitionId)!;
                  const apiRow = apiData.find(d => 

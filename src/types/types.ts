@@ -477,7 +477,7 @@ export interface TiempoEnsambleItem {
   StockSeguridad: number;
   StockMaximo: number;
   GrupoCompras: string;
-  TipoAprovisionamiento: 'E' | 'X' | 'F' | null;
+  ClaseAprovisionamiento: 'E' | 'X' | 'F' | null;
 }
 
 
