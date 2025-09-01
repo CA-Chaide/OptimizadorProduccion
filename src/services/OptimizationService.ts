@@ -124,30 +124,15 @@ export function processAndValidateAssemblyData(
 
     const processInfoAggregator = new Map<string, ProductProcessInfo>();
     const inventoryMap = new Map<string, InventorySetting>();
-    const allProductIds = new Set(apiData.map(row => normalizeMaterialCode(row.CodMaterial)));
-
-    allProductIds.forEach(productId => {
-        const ppi = {
-            id: productId, // The ID is now just the product ID
-            productId: productId,
-            productName: productNamesMap.get(productId) || productId,
-            productionLineId: '', // This will be deprecated
-            workstationTimes: [], // This will now be on the line level
-            totalManufacturingTimeHours: 0,
-        };
-        processInfoAggregator.set(productId, ppi);
-    });
-
+    
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
         const lineName = String(row.Linea).trim();
         const lineId = `pl---${centerId}---${lineName}`;
-        const workstationName = String(row.PuestoTrabajo).trim();
-        const workstationId = `wd---${centerId}---${workstationName}`;
         const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
 
         const line = discoveredLines.get(lineId)!;
-        if (line) {
+        if (line && !line.materialsHandled.includes(normalizedProductId)) {
             line.materialsHandled.push(normalizedProductId);
         }
         
@@ -164,20 +149,6 @@ export function processAndValidateAssemblyData(
                 currentStock: parseInt(String(row.SaldoInicial || 0), 10),
             });
         }
-    });
-
-    // Recalculate workstation times at the line level, not product level
-    discoveredLines.forEach(line => {
-        line.assignedWorkstations.forEach(as => {
-            const workstationId = as.definitionId;
-            const centerId = line.workCenterId;
-            const workstationName = discoveredWorkstations.get(workstationId)!.name;
-            const apiRow = apiData.find(d => String(d.Centro).trim() === centerId && String(d.Linea).trim() === line.name && String(d.PuestoTrabajo).trim() === workstationName);
-            if (apiRow) {
-                // This structure doesn't exist on the line, we need to rethink this.
-                // The times are per product on a line's workstation.
-            }
-        });
     });
 
     // --- 4. Assemble the new constraints object ---
