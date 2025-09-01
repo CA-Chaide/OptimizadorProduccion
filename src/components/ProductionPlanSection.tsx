@@ -46,7 +46,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     constraints, 
     detailedProductionPlan,
     syncStatus,
-    salesData, // Need sales data for the monthly summary
+    salesData,
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
@@ -70,10 +70,9 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     }
   };
   const handleExportMonthly = () => {
-    if (monthlyInventoryFlow && monthlyInventoryFlow.rows.length > 0) {
-      // This function needs to be created or adapted
-      // exportMonthlyFlowToExcel(monthlyInventoryFlow);
-    }
+    // This function needs to be implemented based on the final data structure of the monthly flow.
+    // For now it is disabled.
+    alert("Función de exportación mensual no implementada todavía.");
   };
   
   const handleStartPlanning = async () => {
@@ -115,7 +114,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
     const relevantLineIds = new Set(
         constraints.productionLines
-            .filter(l => l.processType === monthlyFilters.processType && l.workCenterId === monthlyFilters.center)
+            .filter(l => l.processType === monthlyFilters.processType)
             .map(l => l.id)
     );
 
@@ -145,10 +144,12 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
         data['Saldo Inicial'][monthKey] = (index === 0) ? initialStock : lastMonthStock;
         
+        // **Producción: Suma del resultado del Paso 4 (dailyPlan)
         data['U. Planificadas'][monthKey] = dailyPlan
             .filter(dp => dp.year === year && dp.month === month && dp.producingCenterId === monthlyFilters.center && relevantProductIds.has(dp.productId))
             .reduce((sum, dp) => sum + dp.quantityToProduce, 0);
 
+        // **Ventas: Suma del resultado del Paso 1 (planningGroupDetails)
         data['Ventas'][monthKey] = (detailedProductionPlan?.planningGroupDetails || [])
              .filter(d => d.year === year && d.month === month && d.centerName === monthlyFilters.center && relevantProductIds.has(d.productId))
             .reduce((sum, d) => sum + d.demand, 0);
@@ -173,21 +174,24 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
   // --- Memos for wizard steps display ---
   const filteredGroupDetails = useMemo(() => {
-    return detailedProductionPlan?.planningGroupDetails.filter(d => 
+    if (!detailedProductionPlan?.planningGroupDetails) return [];
+    return detailedProductionPlan.planningGroupDetails.filter(d => 
         (groupFilters.product ? d.productId.toLowerCase().includes(groupFilters.product.toLowerCase()) : true) &&
         (groupFilters.center ? d.centerName.toLowerCase().includes(groupFilters.center.toLowerCase()) : true)
     );
   }, [detailedProductionPlan?.planningGroupDetails, groupFilters]);
 
   const filteredNeeds = useMemo(() => {
-    return detailedProductionPlan?.productionNeeds.filter(n =>
+    if (!detailedProductionPlan?.productionNeeds) return [];
+    return detailedProductionPlan.productionNeeds.filter(n =>
         (needsFilters.product ? n.productId.toLowerCase().includes(needsFilters.product.toLowerCase()) : true) &&
         (needsFilters.center ? n.centerName.toLowerCase().includes(needsFilters.center.toLowerCase()) : true)
     );
   }, [detailedProductionPlan?.productionNeeds, needsFilters]);
 
   const filteredAssignments = useMemo(() => {
-     return detailedProductionPlan?.monthlyAssignments.filter(a =>
+     if (!detailedProductionPlan?.monthlyAssignments) return [];
+     return detailedProductionPlan.monthlyAssignments.filter(a =>
         (assignmentsFilters.product ? a.productId.toLowerCase().includes(assignmentsFilters.product.toLowerCase()) : true) &&
         (assignmentsFilters.center ? a.centerName.toLowerCase().includes(assignmentsFilters.center.toLowerCase()) : true) &&
         (assignmentsFilters.line ? a.lineName.toLowerCase().includes(assignmentsFilters.line.toLowerCase()) : true)
@@ -297,7 +301,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                 <tbody className="bg-white divide-y divide-gray-200">
                     {filteredAssignments?.map((as, i) => (
                         <tr key={i} className="hover:bg-gray-50">
-                            <td className="px-2 py-1">{`${MONTH_NAMES[detailedProductionPlan!.planningGroupDetails[as.monthIndex]?.month-1]?.slice(0,3)} ${detailedProductionPlan!.planningGroupDetails[as.monthIndex]?.year}`}</td>
+                            <td className="px-2 py-1">{`${MONTH_NAMES[detailedProductionPlan!.planningGroupDetails.find(d => d.month-1 === as.monthIndex)?.month-1 || 0]?.slice(0,3)} ${detailedProductionPlan!.planningGroupDetails.find(d => d.month-1 === as.monthIndex)?.year}`}</td>
                             <td className="px-2 py-1">{as.lineName}</td>
                             <td className="px-2 py-1">{as.productId}</td>
                             <td className="px-2 py-1">{as.centerName}</td>
