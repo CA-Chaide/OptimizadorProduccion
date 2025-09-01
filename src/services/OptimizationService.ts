@@ -127,7 +127,7 @@ export function processAndValidateAssemblyData(
     apiData.forEach(row => {
         const key = `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`;
         // Store the first row found for a given product-center pair.
-        // This assumes that inventory data (SaldoInicial, StockSeguridad) is consistent
+        // This assumes that inventory data (StockActual, StockSeguridad) is consistent
         // for all entries of the same product in the same center.
         if (!productCenterDataMap.has(key)) {
             productCenterDataMap.set(key, row);
@@ -154,7 +154,7 @@ export function processAndValidateAssemblyData(
             isRawMaterial: false,
             minStock: parseInt(String(row.StockSeguridad || 0), 10),
             maxStock: parseInt(String(row.StockMaximo || 0), 10),
-            currentStock: parseInt(String(row.SaldoInicial || 0), 10),
+            currentStock: parseInt(String(row.StockActual || 0), 10),
         });
     });
 
@@ -831,3 +831,6 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
     
 
+
+
+    
