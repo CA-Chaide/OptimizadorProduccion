@@ -121,11 +121,11 @@ export const ProductionPlanSection: React.FC = () => {
     const { product, month, line, center, productCode } = appliedFilters;
     
     // Performance: Normalize filters once outside the loop
-    const productNameFilter = product.toLowerCase();
-    const productCodeFilter = productCode.toLowerCase();
-    const monthFilter = month.toLowerCase();
-    const lineFilter = line.toLowerCase();
-    const centerFilter = center.toLowerCase();
+    const productNameFilter = product.toLowerCase().trim();
+    const productCodeFilter = productCode.toLowerCase().trim();
+    const monthFilter = month.toLowerCase().trim();
+    const lineFilter = line.toLowerCase().trim();
+    const centerFilter = center.toLowerCase().trim();
 
     // If no filters are applied, return the full plan
     if (!productNameFilter && !productCodeFilter && !monthFilter && !lineFilter && !centerFilter) {
@@ -136,23 +136,28 @@ export const ProductionPlanSection: React.FC = () => {
     const lineNamesMap = new Map(constraints.productionLines.map(l => [l.id, l.name]));
 
     return dailyPlan.filter(item => {
-        const lineName = lineNamesMap.get(item.assignedLineId || '') || item.assignedLineId || '';
-        const monthName = MONTH_NAMES[item.month - 1] || '';
+        // Only apply a filter if its value is not an empty string
+        if (monthFilter && !MONTH_NAMES[item.month - 1].toLowerCase().includes(monthFilter)) {
+            return false;
+        }
 
-        const monthMatch = monthFilter ? monthName.toLowerCase().includes(monthFilter) : true;
-        if (!monthMatch) return false;
+        const lineName = lineNamesMap.get(item.assignedLineId || '') || '';
+        if (lineFilter && !lineName.toLowerCase().includes(lineFilter)) {
+            return false;
+        }
 
-        const lineMatch = lineFilter ? lineName.toLowerCase().includes(lineFilter) : true;
-        if (!lineMatch) return false;
+        const centerId = item.producingCenterId || '';
+        if (centerFilter && centerId.toLowerCase() !== centerFilter) {
+            return false;
+        }
+
+        if (productNameFilter && !item.productName.toLowerCase().includes(productNameFilter)) {
+            return false;
+        }
         
-        const centerMatch = centerFilter ? item.producingCenterId?.toLowerCase().includes(centerFilter) : true;
-        if (!centerMatch) return false;
-
-        const productNameMatch = productNameFilter ? item.productName.toLowerCase().includes(productNameFilter) : true;
-        if (!productNameMatch) return false;
-
-        const productCodeMatch = productCodeFilter ? item.productId.toLowerCase().includes(productCodeFilter) : true;
-        if (!productCodeMatch) return false;
+        if (productCodeFilter && item.productId.toLowerCase() !== productCodeFilter) {
+            return false;
+        }
 
         return true;
     });
