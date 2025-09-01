@@ -123,6 +123,19 @@ export function processAndValidateAssemblyData(
 
     const processInfoAggregator = new Map<string, ProductProcessInfo>();
     const inventoryMap = new Map<string, InventorySetting>();
+    const allProductIds = new Set(apiData.map(row => normalizeMaterialCode(row.CodMaterial)));
+
+    allProductIds.forEach(productId => {
+        const ppi = {
+            id: productId, // The ID is now just the product ID
+            productId: productId,
+            productName: productNamesMap.get(productId) || productId,
+            productionLineId: '', // This will be deprecated
+            workstationTimes: [], // This will now be on the line level
+            totalManufacturingTimeHours: 0,
+        };
+        processInfoAggregator.set(productId, ppi);
+    });
 
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
@@ -132,23 +145,11 @@ export function processAndValidateAssemblyData(
         const workstationId = `wd---${centerId}---${workstationName}`;
         const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
 
-        // Process Info
-        const ppiKey = `${normalizedProductId}---${lineId}`;
-        if (!processInfoAggregator.has(ppiKey)) {
-            processInfoAggregator.set(ppiKey, {
-                id: ppiKey,
-                productId: normalizedProductId,
-                productName: productNamesMap.get(normalizedProductId) || normalizedProductId,
-                productionLineId: lineId,
-                workstationTimes: [],
-                totalManufacturingTimeHours: 0, // Will be calculated dynamically
-                aprovisionamientoEspecial: row.TipoAprovisionamiento || undefined,
-            });
+        const line = discoveredLines.get(lineId)!;
+        if (line) {
+            line.materialsHandled.push(normalizedProductId);
         }
-        const ppi = processInfoAggregator.get(ppiKey)!;
-        ppi.workstationTimes.push({ workstationDefinitionId: workstationId, timeHours: row.Tiempo / 60 });
-
-        // Inventory Info
+        
         const invKey = `${normalizedProductId}---${centerId}`;
         if (!inventoryMap.has(invKey)) {
             inventoryMap.set(invKey, {
@@ -164,13 +165,27 @@ export function processAndValidateAssemblyData(
         }
     });
 
+    // Recalculate workstation times at the line level, not product level
+    discoveredLines.forEach(line => {
+        line.assignedWorkstations.forEach(as => {
+            const workstationId = as.definitionId;
+            const centerId = line.workCenterId;
+            const workstationName = discoveredWorkstations.get(workstationId)!.name;
+            const apiRow = apiData.find(d => String(d.Centro).trim() === centerId && String(d.Linea).trim() === line.name && String(d.PuestoTrabajo).trim() === workstationName);
+            if (apiRow) {
+                // This structure doesn't exist on the line, we need to rethink this.
+                // The times are per product on a line's workstation.
+            }
+        });
+    });
+
     // --- 4. Assemble the new constraints object ---
     const newConstraints: AppConstraints = {
         ...currentConstraints, // Preserve manual settings like costs, holidays
         workCenters: Array.from(discoveredWorkCenters.values()),
         productionLines: Array.from(discoveredLines.values()),
         workstationDefinitions: Array.from(discoveredWorkstations.values()),
-        productProcessInfos: Array.from(processInfoAggregator.values()),
+        productProcessInfos: [], // This will be generated dynamically inside the planner
         inventorySettings: Array.from(inventoryMap.values()),
     };
 
@@ -224,19 +239,99 @@ function calculateLaborCost(
 }
 
 const calculateEffectiveManufacturingTime = (
-    ppi: ProductProcessInfo,
-    line: ProductionLine
+    productId: string,
+    line: ProductionLine,
+    apiData: TiempoEnsambleItem[],
+    workstationDefs: WorkstationDefinition[],
 ): number => {
-    if (!ppi.workstationTimes || ppi.workstationTimes.length === 0) return Infinity;
-    const effectiveWorkstationTimes = ppi.workstationTimes.map(wt => {
-        const assignedWorkstation = line.assignedWorkstations.find(as => as.definitionId === wt.workstationDefinitionId);
-        if (!assignedWorkstation) return Infinity;
-        const quantity = assignedWorkstation.quantity;
-        return wt.timeHours / (quantity > 0 ? quantity : 1);
-    });
-    const maxTime = Math.max(0, ...effectiveWorkstationTimes);
-    return maxTime === Infinity ? Infinity : maxTime;
+    
+    let maxTime = 0;
+    
+    for (const assignedWorkstation of line.assignedWorkstations) {
+        const workstationDef = workstationDefs.find(wd => wd.id === assignedWorkstation.definitionId);
+        if(!workstationDef) continue;
+        
+        const apiRow = apiData.find(d => 
+            normalizeMaterialCode(d.CodMaterial) === productId &&
+            String(d.Centro).trim() === line.workCenterId &&
+            String(d.Linea).trim() === line.name &&
+            String(d.PuestoTrabajo).trim() === workstationDef.name
+        );
+        
+        if (apiRow && apiRow.Tiempo > 0) {
+            const timeHours = apiRow.Tiempo / 60;
+            const effectiveTime = timeHours / assignedWorkstation.quantity;
+            if(effectiveTime > maxTime) {
+                maxTime = effectiveTime;
+            }
+        }
+    }
+
+    return maxTime > 0 ? maxTime : Infinity;
 };
+
+
+function getPpiOptionsForProduct(
+    productId: string,
+    demandCenterId: string,
+    constraints: AppConstraints,
+    apiData: TiempoEnsambleItem[],
+    auditLog: string[]
+): ProductProcessInfo[] {
+    const { productionLines, workstationDefinitions } = constraints;
+
+    const ppiCandidates: ProductProcessInfo[] = [];
+
+    // Find all lines that can produce this product, regardless of center
+    const allCapableLines = productionLines.filter(line => {
+        return apiData.some(row => 
+            normalizeMaterialCode(row.CodMaterial) === productId &&
+            String(row.Centro).trim() === line.workCenterId &&
+            String(row.Linea).trim() === line.name
+        );
+    });
+
+    if (allCapableLines.length === 0) {
+        auditLog.push(`Info: Producto ${productId} no tiene ninguna línea de producción asociada en los datos de ensamble.`);
+        return [];
+    }
+
+    allCapableLines.forEach(line => {
+        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
+
+        if (manufacturingTime < Infinity) {
+            const ppiId = `${productId}---${line.id}`;
+            // Find all workstations and times for this product on this line
+            const workstationTimes = line.assignedWorkstations.map(as => {
+                 const workstationDef = workstationDefinitions.find(wd => wd.id === as.definitionId)!;
+                 const apiRow = apiData.find(d => 
+                    normalizeMaterialCode(d.CodMaterial) === productId &&
+                    String(d.Centro).trim() === line.workCenterId &&
+                    String(d.Linea).trim() === line.name &&
+                    String(d.PuestoTrabajo).trim() === workstationDef.name
+                );
+                return {
+                    workstationDefinitionId: as.definitionId,
+                    timeHours: (apiRow?.Tiempo || 0) / 60
+                };
+            }).filter(wt => wt.timeHours > 0);
+
+            ppiCandidates.push({
+                id: ppiId,
+                productId: productId,
+                productionLineId: line.id,
+                workstationTimes: workstationTimes,
+                totalManufacturingTimeHours: manufacturingTime,
+            });
+        }
+    });
+
+    // Sort by manufacturing time (most efficient first)
+    ppiCandidates.sort((a, b) => a.totalManufacturingTimeHours - b.totalManufacturingTimeHours);
+    
+    return ppiCandidates;
+}
+
 
 // ==========================================================================================
 // --- PASO 4: Daily Plan Generation (Rebuilt Logic) ---
@@ -248,34 +343,10 @@ function getLineBottleneckRate(
     workstationDefs: WorkstationDefinition[],
     auditLog: string[]
 ): number {
-    if (!ppi.workstationTimes || ppi.workstationTimes.length === 0) return 0;
-
-    let minRate = Infinity;
-
-    for (const wt of ppi.workstationTimes) {
-        const workstationDef = workstationDefs.find(wd => wd.id === wt.workstationDefinitionId);
-        const assignment = line.assignedWorkstations.find(as => as.definitionId === wt.workstationDefinitionId);
-
-        if (!workstationDef || !assignment) {
-             auditLog.push(`Alerta: Inconsistencia de datos: No se pudo encontrar la definición o asignación del puesto de trabajo '${workstationDef?.name || wt.workstationDefinitionId}' en la línea '${line.name}' para el producto '${ppi.productId}'.`);
-             return 0; // Inviable to produce on this line, rate is 0.
-        }
-        
-        if(wt.timeHours <= 0) continue; 
-
-        const ratePerPost = 1 / wt.timeHours; 
-        const totalRateForStation = ratePerPost * assignment.quantity;
-        if (totalRateForStation < minRate) {
-            minRate = totalRateForStation;
-        }
+    if (ppi.totalManufacturingTimeHours > 0 && ppi.totalManufacturingTimeHours < Infinity) {
+        return 1 / ppi.totalManufacturingTimeHours;
     }
-    
-    if (minRate === Infinity) {
-        auditLog.push(`Alerta: El producto ${ppi.productId} en la línea ${line.name} no tiene tiempos de procesamiento válidos (>0), la tasa de producción es 0.`);
-        return 0;
-    }
-    
-    return minRate;
+    return 0;
 }
 
 
@@ -291,7 +362,13 @@ function sequenceDailyProduction(
 
     const bottleneckRates = new Map<string, number>();
     dailyGoals.forEach(goal => {
-        const ppi = constraints.productProcessInfos.find(p => p.id === goal.ppiId)!;
+        const ppi = { // Reconstruct a temporary PPI for the function
+            id: goal.ppiId,
+            productId: goal.productId,
+            productionLineId: goal.lineId,
+            workstationTimes: [], // Not needed for this calc
+            totalManufacturingTimeHours: goal.totalHours / goal.units
+        }
         const rate = getLineBottleneckRate(ppi, line, constraints.workstationDefinitions, auditLog);
         bottleneckRates.set(goal.ppiId, rate);
     });
@@ -304,7 +381,6 @@ function sequenceDailyProduction(
             return rateB - rateA;
         }
 
-        // TODO: Implement tie-breaker logic for bottleneck utilization and volume
         return b.dailyGoal - a.dailyGoal;
     });
 
@@ -314,38 +390,16 @@ function sequenceDailyProduction(
 
 export const generateProductionPlan = async (
   salesData: SalesDataRow[],
-  constraints: AppConstraints
+  constraints: AppConstraints,
+  apiData: TiempoEnsambleItem[] // Pass the raw assembly data here
 ): Promise<DetailedProductionPlan> => {
   const auditLog: string[] = [];
-  const { inventorySettings, holidays, productProcessInfos, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
+  const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
   
   if (!salesData || salesData.length === 0) {
       auditLog.push('Error: No hay datos de ventas para procesar.');
       return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
-  
-  const getPpiOptionsForPair = (
-    productId: string,
-    centerId: string
-  ): ProductProcessInfo[] => {
-      const ppiCandidates = productProcessInfos.filter(ppi => {
-          if (ppi.productId !== productId) return false;
-          const line = productionLines.find(l => l.id === ppi.productionLineId);
-          return line && line.workCenterId === centerId;
-      });
-      
-      return ppiCandidates
-          .map(ppi => {
-              const line = productionLines.find(l => l.id === ppi.productionLineId)!;
-              const effectiveTime = calculateEffectiveManufacturingTime(ppi, line);
-              if (effectiveTime === Infinity) {
-                  auditLog.push(`Alerta: Tiempo de manufactura infinito para ${ppi.productId} en línea ${line.name}. Verifique asignación de puestos.`);
-              }
-              return { ...ppi, totalManufacturingTimeHours: effectiveTime };
-          })
-          .filter(ppi => ppi.totalManufacturingTimeHours < Infinity)
-          .sort((a, b) => a.totalManufacturingTimeHours - b.totalManufacturingTimeHours);
-  };
   
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
@@ -380,9 +434,9 @@ export const generateProductionPlan = async (
       const [productId, centerId] = pairKey.split('---');
       const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       
-      const ppiOptions = getPpiOptionsForPair(productId, centerId);
+      const ppiOptions = getPpiOptionsForProduct(productId, centerId, constraints, apiData, auditLog);
       if (ppiOptions.length === 0) {
-          auditLog.push(`Info: Producto ${productId} en centro ${centerId} no tiene opciones de PPI válidas. Descartado.`);
+          auditLog.push(`Info: Producto ${productId} en centro de demanda ${centerId} no tiene opciones de fabricación. Descartado.`);
           return;
       }
       
@@ -409,9 +463,9 @@ export const generateProductionPlan = async (
   
   const productionNeedsMap = new Map<string, number[]>();
   demandMap.forEach((monthlyDemands, pairKey) => {
-      if(getPpiOptionsForPair(pairKey.split('---')[0], pairKey.split('---')[1]).length === 0) return;
+       const [productId, centerId] = pairKey.split('---');
+      if(getPpiOptionsForProduct(productId, centerId, constraints, apiData, auditLog).length === 0) return;
 
-      const [productId, centerId] = pairKey.split('---');
       const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       const initialStock = invSetting?.currentStock || 0;
       const minStock = invSetting?.minStock || 0;
@@ -487,7 +541,7 @@ export const generateProductionPlan = async (
         .filter(([_, needs]) => needs[monthIndex] > 0)
         .map(([pairKey, needs]) => {
             const [productId, centerId] = pairKey.split('---');
-            const ppiOptions = getPpiOptionsForPair(productId, centerId);
+            const ppiOptions = getPpiOptionsForProduct(productId, centerId, constraints, apiData, auditLog);
             return { pairKey, units: needs[monthIndex], ppiOptions };
         })
         .filter(p => p.ppiOptions.length > 0)
@@ -525,6 +579,7 @@ export const generateProductionPlan = async (
 
             const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
             const line = activeLines.find(l=>l.id === ppi.productionLineId)!;
+            const productName = salesData.find(d => normalizeMaterialCode(d.código) === productId)?.descripciónMaterial || productId;
 
             monthlyAssignments.push({
                 id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`,
@@ -533,7 +588,7 @@ export const generateProductionPlan = async (
                 lineName: line.name,
                 ppiId: ppi.id,
                 productId,
-                centerName: centerId,
+                centerName: line.workCenterId, // The production happens at the line's center
                 units: unitsToMake,
                 originalNeedUnits: originalUnitsToMake,
                 advancedUnits: advancedUnitsToMake,
@@ -603,33 +658,50 @@ export const generateProductionPlan = async (
 
             for (const goal of sequencedGoals) {
                 if (hoursRemainingToday <= 0.01) break;
+                
+                const manufacturingTime = goal.totalHours / goal.units;
+                if(manufacturingTime <= 0) continue;
 
-                const ppi = productProcessInfos.find(p => p.id === goal.ppiId)!;
-                if(ppi.totalManufacturingTimeHours <= 0) continue;
-
-                const maxUnitsInTime = hoursRemainingToday / ppi.totalManufacturingTimeHours;
+                const maxUnitsInTime = hoursRemainingToday / manufacturingTime;
                 const unitsToProduce = Math.min(goal.remainingUnits, goal.dailyGoal, maxUnitsInTime);
                 
                 if (unitsToProduce < 0.1) continue;
 
-                const hoursConsumed = unitsToProduce * ppi.totalManufacturingTimeHours;
+                const hoursConsumed = unitsToProduce * manufacturingTime;
                 
-                const stockKey = `${goal.productId}---${goal.centerName}`;
+                const demandCenterInfo = planningGroupDetails.find(d => d.productId === goal.productId); // Find the original demand center
+                const demandCenterId = demandCenterInfo?.centerName || goal.centerName; // Fallback to production center
+                const stockKey = `${goal.productId}---${demandCenterId}`;
                 const initialStockOnDay = inventoryState.get(stockKey) || 0;
                 
                 const demandOnDay = (salesData
-                    .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === goal.centerName)
+                    .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === demandCenterId)
                     .reduce((sum, s) => sum + s.unidadesProyectado, 0)
                 ) / workingDaysInMonth;
 
-                const finalStockOnDay = initialStockOnDay + unitsToProduce - demandOnDay;
-                inventoryState.set(stockKey, finalStockOnDay);
+                // Update stock in the production center first
+                const prodCenterStockKey = `${goal.productId}---${goal.centerName}`;
+                const currentProdCenterStock = inventoryState.get(prodCenterStockKey) || 0;
+                inventoryState.set(prodCenterStockKey, currentProdCenterStock + unitsToProduce);
+
+                let finalStockOnDay = initialStockOnDay;
+                if (goal.centerName === demandCenterId) {
+                    finalStockOnDay = currentProdCenterStock + unitsToProduce - demandOnDay;
+                    inventoryState.set(stockKey, finalStockOnDay);
+                } else {
+                    // This implies a transfer happened, which needs to be modeled
+                    const currentDemandCenterStock = inventoryState.get(stockKey) || 0;
+                    finalStockOnDay = currentDemandCenterStock - demandOnDay;
+                    inventoryState.set(stockKey, finalStockOnDay);
+                }
                 
+                const productName = salesData.find(d => normalizeMaterialCode(d.código) === goal.productId)?.descripciónMaterial || goal.productId;
+
                 dailyPlan.push({
                     id: `${year}-${month}-${day}-${goal.productId}-${line.id}`,
                     year, month, day, week: 0,
                     productId: goal.productId,
-                    productName: ppi.productName || goal.productId,
+                    productName: productName,
                     quantityToProduce: unitsToProduce,
                     demandOnDay, initialStockOnDay, finalStockOnDay,
                     assignedLineId: line.id,
@@ -653,10 +725,11 @@ export const generateProductionPlan = async (
     const key = `${item.year}-${item.month}-${item.productId}-${item.producingCenterId}`;
     let entry = aggregatedMonthlyPlan.get(key);
     if (!entry) {
+        const productName = salesData.find(d => normalizeMaterialCode(d.código) === item.productId)?.descripciónMaterial || item.productId;
         entry = {
             id: key,
             year: item.year, month: item.month,
-            productId: item.productId, productName: item.productName,
+            productId: item.productId, productName: productName,
             producingCenterId: item.producingCenterId,
             totalQuantityToProduce: 0, totalHoursWorked: 0, totalEstimatedLaborCost: 0
         };

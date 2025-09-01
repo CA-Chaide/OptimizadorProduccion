@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import {
     AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
@@ -104,6 +104,7 @@ type AppContextType = {
     workShifts: WorkShift[];
     tacticalPlanResult: TacticalPlanResult | null;
     syncStatus: SyncStatus | null;
+    apiAssemblyData: TiempoEnsambleItem[]; // New: Store raw API data
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
@@ -132,6 +133,7 @@ export const useAppContext = () => {
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
     const { toast } = useToast();
+    const [apiAssemblyData, setApiAssemblyData] = useState<TiempoEnsambleItem[]>([]);
 
     useEffect(() => {
         dispatch({ type: 'SET_YEAR', payload: new Date().getFullYear() });
@@ -171,11 +173,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 operation: 'get_data',
                 pagination: { limit: 50000 }
             });
+
             if (assemblyData.length === 0) {
                 addNotification('warning', "La API no devolvió datos de tiempos de ensamble.");
                 dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: ["La API no devolvió datos."] }});
                 return false;
             }
+            
+            // Store the raw data
+            setApiAssemblyData(assemblyData);
 
             const { newConstraints, validationErrors, dataCompletenessErrors } = processAndValidateAssemblyData(
                 assemblyData,
@@ -209,7 +215,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('warning', 'Por favor, carga primero los datos de ventas.');
             return false;
         }
-        if (!state.syncStatus?.isSynced) {
+        if (!state.syncStatus?.isSynced || apiAssemblyData.length === 0) {
             addNotification('error', 'Debe sincronizar y validar los datos de ensamble antes de generar el plan.');
             return false;
         }
@@ -218,7 +224,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         try {
             addNotification('info', 'Generando plan de producción... Esto puede tardar unos momentos.');
-            const detailedPlan = await generateProductionPlan(state.salesData, state.constraints);
+            const detailedPlan = await generateProductionPlan(state.salesData, state.constraints, apiAssemblyData);
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');
             return true;
@@ -229,7 +235,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
         }
-    }, [state.salesData, state.constraints, state.syncStatus, addNotification]);
+    }, [state.salesData, state.constraints, state.syncStatus, apiAssemblyData, addNotification]);
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
@@ -266,6 +272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     const value = {
         ...state,
+        apiAssemblyData,
         dispatch,
         addNotification,
         handleDataImported,
