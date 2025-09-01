@@ -122,34 +122,40 @@ export function processAndValidateAssemblyData(
         }
     });
     
-    const inventoryMap = new Map<string, InventorySetting>();
-    
+    // This map will group API data by product-center to correctly extract inventory settings
+    const productCenterDataMap = new Map<string, TiempoEnsambleItem>();
     apiData.forEach(row => {
-        const centerId = String(row.Centro).trim();
-        const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
-        
-        const invKey = `${normalizedProductId}---${centerId}`;
-        
-        if (!inventoryMap.has(invKey)) {
-            inventoryMap.set(invKey, {
-                id: invKey,
-                itemId: normalizedProductId,
-                itemName: productNamesMap.get(normalizedProductId) || normalizedProductId,
-                centerId: centerId,
-                isRawMaterial: false,
-                minStock: parseInt(String(row.StockSeguridad || 0), 10),
-                maxStock: parseInt(String(row.StockMaximo || 0), 10),
-                currentStock: parseInt(String(row.SaldoInicial || 0), 10),
-            });
+        const key = `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`;
+        // Store the first row found for a given product-center pair.
+        // This assumes that inventory data (SaldoInicial, StockSeguridad) is consistent
+        // for all entries of the same product in the same center.
+        if (!productCenterDataMap.has(key)) {
+            productCenterDataMap.set(key, row);
         }
 
         // Link material to the line that handles it
+        const centerId = String(row.Centro).trim();
         const lineName = String(row.Linea).trim();
         const lineId = `pl---${centerId}---${lineName}`;
         const line = discoveredLines.get(lineId);
-        if (line && !line.materialsHandled.includes(normalizedProductId)) {
-            line.materialsHandled.push(normalizedProductId);
+        if (line && !line.materialsHandled.includes(normalizeMaterialCode(row.CodMaterial))) {
+            line.materialsHandled.push(normalizeMaterialCode(row.CodMaterial));
         }
+    });
+
+    const inventorySettings: InventorySetting[] = [];
+    productCenterDataMap.forEach((row, key) => {
+        const [productId, centerId] = key.split('---');
+        inventorySettings.push({
+            id: key,
+            itemId: productId,
+            itemName: productNamesMap.get(productId) || productId,
+            centerId: centerId,
+            isRawMaterial: false,
+            minStock: parseInt(String(row.StockSeguridad || 0), 10),
+            maxStock: parseInt(String(row.StockMaximo || 0), 10),
+            currentStock: parseInt(String(row.SaldoInicial || 0), 10),
+        });
     });
 
 
@@ -160,7 +166,7 @@ export function processAndValidateAssemblyData(
         productionLines: Array.from(discoveredLines.values()),
         workstationDefinitions: Array.from(discoveredWorkstations.values()),
         productProcessInfos: [], // This will be generated dynamically inside the planner
-        inventorySettings: Array.from(inventoryMap.values()),
+        inventorySettings: inventorySettings, // Use the correctly populated inventory settings
     };
 
     return {
