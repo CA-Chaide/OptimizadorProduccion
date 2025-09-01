@@ -11,8 +11,6 @@ import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
 
-type PlanningStep = 'idle' | 'groups' | 'needs' | 'assignments' | 'finalPlan';
-
 interface FilterInputProps {
   label: string;
   value: string;
@@ -69,13 +67,10 @@ export const ProductionPlanSection: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'daily' | 'monthly'>('daily');
   const [planningStep, setPlanningStep] = useState<PlanningStep>('idle');
   
-  // Filters for each step
-  const [dailyFilters, setDailyFilters] = useState({ month: '', line: '', center: '', product: ''});
-  const [monthlyFilters, setMonthlyFilters] = useState({ processType: '', center: '' });
-  const [groupFilters, setGroupFilters] = useState({ product: '', center: '' });
-  const [needsFilters, setNeedsFilters] = useState({ product: '', center: '' });
-  const [assignmentsFilters, setAssignmentsFilters] = useState({ product: '', center: '', line: '' });
-
+  // State for filter inputs
+  const [filterInputs, setFilterInputs] = useState({ month: '', line: '', center: '', product: ''});
+  // State for applied filters
+  const [appliedFilters, setAppliedFilters] = useState({ month: '', line: '', center: '', product: ''});
 
   const { dailyPlan = [], monthlyPlan = [], auditLog = [] } = productionPlan || {};
   
@@ -85,9 +80,11 @@ export const ProductionPlanSection: React.FC = () => {
     }
   };
   const handleExportMonthly = () => {
-    // This function needs to be implemented based on the final data structure of the monthly flow.
-    // For now it is disabled.
     alert("Función de exportación mensual no implementada todavía.");
+  };
+
+  const handleApplyFilters = () => {
+    setAppliedFilters(filterInputs);
   };
   
   const handleStartPlanning = async () => {
@@ -115,37 +112,62 @@ export const ProductionPlanSection: React.FC = () => {
   // --- Memos for final plan display ---
   const filteredDailyPlan = useMemo(() => {
     if (!dailyPlan) return [];
+    
+    // Performance: Normalize filters once outside the loop
+    const productFilter = appliedFilters.product.toLowerCase();
+    const monthFilter = appliedFilters.month.toLowerCase();
+    const lineFilter = appliedFilters.line.toLowerCase();
+    const centerFilter = appliedFilters.center.toLowerCase();
+
+    // If no filters are applied, return the full plan
+    if (!productFilter && !monthFilter && !lineFilter && !centerFilter) {
+      return dailyPlan;
+    }
+
+    // Create a map for line names for faster lookup inside the loop
+    const lineNamesMap = new Map(constraints.productionLines.map(l => [l.id, l.name]));
+
     return dailyPlan.filter(item => {
-        const lineName = constraints.productionLines.find(l => l.id === item.assignedLineId)?.name || item.assignedLineId;
-        const monthMatch = dailyFilters.month ? MONTH_NAMES[item.month - 1].toLowerCase().includes(dailyFilters.month.toLowerCase()) : true;
-        const lineMatch = dailyFilters.line ? lineName?.toLowerCase().includes(dailyFilters.line.toLowerCase()) : true;
-        const centerMatch = dailyFilters.center ? item.producingCenterId?.toLowerCase().includes(dailyFilters.center.toLowerCase()) : true;
-        const productMatch = dailyFilters.product
-            ? item.productId.toLowerCase().includes(dailyFilters.product.toLowerCase()) || item.productName.toLowerCase().includes(dailyFilters.product.toLowerCase())
+        const lineName = lineNamesMap.get(item.assignedLineId || '') || item.assignedLineId || '';
+        const monthName = MONTH_NAMES[item.month - 1] || '';
+
+        const monthMatch = monthFilter ? monthName.toLowerCase().includes(monthFilter) : true;
+        if (!monthMatch) return false;
+
+        const lineMatch = lineFilter ? lineName.toLowerCase().includes(lineFilter) : true;
+        if (!lineMatch) return false;
+        
+        const centerMatch = centerFilter ? item.producingCenterId?.toLowerCase().includes(centerFilter) : true;
+        if (!centerMatch) return false;
+
+        const productMatch = productFilter
+            ? item.productId.toLowerCase().includes(productFilter) || item.productName.toLowerCase().includes(productFilter)
             : true;
-        return monthMatch && lineMatch && centerMatch && productMatch;
+        if (!productMatch) return false;
+
+        return true;
     });
-  }, [dailyPlan, dailyFilters, constraints.productionLines]);
+  }, [dailyPlan, appliedFilters, constraints.productionLines]);
 
   const monthlyInventoryFlow = useMemo(() => {
-    if (!monthlyFilters.center || !monthlyFilters.processType) return null;
+    if (!filterInputs.center || !filterInputs.processType) return null;
 
     const relevantLineIds = new Set(
         constraints.productionLines
-            .filter(l => l.processType === monthlyFilters.processType && l.workCenterId === monthlyFilters.center)
+            .filter(l => l.processType === filterInputs.processType && l.workCenterId === filterInputs.center)
             .map(l => l.id)
     );
 
     const relevantProductIds = new Set(
-        constraints.productProcessInfos
-            .filter(ppi => relevantLineIds.has(ppi.productionLineId))
-            .map(ppi => ppi.productId)
+        (detailedProductionPlan?.planningGroupDetails || [])
+            .filter(d => relevantLineIds.has(d.pairKey.split('---')[1])) // This logic needs re-evaluation, PPIs are better
+            .map(d => d.productId)
     );
 
     const planningMonths = Array.from(new Set(salesData.map(s => `${s.año}-${String(s.mes).padStart(2, '0')}`))).sort();
 
     const initialStock = constraints.inventorySettings
-        .filter(is => relevantProductIds.has(is.itemId) && is.centerId === monthlyFilters.center)
+        .filter(is => relevantProductIds.has(is.itemId) && is.centerId === filterInputs.center)
         .reduce((sum, is) => sum + is.currentStock, 0);
 
     const data: Record<string, Record<string, number>> = {
@@ -162,22 +184,20 @@ export const ProductionPlanSection: React.FC = () => {
 
         data['Saldo Inicial'][monthKey] = (index === 0) ? initialStock : lastMonthStock;
         
-        // **Producción: Suma del resultado del Paso 4 (dailyPlan)
         data['U. Planificadas'][monthKey] = (dailyPlan || [])
             .filter(d => 
                 d.year === year && 
                 d.month === month && 
-                d.producingCenterId === monthlyFilters.center && 
+                d.producingCenterId === filterInputs.center && 
                 relevantProductIds.has(d.productId)
             )
             .reduce((sum, d) => sum + d.quantityToProduce, 0);
 
-        // **Ventas: Suma del resultado del Paso 1 (planningGroupDetails)
         data['Ventas'][monthKey] = (detailedProductionPlan?.planningGroupDetails || [])
-             .filter(d => d.year === year && d.month === month && d.centerName === monthlyFilters.center && relevantProductIds.has(d.productId))
+             .filter(d => d.year === year && d.month === month && d.centerName === filterInputs.center && relevantProductIds.has(d.productId))
             .reduce((sum, d) => sum + d.demand, 0);
         
-        data['Traslados (Neto)'][monthKey] = 0; // Placeholder as per design
+        data['Traslados (Neto)'][monthKey] = 0;
 
         data['Saldo Final'][monthKey] = data['Saldo Inicial'][monthKey] 
                                       + data['U. Planificadas'][monthKey] 
@@ -192,34 +212,34 @@ export const ProductionPlanSection: React.FC = () => {
     
     return { months: planningMonths.filter(m => data['Ventas'][m] > 0 || data['U. Planificadas'][m] > 0), rows };
 
-  }, [monthlyFilters, constraints, salesData, detailedProductionPlan, dailyPlan]);
+  }, [filterInputs, constraints, salesData, detailedProductionPlan, dailyPlan]);
 
 
   // --- Memos for wizard steps display ---
   const filteredGroupDetails = useMemo(() => {
     if (!detailedProductionPlan?.planningGroupDetails) return [];
     return detailedProductionPlan.planningGroupDetails.filter(d => 
-        (groupFilters.product ? d.productId.toLowerCase().includes(groupFilters.product.toLowerCase()) : true) &&
-        (groupFilters.center ? d.centerName.toLowerCase().includes(groupFilters.center.toLowerCase()) : true)
+        (filterInputs.product ? d.productId.toLowerCase().includes(filterInputs.product.toLowerCase()) : true) &&
+        (filterInputs.center ? d.centerName.toLowerCase().includes(filterInputs.center.toLowerCase()) : true)
     );
-  }, [detailedProductionPlan?.planningGroupDetails, groupFilters]);
+  }, [detailedProductionPlan?.planningGroupDetails, filterInputs]);
 
   const filteredNeeds = useMemo(() => {
     if (!detailedProductionPlan?.productionNeeds) return [];
     return detailedProductionPlan.productionNeeds.filter(n =>
-        (needsFilters.product ? n.productId.toLowerCase().includes(needsFilters.product.toLowerCase()) : true) &&
-        (needsFilters.center ? n.centerName.toLowerCase().includes(needsFilters.center.toLowerCase()) : true)
+        (filterInputs.product ? n.productId.toLowerCase().includes(filterInputs.product.toLowerCase()) : true) &&
+        (filterInputs.center ? n.centerName.toLowerCase().includes(filterInputs.center.toLowerCase()) : true)
     );
-  }, [detailedProductionPlan?.productionNeeds, needsFilters]);
+  }, [detailedProductionPlan?.productionNeeds, filterInputs]);
 
   const filteredAssignments = useMemo(() => {
      if (!detailedProductionPlan?.monthlyAssignments) return [];
      return detailedProductionPlan.monthlyAssignments.filter(a =>
-        (assignmentsFilters.product ? a.productId.toLowerCase().includes(assignmentsFilters.product.toLowerCase()) : true) &&
-        (assignmentsFilters.center ? a.centerName.toLowerCase().includes(assignmentsFilters.center.toLowerCase()) : true) &&
-        (assignmentsFilters.line ? a.lineName.toLowerCase().includes(assignmentsFilters.line.toLowerCase()) : true)
+        (filterInputs.product ? a.productId.toLowerCase().includes(filterInputs.product.toLowerCase()) : true) &&
+        (filterInputs.center ? a.centerName.toLowerCase().includes(filterInputs.center.toLowerCase()) : true) &&
+        (filterInputs.line ? a.lineName.toLowerCase().includes(filterInputs.line.toLowerCase()) : true)
     );
-  }, [detailedProductionPlan?.monthlyAssignments, assignmentsFilters]);
+  }, [detailedProductionPlan?.monthlyAssignments, filterInputs]);
 
   // --- Step Rendering Components ---
   const renderStep1_Groups = () => (
@@ -229,8 +249,8 @@ export const ProductionPlanSection: React.FC = () => {
         A continuación se muestra el desglose mensual de la demanda para cada par `Producto-Centro`. Use los filtros para investigar.
       </p>
       <div className="grid grid-cols-2 gap-3 p-3 border rounded-lg bg-gray-50 mb-4">
-        <FilterInput label="Producto" value={groupFilters.product} onChange={v => setGroupFilters(f => ({...f, product: v}))} />
-        <FilterInput label="Centro" value={groupFilters.center} onChange={v => setGroupFilters(f => ({...f, center: v}))} />
+        <FilterInput label="Producto" value={filterInputs.product} onChange={v => setFilterInputs(f => ({...f, product: v}))} />
+        <FilterInput label="Centro" value={filterInputs.center} onChange={v => setFilterInputs(f => ({...f, center: v}))} />
       </div>
       <div className="overflow-auto max-h-[60vh] border rounded-lg">
         <table className="min-w-full text-xs divide-y divide-gray-200">
@@ -268,8 +288,8 @@ export const ProductionPlanSection: React.FC = () => {
             Se ha calculado la necesidad de producción neta para cada mes, considerando la demanda y los niveles de stock.
         </p>
         <div className="grid grid-cols-2 gap-3 p-3 border rounded-lg bg-gray-50 mb-4">
-            <FilterInput label="Producto" value={needsFilters.product} onChange={v => setNeedsFilters(f => ({...f, product: v}))} />
-            <FilterInput label="Centro" value={needsFilters.center} onChange={v => setNeedsFilters(f => ({...f, center: v}))} />
+            <FilterInput label="Producto" value={filterInputs.product} onChange={v => setFilterInputs(f => ({...f, product: v}))} />
+            <FilterInput label="Centro" value={filterInputs.center} onChange={v => setFilterInputs(f => ({...f, center: v}))} />
         </div>
         <div className="overflow-auto max-h-[60vh] border rounded-lg">
             <table className="min-w-full text-xs divide-y divide-gray-200">
@@ -303,9 +323,9 @@ export const ProductionPlanSection: React.FC = () => {
             Las necesidades de producción han sido asignadas a las líneas más eficientes, considerando su capacidad. Aquí se puede ver la planificación mensual antes del desglose diario.
         </p>
          <div className="grid grid-cols-3 gap-3 p-3 border rounded-lg bg-gray-50 mb-4">
-            <FilterInput label="Producto" value={assignmentsFilters.product} onChange={v => setAssignmentsFilters(f => ({...f, product: v}))} />
-            <FilterInput label="Centro" value={assignmentsFilters.center} onChange={v => setAssignmentsFilters(f => ({...f, center: v}))} />
-            <FilterInput label="Línea" value={assignmentsFilters.line} onChange={v => setAssignmentsFilters(f => ({...f, line: v}))} />
+            <FilterInput label="Producto" value={filterInputs.product} onChange={v => setFilterInputs(f => ({...f, product: v}))} />
+            <FilterInput label="Centro" value={filterInputs.center} onChange={v => setFilterInputs(f => ({...f, center: v}))} />
+            <FilterInput label="Línea" value={filterInputs.line} onChange={v => setFilterInputs(f => ({...f, line: v}))} />
         </div>
         <div className="overflow-auto max-h-[60vh] border rounded-lg">
              <table className="min-w-full text-xs divide-y divide-gray-200">
@@ -362,11 +382,12 @@ export const ProductionPlanSection: React.FC = () => {
   // --- Main Content Rendering Logic ---
   const renderDailyPlan = () => (
     <div className="space-y-4">
-       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 border rounded-lg bg-gray-50">
-          <FilterInput label="Mes" value={dailyFilters.month} onChange={v => setDailyFilters(f => ({...f, month: v}))} placeholder="ej: Enero" />
-          <FilterInput label="Línea" value={dailyFilters.line} onChange={v => setDailyFilters(f => ({...f, line: v}))} />
-          <FilterInput label="Centro" value={dailyFilters.center} onChange={v => setDailyFilters(f => ({...f, center: v}))} />
-          <FilterInput label="Producto" value={dailyFilters.product} onChange={v => setDailyFilters(f => ({...f, product: v}))} />
+       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 items-end p-4 border rounded-lg bg-gray-50">
+          <FilterInput label="Mes" value={filterInputs.month} onChange={v => setFilterInputs(f => ({...f, month: v}))} placeholder="ej: Enero" />
+          <FilterInput label="Línea" value={filterInputs.line} onChange={v => setFilterInputs(f => ({...f, line: v}))} />
+          <FilterInput label="Centro" value={filterInputs.center} onChange={v => setFilterInputs(f => ({...f, center: v}))} />
+          <FilterInput label="Producto" value={filterInputs.product} onChange={v => setFilterInputs(f => ({...f, product: v}))} />
+          <Button onClick={handleApplyFilters} className="w-full h-9">Aplicar Filtros</Button>
        </div>
        <div className="overflow-auto max-h-[60vh] border rounded-lg">
          <table className="min-w-full text-xs divide-y divide-gray-200 whitespace-nowrap">
@@ -400,21 +421,21 @@ export const ProductionPlanSection: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 border rounded-lg bg-gray-50">
           <div>
             <label className="block text-xs font-medium text-gray-500">Tipo de Proceso</label>
-            <select value={monthlyFilters.processType} onChange={e => setMonthlyFilters(f => ({...f, processType: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
+            <select value={filterInputs.processType} onChange={e => setFilterInputs(f => ({...f, processType: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
                 <option value="">Seleccione un Proceso</option>
                 {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500">Centro de Distribución</label>
-             <select value={monthlyFilters.center} onChange={e => setMonthlyFilters(f => ({...f, center: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
+             <select value={filterInputs.center} onChange={e => setFilterInputs(f => ({...f, center: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
                 <option value="">Seleccione un Centro</option>
                 {constraints.workCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
       </div>
       
-       {!monthlyFilters.center || !monthlyFilters.processType ? (
+       {!filterInputs.center || !filterInputs.processType ? (
         <div className="text-center py-10 text-gray-500">Por favor, seleccione un tipo de proceso y un centro para ver el resumen.</div>
       ) : !monthlyInventoryFlow || monthlyInventoryFlow.months.length === 0 ? (
         <div className="text-center py-10 text-gray-500">No hay datos de ventas o producción para la combinación de filtros seleccionada.</div>
@@ -538,5 +559,3 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
-
-    
