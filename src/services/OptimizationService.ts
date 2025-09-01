@@ -477,7 +477,7 @@ export const generateProductionPlan = (
       monthlyOriginalNeeds.set(key, need.productionNeeded);
   });
 
-  for (let monthIndex = planningHorizon.length - 1; monthIndex >= 0; monthIndex--) {
+  for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex--) {
     const availableHoursThisMonth = new Map<string, LineHourAvailability>();
     lineMonthlyHours.forEach((monthlyAvail, lineId) => availableHoursThisMonth.set(lineId, { ...monthlyAvail[monthIndex] }));
     
@@ -634,6 +634,7 @@ export const generateProductionPlan = (
                     estimatedLaborCost: (goal.laborCost / goal.units) * unitsToProduce, 
                     hoursWorked: hoursConsumed,
                     status: 'Planificado',
+                    notes: '',
                 });
 
                 goal.remainingUnits -= unitsToProduce;
@@ -736,3 +737,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
+    

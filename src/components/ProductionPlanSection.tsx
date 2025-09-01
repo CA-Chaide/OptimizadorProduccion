@@ -114,7 +114,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
     const relevantLineIds = new Set(
         constraints.productionLines
-            .filter(l => l.processType === monthlyFilters.processType)
+            .filter(l => l.processType === monthlyFilters.processType && l.workCenterId === monthlyFilters.center)
             .map(l => l.id)
     );
 
@@ -145,9 +145,9 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
         data['Saldo Inicial'][monthKey] = (index === 0) ? initialStock : lastMonthStock;
         
         // **Producción: Suma del resultado del Paso 4 (dailyPlan)
-        data['U. Planificadas'][monthKey] = dailyPlan
-            .filter(dp => dp.year === year && dp.month === month && dp.producingCenterId === monthlyFilters.center && relevantProductIds.has(dp.productId))
-            .reduce((sum, dp) => sum + dp.quantityToProduce, 0);
+        data['U. Planificadas'][monthKey] = (detailedProductionPlan?.monthlyAssignments || [])
+            .filter(ma => ma.centerName === monthlyFilters.center && ma.monthIndex === index && relevantLineIds.has(ma.lineId))
+            .reduce((sum, ma) => sum + ma.units, 0);
 
         // **Ventas: Suma del resultado del Paso 1 (planningGroupDetails)
         data['Ventas'][monthKey] = (detailedProductionPlan?.planningGroupDetails || [])
@@ -169,7 +169,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     
     return { months: planningMonths.filter(m => data['Ventas'][m] > 0 || data['U. Planificadas'][m] > 0), rows };
 
-  }, [monthlyFilters, constraints, salesData, dailyPlan, detailedProductionPlan]);
+  }, [monthlyFilters, constraints, salesData, detailedProductionPlan]);
 
 
   // --- Memos for wizard steps display ---
@@ -523,3 +523,5 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     </div>
   );
 };
+
+    
