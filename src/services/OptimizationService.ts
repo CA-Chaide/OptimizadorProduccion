@@ -1,3 +1,4 @@
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -478,6 +479,7 @@ export const generateProductionPlan = async (
   });
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
+    await new Promise(resolve => setTimeout(resolve, 0)); // Unblock UI thread
     const availableHoursThisMonth = new Map<string, LineHourAvailability>();
     lineMonthlyHours.forEach((monthlyAvail, lineId) => availableHoursThisMonth.set(lineId, { ...monthlyAvail[monthIndex] }));
     
