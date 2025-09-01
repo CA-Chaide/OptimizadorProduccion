@@ -462,7 +462,6 @@ export const generateProductionPlan = async (
   const planningGroupDetails: PlanningGroupMonthlyDetail[] = [];
   demandMap.forEach((monthlyDemands, pairKey) => {
       const [productId, centerId] = pairKey.split('---');
-      const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
       
       const ppiOptions = getPpiOptionsForProduct(productId, centerId, constraints, apiData, auditLog);
       if (ppiOptions.length === 0) {
@@ -475,6 +474,10 @@ export const generateProductionPlan = async (
               const [yearStr, monthStr] = monthKey.split('-');
               const year = parseInt(yearStr);
               const month = parseInt(monthStr);
+
+              // Correctly find the inventory setting for the product in its demand center.
+              const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
+              
               planningGroupDetails.push({
                   pairKey,
                   productId,
@@ -843,3 +846,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
+    
