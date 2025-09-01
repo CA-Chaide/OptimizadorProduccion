@@ -145,9 +145,14 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
         data['Saldo Inicial'][monthKey] = (index === 0) ? initialStock : lastMonthStock;
         
         // **Producción: Suma del resultado del Paso 4 (dailyPlan)
-        data['U. Planificadas'][monthKey] = (detailedProductionPlan?.monthlyAssignments || [])
-            .filter(ma => ma.centerName === monthlyFilters.center && ma.monthIndex === index && relevantLineIds.has(ma.lineId))
-            .reduce((sum, ma) => sum + ma.units, 0);
+        data['U. Planificadas'][monthKey] = (dailyPlan || [])
+            .filter(d => 
+                d.year === year && 
+                d.month === month && 
+                d.producingCenterId === monthlyFilters.center && 
+                relevantProductIds.has(d.productId)
+            )
+            .reduce((sum, d) => sum + d.quantityToProduce, 0);
 
         // **Ventas: Suma del resultado del Paso 1 (planningGroupDetails)
         data['Ventas'][monthKey] = (detailedProductionPlan?.planningGroupDetails || [])
@@ -169,7 +174,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     
     return { months: planningMonths.filter(m => data['Ventas'][m] > 0 || data['U. Planificadas'][m] > 0), rows };
 
-  }, [monthlyFilters, constraints, salesData, detailedProductionPlan]);
+  }, [monthlyFilters, constraints, salesData, detailedProductionPlan, dailyPlan]);
 
 
   // --- Memos for wizard steps display ---
