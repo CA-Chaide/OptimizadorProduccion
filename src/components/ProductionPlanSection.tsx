@@ -51,7 +51,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
   const isDataSynced = syncStatus?.isSynced || false;
 
-  const [activeTab, setActiveTab] = useState<'summary' | 'daily' | 'monthly' | 'log'>('summary');
+  const [activeTab, setActiveTab] = useState<'daily' | 'monthly'>('daily');
   const [planningStep, setPlanningStep] = useState<PlanningStep>('idle');
   const [dailyFilters, setDailyFilters] = useState({ month: '', line: '', center: '', product: ''});
   const [monthlyFilters, setMonthlyFilters] = useState({ processType: '', center: '' });
@@ -208,7 +208,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
   // --- Main Content Rendering Logic ---
   const renderContent = () => {
-    if (planningStep === 'finalPlan' && dailyPlan.length === 0) {
+    if (dailyPlan.length === 0) {
         return (
             <div className="text-center py-10">
                 <h3 className="text-lg font-medium text-gray-900">El plan de producción está vacío.</h3>
@@ -242,12 +242,12 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
               <tr>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Fecha</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto</th>
-                <th className="px-2 py-2 text-left font-semibold text-gray-600">Línea</th>
-                <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Inicial</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Demanda Día</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Final</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Línea</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Horas Req.</th>
               </tr>
             </thead>
@@ -256,12 +256,12 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="px-2 py-1">{`${String(item.day).padStart(2,'0')}/${String(item.month).padStart(2,'0')}/${item.year}`}</td>
                   <td className="px-2 py-1 font-medium">{item.productName} ({item.productId})</td>
-                  <td className="px-2 py-1">{item.assignedLineId}</td>
-                  <td className="px-2 py-1">{item.producingCenterId}</td>
                   <td className="px-2 py-1 text-right">{Math.round(item.initialStockOnDay).toLocaleString()}</td>
                   <td className="px-2 py-1 text-right text-red-600">{Math.round(item.demandOnDay).toLocaleString()}</td>
                   <td className="px-2 py-1 text-right font-bold text-green-600">{Math.round(item.quantityToProduce).toLocaleString()}</td>
                   <td className="px-2 py-1 text-right">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
+                  <td className="px-2 py-1">{item.assignedLineId}</td>
+                  <td className="px-2 py-1">{item.producingCenterId}</td>
                   <td className="px-2 py-1 text-right">{item.hoursWorked.toFixed(2)}</td>
                 </tr>
               ))}
