@@ -64,8 +64,17 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
   const { dailyPlan = [], monthlyPlan = [], auditLog = [] } = productionPlan || {};
   
-  const handleExportDaily = () => exportDailyPlanToExcel(dailyPlan, constraints);
-  const handleExportMonthly = () => exportMonthlyPlanToExcel(monthlyPlan);
+  const handleExportDaily = () => {
+    if (filteredDailyPlan.length > 0) {
+      exportDailyPlanToExcel(filteredDailyPlan, constraints);
+    }
+  };
+  const handleExportMonthly = () => {
+    if (monthlyInventoryFlow && monthlyInventoryFlow.rows.length > 0) {
+      // This function needs to be created or adapted
+      // exportMonthlyFlowToExcel(monthlyInventoryFlow);
+    }
+  };
   
   const handleStartPlanning = async () => {
     const success = await handleGeneratePlan();
@@ -103,28 +112,28 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
   const monthlyInventoryFlow = useMemo(() => {
     if (!monthlyFilters.center || !monthlyFilters.processType) return null;
-    
-    const relevantLineIds = new Set(constraints.productionLines
-        .filter(l => l.processType === monthlyFilters.processType)
-        .map(l => l.id)
-    );
-    const relevantProductIds = new Set(constraints.productProcessInfos
-        .filter(ppi => relevantLineIds.has(ppi.productionLineId))
-        .map(ppi => ppi.productId)
+
+    const relevantLineIds = new Set(
+        constraints.productionLines
+            .filter(l => l.processType === monthlyFilters.processType && l.workCenterId === monthlyFilters.center)
+            .map(l => l.id)
     );
 
-    const filteredSales = salesData.filter(s => relevantProductIds.has(s.código) && String(s.centro) === monthlyFilters.center);
-    if(filteredSales.length === 0) return { months: [], rows: [] };
-    
-    const planningMonths = Array.from(new Set(filteredSales.map(s => `${s.año}-${String(s.mes).padStart(2, '0')}`))).sort();
+    const relevantProductIds = new Set(
+        constraints.productProcessInfos
+            .filter(ppi => relevantLineIds.has(ppi.productionLineId))
+            .map(ppi => ppi.productId)
+    );
+
+    const planningMonths = Array.from(new Set(salesData.map(s => `${s.año}-${String(s.mes).padStart(2, '0')}`))).sort();
 
     const initialStock = constraints.inventorySettings
         .filter(is => relevantProductIds.has(is.itemId) && is.centerId === monthlyFilters.center)
         .reduce((sum, is) => sum + is.currentStock, 0);
 
     const data: Record<string, Record<string, number>> = {
-      'Saldo Inicial': {}, 'Producción': {}, 'Traslados Recibidos': {},
-      'Ventas': {}, 'Traslados Enviados': {}, 'Saldo Final': {}
+      'Saldo Inicial': {}, 'U. Planificadas': {}, 'Traslados (Neto)': {},
+      'Ventas': {}, 'Saldo Final': {}
     };
 
     let lastMonthStock = initialStock;
@@ -136,32 +145,30 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
 
         data['Saldo Inicial'][monthKey] = (index === 0) ? initialStock : lastMonthStock;
         
-        data['Producción'][monthKey] = dailyPlan
+        data['U. Planificadas'][monthKey] = dailyPlan
             .filter(dp => dp.year === year && dp.month === month && dp.producingCenterId === monthlyFilters.center && relevantProductIds.has(dp.productId))
             .reduce((sum, dp) => sum + dp.quantityToProduce, 0);
 
-        data['Ventas'][monthKey] = salesData
-             .filter(s => s.año === year && s.mes === month && String(s.centro) === monthlyFilters.center && relevantProductIds.has(s.código))
-            .reduce((sum, s) => sum + s.unidadesProyectado, 0);
+        data['Ventas'][monthKey] = (detailedProductionPlan?.planningGroupDetails || [])
+             .filter(d => d.year === year && d.month === month && d.centerName === monthlyFilters.center && relevantProductIds.has(d.productId))
+            .reduce((sum, d) => sum + d.demand, 0);
         
-        data['Traslados Recibidos'][monthKey] = 0;
-        data['Traslados Enviados'][monthKey] = 0;
+        data['Traslados (Neto)'][monthKey] = 0; // Placeholder as per design
 
         data['Saldo Final'][monthKey] = data['Saldo Inicial'][monthKey] 
-                                      + data['Producción'][monthKey] 
-                                      + data['Traslados Recibidos'][monthKey]
-                                      - data['Ventas'][monthKey]
-                                      - data['Traslados Enviados'][monthKey];
+                                      + data['U. Planificadas'][monthKey] 
+                                      + data['Traslados (Neto)'][monthKey]
+                                      - data['Ventas'][monthKey];
         
         lastMonthStock = data['Saldo Final'][monthKey];
     });
 
-    const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados Recibidos', 'Ventas', 'Traslados Enviados', 'Saldo Final'];
+    const rowOrder = ['Saldo Inicial', 'U. Planificadas', 'Ventas', 'Traslados (Neto)', 'Saldo Final'];
     const rows = rowOrder.map(label => ({ label, values: data[label] }));
     
-    return { months: planningMonths, rows };
+    return { months: planningMonths.filter(m => data['Ventas'][m] > 0 || data['U. Planificadas'][m] > 0), rows };
 
-  }, [monthlyFilters, constraints, salesData, dailyPlan]);
+  }, [monthlyFilters, constraints, salesData, dailyPlan, detailedProductionPlan]);
 
 
   // --- Memos for wizard steps display ---
@@ -316,6 +323,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
             </nav>
             <div>
               {activeTab === 'daily' && dailyPlan.length > 0 && <Button onClick={handleExportDaily} variant="outline" size="sm">Exportar Diario</Button>}
+              {activeTab === 'monthly' && monthlyInventoryFlow && <Button onClick={handleExportMonthly} variant="outline" size="sm" disabled>Exportar Mensual</Button>}
             </div>
         </div>
         
@@ -328,7 +336,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
   const renderDailyPlan = () => (
     <div className="space-y-4">
        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 border rounded-lg bg-gray-50">
-          <FilterInput label="Mes" value={dailyFilters.month} onChange={v => setDailyFilters(f => ({...f, month: v}))} />
+          <FilterInput label="Mes" value={dailyFilters.month} onChange={v => setDailyFilters(f => ({...f, month: v}))} placeholder="ej: Enero" />
           <FilterInput label="Línea" value={dailyFilters.line} onChange={v => setDailyFilters(f => ({...f, line: v}))} />
           <FilterInput label="Centro" value={dailyFilters.center} onChange={v => setDailyFilters(f => ({...f, center: v}))} />
           <FilterInput label="Producto" value={dailyFilters.product} onChange={v => setDailyFilters(f => ({...f, product: v}))} />
@@ -390,7 +398,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
        {!monthlyFilters.center || !monthlyFilters.processType ? (
         <div className="text-center py-10 text-gray-500">Por favor, seleccione un tipo de proceso y un centro para ver el resumen.</div>
       ) : !monthlyInventoryFlow || monthlyInventoryFlow.months.length === 0 ? (
-        <div className="text-center py-10 text-gray-500">No hay datos de ventas para la combinación de filtros seleccionada.</div>
+        <div className="text-center py-10 text-gray-500">No hay datos de ventas o producción para la combinación de filtros seleccionada.</div>
       ) : (
        <div className="overflow-x-auto border rounded-lg">
         <table className="min-w-full text-sm">
@@ -406,7 +414,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
           <tbody className="divide-y divide-gray-200">
             {monthlyInventoryFlow.rows.map(row => (
               <tr key={row.label} className="hover:bg-gray-50 group">
-                <td className="px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10">{row.label}</td>
+                <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
                 {monthlyInventoryFlow.months.map(monthKey => (
                   <td key={`${row.label}-${monthKey}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''}`}>
                     {Math.round(row.values[monthKey] || 0).toLocaleString()}
@@ -446,7 +454,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
         case 'needs': return renderStep2_Needs();
         case 'assignments': return renderStep3_Assignments();
         case 'finalPlan':
-            if (dailyPlan.length === 0) {
+            if (dailyPlan.length === 0 && auditLog.length > 0) {
                 return (
                     <div className="text-center py-10">
                         <h3 className="text-lg font-medium text-gray-900">El plan de producción está vacío.</h3>
@@ -454,7 +462,7 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
                             La planificación no generó ningún resultado. Esto puede deberse a que no hay demanda en los datos de ventas o a inconsistencias en los datos maestros.
                             Revise la bitácora del planificador para más detalles.
                         </p>
-                        {auditLog.length > 0 && renderAuditLog()}
+                        {renderAuditLog()}
                     </div>
                 );
             }
@@ -511,4 +519,3 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     </div>
   );
 };
-
