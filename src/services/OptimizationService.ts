@@ -126,9 +126,6 @@ export function processAndValidateAssemblyData(
     const productCenterDataMap = new Map<string, TiempoEnsambleItem>();
     apiData.forEach(row => {
         const key = `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`;
-        // Store the first row found for a given product-center pair.
-        // This assumes that inventory data (StockActual, StockSeguridad) is consistent
-        // for all entries of the same product in the same center.
         if (!productCenterDataMap.has(key)) {
             productCenterDataMap.set(key, row);
         }
@@ -453,8 +450,6 @@ export const generateProductionPlan = async (
               const [yearStr, monthStr] = monthKey.split('-');
               const year = parseInt(yearStr);
               const month = parseInt(monthStr);
-
-              // Correctly find the inventory setting for this specific product and center
               const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
               
               planningGroupDetails.push({
@@ -464,7 +459,7 @@ export const generateProductionPlan = async (
                   year,
                   month,
                   demand,
-                  initialStock: invSetting?.currentStock || 0, // Use the found stock
+                  initialStock: invSetting?.currentStock || 0,
                   minStock: invSetting?.minStock || 0,
               });
           }
@@ -681,8 +676,8 @@ export const generateProductionPlan = async (
 
                 const hoursConsumed = unitsToProduce * manufacturingTime;
                 
-                const demandCenterInfo = planningGroupDetails.find(d => d.productId === goal.productId); // Find the original demand center
-                const demandCenterId = demandCenterInfo?.centerName || goal.centerName; // Fallback to production center
+                const demandCenterInfo = planningGroupDetails.find(d => d.productId === goal.productId);
+                const demandCenterId = demandCenterInfo?.centerName || goal.centerName;
                 const stockKey = `${goal.productId}---${demandCenterId}`;
                 const initialStockOnDay = inventoryState.get(stockKey) || 0;
                 
@@ -690,22 +685,26 @@ export const generateProductionPlan = async (
                     .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === demandCenterId)
                     .reduce((sum, s) => sum + s.unidadesProyectado, 0)
                 ) / workingDaysInMonth;
-
-                // Update stock in the production center first
-                const prodCenterStockKey = `${goal.productId}---${goal.centerName}`;
-                const currentProdCenterStock = inventoryState.get(prodCenterStockKey) || 0;
-                inventoryState.set(prodCenterStockKey, currentProdCenterStock + unitsToProduce);
-
+                
                 let finalStockOnDay = initialStockOnDay;
-                if (goal.centerName === demandCenterId) {
-                    finalStockOnDay = currentProdCenterStock + unitsToProduce - demandOnDay;
-                    inventoryState.set(stockKey, finalStockOnDay);
-                } else {
-                    // This implies a transfer happened, which needs to be modeled
-                    const currentDemandCenterStock = inventoryState.get(stockKey) || 0;
-                    finalStockOnDay = currentDemandCenterStock - demandOnDay;
-                    inventoryState.set(stockKey, finalStockOnDay);
+                // If production is in a different center, it's a transfer. For now, assume it's available instantly.
+                // A more complex model would add lead time.
+                const isTransfer = goal.centerName !== demandCenterId;
+
+                // Production happens at the production center.
+                const productionCenterStockKey = `${goal.productId}---${goal.centerName}`;
+                const currentProdCenterStock = inventoryState.get(productionCenterStockKey) || 0;
+                inventoryState.set(productionCenterStockKey, currentProdCenterStock + unitsToProduce);
+
+                if (isTransfer) {
+                    // Reduce stock at production center (transfer out) and increase at demand center (transfer in)
+                    inventoryState.set(productionCenterStockKey, (inventoryState.get(productionCenterStockKey) || 0) - unitsToProduce);
+                    inventoryState.set(stockKey, (inventoryState.get(stockKey) || 0) + unitsToProduce);
                 }
+
+                // Demand is always fulfilled from the demand center.
+                finalStockOnDay = (inventoryState.get(stockKey) || 0) - demandOnDay;
+                inventoryState.set(stockKey, finalStockOnDay);
                 
                 const productName = salesData.find(d => normalizeMaterialCode(d.código) === goal.productId)?.descripciónMaterial || goal.productId;
 
