@@ -523,5 +523,3 @@ export const ProductionPlanSection: React.FC<ProductionPlanSectionProps> = () =>
     </div>
   );
 };
-
-    

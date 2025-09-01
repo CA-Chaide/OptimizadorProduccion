@@ -485,5 +485,3 @@ export interface TiempoEnsambleItem {
 
 // Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';
-
-    
