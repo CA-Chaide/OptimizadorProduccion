@@ -448,6 +448,7 @@ export const generateProductionPlan = async (
               const year = parseInt(yearStr);
               const month = parseInt(monthStr);
 
+              // Correctly find the inventory setting for this specific product and center
               const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
               
               planningGroupDetails.push({
@@ -457,7 +458,7 @@ export const generateProductionPlan = async (
                   year,
                   month,
                   demand,
-                  initialStock: invSetting?.currentStock || 0,
+                  initialStock: invSetting?.currentStock || 0, // Use the found stock
                   minStock: invSetting?.minStock || 0,
               });
           }
