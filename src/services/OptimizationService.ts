@@ -827,3 +827,4 @@ export const generateTacticalPlan = ( request: TacticalRequest, context: any ): 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
 
     
+    
