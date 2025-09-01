@@ -290,21 +290,25 @@ function getPpiOptionsForProduct(
     const provisioningRule = ruleRow?.ClaseAprovisionamiento || 'E'; // Default to 'E' if not found
 
     let allowedProductionCenters: string[];
+    const allCenterIds = Array.from(new Set(productionLines.map(l => l.workCenterId)));
+
 
     switch(provisioningRule) {
         case 'E': // Must be produced in the same center
             allowedProductionCenters = [demandCenterId];
             break;
-        case 'F': // Must be sourced from a different center (e.g., center '1000')
-            allowedProductionCenters = productionLines.map(l => l.workCenterId).filter(id => id !== demandCenterId);
+        case 'F': // Must be sourced from a different center.
             // Specific business rule: if demand is at 2000, source from 1000
             if (demandCenterId === '2000') {
                 allowedProductionCenters = ['1000'];
+            } else {
+                 // General case for F: any center EXCEPT the demanding one.
+                allowedProductionCenters = allCenterIds.filter(id => id !== demandCenterId);
             }
             break;
         case 'X': // Can be produced in any center
         default:
-            allowedProductionCenters = productionLines.map(l => l.workCenterId);
+            allowedProductionCenters = allCenterIds;
             break;
     }
 
