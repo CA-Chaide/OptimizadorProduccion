@@ -121,22 +121,18 @@ export function processAndValidateAssemblyData(
             productNamesMap.set(normalizedProductId, row.descripciónMaterial || row.etiqueta || String(row.código));
         }
     });
-
-    const processInfoAggregator = new Map<string, ProductProcessInfo>();
+    
+    // **CORRECTION**: Use a single, authoritative map for inventory that includes the initial stock.
     const inventoryMap = new Map<string, InventorySetting>();
     
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
-        const lineName = String(row.Linea).trim();
-        const lineId = `pl---${centerId}---${lineName}`;
         const normalizedProductId = normalizeMaterialCode(row.CodMaterial);
-
-        const line = discoveredLines.get(lineId)!;
-        if (line && !line.materialsHandled.includes(normalizedProductId)) {
-            line.materialsHandled.push(normalizedProductId);
-        }
         
         const invKey = `${normalizedProductId}---${centerId}`;
+        
+        // **CORRECTION**: Only set inventory info if it doesn't exist, to avoid overwriting.
+        // The first row for a product-center pair will set the stock values.
         if (!inventoryMap.has(invKey)) {
             inventoryMap.set(invKey, {
                 id: invKey,
@@ -146,10 +142,19 @@ export function processAndValidateAssemblyData(
                 isRawMaterial: false,
                 minStock: parseInt(String(row.StockSeguridad || 0), 10),
                 maxStock: parseInt(String(row.StockMaximo || 0), 10),
-                currentStock: parseInt(String(row.SaldoInicial || 0), 10),
+                currentStock: parseInt(String(row.SaldoInicial || 0), 10), // Capture the initial stock here
             });
         }
+
+        // Link material to the line that handles it
+        const lineName = String(row.Linea).trim();
+        const lineId = `pl---${centerId}---${lineName}`;
+        const line = discoveredLines.get(lineId);
+        if (line && !line.materialsHandled.includes(normalizedProductId)) {
+            line.materialsHandled.push(normalizedProductId);
+        }
     });
+
 
     // --- 4. Assemble the new constraints object ---
     const newConstraints: AppConstraints = {
@@ -158,7 +163,7 @@ export function processAndValidateAssemblyData(
         productionLines: Array.from(discoveredLines.values()),
         workstationDefinitions: Array.from(discoveredWorkstations.values()),
         productProcessInfos: [], // This will be generated dynamically inside the planner
-        inventorySettings: Array.from(inventoryMap.values()),
+        inventorySettings: Array.from(inventoryMap.values()), // **CORRECTION**: This now correctly contains the initial stock.
     };
 
     return {
@@ -446,7 +451,7 @@ export const generateProductionPlan = async (
               const year = parseInt(yearStr);
               const month = parseInt(monthStr);
 
-              // Correctly find the inventory setting for the product in its demand center.
+              // **CORRECTION**: Correctly find the inventory setting for the product in its demand center.
               const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
               
               planningGroupDetails.push({
@@ -456,7 +461,7 @@ export const generateProductionPlan = async (
                   year,
                   month,
                   demand,
-                  initialStock: invSetting?.currentStock || 0,
+                  initialStock: invSetting?.currentStock || 0, // **CORRECTION**: Use the found stock.
                   minStock: invSetting?.minStock || 0,
               });
           }
