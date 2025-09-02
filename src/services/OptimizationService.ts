@@ -250,7 +250,7 @@ function getPpiOptionsForProduct(
     demandCenterId: string,
     constraints: AppConstraints,
     apiData: TiempoEnsambleItem[],
-    auditLog: string[]
+    auditLog: string[],
 ): ProductProcessInfo[] {
     const { productionLines, workstationDefinitions } = constraints;
     const ppiCandidates: ProductProcessInfo[] = [];
