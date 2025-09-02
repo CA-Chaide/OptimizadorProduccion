@@ -43,6 +43,7 @@ export function processAndValidateAssemblyData(
         if (!row.Linea) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Linea'.`);
         if (!row.PuestoTrabajo) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'PuestoTrabajo'.`);
         if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
+        if (row.ClaseAprovisionamiento === null || row.ClaseAprovisionamiento === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'ClaseAprovisionamiento'.`);
     });
 
     if (dataCompletenessErrors.length > 0) {
@@ -217,9 +218,11 @@ const calculateEffectiveManufacturingTime = (
     line: ProductionLine,
     apiData: TiempoEnsambleItem[],
     workstationDefs: WorkstationDefinition[],
+    auditLog: string[]
 ): number => {
-    let totalTime = 0;
     
+    const effectiveTimesPerWorkstation: number[] = [];
+
     // Iterate over all workstation definitions required by the line
     for (const assignedWorkstation of line.assignedWorkstations) {
         const workstationDef = workstationDefs.find(wd => wd.id === assignedWorkstation.definitionId);
@@ -233,17 +236,25 @@ const calculateEffectiveManufacturingTime = (
             String(d.PuestoTrabajo).trim() === workstationDef.name
         );
         
-        // If a time is found, add it to the total for the line.
-        // This assumes a sequential process where times add up.
         if (apiRow && apiRow.Tiempo > 0) {
-            const timeHours = apiRow.Tiempo / 60; // Convert minutes to hours
-            totalTime += timeHours;
+            const timeMinutes = apiRow.Tiempo;
+            const quantityOfPosts = assignedWorkstation.quantity;
+            // Effective time is the time it takes one post, divided by how many posts of that type there are.
+            const effectiveTime = timeMinutes / quantityOfPosts;
+            effectiveTimesPerWorkstation.push(effectiveTime);
         }
     }
 
-    // If no valid time was found for any workstation on the line, return Infinity
-    // to indicate this line cannot produce this product.
-    return totalTime > 0 ? totalTime : Infinity;
+    // If a product requires passing through workstations but no times were found for it, it cannot be made.
+    if (line.assignedWorkstations.length > 0 && effectiveTimesPerWorkstation.length === 0) {
+        return Infinity;
+    }
+
+    // The line's bottleneck is the highest effective time of any of its workstations.
+    const bottleneckTimeMinutes = Math.max(0, ...effectiveTimesPerWorkstation);
+    
+    // Return time in hours.
+    return bottleneckTimeMinutes / 60;
 };
 
 
@@ -299,9 +310,9 @@ function getPpiOptionsForProduct(
     }
 
     allCapableLines.forEach(line => {
-        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
+        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, auditLog);
 
-        if (manufacturingTime < Infinity) {
+        if (manufacturingTime < Infinity && manufacturingTime > 0) {
             const ppiId = `${productId}---${line.id}`;
             const workstationTimes = line.assignedWorkstations.map(as => {
                  const workstationDef = workstationDefinitions.find(wd => wd.id === as.definitionId)!;
@@ -821,3 +832,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
+
+    
