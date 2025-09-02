@@ -45,12 +45,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: number, label: string}[],
+      meses: MONTH_NAMES.map((name, index) => ({ value: index + 1, label: name })),
       centros: [] as {value: string, label: string}[],
       etiquetas: [] as {value: string, label: string}[],
   });
 
   const [filters, setFilters] = useState({
       año: new Date().getFullYear().toString(),
+      mes: '',
       centro: '',
       etiqueta: ''
   });
@@ -188,37 +190,52 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   }, [aggregatedData]);
 
   const handleAcceptData = () => {
-    if(fetchedData.length > 0) {
-        if(selectedGroups.size === 0) {
-            addNotification('warning', 'Debe seleccionar al menos un grupo para cargar.');
-            return;
-        }
-        
-        const dataToLoad = fetchedData.filter(row => {
-             let key: string;
-            switch (groupBy) {
-                case 'sector':
-                    key = row.sector || 'Sin Sector';
-                    break;
-                case 'etiqueta':
-                    key = row.etiqueta || 'Sin Etiqueta';
-                    break;
-                case 'material':
-                    key = `${row.código} - ${row.descripciónMaterial}`;
-                    break;
-                default:
-                    key = 'Sin Asignar';
-            }
-            return selectedGroups.has(key);
-        });
-
-        
-        onDataImported(dataToLoad);
-        setFetchedData([]);
-        setSelectedGroups(new Set());
-    } else {
+    if (fetchedData.length === 0) {
         addNotification('error', 'No hay datos para cargar. Por favor, genere una previsualización primero.');
+        return;
     }
+    if (selectedGroups.size === 0) {
+        addNotification('warning', 'Debe seleccionar al menos un grupo para cargar.');
+        return;
+    }
+
+    // 1. Filter by selected groups
+    const selectedGroupData = fetchedData.filter(row => {
+        let key: string;
+        switch (groupBy) {
+            case 'sector':
+                key = row.sector || 'Sin Sector';
+                break;
+            case 'etiqueta':
+                key = row.etiqueta || 'Sin Etiqueta';
+                break;
+            case 'material':
+                key = `${row.código} - ${row.descripciónMaterial}`;
+                break;
+            default:
+                key = 'Sin Asignar';
+        }
+        return selectedGroups.has(key);
+    });
+    
+    // 2. Further filter by start month if provided
+    const startYear = parseInt(filters.año, 10);
+    const startMonth = filters.mes ? parseInt(filters.mes, 10) : 0;
+    
+    let dataToLoad: SalesDataRow[];
+
+    if (startYear && startMonth) {
+        dataToLoad = selectedGroupData.filter(row => {
+            return row.año > startYear || (row.año === startYear && row.mes >= startMonth);
+        });
+        addNotification('info', `Filtrando datos desde ${MONTH_NAMES[startMonth-1]} ${startYear} en adelante.`);
+    } else {
+        dataToLoad = selectedGroupData;
+    }
+
+    onDataImported(dataToLoad);
+    setFetchedData([]);
+    setSelectedGroups(new Set());
   };
 
   const handleGroupSelection = (groupKey: string, isSelected: boolean) => {
@@ -288,8 +305,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </p>
 
       {/* --- Filtros --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end p-4 border rounded-lg bg-gray-50">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end p-4 border rounded-lg bg-gray-50">
         <SelectField label="Año" id="año" name="año" value={filters.año} onChange={handleFilterChange} options={filterOptions.años}/>
+        <SelectField label="Mes (Opcional)" id="mes" name="mes" value={filters.mes} onChange={handleFilterChange} options={filterOptions.meses} title="Si selecciona un mes, se planificará desde ese mes en adelante."/>
         <SelectField label="Centro" id="centro" name="centro" value={filters.centro} onChange={handleFilterChange} options={filterOptions.centros}/>
         <SelectField label="Etiqueta" id="etiqueta" name="etiqueta" value={filters.etiqueta} onChange={handleFilterChange} options={filterOptions.etiquetas}/>
         

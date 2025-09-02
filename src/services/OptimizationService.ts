@@ -234,7 +234,7 @@ const calculateEffectiveManufacturingTime = (
     auditLog: string[]
 ): number => {
     
-    const effectiveTimesPerWorkstation: number[] = [];
+    const workstationEffectiveTimes: number[] = [];
 
     // Iterate over all workstation definitions required by the line
     for (const assignedWorkstation of line.assignedWorkstations) {
@@ -253,18 +253,23 @@ const calculateEffectiveManufacturingTime = (
             const timeMinutes = apiRow.Tiempo;
             const quantityOfPosts = assignedWorkstation.quantity;
             // Effective time is the time it takes one post, divided by how many posts of that type there are.
-            const effectiveTime = timeMinutes / quantityOfPosts;
-            effectiveTimesPerWorkstation.push(effectiveTime);
+            const effectiveTimeForThisPostType = timeMinutes / quantityOfPosts;
+            workstationEffectiveTimes.push(effectiveTimeForThisPostType);
         }
     }
 
     // If a product requires passing through workstations but no times were found for it, it cannot be made.
-    if (line.assignedWorkstations.length > 0 && effectiveTimesPerWorkstation.length === 0) {
+    if (line.assignedWorkstations.length > 0 && workstationEffectiveTimes.length !== line.assignedWorkstations.length) {
+        auditLog.push(`Alerta: Para producto ${productId} en línea ${line.name}, no se encontraron tiempos para todos los puestos de trabajo asignados. Se requieren ${line.assignedWorkstations.length}, se encontraron ${workstationEffectiveTimes.length}. La línea no se considerará.`);
+        return Infinity;
+    }
+    
+    if (workstationEffectiveTimes.length === 0) {
         return Infinity;
     }
 
     // The line's bottleneck is the highest effective time of any of its workstations.
-    const bottleneckTimeMinutes = Math.max(0, ...effectiveTimesPerWorkstation);
+    const bottleneckTimeMinutes = Math.max(0, ...workstationEffectiveTimes);
     
     // Return time in hours.
     return bottleneckTimeMinutes / 60;
