@@ -268,35 +268,37 @@ function getPpiOptionsForProduct(
     const { productionLines, workstationDefinitions } = constraints;
     const ppiCandidates: ProductProcessInfo[] = [];
 
+    // Step 1: Find the provisioning rule for the product in its demand center.
     const ruleRow = apiData.find(row => 
         normalizeMaterialCode(row.CodMaterial) === productId && 
         String(row.Centro).trim() === demandCenterId
     );
-    const provisioningRule = ruleRow?.ClaseAprovisionamiento || 'E'; // Default to 'E' if not found
+    // Default to 'E' (produce in same center) if no specific rule is found.
+    const provisioningRule = ruleRow?.ClaseAprovisionamiento || 'E';
 
+    // Step 2: Determine which production centers are allowed based on the rule.
     let allowedProductionCenters: string[];
     const allCenterIds = Array.from(new Set(productionLines.map(l => l.workCenterId)));
 
-
     switch(provisioningRule) {
-        case 'E': // Must be produced in the same center
+        case 'E': // Must be produced in the same center as demand.
             allowedProductionCenters = [demandCenterId];
             break;
-        case 'F': // Must be sourced from a different center.
-            if (demandCenterId === '2000') {
-                allowedProductionCenters = ['1000'];
-            } else {
-                allowedProductionCenters = allCenterIds.filter(id => id !== demandCenterId);
-            }
+        case 'F': // Must be sourced from a different center (transfer).
+            // This logic can be expanded, for now, simple exclusion.
+            allowedProductionCenters = allCenterIds.filter(id => id !== demandCenterId);
             break;
-        case 'X': // Can be produced in any center
+        case 'X': // Can be produced in any center.
         default:
             allowedProductionCenters = allCenterIds;
             break;
     }
 
+    // Step 3: Find all lines in the allowed centers that can actually make the product.
     const allCapableLines = productionLines.filter(line => 
+        // Is the line in an allowed production center?
         allowedProductionCenters.includes(line.workCenterId) &&
+        // Does any API data exist linking this product to this line?
         apiData.some(row => 
             normalizeMaterialCode(row.CodMaterial) === productId &&
             String(row.Centro).trim() === line.workCenterId &&
@@ -305,10 +307,12 @@ function getPpiOptionsForProduct(
     );
 
     if (allCapableLines.length === 0) {
+        // Log if no lines are found, this is useful for debugging.
         auditLog.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
         return [];
     }
 
+    // Step 4: For each capable line, calculate its effective manufacturing time and create a PPI option.
     allCapableLines.forEach(line => {
         const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, auditLog);
 
@@ -338,6 +342,7 @@ function getPpiOptionsForProduct(
         }
     });
 
+    // Sort options from fastest to slowest to prioritize efficiency.
     ppiCandidates.sort((a, b) => a.totalManufacturingTimeHours - b.totalManufacturingTimeHours);
     
     return ppiCandidates;
