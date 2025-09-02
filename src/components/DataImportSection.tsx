@@ -40,7 +40,7 @@ const SelectField: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { la
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [fetchedData, setFetchedData] = useState<SalesDataRow[]>([]);
+  const [allFetchedData, setAllFetchedData] = useState<SalesDataRow[]>([]);
   const { addNotification } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
@@ -59,13 +59,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [groupBy, setGroupBy] = useState<GroupByOption>('sector');
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
 
-
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const { name, value } = e.target;
       setFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  // Cargar datos para los filtros una sola vez
   useEffect(() => {
     const loadFilterOptions = async () => {
       try {
@@ -92,20 +90,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     };
     loadFilterOptions();
   }, [addNotification]);
+  
+  const filteredData = useMemo(() => {
+    if (allFetchedData.length === 0) return [];
+    const startMonth = filters.mes ? parseInt(filters.mes, 10) : 1;
+    return allFetchedData.filter(row => row.mes >= startMonth);
+  }, [allFetchedData, filters.mes]);
 
 
-  // Get a list of unique centers from the fetched data to build table columns
   const uniqueCentersInFetchedData = useMemo(() => {
-    if (fetchedData.length === 0) return [];
-    const centers = new Set(fetchedData.map(row => row.centro));
+    if (filteredData.length === 0) return [];
+    const centers = new Set(filteredData.map(row => row.centro));
     return Array.from(centers).sort();
-  }, [fetchedData]);
+  }, [filteredData]);
 
   const aggregatedData = useMemo<AggregatedData | null>(() => {
-    if (fetchedData.length === 0) return null;
+    if (filteredData.length === 0) return null;
 
     const aggregationResult: AggregatedData = {};
-    fetchedData.forEach(row => {
+    filteredData.forEach(row => {
         let key: string;
         switch (groupBy) {
             case 'sector':
@@ -127,7 +130,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         aggregationResult[key].totalUnits += row.unidadesProyectado;
         aggregationResult[key].dataRows.push(row);
         
-        // Aggregate by center
         const centerName = row.centro;
         if (!aggregationResult[key].unitsByCenter[centerName]) {
             aggregationResult[key].unitsByCenter[centerName] = 0;
@@ -135,12 +137,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         aggregationResult[key].unitsByCenter[centerName] += row.unidadesProyectado;
     });
     return aggregationResult;
-  }, [fetchedData, groupBy]);
+  }, [filteredData, groupBy]);
 
   const handlePreviewData = useCallback(async () => {
       setIsProcessing(true);
-      setFetchedData([]);
-      setSelectedGroups(new Set()); // Reset selection
+      setAllFetchedData([]);
+      setSelectedGroups(new Set()); 
       addNotification('info', `Consultando datos desde la API...`);
 
       try {
@@ -171,7 +173,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               familia: item.Familia, marca: item.Marca, lineaProduccion: '',
           }));
           
-          setFetchedData(mappedData);
+          setAllFetchedData(mappedData);
           addNotification('success', `Se han pre-cargado ${mappedData.length} registros. Seleccione los grupos y acepte para continuar.`);
 
       } catch (error) {
@@ -182,7 +184,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       }
   }, [filters, addNotification]);
 
-  // When aggregation changes, pre-select all groups
   React.useEffect(() => {
     if (aggregatedData) {
         setSelectedGroups(new Set(Object.keys(aggregatedData)));
@@ -190,7 +191,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   }, [aggregatedData]);
 
   const handleAcceptData = () => {
-    if (fetchedData.length === 0) {
+    if (filteredData.length === 0) {
         addNotification('error', 'No hay datos para cargar. Por favor, genere una previsualización primero.');
         return;
     }
@@ -199,64 +200,34 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         return;
     }
 
-    // 1. Filter by selected groups
-    const selectedGroupData = fetchedData.filter(row => {
+    const dataToLoad = filteredData.filter(row => {
         let key: string;
         switch (groupBy) {
-            case 'sector':
-                key = row.sector || 'Sin Sector';
-                break;
-            case 'etiqueta':
-                key = row.etiqueta || 'Sin Etiqueta';
-                break;
-            case 'material':
-                key = `${row.código} - ${row.descripciónMaterial}`;
-                break;
-            default:
-                key = 'Sin Asignar';
+            case 'sector': key = row.sector || 'Sin Sector'; break;
+            case 'etiqueta': key = row.etiqueta || 'Sin Etiqueta'; break;
+            case 'material': key = `${row.código} - ${row.descripciónMaterial}`; break;
+            default: key = 'Sin Asignar';
         }
         return selectedGroups.has(key);
     });
     
-    // 2. Further filter by start month if provided
-    const startYear = parseInt(filters.año, 10);
-    const startMonth = filters.mes ? parseInt(filters.mes, 10) : 0;
-    
-    let dataToLoad: SalesDataRow[];
-
-    if (startYear && startMonth) {
-        dataToLoad = selectedGroupData.filter(row => {
-            return row.año > startYear || (row.año === startYear && row.mes >= startMonth);
-        });
-        addNotification('info', `Filtrando datos desde ${MONTH_NAMES[startMonth-1]} ${startYear} en adelante.`);
-    } else {
-        dataToLoad = selectedGroupData;
-    }
-
     onDataImported(dataToLoad);
-    setFetchedData([]);
+    setAllFetchedData([]);
     setSelectedGroups(new Set());
   };
 
   const handleGroupSelection = (groupKey: string, isSelected: boolean) => {
       setSelectedGroups(prev => {
           const newSet = new Set(prev);
-          if (isSelected) {
-              newSet.add(groupKey);
-          } else {
-              newSet.delete(groupKey);
-          }
+          if (isSelected) newSet.add(groupKey);
+          else newSet.delete(groupKey);
           return newSet;
       });
   };
 
   const handleSelectAllGroups = (isSelected: boolean) => {
       if (aggregatedData) {
-          if (isSelected) {
-              setSelectedGroups(new Set(Object.keys(aggregatedData)));
-          } else {
-              setSelectedGroups(new Set());
-          }
+          setSelectedGroups(isSelected ? new Set(Object.keys(aggregatedData)) : new Set());
       }
   };
 
@@ -268,19 +239,19 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
       if (!aggregatedData) return result;
 
-      // Calculate subtotal for specific sectors (01, 02, 03) directly from the source data
       const targetSectorPrefixes = ['01', '02', '03'];
-      fetchedData.forEach(row => {
-          if (targetSectorPrefixes.some(prefix => row.sector.startsWith(prefix))) {
-              result.subtotalSectors.total += row.unidadesProyectado;
-              if (result.subtotalSectors[row.centro] !== undefined) {
-                  result.subtotalSectors[row.centro] += row.unidadesProyectado;
-              }
-          }
-      });
-
-      // Calculate total for selected groups
+      
+      // Calculate subtotals and totals based on the filtered data displayed in the table
       Object.entries(aggregatedData).forEach(([key, value]) => {
+          // Calculate subtotal for specific sectors (01, 02, 03)
+          if (targetSectorPrefixes.some(prefix => key.startsWith(prefix))) {
+              result.subtotalSectors.total += value.totalUnits;
+              uniqueCentersInFetchedData.forEach(center => {
+                  result.subtotalSectors[center] += (value.unitsByCenter[center] || 0);
+              });
+          }
+
+          // Calculate total for selected groups
           if (selectedGroups.has(key)) {
               result.selectedTotal.total += value.totalUnits;
               uniqueCentersInFetchedData.forEach(center => {
@@ -290,7 +261,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       });
 
       return result;
-  }, [aggregatedData, selectedGroups, fetchedData, uniqueCentersInFetchedData]);
+  }, [aggregatedData, selectedGroups, uniqueCentersInFetchedData]);
 
 
   return (
