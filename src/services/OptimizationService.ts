@@ -599,7 +599,8 @@ export const generateProductionPlan = async (
                 lineName: line.name,
                 ppiId: ppi.id,
                 productId,
-                centerName: line.workCenterId, 
+                centerName: line.workCenterId, // This is production center
+                demandCenterId: centerId, // This is demand center
                 units: unitsToMake,
                 originalNeedUnits: originalUnitsToMake,
                 advancedUnits: advancedUnitsToMake,
@@ -618,7 +619,7 @@ export const generateProductionPlan = async (
   // --- Daily Plan Generation ---
   const dailyPlan: ProductionPlanItem[] = [];
   const monthlyPlan: MonthlyProductionPlanItem[] = [];
-  const inventoryState = new Map<string, number>(); 
+  const inventoryState = new Map<string, number>(); // KEY: "productId---centerId"
   inventorySettings.forEach(inv => inventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock));
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
@@ -650,9 +651,7 @@ export const generateProductionPlan = async (
     });
 
     for (let day = 1; day <= daysInMonth; day++) {
-        if (day % 5 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 0));
-        }
+        await new Promise(resolve => setTimeout(resolve, 0)); // Prevent blocking
 
         const currentDate = new Date(year, month - 1, day);
         const dayType = getDayTypeForProduction(currentDate, holidays);
@@ -681,20 +680,23 @@ export const generateProductionPlan = async (
 
                 const hoursConsumed = unitsToProduce * manufacturingTime;
                 
-                const demandCenterInfo = planningGroupDetails.find(d => d.productId === goal.productId);
-                const demandCenterId = demandCenterInfo?.centerName || goal.centerName;
-                
-                const prodCenterStockKey = `${goal.productId}---${goal.centerName}`;
-                
+                const productionCenterId = goal.centerName;
+                const demandCenterId = goal.demandCenterId;
+                const isTransfer = productionCenterId !== demandCenterId;
+
+                // Daily demand is the monthly demand spread over working days
                 const demandOnDay = (salesData
                     .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === demandCenterId)
                     .reduce((sum, s) => sum + s.unidadesProyectado, 0)
                 ) / workingDaysInMonth;
-                
-                const initialStockOnDay = inventoryState.get(prodCenterStockKey) || 0;
+
+                // --- Corrected Inventory Logic ---
+                const stockKey = `${goal.productId}---${demandCenterId}`;
+                const initialStockOnDay = inventoryState.get(stockKey) || 0;
                 const finalStockOnDay = initialStockOnDay + unitsToProduce - demandOnDay;
-                inventoryState.set(prodCenterStockKey, finalStockOnDay);
-                
+                inventoryState.set(stockKey, finalStockOnDay);
+                // End Corrected Logic
+
                 const productName = productNamesMap.get(goal.productId) || goal.productId;
 
                 dailyPlan.push({
@@ -705,11 +707,14 @@ export const generateProductionPlan = async (
                     quantityToProduce: unitsToProduce,
                     demandOnDay, initialStockOnDay, finalStockOnDay,
                     assignedLineId: line.id,
-                    producingCenterId: goal.centerName,
+                    producingCenterId: productionCenterId,
                     estimatedLaborCost: (goal.laborCost / goal.units) * unitsToProduce, 
                     hoursWorked: hoursConsumed,
-                    status: 'Planificado',
-                    notes: '',
+                    status: isTransfer ? 'Transferencia' : 'Planificado',
+                    notes: isTransfer ? `De ${productionCenterId} a ${demandCenterId}`: '',
+                    isTransfer: isTransfer,
+                    transferDestinationCenterId: isTransfer ? demandCenterId : undefined,
+                    transferSourceCenterId: isTransfer ? productionCenterId : undefined,
                 });
 
                 goal.remainingUnits -= unitsToProduce;
@@ -814,13 +819,3 @@ export const generateTacticalPlan = ( request: TacticalRequest, context: any ): 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
 
     
-    
-
-    
-
-
-
-    
-
-
-

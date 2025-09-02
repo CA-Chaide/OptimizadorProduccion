@@ -285,7 +285,8 @@ export interface MonthlyAssignment {
   lineName: string;
   ppiId: string;
   productId: string;
-  centerName: string;
+  centerName: string; // This is PRODUCTION center
+  demandCenterId: string; // This is DEMAND center
   units: number;
   originalNeedUnits: number;
   advancedUnits: number;

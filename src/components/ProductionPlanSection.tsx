@@ -68,7 +68,14 @@ export const ProductionPlanSection: React.FC = () => {
   const [planningStep, setPlanningStep] = useState<'idle' | 'groups' | 'needs' | 'assignments' | 'finalPlan'>('idle');
   
   // State for filter inputs
-  const [filterInputs, setFilterInputs] = useState({ month: '', line: '', center: '', product: '', productCode: ''});
+  const [filterInputs, setFilterInputs] = useState<{
+    month: string;
+    line: string;
+    center: string;
+    product: string;
+    productCode: string;
+    processType?: string; // For monthly summary
+  }>({ month: '', line: '', center: '', product: '', productCode: ''});
   // State for applied filters
   const [appliedFilters, setAppliedFilters] = useState({ month: '', line: '', center: '', product: '', productCode: ''});
 
@@ -162,21 +169,23 @@ export const ProductionPlanSection: React.FC = () => {
 
   const monthlyInventoryFlow = useMemo(() => {
     const relevantCenter = filterInputs.center;
-    const relevantProcessType = (filterInputs as any).processType;
+    const relevantProcessType = filterInputs.processType;
 
-    if (!relevantCenter || !relevantProcessType) return null;
+    if (!relevantCenter || !relevantProcessType || !dailyPlan || dailyPlan.length === 0) return null;
 
+    // Find all products related to the selected process type and center
     const relevantLineIds = new Set(
-        constraints.productionLines
-            .filter(l => l.processType === relevantProcessType && l.workCenterId === relevantCenter)
-            .map(l => l.id)
+      constraints.productionLines
+        .filter(l => l.processType === relevantProcessType && l.workCenterId === relevantCenter)
+        .map(l => l.id)
     );
 
     const relevantProductIds = new Set(
-        (detailedProductionPlan?.planningGroupDetails || [])
-            .filter(d => relevantLineIds.has(d.pairKey.split('---')[1]))
-            .map(d => d.productId)
+      dailyPlan.filter(d => relevantLineIds.has(d.assignedLineId || ''))
+               .map(d => d.productId)
     );
+     
+    if(relevantProductIds.size === 0) return null;
 
     const planningMonths = Array.from(new Set(salesData.map(s => `${s.año}-${String(s.mes).padStart(2, '0')}`))).sort();
 
@@ -196,22 +205,44 @@ export const ProductionPlanSection: React.FC = () => {
         const year = parseInt(yearStr);
         const month = parseInt(monthStr);
 
-        data['Saldo Inicial'][monthKey] = (index === 0) ? initialStock : lastMonthStock;
+        data['Saldo Inicial'][monthKey] = lastMonthStock;
         
-        data['U. Planificadas'][monthKey] = (dailyPlan || [])
+        data['U. Planificadas'][monthKey] = dailyPlan
             .filter(d => 
                 d.year === year && 
                 d.month === month && 
-                d.producingCenterId === relevantCenter && 
-                relevantProductIds.has(d.productId)
+                relevantProductIds.has(d.productId) &&
+                d.producingCenterId === relevantCenter // Produced in the filtered center
             )
             .reduce((sum, d) => sum + d.quantityToProduce, 0);
-
-        data['Ventas'][monthKey] = (detailedProductionPlan?.planningGroupDetails || [])
-             .filter(d => d.year === year && d.month === month && d.centerName === relevantCenter && relevantProductIds.has(d.productId))
-            .reduce((sum, d) => sum + d.demand, 0);
         
-        data['Traslados (Neto)'][monthKey] = 0;
+        data['Ventas'][monthKey] = dailyPlan
+             .filter(d => 
+                d.year === year && 
+                d.month === month && 
+                relevantProductIds.has(d.productId)
+              )
+            .reduce((sum, d) => sum + d.demandOnDay, 0);
+        
+        const transfersIn = dailyPlan
+          .filter(d => 
+            d.year === year && 
+            d.month === month && 
+            relevantProductIds.has(d.productId) &&
+            d.isTransfer && d.transferDestinationCenterId === relevantCenter
+          )
+          .reduce((sum, d) => sum + d.quantityToProduce, 0);
+
+        const transfersOut = dailyPlan
+          .filter(d => 
+            d.year === year && 
+            d.month === month && 
+            relevantProductIds.has(d.productId) &&
+            d.isTransfer && d.transferSourceCenterId === relevantCenter
+          )
+          .reduce((sum, d) => sum + d.quantityToProduce, 0);
+
+        data['Traslados (Neto)'][monthKey] = transfersIn - transfersOut;
 
         data['Saldo Final'][monthKey] = data['Saldo Inicial'][monthKey] 
                                       + data['U. Planificadas'][monthKey] 
@@ -224,7 +255,14 @@ export const ProductionPlanSection: React.FC = () => {
     const rowOrder = ['Saldo Inicial', 'U. Planificadas', 'Ventas', 'Traslados (Neto)', 'Saldo Final'];
     const rows = rowOrder.map(label => ({ label, values: data[label] }));
     
-    return { months: planningMonths.filter(m => data['Ventas'][m] > 0 || data['U. Planificadas'][m] > 0), rows };
+    // Filter out months with no activity for cleaner display
+    const activeMonths = planningMonths.filter(m => 
+      data['Ventas'][m] > 0 || 
+      data['U. Planificadas'][m] > 0 || 
+      Math.abs(data['Traslados (Neto)'][m]) > 0
+    );
+
+    return { months: activeMonths, rows };
 
   }, [filterInputs, constraints, salesData, detailedProductionPlan, dailyPlan]);
 
@@ -437,7 +475,7 @@ export const ProductionPlanSection: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 border rounded-lg bg-gray-50">
           <div>
             <label className="block text-xs font-medium text-gray-500">Tipo de Proceso</label>
-            <select value={(filterInputs as any).processType || ''} onChange={e => setFilterInputs(f => ({...f, processType: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
+            <select value={filterInputs.processType || ''} onChange={e => setFilterInputs(f => ({...f, processType: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
                 <option value="">Seleccione un Proceso</option>
                 {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
@@ -451,7 +489,7 @@ export const ProductionPlanSection: React.FC = () => {
           </div>
       </div>
       
-       {!(filterInputs as any).center || !(filterInputs as any).processType ? (
+       {!filterInputs.center || !filterInputs.processType ? (
         <div className="text-center py-10 text-gray-500">Por favor, seleccione un tipo de proceso y un centro para ver el resumen.</div>
       ) : !monthlyInventoryFlow || monthlyInventoryFlow.months.length === 0 ? (
         <div className="text-center py-10 text-gray-500">No hay datos de ventas o producción para la combinación de filtros seleccionada.</div>
@@ -559,7 +597,7 @@ export const ProductionPlanSection: React.FC = () => {
                 disabled={isLoading || !isDataSynced}
                 title={!isDataSynced ? 'Debe sincronizar los datos de ensamble en la pestaña de restricciones primero' : 'Comenzar la planificación paso a paso'}
             >
-                {isLoading ? 'Analizando...' : 'Iniciar Planificación'}
+                {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analizando...</> : 'Iniciar Planificación'}
             </Button>
           )}
           {planningStep !== 'idle' && planningStep !== 'finalPlan' && (
@@ -585,3 +623,5 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
+    
