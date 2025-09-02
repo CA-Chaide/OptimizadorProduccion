@@ -406,6 +406,17 @@ export const generateProductionPlan = async (
       auditLog.push('Error: No hay datos de ventas para procesar.');
       return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
+
+  // --- Start of Product Name Mapping Fix ---
+  const productNamesMap = new Map<string, string>();
+  salesData.forEach(s => {
+      const normalizedProductId = normalizeMaterialCode(s.código);
+      // We store the name only if it's not already there, or if the new one is more descriptive
+      if (!productNamesMap.has(normalizedProductId) || !productNamesMap.get(normalizedProductId)) {
+           productNamesMap.set(normalizedProductId, s.descripciónMaterial || s.etiqueta || normalizedProductId);
+      }
+  });
+  // --- End of Product Name Mapping Fix ---
   
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
@@ -589,8 +600,7 @@ export const generateProductionPlan = async (
 
             const laborCost = calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions);
             const line = activeLines.find(l=>l.id === ppi.productionLineId)!;
-            const productName = salesData.find(d => normalizeMaterialCode(d.código) === productId)?.descripciónMaterial || productId;
-
+            
             monthlyAssignments.push({
                 id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`,
                 monthIndex,
@@ -721,7 +731,7 @@ export const generateProductionPlan = async (
                 }
 
                 
-                const productName = salesData.find(d => normalizeMaterialCode(d.código) === goal.productId)?.descripciónMaterial || goal.productId;
+                const productName = productNamesMap.get(goal.productId) || goal.productId;
 
                 dailyPlan.push({
                     id: `${year}-${month}-${day}-${goal.productId}-${line.id}`,
@@ -751,7 +761,7 @@ export const generateProductionPlan = async (
     const key = `${item.year}-${item.month}-${item.productId}-${item.producingCenterId}`;
     let entry = aggregatedMonthlyPlan.get(key);
     if (!entry) {
-        const productName = salesData.find(d => normalizeMaterialCode(d.código) === item.productId)?.descripciónMaterial || item.productId;
+        const productName = productNamesMap.get(item.productId) || item.productId;
         entry = {
             id: key,
             year: item.year, month: item.month,
@@ -848,3 +858,4 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
