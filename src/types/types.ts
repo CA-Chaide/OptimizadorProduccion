@@ -474,7 +474,7 @@ export interface TiempoEnsambleItem {
   Centro: string;
   Linea: string;
   PuestoTrabajo: string;
-  Tiempo: number;
+  tiempo: number;
   StockActual: number;
   StockSeguridad: number;
   StockMaximo: number;

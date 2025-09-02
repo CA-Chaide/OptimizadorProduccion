@@ -42,7 +42,7 @@ export function processAndValidateAssemblyData(
         if (!row.Centro) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Centro'.`);
         if (!row.Linea) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Linea'.`);
         if (!row.PuestoTrabajo) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'PuestoTrabajo'.`);
-        if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
+        if (row.tiempo === null || row.tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'tiempo'.`);
     });
 
     if (dataCompletenessErrors.length > 0) {
@@ -232,8 +232,8 @@ const calculateEffectiveManufacturingTime = (
             String(d.PuestoTrabajo).trim() === workstationDef.name
         );
         
-        if (apiRow && apiRow.Tiempo > 0) {
-            const timeHours = apiRow.Tiempo / 60;
+        if (apiRow && apiRow.tiempo > 0) {
+            const timeHours = apiRow.tiempo / 60;
             const effectiveTime = timeHours / assignedWorkstation.quantity;
             if(effectiveTime > maxTime) {
                 maxTime = effectiveTime;
@@ -311,7 +311,7 @@ function getPpiOptionsForProduct(
                 );
                 return {
                     workstationDefinitionId: as.definitionId,
-                    timeHours: (apiRow?.Tiempo || 0) / 60
+                    timeHours: (apiRow?.tiempo || 0) / 60
                 };
             }).filter(wt => wt.timeHours > 0);
 
@@ -677,9 +677,7 @@ export const generateProductionPlan = async (
                 const prodStockKey = `${productId}---${productionCenterId}`;
                 const demandStockKey = `${productId}---${demandCenterId}`;
 
-                const initialProdStock = inventoryState.get(prodStockKey) || 0;
-                const initialDemandStock = inventoryState.get(demandStockKey) || 0;
-
+                
                 const stockBeforeProdInProdCenter = inventoryState.get(prodStockKey) || 0;
                 inventoryState.set(prodStockKey, stockBeforeProdInProdCenter + unitsToProduce);
 
@@ -702,7 +700,7 @@ export const generateProductionPlan = async (
                     productName: productNamesMap.get(productId) || productId,
                     quantityToProduce: unitsToProduce,
                     demandOnDay: demandOnDay, 
-                    initialStockOnDay: initialStockOnDay + demandOnDay,
+                    initialStockOnDay: initialStockOnDay,
                     finalStockOnDay: finalStockOnDay,
                     assignedLineId: line.id,
                     producingCenterId: productionCenterId,
@@ -723,7 +721,7 @@ export const generateProductionPlan = async (
         for (const [key, demand] of dailyDemand.entries()) {
             const [dateKey, productId, centerId] = key.split('---');
             if (dateKey === `${year}-${month}-${day}`) {
-                 if (!dailyPlan.some(p => p.year === year && p.month === month && p.day === day && p.productId === productId && p.demandCenterId === centerId)) {
+                 if (!dailyPlan.some(p => p.year === year && p.month === month && p.day === day && p.productId === productId && (p.demandCenterId === centerId || p.producingCenterId === centerId))) {
                     const stockKey = `${productId}---${centerId}`;
                     const initialStock = inventoryState.get(stockKey) || 0;
                     inventoryState.set(stockKey, initialStock - demand);
