@@ -683,20 +683,17 @@ export const generateProductionPlan = async (
                 
                 const demandCenterInfo = planningGroupDetails.find(d => d.productId === goal.productId);
                 const demandCenterId = demandCenterInfo?.centerName || goal.centerName;
-
+                
                 const prodCenterStockKey = `${goal.productId}---${goal.centerName}`;
-                let initialStockOnDay = inventoryState.get(prodCenterStockKey) || 0;
                 
                 const demandOnDay = (salesData
                     .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === demandCenterId)
                     .reduce((sum, s) => sum + s.unidadesProyectado, 0)
                 ) / workingDaysInMonth;
                 
-                const stockAfterProduction = initialStockOnDay + unitsToProduce;
-                const stockAfterDemand = stockAfterProduction - demandOnDay;
-                
-                inventoryState.set(prodCenterStockKey, stockAfterDemand);
-                const finalStockOnDay = stockAfterDemand;
+                const initialStockOnDay = inventoryState.get(prodCenterStockKey) || 0;
+                const finalStockOnDay = initialStockOnDay + unitsToProduce - demandOnDay;
+                inventoryState.set(prodCenterStockKey, finalStockOnDay);
                 
                 const productName = productNamesMap.get(goal.productId) || goal.productId;
 
@@ -824,5 +821,6 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
