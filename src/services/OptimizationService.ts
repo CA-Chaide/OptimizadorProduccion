@@ -268,12 +268,19 @@ function getPpiOptionsForProduct(
     const { productionLines, workstationDefinitions } = constraints;
     const ppiCandidates: ProductProcessInfo[] = [];
 
-    // Step 1: Find the provisioning rule for the product in its demand center.
-    const ruleRow = apiData.find(row => 
+    // Step 1: Find the provisioning rule for the product.
+    // First, try to find the rule for the specific demand center.
+    let ruleRow = apiData.find(row => 
         normalizeMaterialCode(row.CodMaterial) === productId && 
         String(row.Centro).trim() === demandCenterId
     );
-    // Default to 'E' (produce in same center) if no specific rule is found.
+
+    // If not found, find any rule for that product in any center.
+    if (!ruleRow) {
+        ruleRow = apiData.find(row => normalizeMaterialCode(row.CodMaterial) === productId);
+    }
+    
+    // Default to 'E' (produce in same center) if no specific rule is found at all.
     const provisioningRule = ruleRow?.ClaseAprovisionamiento || 'E';
 
     // Step 2: Determine which production centers are allowed based on the rule.
@@ -285,7 +292,6 @@ function getPpiOptionsForProduct(
             allowedProductionCenters = [demandCenterId];
             break;
         case 'F': // Must be sourced from a different center (transfer).
-            // This logic can be expanded, for now, simple exclusion.
             allowedProductionCenters = allCenterIds.filter(id => id !== demandCenterId);
             break;
         case 'X': // Can be produced in any center.
