@@ -412,15 +412,18 @@ export const generateProductionPlan = async (
   
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
-    const dates = salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime());
-    const firstSaleDate = new Date(Math.min(...dates));
-    const lastSaleDate = new Date(Math.max(...dates));
-    let currentHorizonDate = new Date(firstSaleDate);
-    while(currentHorizonDate <= lastSaleDate) {
-        planningHorizon.push({ year: currentHorizonDate.getFullYear(), month: currentHorizonDate.getMonth() + 1 });
-        currentHorizonDate.setMonth(currentHorizonDate.getMonth() + 1);
-    }
+      const dates = salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime());
+      const firstSaleDate = new Date(Math.min(...dates));
+      const lastSaleDate = new Date(Math.max(...dates));
+      
+      let currentHorizonDate = new Date(firstSaleDate.getFullYear(), firstSaleDate.getMonth(), 1);
+
+      while(currentHorizonDate <= lastSaleDate) {
+          planningHorizon.push({ year: currentHorizonDate.getFullYear(), month: currentHorizonDate.getMonth() + 1 });
+          currentHorizonDate.setMonth(currentHorizonDate.getMonth() + 1);
+      }
   }
+
   auditLog.push(`Horizonte de planificación: ${planningHorizon.length} meses.`);
 
   const demandMap = new Map<string, { [monthKey: string]: number }>();

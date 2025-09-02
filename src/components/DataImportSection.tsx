@@ -45,14 +45,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: number, label: string}[],
-      meses: MONTH_NAMES.map((m, i) => ({ value: i + 1, label: m })),
       centros: [] as {value: string, label: string}[],
       etiquetas: [] as {value: string, label: string}[],
   });
 
   const [filters, setFilters] = useState({
       año: new Date().getFullYear().toString(),
-      mes: '',
       centro: '',
       etiqueta: ''
   });
@@ -146,7 +144,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       try {
           const apiFilters: { [key: string]: any } = {};
           if(filters.año) apiFilters['Año'] = Number(filters.año);
-          if(filters.mes) apiFilters['Mes'] = Number(filters.mes);
           if(filters.centro) apiFilters['Centro'] = filters.centro;
           if(filters.etiqueta) apiFilters['Etiqueta'] = filters.etiqueta;
 
@@ -287,13 +284,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Seleccione los filtros para consultar los datos. Luego, podrá previsualizar, seleccionar los grupos de interés y finalmente cargar los datos en el sistema.
+        Seleccione los filtros para consultar los datos. El sistema planificará desde el mes más temprano que encuentre en los datos cargados. Luego, podrá previsualizar, seleccionar los grupos de interés y finalmente cargar los datos en el sistema.
       </p>
 
       {/* --- Filtros --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end p-4 border rounded-lg bg-gray-50">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end p-4 border rounded-lg bg-gray-50">
         <SelectField label="Año" id="año" name="año" value={filters.año} onChange={handleFilterChange} options={filterOptions.años}/>
-        <SelectField label="Mes" id="mes" name="mes" value={filters.mes} onChange={handleFilterChange} options={filterOptions.meses}/>
         <SelectField label="Centro" id="centro" name="centro" value={filters.centro} onChange={handleFilterChange} options={filterOptions.centros}/>
         <SelectField label="Etiqueta" id="etiqueta" name="etiqueta" value={filters.etiqueta} onChange={handleFilterChange} options={filterOptions.etiquetas}/>
         
