@@ -122,12 +122,12 @@ export function processAndValidateAssemblyData(
         }
     });
     
+    // Use a map to correctly group data by product and center before creating settings
     const productCenterDataMap = new Map<string, TiempoEnsambleItem>();
     apiData.forEach(row => {
         const key = `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`;
-        if (!productCenterDataMap.has(key)) {
-            productCenterDataMap.set(key, row);
-        }
+        // Prioritize rows that seem more complete, but simple assignment is fine for now
+        productCenterDataMap.set(key, row);
 
         // Link material to the line that handles it
         const centerId = String(row.Centro).trim();
@@ -336,20 +336,6 @@ function getPpiOptionsForProduct(
 // ==========================================================================================
 // --- Daily Plan Generation Helpers ---
 // ==========================================================================================
-
-function getLineBottleneckRate(
-    ppi: ProductProcessInfo,
-    line: ProductionLine,
-    workstationDefs: WorkstationDefinition[],
-    auditLog: string[]
-): number {
-    if (ppi.totalManufacturingTimeHours > 0 && ppi.totalManufacturingTimeHours < Infinity) {
-        return 1 / ppi.totalManufacturingTimeHours;
-    }
-    return 0;
-}
-
-
 function sequenceDailyProduction(
     dailyGoals: DailyPlanContext[],
     line: ProductionLine,
@@ -359,32 +345,8 @@ function sequenceDailyProduction(
     if (dailyGoals.length <= 1) {
         return dailyGoals;
     }
-
-    const bottleneckRates = new Map<string, number>();
-    dailyGoals.forEach(goal => {
-        const ppi = { 
-            id: goal.ppiId,
-            productId: goal.productId,
-            productionLineId: goal.lineId,
-            workstationTimes: [], 
-            totalManufacturingTimeHours: goal.totalHours / goal.units
-        }
-        const rate = getLineBottleneckRate(ppi, line, constraints.workstationDefinitions, auditLog);
-        bottleneckRates.set(goal.ppiId, rate);
-    });
-
-    dailyGoals.sort((a, b) => {
-        const rateA = bottleneckRates.get(a.ppiId) || 0;
-        const rateB = bottleneckRates.get(b.ppiId) || 0;
-        
-        if (rateA !== rateB) {
-            return rateB - rateA;
-        }
-
-        return b.dailyGoal - a.dailyGoal;
-    });
-
-    return dailyGoals;
+    // Simple sort by remaining units, more complex logic (like bottleneck rate) can be added here.
+    return dailyGoals.sort((a, b) => b.remainingUnits - a.remainingUnits);
 }
 
 
@@ -618,7 +580,6 @@ export const generateProductionPlan = async (
 
   // --- Daily Plan Generation ---
   const dailyPlan: ProductionPlanItem[] = [];
-  const monthlyPlan: MonthlyProductionPlanItem[] = [];
   const inventoryState = new Map<string, number>(); // KEY: "productId---centerId"
   inventorySettings.forEach(inv => inventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock));
 
@@ -626,29 +587,20 @@ export const generateProductionPlan = async (
     const { year, month } = planningHorizon[monthIndex];
     const assignmentsForMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
     
-    const monthlyLineGoals = new Map<string, DailyPlanContext[]>();
+    // Group assignments by line to process them line by line
+    const assignmentsByLine = new Map<string, DailyPlanContext[]>();
     for (const assignment of assignmentsForMonth) {
-        if (!monthlyLineGoals.has(assignment.lineId)) {
-            monthlyLineGoals.set(assignment.lineId, []);
+        if (!assignmentsByLine.has(assignment.lineId)) {
+            assignmentsByLine.set(assignment.lineId, []);
         }
-        monthlyLineGoals.get(assignment.lineId)!.push({
+        assignmentsByLine.get(assignment.lineId)!.push({
             ...assignment,
             remainingUnits: assignment.units,
-            dailyGoal: 0 
+            dailyGoal: 0 // Will not be used in the new logic
         });
     }
 
     const daysInMonth = new Date(year, month, 0).getDate();
-    const workingDaysInMonth = Array.from({ length: daysInMonth }, (_, i) => getDayTypeForProduction(new Date(year, month - 1, i + 1), holidays))
-        .filter(type => type === 'Weekday' || type === 'Saturday' || type === 'ProductiveHoliday').length;
-
-    if (workingDaysInMonth === 0) continue;
-    
-    monthlyLineGoals.forEach(goals => {
-        goals.forEach(goal => {
-            goal.dailyGoal = goal.units / workingDaysInMonth;
-        });
-    });
 
     for (let day = 1; day <= daysInMonth; day++) {
         await new Promise(resolve => setTimeout(resolve, 0)); // Prevent blocking
@@ -661,20 +613,23 @@ export const generateProductionPlan = async (
         if (dayType === 'Weekday') hoursPerDay = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
         else hoursPerDay = shiftParameters.saturdayAndHolidayHours;
 
-        for (const [lineId, goals] of monthlyLineGoals.entries()) {
+        for (const [lineId, goals] of assignmentsByLine.entries()) {
             const line = activeLines.find(l => l.id === lineId)!;
             let hoursRemainingToday = hoursPerDay;
 
+            // Sort goals for the day. Can be simple or complex (e.g., by bottleneck rate)
             const sequencedGoals = sequenceDailyProduction(goals.filter(g => g.remainingUnits > 0.1), line, constraints, auditLog);
 
             for (const goal of sequencedGoals) {
                 if (hoursRemainingToday <= 0.01) break;
                 
-                const manufacturingTime = goal.totalHours / goal.units;
+                const manufacturingTime = goal.totalHours / goal.units; // Avg time per unit for this monthly assignment
                 if(manufacturingTime <= 0) continue;
 
+                // How many can we make with the time left today?
                 const maxUnitsInTime = hoursRemainingToday / manufacturingTime;
-                const unitsToProduce = Math.min(goal.remainingUnits, goal.dailyGoal, maxUnitsInTime);
+                // We make the minimum of what's left for the month, or what we can make today
+                const unitsToProduce = Math.min(goal.remainingUnits, maxUnitsInTime);
                 
                 if (unitsToProduce < 0.1) continue;
 
@@ -684,18 +639,42 @@ export const generateProductionPlan = async (
                 const demandCenterId = goal.demandCenterId;
                 const isTransfer = productionCenterId !== demandCenterId;
 
-                // Daily demand is the monthly demand spread over working days
+                // Update inventory in the production center
+                const prodStockKey = `${goal.productId}---${productionCenterId}`;
+                const currentProdStock = inventoryState.get(prodStockKey) || 0;
+                inventoryState.set(prodStockKey, currentProdStock + unitsToProduce);
+
+                // Simulate demand consumption at the end of the day for the demand center
+                const demandStockKey = `${goal.productId}---${demandCenterId}`;
+                const workingDaysInMonth = planningHorizon.map(h => new Date(h.year, h.month, 0).getDate())
+                    .reduce((sum, days, i) => {
+                        let workingDays = 0;
+                        for(let d=1; d<=days; d++) {
+                            const dayType = getDayTypeForProduction(new Date(planningHorizon[i].year, planningHorizon[i].month-1, d), holidays);
+                            if(dayType === 'Weekday' || dayType === 'Saturday' || dayType === 'ProductiveHoliday') workingDays++;
+                        }
+                        return sum + workingDays;
+                    }, 0);
+                
                 const demandOnDay = (salesData
                     .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === demandCenterId)
                     .reduce((sum, s) => sum + s.unidadesProyectado, 0)
                 ) / workingDaysInMonth;
-
-                // --- Corrected Inventory Logic ---
-                const stockKey = `${goal.productId}---${demandCenterId}`;
-                const initialStockOnDay = inventoryState.get(stockKey) || 0;
-                const finalStockOnDay = initialStockOnDay + unitsToProduce - demandOnDay;
-                inventoryState.set(stockKey, finalStockOnDay);
-                // End Corrected Logic
+                
+                let initialStockOnDay = 0;
+                // If it's a transfer, the stock arrives at the demand center
+                if (isTransfer) {
+                    const currentDemandStock = inventoryState.get(demandStockKey) || 0;
+                    inventoryState.set(demandStockKey, currentDemandStock + unitsToProduce);
+                    initialStockOnDay = currentDemandStock;
+                } else {
+                    // If no transfer, initial stock is what's in the production center before today's production
+                    initialStockOnDay = currentProdStock;
+                }
+                
+                const demandStockBeforeConsumption = inventoryState.get(demandStockKey) || 0;
+                const finalStockOnDay = demandStockBeforeConsumption - demandOnDay;
+                inventoryState.set(demandStockKey, finalStockOnDay);
 
                 const productName = productNamesMap.get(goal.productId) || goal.productId;
 
@@ -705,7 +684,9 @@ export const generateProductionPlan = async (
                     productId: goal.productId,
                     productName: productName,
                     quantityToProduce: unitsToProduce,
-                    demandOnDay, initialStockOnDay, finalStockOnDay,
+                    demandOnDay, 
+                    initialStockOnDay: demandStockBeforeConsumption,
+                    finalStockOnDay,
                     assignedLineId: line.id,
                     producingCenterId: productionCenterId,
                     estimatedLaborCost: (goal.laborCost / goal.units) * unitsToProduce, 
@@ -817,5 +798,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-    
