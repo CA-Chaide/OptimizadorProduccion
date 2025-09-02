@@ -5,11 +5,11 @@ import {
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
     PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem 
 } from '@/types/types';
-import { PlanIcon, DataImportIcon } from '@/constants/constants';
+import { PlanIcon, DataImportIcon, MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/OptimizationService';
-import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
+import { Loader2 } from 'lucide-react';
 
 interface FilterInputProps {
   label: string;
@@ -500,9 +500,10 @@ export const ProductionPlanSection: React.FC = () => {
   const renderWizard = () => {
     if (isLoading) {
         return (
-            <div className="text-center py-10">
-                <h3 className="text-lg font-medium text-gray-900">Analizando...</h3>
-                <p className="mt-1 text-sm text-gray-500">El motor de planificación está procesando los datos. Esto puede tardar unos momentos.</p>
+            <div className="text-center py-10 flex flex-col items-center justify-center h-full">
+                <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">Procesando información...</h3>
+                <p className="mt-1 text-sm text-gray-500">El motor de planificación está generando el plan diario. Esto puede tardar unos momentos.</p>
             </div>
         );
     }
