@@ -89,6 +89,7 @@ export const ProductionPlanSection: React.FC = () => {
   };
   
   const handleStartPlanning = async () => {
+    setPlanningStep('idle');
     const success = await handleGeneratePlan();
     if(success) {
       setPlanningStep('groups');
@@ -120,23 +121,19 @@ export const ProductionPlanSection: React.FC = () => {
     
     const { product, month, line, center, productCode } = appliedFilters;
     
-    // Performance: Normalize filters once outside the loop
     const productNameFilter = product.toLowerCase().trim();
     const productCodeFilter = productCode.toLowerCase().trim();
     const monthFilter = month.toLowerCase().trim();
     const lineFilter = line.toLowerCase().trim();
     const centerFilter = center.toLowerCase().trim();
 
-    // If no filters are applied, return the full plan
     if (!productNameFilter && !productCodeFilter && !monthFilter && !lineFilter && !centerFilter) {
       return dailyPlan;
     }
 
-    // Create a map for line names for faster lookup inside the loop
     const lineNamesMap = new Map(constraints.productionLines.map(l => [l.id, l.name]));
 
     return dailyPlan.filter(item => {
-        // Only apply a filter if its value is not an empty string
         if (monthFilter && !MONTH_NAMES[item.month - 1].toLowerCase().includes(monthFilter)) {
             return false;
         }
@@ -147,7 +144,7 @@ export const ProductionPlanSection: React.FC = () => {
         }
 
         const centerId = item.producingCenterId || '';
-        if (centerFilter && centerId.toLowerCase() !== centerFilter.toLowerCase()) {
+        if (centerFilter && !centerId.toLowerCase().includes(centerFilter)) {
             return false;
         }
 
@@ -155,7 +152,7 @@ export const ProductionPlanSection: React.FC = () => {
             return false;
         }
         
-        if (productCodeFilter && item.productId.toLowerCase() !== productCodeFilter) {
+        if (productCodeFilter && !item.productId.toLowerCase().includes(productCodeFilter)) {
             return false;
         }
 
@@ -164,10 +161,8 @@ export const ProductionPlanSection: React.FC = () => {
   }, [dailyPlan, appliedFilters, constraints.productionLines]);
 
   const monthlyInventoryFlow = useMemo(() => {
-    // This logic seems complex and might need re-evaluation based on exact requirements.
-    // For now, it's kept as is.
     const relevantCenter = filterInputs.center;
-    const relevantProcessType = (filterInputs as any).processType; // Assuming processType filter exists for this view
+    const relevantProcessType = (filterInputs as any).processType;
 
     if (!relevantCenter || !relevantProcessType) return null;
 
@@ -179,7 +174,7 @@ export const ProductionPlanSection: React.FC = () => {
 
     const relevantProductIds = new Set(
         (detailedProductionPlan?.planningGroupDetails || [])
-            .filter(d => relevantLineIds.has(d.pairKey.split('---')[1])) // This logic is fragile
+            .filter(d => relevantLineIds.has(d.pairKey.split('---')[1]))
             .map(d => d.productId)
     );
 
@@ -422,7 +417,7 @@ export const ProductionPlanSection: React.FC = () => {
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Final</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Línea</th>
-                <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro Prod.</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Horas Req.</th>
               </tr>
             </thead>

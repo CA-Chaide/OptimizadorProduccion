@@ -122,7 +122,6 @@ export function processAndValidateAssemblyData(
         }
     });
     
-    // This map will group API data by product-center to correctly extract inventory settings
     const productCenterDataMap = new Map<string, TiempoEnsambleItem>();
     apiData.forEach(row => {
         const key = `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`;
@@ -163,7 +162,7 @@ export function processAndValidateAssemblyData(
         productionLines: Array.from(discoveredLines.values()),
         workstationDefinitions: Array.from(discoveredWorkstations.values()),
         productProcessInfos: [], // This will be generated dynamically inside the planner
-        inventorySettings: inventorySettings, // Use the correctly populated inventory settings
+        inventorySettings: inventorySettings, 
     };
 
     return {
@@ -258,7 +257,6 @@ function getPpiOptionsForProduct(
     const { productionLines, workstationDefinitions } = constraints;
     const ppiCandidates: ProductProcessInfo[] = [];
 
-    // Find the provisioning rule for the product in the demanding center.
     const ruleRow = apiData.find(row => 
         normalizeMaterialCode(row.CodMaterial) === productId && 
         String(row.Centro).trim() === demandCenterId
@@ -274,11 +272,9 @@ function getPpiOptionsForProduct(
             allowedProductionCenters = [demandCenterId];
             break;
         case 'F': // Must be sourced from a different center.
-            // Specific business rule: if demand is at 2000, source from 1000
             if (demandCenterId === '2000') {
                 allowedProductionCenters = ['1000'];
             } else {
-                 // General case for F: any center EXCEPT the demanding one.
                 allowedProductionCenters = allCenterIds.filter(id => id !== demandCenterId);
             }
             break;
@@ -288,7 +284,6 @@ function getPpiOptionsForProduct(
             break;
     }
 
-    // Find all lines in the allowed centers that can produce this product
     const allCapableLines = productionLines.filter(line => 
         allowedProductionCenters.includes(line.workCenterId) &&
         apiData.some(row => 
@@ -332,7 +327,6 @@ function getPpiOptionsForProduct(
         }
     });
 
-    // Sort by manufacturing time (most efficient first)
     ppiCandidates.sort((a, b) => a.totalManufacturingTimeHours - b.totalManufacturingTimeHours);
     
     return ppiCandidates;
@@ -340,7 +334,7 @@ function getPpiOptionsForProduct(
 
 
 // ==========================================================================================
-// --- PASO 4: Daily Plan Generation (Rebuilt Logic) ---
+// --- Daily Plan Generation Helpers ---
 // ==========================================================================================
 
 function getLineBottleneckRate(
@@ -368,11 +362,11 @@ function sequenceDailyProduction(
 
     const bottleneckRates = new Map<string, number>();
     dailyGoals.forEach(goal => {
-        const ppi = { // Reconstruct a temporary PPI for the function
+        const ppi = { 
             id: goal.ppiId,
             productId: goal.productId,
             productionLineId: goal.lineId,
-            workstationTimes: [], // Not needed for this calc
+            workstationTimes: [], 
             totalManufacturingTimeHours: goal.totalHours / goal.units
         }
         const rate = getLineBottleneckRate(ppi, line, constraints.workstationDefinitions, auditLog);
@@ -397,7 +391,7 @@ function sequenceDailyProduction(
 export const generateProductionPlan = async (
   salesData: SalesDataRow[],
   constraints: AppConstraints,
-  apiData: TiempoEnsambleItem[] // Pass the raw assembly data here
+  apiData: TiempoEnsambleItem[] 
 ): Promise<DetailedProductionPlan> => {
   const auditLog: string[] = [];
   const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
@@ -407,16 +401,13 @@ export const generateProductionPlan = async (
       return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
 
-  // --- Start of Product Name Mapping Fix ---
   const productNamesMap = new Map<string, string>();
   salesData.forEach(s => {
       const normalizedProductId = normalizeMaterialCode(s.código);
-      // We store the name only if it's not already there, or if the new one is more descriptive
       if (!productNamesMap.has(normalizedProductId) || !productNamesMap.get(normalizedProductId)) {
            productNamesMap.set(normalizedProductId, s.descripciónMaterial || s.etiqueta || normalizedProductId);
       }
   });
-  // --- End of Product Name Mapping Fix ---
   
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
@@ -456,12 +447,13 @@ export const generateProductionPlan = async (
           return;
       }
       
+      const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
+
       Object.entries(monthlyDemands).forEach(([monthKey, demand]) => {
           if (demand > 0) {
               const [yearStr, monthStr] = monthKey.split('-');
               const year = parseInt(yearStr);
               const month = parseInt(monthStr);
-              const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
               
               planningGroupDetails.push({
                   pairKey,
@@ -551,7 +543,6 @@ export const generateProductionPlan = async (
   });
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
-    // Unblock UI thread for better UX
     if (monthIndex % 2 === 0) { 
         await new Promise(resolve => setTimeout(resolve, 0));
     }
@@ -608,7 +599,7 @@ export const generateProductionPlan = async (
                 lineName: line.name,
                 ppiId: ppi.id,
                 productId,
-                centerName: line.workCenterId, // The production happens at the line's center
+                centerName: line.workCenterId, 
                 units: unitsToMake,
                 originalNeedUnits: originalUnitsToMake,
                 advancedUnits: advancedUnitsToMake,
@@ -627,14 +618,13 @@ export const generateProductionPlan = async (
   // --- Daily Plan Generation ---
   const dailyPlan: ProductionPlanItem[] = [];
   const monthlyPlan: MonthlyProductionPlanItem[] = [];
-  const inventoryState = new Map<string, number>(); // Key: "productId---centerId"
+  const inventoryState = new Map<string, number>(); 
   inventorySettings.forEach(inv => inventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock));
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
     const assignmentsForMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
     
-    // Group assignments by line to prepare for daily planning
     const monthlyLineGoals = new Map<string, DailyPlanContext[]>();
     for (const assignment of assignmentsForMonth) {
         if (!monthlyLineGoals.has(assignment.lineId)) {
@@ -643,7 +633,7 @@ export const generateProductionPlan = async (
         monthlyLineGoals.get(assignment.lineId)!.push({
             ...assignment,
             remainingUnits: assignment.units,
-            dailyGoal: 0 // Will be calculated below
+            dailyGoal: 0 
         });
     }
 
@@ -653,7 +643,6 @@ export const generateProductionPlan = async (
 
     if (workingDaysInMonth === 0) continue;
     
-    // Set proportional daily goal
     monthlyLineGoals.forEach(goals => {
         goals.forEach(goal => {
             goal.dailyGoal = goal.units / workingDaysInMonth;
@@ -661,7 +650,6 @@ export const generateProductionPlan = async (
     });
 
     for (let day = 1; day <= daysInMonth; day++) {
-        // Unblock UI thread to prevent freezing
         if (day % 5 === 0) {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
@@ -696,40 +684,19 @@ export const generateProductionPlan = async (
                 const demandCenterInfo = planningGroupDetails.find(d => d.productId === goal.productId);
                 const demandCenterId = demandCenterInfo?.centerName || goal.centerName;
 
-                // --- Corrected Inventory Logic ---
-                // Production happens at the line's center
                 const prodCenterStockKey = `${goal.productId}---${goal.centerName}`;
                 let initialStockOnDay = inventoryState.get(prodCenterStockKey) || 0;
-                
-                // Demand is always fulfilled from the demand center
-                const demandCenterStockKey = `${goal.productId}---${demandCenterId}`;
                 
                 const demandOnDay = (salesData
                     .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === goal.productId && String(s.centro).trim() === demandCenterId)
                     .reduce((sum, s) => sum + s.unidadesProyectado, 0)
                 ) / workingDaysInMonth;
                 
-                // Update stock based on production
-                let stockAfterProduction = initialStockOnDay + unitsToProduce;
-
-                let finalStockOnDay;
+                const stockAfterProduction = initialStockOnDay + unitsToProduce;
+                const stockAfterDemand = stockAfterProduction - demandOnDay;
                 
-                // If demand is in a different center, it's a transfer
-                if (demandCenterId !== goal.centerName) {
-                    // Update production center stock (decrease)
-                    inventoryState.set(prodCenterStockKey, stockAfterProduction);
-
-                    // Update demand center stock (increase by production, decrease by demand)
-                    const initialDemandCenterStock = inventoryState.get(demandCenterStockKey) || 0;
-                    finalStockOnDay = initialDemandCenterStock + unitsToProduce - demandOnDay;
-                    inventoryState.set(demandCenterStockKey, finalStockOnDay);
-
-                } else {
-                    // Demand and production in the same center
-                    finalStockOnDay = stockAfterProduction - demandOnDay;
-                    inventoryState.set(prodCenterStockKey, finalStockOnDay);
-                }
-
+                inventoryState.set(prodCenterStockKey, stockAfterDemand);
+                const finalStockOnDay = stockAfterDemand;
                 
                 const productName = productNamesMap.get(goal.productId) || goal.productId;
 
@@ -790,7 +757,6 @@ export const exportDailyPlanToExcel = (
 ): void => {
   if (!plan) return;
 
-  // --- Sheet 1: Daily Plan ---
   const dailyDataToExport = plan.map(item => ({
     'Año': item.year,
     'Mes': MONTH_NAMES[item.month - 1],
@@ -802,7 +768,7 @@ export const exportDailyPlanToExcel = (
     'Producción Diaria': Math.round(item.quantityToProduce),
     'Stock Final': Math.round(item.finalStockOnDay),
     'Centro Prod.': item.producingCenterId,
-    'Línea': item.assignedLineId,
+    'Línea': constraints.productionLines.find(l => l.id === item.assignedLineId)?.name || item.assignedLineId,
     'Horas fabricación': parseFloat(item.hoursWorked.toFixed(2)),
     'Costo Labor Est.': parseFloat(item.estimatedLaborCost.toFixed(2)),
     'Estado': item.status,
@@ -812,7 +778,7 @@ export const exportDailyPlanToExcel = (
   const dailyWorksheet = XLSX.utils.json_to_sheet(dailyDataToExport);
   const dailyColWidths = [
     { wch: 6 }, { wch: 10 }, { wch: 5 }, { wch: 15 }, { wch: 30 }, 
-    { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, 
+    { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, 
     { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 50 },
   ];
   dailyWorksheet['!cols'] = dailyColWidths;
@@ -858,4 +824,5 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
