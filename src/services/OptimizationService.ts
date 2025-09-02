@@ -123,36 +123,49 @@ export function processAndValidateAssemblyData(
         }
     });
     
-    const productCenterDataMap = new Map<string, TiempoEnsambleItem>();
-    apiData.forEach(row => {
-        const key = `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`;
-        // Prioritize rows that seem more complete, but simple assignment is fine for now
-        productCenterDataMap.set(key, row);
-
-        const centerId = String(row.Centro).trim();
-        const lineName = String(row.Linea).trim();
-        const lineId = `pl---${centerId}---${lineName}`;
-        const line = discoveredLines.get(lineId);
-        if (line && !line.materialsHandled.includes(normalizeMaterialCode(row.CodMaterial))) {
-            line.materialsHandled.push(normalizeMaterialCode(row.CodMaterial));
-        }
-    });
+    // Create a set of unique product-center pairs from the API data.
+    const uniqueProductCenterPairs = new Set(
+        apiData.map(row => `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`)
+    );
 
     const inventorySettings: InventorySetting[] = [];
-    productCenterDataMap.forEach((row, key) => {
-        const [productId, centerId] = key.split('---');
-        inventorySettings.push({
-            id: key,
-            itemId: productId,
-            itemName: productNamesMap.get(productId) || productId,
-            centerId: centerId,
-            isRawMaterial: false,
-            minStock: parseInt(String(row.StockSeguridad || 0), 10),
-            maxStock: parseInt(String(row.StockMaximo || 0), 10),
-            currentStock: parseInt(String(row.StockActual || 0), 10),
+    
+    uniqueProductCenterPairs.forEach(pairKey => {
+        const [productId, centerId] = pairKey.split('---');
+        
+        // Find all rows for this specific pair
+        const rowsForPair = apiData.filter(row => 
+            normalizeMaterialCode(row.CodMaterial) === productId && String(row.Centro).trim() === centerId
+        );
+        
+        // Find the best row to get inventory data from (e.g., one that has stock info)
+        const inventoryDataSource = 
+            rowsForPair.find(r => r.StockSeguridad || r.StockMaximo) || 
+            rowsForPair[0];
+
+        if (inventoryDataSource) {
+             inventorySettings.push({
+                id: pairKey,
+                itemId: productId,
+                itemName: productNamesMap.get(productId) || productId,
+                centerId: centerId,
+                isRawMaterial: false,
+                minStock: parseInt(String(inventoryDataSource.StockSeguridad || 0), 10),
+                maxStock: parseInt(String(inventoryDataSource.StockMaximo || 0), 10),
+                currentStock: parseInt(String(inventoryDataSource.StockActual || 0), 10),
+            });
+        }
+
+        // Add product to materials handled by the line
+        rowsForPair.forEach(row => {
+            const lineName = String(row.Linea).trim();
+            const lineId = `pl---${centerId}---${lineName}`;
+            const line = discoveredLines.get(lineId);
+            if (line && !line.materialsHandled.includes(productId)) {
+                line.materialsHandled.push(productId);
+            }
         });
     });
-
 
     // --- 4. Assemble the new constraints object ---
     const newConstraints: AppConstraints = {
@@ -272,12 +285,16 @@ function getPpiOptionsForProduct(
     // First, try to find the rule for the specific demand center.
     let ruleRow = apiData.find(row => 
         normalizeMaterialCode(row.CodMaterial) === productId && 
-        String(row.Centro).trim() === demandCenterId
+        String(row.Centro).trim() === demandCenterId &&
+        row.ClaseAprovisionamiento
     );
 
     // If not found, find any rule for that product in any center.
     if (!ruleRow) {
-        ruleRow = apiData.find(row => normalizeMaterialCode(row.CodMaterial) === productId);
+        ruleRow = apiData.find(row => 
+            normalizeMaterialCode(row.CodMaterial) === productId && 
+            row.ClaseAprovisionamiento
+        );
     }
     
     // Default to 'E' (produce in same center) if no specific rule is found at all.
@@ -844,5 +861,3 @@ export const generateTacticalPlan = ( request: TacticalRequest, context: any ): 
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
 
-
-    
