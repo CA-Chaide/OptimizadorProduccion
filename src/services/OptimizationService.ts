@@ -415,11 +415,12 @@ export const generateProductionPlan = async (
         }
     });
   
+  // --- Robust Planning Horizon Calculation ---
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
-      const dates = salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime());
-      const firstSaleDate = new Date(Math.min(...dates));
-      const lastSaleDate = new Date(Math.max(...dates));
+      const allDates = salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime());
+      const firstSaleDate = new Date(Math.min(...allDates));
+      const lastSaleDate = new Date(Math.max(...allDates));
       
       let currentHorizonDate = new Date(firstSaleDate.getFullYear(), firstSaleDate.getMonth(), 1);
 
@@ -428,6 +429,7 @@ export const generateProductionPlan = async (
           currentHorizonDate.setMonth(currentHorizonDate.getMonth() + 1);
       }
   }
+  // --- End Horizon Calculation ---
 
   auditLog.push(`Horizonte de planificación: ${planningHorizon.length} meses.`);
 
