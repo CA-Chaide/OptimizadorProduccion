@@ -93,9 +93,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   
   const filteredData = useMemo(() => {
     if (allFetchedData.length === 0) return [];
-    const startMonth = filters.mes ? parseInt(filters.mes, 10) : 1;
-    return allFetchedData.filter(row => row.mes >= startMonth);
-  }, [allFetchedData, filters.mes]);
+    return allFetchedData.filter(row => 
+      (filters.año ? row.año === parseInt(filters.año, 10) : true) &&
+      (filters.centro ? row.centro === filters.centro : true) &&
+      (filters.etiqueta ? row.etiqueta === filters.etiqueta : true)
+    );
+  }, [allFetchedData, filters.año, filters.centro, filters.etiqueta]);
 
 
   const uniqueCentersInFetchedData = useMemo(() => {
@@ -160,6 +163,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           
           if (dataFromApi.length === 0) {
               addNotification('warning', 'La API no devolvió datos para los filtros seleccionados.');
+              setIsProcessing(false);
               return;
           }
 
@@ -191,8 +195,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   }, [aggregatedData]);
 
   const handleAcceptData = () => {
-    if (filteredData.length === 0) {
-        addNotification('error', 'No hay datos para cargar. Por favor, genere una previsualización primero.');
+    const dataForPlanning = allFetchedData.filter(row => {
+        const startMonth = filters.mes ? parseInt(filters.mes, 10) : 1;
+        return row.mes >= startMonth;
+    });
+
+    if (dataForPlanning.length === 0) {
+        addNotification('error', 'No hay datos para cargar. Por favor, genere una previsualización y asegúrese de que el mes de inicio sea válido.');
         return;
     }
     if (selectedGroups.size === 0) {
@@ -200,7 +209,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         return;
     }
 
-    const dataToLoad = filteredData.filter(row => {
+    const dataToLoad = dataForPlanning.filter(row => {
         let key: string;
         switch (groupBy) {
             case 'sector': key = row.sector || 'Sin Sector'; break;
