@@ -228,6 +228,7 @@ export interface ProductionPlanItem {
   finalStockOnDay: number; // New: Stock at the end of the day
   assignedLineId?: string; 
   producingCenterId?: string; 
+  demandCenterId?: string; // New: To track where the demand originates
   shiftId?: string; 
   estimatedLaborCost: number;
   hoursWorked: number; // Renamed from estimatedManufacturingTimeHours for clarity
@@ -486,5 +487,3 @@ export interface TiempoEnsambleItem {
 
 // Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';
-
-    
