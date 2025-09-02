@@ -218,13 +218,14 @@ const calculateEffectiveManufacturingTime = (
     apiData: TiempoEnsambleItem[],
     workstationDefs: WorkstationDefinition[],
 ): number => {
+    let totalTime = 0;
     
-    let maxTime = 0;
-    
+    // Iterate over all workstation definitions required by the line
     for (const assignedWorkstation of line.assignedWorkstations) {
         const workstationDef = workstationDefs.find(wd => wd.id === assignedWorkstation.definitionId);
-        if(!workstationDef) continue;
+        if (!workstationDef) continue;
         
+        // Find the specific time for this product-line-workstation combination in the API data
         const apiRow = apiData.find(d => 
             normalizeMaterialCode(d.CodMaterial) === productId &&
             String(d.Centro).trim() === line.workCenterId &&
@@ -232,16 +233,17 @@ const calculateEffectiveManufacturingTime = (
             String(d.PuestoTrabajo).trim() === workstationDef.name
         );
         
+        // If a time is found, add it to the total for the line.
+        // This assumes a sequential process where times add up.
         if (apiRow && apiRow.Tiempo > 0) {
-            const timeHours = apiRow.Tiempo / 60;
-            const effectiveTime = timeHours / assignedWorkstation.quantity;
-            if(effectiveTime > maxTime) {
-                maxTime = effectiveTime;
-            }
+            const timeHours = apiRow.Tiempo / 60; // Convert minutes to hours
+            totalTime += timeHours;
         }
     }
 
-    return maxTime > 0 ? maxTime : Infinity;
+    // If no valid time was found for any workstation on the line, return Infinity
+    // to indicate this line cannot produce this product.
+    return totalTime > 0 ? totalTime : Infinity;
 };
 
 
