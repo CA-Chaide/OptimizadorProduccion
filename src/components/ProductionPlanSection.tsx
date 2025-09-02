@@ -498,6 +498,15 @@ export const ProductionPlanSection: React.FC = () => {
   );
 
   const renderWizard = () => {
+    if (isLoading) {
+        return (
+            <div className="text-center py-10">
+                <h3 className="text-lg font-medium text-gray-900">Analizando...</h3>
+                <p className="mt-1 text-sm text-gray-500">El motor de planificación está procesando los datos. Esto puede tardar unos momentos.</p>
+            </div>
+        );
+    }
+
     switch (planningStep) {
         case 'idle':
             return (
@@ -571,7 +580,7 @@ export const ProductionPlanSection: React.FC = () => {
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-lg min-h-[60vh]">
-        {isLoading ? <div className="text-center py-10">Cargando y procesando...</div> : renderWizard()}
+        {renderWizard()}
       </div>
 
        {auditLog && auditLog.length > 0 && planningStep !== 'finalPlan' &&
