@@ -639,7 +639,7 @@ export const generateProductionPlan = async (
                 if (!assignmentsByLine.has(assignment.lineId)) {
                     assignmentsByLine.set(assignment.lineId, []);
                 }
-                assignmentsByLine.get(assignment.id)!.push(assignment);
+                assignmentsByLine.get(assignment.lineId)!.push(assignment);
             }
         }
 
@@ -819,3 +819,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
+    
