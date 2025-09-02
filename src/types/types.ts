@@ -476,7 +476,7 @@ export interface TiempoEnsambleItem {
   Centro: string;
   Linea: string;
   PuestoTrabajo: string;
-  tiempo: number;
+  Tiempo: number;
   StockActual: number;
   StockSeguridad: number;
   StockMaximo: number;
@@ -489,5 +489,3 @@ export interface TiempoEnsambleItem {
 
 // Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';
-
-    

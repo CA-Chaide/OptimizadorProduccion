@@ -42,7 +42,7 @@ export function processAndValidateAssemblyData(
         if (!row.Centro) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Centro'.`);
         if (!row.Linea) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Linea'.`);
         if (!row.PuestoTrabajo) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'PuestoTrabajo'.`);
-        if (row.tiempo === null || row.tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'tiempo'.`);
+        if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
     });
 
     if (dataCompletenessErrors.length > 0) {
@@ -232,8 +232,8 @@ const calculateEffectiveManufacturingTime = (
             String(d.PuestoTrabajo).trim() === workstationDef.name
         );
         
-        if (apiRow && apiRow.tiempo > 0) {
-            const timeHours = apiRow.tiempo / 60;
+        if (apiRow && apiRow.Tiempo > 0) {
+            const timeHours = apiRow.Tiempo / 60;
             const effectiveTime = timeHours / assignedWorkstation.quantity;
             if(effectiveTime > maxTime) {
                 maxTime = effectiveTime;
@@ -311,7 +311,7 @@ function getPpiOptionsForProduct(
                 );
                 return {
                     workstationDefinitionId: as.definitionId,
-                    timeHours: (apiRow?.tiempo || 0) / 60
+                    timeHours: (apiRow?.Tiempo || 0) / 60
                 };
             }).filter(wt => wt.timeHours > 0);
 
@@ -596,25 +596,20 @@ export const generateProductionPlan = async (
       workingDaysByMonth.set(monthKey, count);
   });
   
-  const monthlyDemandByCenterProduct = new Map<string, number>();
+  const dailyDemand = new Map<string, number>(); // Key: "YYYY-M-D---productId---centerId"
   salesData.forEach(s => {
-      const key = `${s.año}-${s.mes}---${normalizeMaterialCode(s.código)}---${String(s.centro).trim()}`;
-      monthlyDemandByCenterProduct.set(key, (monthlyDemandByCenterProduct.get(key) || 0) + s.unidadesProyectado);
-  });
+    const monthKey = `${s.año}-${s.mes}`;
+    const workingDays = workingDaysByMonth.get(monthKey);
+    if (!workingDays || workingDays === 0) return;
+    const demandPerDay = s.unidadesProyectado / workingDays;
 
-  const dailyDemand = new Map<string, number>(); // Key: "YYYY-MM-DD---productId---centerId"
-  monthlyDemandByCenterProduct.forEach((totalDemand, key) => {
-      const [monthKey, productId, centerId] = key.split('---');
-      const workingDays = workingDaysByMonth.get(monthKey) || 1;
-      const demandPerDay = totalDemand / workingDays;
-      const [yearStr, monthStr] = monthKey.split('-');
-      for (let day = 1; day <= new Date(parseInt(yearStr), parseInt(monthStr), 0).getDate(); day++) {
-          const d = new Date(parseInt(yearStr), parseInt(monthStr)-1, day);
-          if (getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday') {
-              const dayKey = `${yearStr}-${monthStr}-${day}---${productId}---${centerId}`;
-              dailyDemand.set(dayKey, demandPerDay);
-          }
-      }
+    for (let day = 1; day <= new Date(s.año, s.mes, 0).getDate(); day++) {
+        const d = new Date(s.año, s.mes - 1, day);
+        if (getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday') {
+            const dayKey = `${s.año}-${s.mes}-${day}---${normalizeMaterialCode(s.código)}---${String(s.centro).trim()}`;
+            dailyDemand.set(dayKey, (dailyDemand.get(dayKey) || 0) + demandPerDay);
+        }
+    }
   });
 
 
@@ -644,7 +639,7 @@ export const generateProductionPlan = async (
                 if (!assignmentsByLine.has(assignment.lineId)) {
                     assignmentsByLine.set(assignment.lineId, []);
                 }
-                assignmentsByLine.get(assignment.lineId)!.push(assignment);
+                assignmentsByLine.get(assignment.id)!.push(assignment);
             }
         }
 
@@ -652,7 +647,6 @@ export const generateProductionPlan = async (
             const line = activeLines.find(l => l.id === lineId)!;
             let hoursRemainingToday = hoursPerDay;
 
-            // Simple sequencing: by remaining units. More complex logic can be added here.
             const sequencedAssignments = assignments.sort((a,b) => (remainingUnitsToProduce.get(b.id) || 0) - (remainingUnitsToProduce.get(a.id) || 0));
 
             for (const assignment of sequencedAssignments) {
@@ -673,25 +667,26 @@ export const generateProductionPlan = async (
                 
                 const { productId, demandCenterId, centerName: productionCenterId } = assignment;
                 const isTransfer = productionCenterId !== demandCenterId;
-
-                const prodStockKey = `${productId}---${productionCenterId}`;
-                const demandStockKey = `${productId}---${demandCenterId}`;
-
                 
-                const stockBeforeProdInProdCenter = inventoryState.get(prodStockKey) || 0;
-                inventoryState.set(prodStockKey, stockBeforeProdInProdCenter + unitsToProduce);
-
+                const prodStockKey = `${productId}---${productionCenterId}`;
+                const initialStockInProdCenter = inventoryState.get(prodStockKey) || 0;
+                
+                let stockInDemandCenterBeforeDemand = 0;
                 if (isTransfer) {
-                    inventoryState.set(prodStockKey, (inventoryState.get(prodStockKey) || 0) - unitsToProduce);
-                    inventoryState.set(demandStockKey, (inventoryState.get(demandStockKey) || 0) + unitsToProduce);
+                   inventoryState.set(prodStockKey, initialStockInProdCenter - unitsToProduce);
+                   const demandStockKey = `${productId}---${demandCenterId}`;
+                   stockInDemandCenterBeforeDemand = (inventoryState.get(demandStockKey) || 0) + unitsToProduce;
+                } else {
+                   stockInDemandCenterBeforeDemand = initialStockInProdCenter;
                 }
-
+                
                 const demandKey = `${year}-${month}-${day}---${productId}---${demandCenterId}`;
                 const demandOnDay = dailyDemand.get(demandKey) || 0;
+                const finalStockOnDay = stockInDemandCenterBeforeDemand - demandOnDay;
 
-                const initialStockOnDay = inventoryState.get(demandStockKey) || 0;
-                const finalStockOnDay = initialStockOnDay - demandOnDay;
+                const demandStockKey = `${productId}---${demandCenterId}`;
                 inventoryState.set(demandStockKey, finalStockOnDay);
+                
 
                 dailyPlan.push({
                     id: `${year}-${month}-${day}-${productId}-${line.id}`,
@@ -700,10 +695,11 @@ export const generateProductionPlan = async (
                     productName: productNamesMap.get(productId) || productId,
                     quantityToProduce: unitsToProduce,
                     demandOnDay: demandOnDay, 
-                    initialStockOnDay: initialStockOnDay,
+                    initialStockOnDay: stockInDemandCenterBeforeDemand,
                     finalStockOnDay: finalStockOnDay,
                     assignedLineId: line.id,
                     producingCenterId: productionCenterId,
+                    demandCenterId: demandCenterId,
                     estimatedLaborCost: (assignment.laborCost / assignment.units) * unitsToProduce, 
                     hoursWorked: hoursConsumed,
                     status: isTransfer ? 'Transferencia' : 'Planificado',
@@ -721,7 +717,7 @@ export const generateProductionPlan = async (
         for (const [key, demand] of dailyDemand.entries()) {
             const [dateKey, productId, centerId] = key.split('---');
             if (dateKey === `${year}-${month}-${day}`) {
-                 if (!dailyPlan.some(p => p.year === year && p.month === month && p.day === day && p.productId === productId && (p.demandCenterId === centerId || p.producingCenterId === centerId))) {
+                 if (!dailyPlan.some(p => p.year === year && p.month === month && p.day === day && p.productId === productId && (p.demandCenterId === centerId))) {
                     const stockKey = `${productId}---${centerId}`;
                     const initialStock = inventoryState.get(stockKey) || 0;
                     inventoryState.set(stockKey, initialStock - demand);
