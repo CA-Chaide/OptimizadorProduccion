@@ -40,7 +40,7 @@ const SelectField: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { la
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [allFetchedData, setAllFetchedData] = useState<SalesDataRow[]>([]);
+  const [previewData, setPreviewData] = useState<SalesDataRow[]>([]);
   const { addNotification } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
@@ -91,27 +91,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     loadFilterOptions();
   }, [addNotification]);
   
-  const filteredData = useMemo(() => {
-    if (allFetchedData.length === 0) return [];
-    return allFetchedData.filter(row => 
-      (filters.año ? row.año === parseInt(filters.año, 10) : true) &&
-      (filters.centro ? row.centro === filters.centro : true) &&
-      (filters.etiqueta ? row.etiqueta === filters.etiqueta : true)
-    );
-  }, [allFetchedData, filters.año, filters.centro, filters.etiqueta]);
-
-
-  const uniqueCentersInFetchedData = useMemo(() => {
-    if (filteredData.length === 0) return [];
-    const centers = new Set(filteredData.map(row => row.centro));
+  const uniqueCentersInPreviewData = useMemo(() => {
+    if (previewData.length === 0) return [];
+    const centers = new Set(previewData.map(row => row.centro));
     return Array.from(centers).sort();
-  }, [filteredData]);
+  }, [previewData]);
 
   const aggregatedData = useMemo<AggregatedData | null>(() => {
-    if (filteredData.length === 0) return null;
+    if (previewData.length === 0) return null;
 
     const aggregationResult: AggregatedData = {};
-    filteredData.forEach(row => {
+    previewData.forEach(row => {
         let key: string;
         switch (groupBy) {
             case 'sector':
@@ -140,17 +130,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         aggregationResult[key].unitsByCenter[centerName] += row.unidadesProyectado;
     });
     return aggregationResult;
-  }, [filteredData, groupBy]);
+  }, [previewData, groupBy]);
 
   const handlePreviewData = useCallback(async () => {
       setIsProcessing(true);
-      setAllFetchedData([]);
+      setPreviewData([]);
       setSelectedGroups(new Set()); 
-      addNotification('info', `Consultando datos desde la API...`);
+      addNotification('info', `Consultando datos de previsualización desde la API...`);
 
       try {
           const apiFilters: { [key: string]: any } = {};
           if(filters.año) apiFilters['Año'] = Number(filters.año);
+          if(filters.mes) apiFilters['Mes'] = Number(filters.mes);
           if(filters.centro) apiFilters['Centro'] = filters.centro;
           if(filters.etiqueta) apiFilters['Etiqueta'] = filters.etiqueta;
 
@@ -171,18 +162,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               id: `row-${Date.now()}-${index}`,
               año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
               etiqueta: item.Etiqueta || 'Sin Etiqueta', 
-              código: normalizeMaterialCode(item.CodMaterial), // <-- NORMALIZATION HERE
+              código: normalizeMaterialCode(item.CodMaterial),
               centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
               dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
               familia: item.Familia, marca: item.Marca, lineaProduccion: '',
           }));
           
-          setAllFetchedData(mappedData);
-          addNotification('success', `Se han pre-cargado ${mappedData.length} registros. Seleccione los grupos y acepte para continuar.`);
+          setPreviewData(mappedData);
+          addNotification('success', `Se han pre-cargado ${mappedData.length} registros para previsualización.`);
 
       } catch (error) {
-          console.error("Error fetching from API:", error);
-          addNotification('error', `Error al cargar datos desde la API: ${(error as Error).message}`);
+          console.error("Error fetching preview data from API:", error);
+          addNotification('error', `Error al cargar datos de previsualización: ${(error as Error).message}`);
       } finally {
           setIsProcessing(false);
       }
@@ -194,35 +185,62 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   }, [aggregatedData]);
 
-  const handleAcceptData = () => {
-    const dataForPlanning = allFetchedData.filter(row => {
+  const handleAcceptAndLoadData = async () => {
+    setIsProcessing(true);
+    addNotification('info', `Cargando datos completos para planificación...`);
+    try {
         const startMonth = filters.mes ? parseInt(filters.mes, 10) : 1;
-        return row.mes >= startMonth;
-    });
 
-    if (dataForPlanning.length === 0) {
-        addNotification('error', 'No hay datos para cargar. Por favor, genere una previsualización y asegúrese de que el mes de inicio sea válido.');
-        return;
-    }
-    if (selectedGroups.size === 0) {
-        addNotification('warning', 'Debe seleccionar al menos un grupo para cargar.');
-        return;
-    }
+        // Perform a new, broader query for the final data load
+        const finalApiFilters: { [key: string]: any } = {
+            'Año': Number(filters.año)
+        };
 
-    const dataToLoad = dataForPlanning.filter(row => {
-        let key: string;
-        switch (groupBy) {
-            case 'sector': key = row.sector || 'Sin Sector'; break;
-            case 'etiqueta': key = row.etiqueta || 'Sin Etiqueta'; break;
-            case 'material': key = `${row.código} - ${row.descripciónMaterial}`; break;
-            default: key = 'Sin Asignar';
+        const allYearData: PresupuestoItem[] = await queryApi({
+            source: 'Presupuesto',
+            operation: 'get_data',
+            filters: finalApiFilters,
+            pagination: { limit: 50000 }
+        });
+
+        if (allYearData.length === 0) {
+            addNotification('error', 'No se encontraron datos para el año seleccionado.');
+            setIsProcessing(false);
+            return;
         }
-        return selectedGroups.has(key);
-    });
-    
-    onDataImported(dataToLoad);
-    setAllFetchedData([]);
-    setSelectedGroups(new Set());
+
+        const mappedData: SalesDataRow[] = allYearData.map((item, index) => ({
+            id: `row-final-${Date.now()}-${index}`,
+            año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+            etiqueta: item.Etiqueta || 'Sin Etiqueta', 
+            código: normalizeMaterialCode(item.CodMaterial),
+            centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+            dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
+            familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+        }));
+
+        // Filter the complete data from the start month onwards
+        const dataForPlanning = mappedData.filter(row => {
+            const rowDate = new Date(row.año, row.mes - 1);
+            const startDate = new Date(Number(filters.año), startMonth - 1);
+            return rowDate >= startDate;
+        });
+
+        if (dataForPlanning.length === 0) {
+            addNotification('warning', 'No hay datos de ventas disponibles a partir del mes seleccionado.');
+            setIsProcessing(false);
+            return;
+        }
+        
+        onDataImported(dataForPlanning);
+        setPreviewData([]);
+        setSelectedGroups(new Set());
+    } catch (error) {
+        console.error("Error loading final data from API:", error);
+        addNotification('error', `Error al cargar datos para planificación: ${(error as Error).message}`);
+    } finally {
+        setIsProcessing(false);
+    }
   };
 
   const handleGroupSelection = (groupKey: string, isSelected: boolean) => {
@@ -242,35 +260,32 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const totals = useMemo(() => {
       const result = {
-          subtotalSectors: uniqueCentersInFetchedData.reduce((acc, center) => ({ ...acc, [center]: 0 }), { total: 0 } as { [centerName: string]: number; total: number }),
-          selectedTotal: uniqueCentersInFetchedData.reduce((acc, center) => ({ ...acc, [center]: 0 }), { total: 0 } as { [centerName: string]: number; total: number }),
+          subtotalSectors: uniqueCentersInPreviewData.reduce((acc, center) => ({ ...acc, [center]: 0 }), { total: 0 } as { [centerName: string]: number; total: number }),
+          selectedTotal: uniqueCentersInPreviewData.reduce((acc, center) => ({ ...acc, [center]: 0 }), { total: 0 } as { [centerName: string]: number; total: number }),
       };
 
       if (!aggregatedData) return result;
 
       const targetSectorPrefixes = ['01', '02', '03'];
       
-      // Calculate subtotals and totals based on the filtered data displayed in the table
       Object.entries(aggregatedData).forEach(([key, value]) => {
-          // Calculate subtotal for specific sectors (01, 02, 03)
           if (targetSectorPrefixes.some(prefix => key.startsWith(prefix))) {
               result.subtotalSectors.total += value.totalUnits;
-              uniqueCentersInFetchedData.forEach(center => {
+              uniqueCentersInPreviewData.forEach(center => {
                   result.subtotalSectors[center] += (value.unitsByCenter[center] || 0);
               });
           }
 
-          // Calculate total for selected groups
           if (selectedGroups.has(key)) {
               result.selectedTotal.total += value.totalUnits;
-              uniqueCentersInFetchedData.forEach(center => {
+              uniqueCentersInPreviewData.forEach(center => {
                   result.selectedTotal[center] += (value.unitsByCenter[center] || 0);
               });
           }
       });
 
       return result;
-  }, [aggregatedData, selectedGroups, uniqueCentersInFetchedData]);
+  }, [aggregatedData, selectedGroups, uniqueCentersInPreviewData]);
 
 
   return (
@@ -281,15 +296,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Seleccione los filtros para consultar los datos. El sistema planificará desde el mes más temprano que encuentre en los datos cargados. Luego, podrá previsualizar, seleccionar los grupos de interés y finalmente cargar los datos en el sistema.
+        Use los filtros para **previsualizar** una muestra de los datos y validar su correctitud. Luego, presione **Aceptar y Cargar** para iniciar la planificación con todos los datos a partir del mes y año seleccionados.
       </p>
 
       {/* --- Filtros --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end p-4 border rounded-lg bg-gray-50">
         <SelectField label="Año" id="año" name="año" value={filters.año} onChange={handleFilterChange} options={filterOptions.años}/>
-        <SelectField label="Mes (Opcional)" id="mes" name="mes" value={filters.mes} onChange={handleFilterChange} options={filterOptions.meses} title="Si selecciona un mes, se planificará desde ese mes en adelante."/>
-        <SelectField label="Centro" id="centro" name="centro" value={filters.centro} onChange={handleFilterChange} options={filterOptions.centros}/>
-        <SelectField label="Etiqueta" id="etiqueta" name="etiqueta" value={filters.etiqueta} onChange={handleFilterChange} options={filterOptions.etiquetas}/>
+        <SelectField label="Mes (Para previsualizar)" id="mes" name="mes" value={filters.mes} onChange={handleFilterChange} options={filterOptions.meses} title="Filtra la previsualización. La carga final comenzará desde este mes."/>
+        <SelectField label="Centro (Para previsualizar)" id="centro" name="centro" value={filters.centro} onChange={handleFilterChange} options={filterOptions.centros}/>
+        <SelectField label="Etiqueta (Para previsualizar)" id="etiqueta" name="etiqueta" value={filters.etiqueta} onChange={handleFilterChange} options={filterOptions.etiquetas}/>
         
         <button
             onClick={handlePreviewData}
@@ -304,7 +319,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       {aggregatedData && (
         <div className="mt-6 space-y-4">
           <div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">Resumen de Datos a Cargar</h3>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Resumen de Datos Previsualizados</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
                 <div className="space-y-1">
                     <label htmlFor="groupBy" className="block text-sm font-medium text-gray-700">Agrupar por</label>
@@ -330,7 +345,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                       />
                   </th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">{groupBy === 'sector' ? 'Sector' : (groupBy === 'etiqueta' ? 'Etiqueta' : 'Material')}</th>
-                  {uniqueCentersInFetchedData.map(center => (
+                  {uniqueCentersInPreviewData.map(center => (
                     <th key={center} className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{center}</th>
                   ))}
                   <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades Totales</th>
@@ -348,7 +363,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         />
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap font-medium">{key}</td>
-                    {uniqueCentersInFetchedData.map(center => (
+                    {uniqueCentersInPreviewData.map(center => (
                         <td key={center} className="px-4 py-2 whitespace-nowrap text-right">
                             {(value.unitsByCenter[center] || 0).toLocaleString()}
                         </td>
@@ -361,7 +376,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     
                         <tr className="border-t-2 border-gray-400">
                             <td colSpan={2} className="px-4 py-2 text-left font-semibold text-gray-600 uppercase">Subtotal Sectores 01-03</td>
-                            {uniqueCentersInFetchedData.map(center => (
+                            {uniqueCentersInPreviewData.map(center => (
                                 <td key={center} className="px-4 py-2 text-right font-semibold text-gray-600">
                                     {(totals.subtotalSectors[center] || 0).toLocaleString()}
                                 </td>
@@ -371,7 +386,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     
                     <tr>
                         <td colSpan={2} className="px-4 py-2 text-left font-bold text-gray-700 uppercase">Total Seleccionado</td>
-                        {uniqueCentersInFetchedData.map(center => (
+                        {uniqueCentersInPreviewData.map(center => (
                             <td key={center} className="px-4 py-2 text-right font-bold text-gray-700">
                                 {(totals.selectedTotal[center] || 0).toLocaleString()}
                             </td>
@@ -384,11 +399,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
            <div className="flex justify-end pt-4">
                 <button
-                    onClick={handleAcceptData}
+                    onClick={handleAcceptAndLoadData}
                     className="w-full md:w-auto px-6 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                    disabled={selectedGroups.size === 0}
+                    disabled={isProcessing}
                 >
-                    Aceptar y Continuar ({selectedGroups.size} grupos)
+                    Aceptar y Cargar Datos para Planificación
                 </button>
            </div>
         </div>

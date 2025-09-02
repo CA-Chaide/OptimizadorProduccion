@@ -418,15 +418,22 @@ export const generateProductionPlan = async (
   // --- Robust Planning Horizon Calculation ---
   const planningHorizon: { year: number, month: number }[] = [];
   if (salesData.length > 0) {
-      const allDates = salesData.map(s => new Date(s.año, s.mes - 1, 1).getTime());
-      const firstSaleDate = new Date(Math.min(...allDates));
-      const lastSaleDate = new Date(Math.max(...allDates));
-      
-      let currentHorizonDate = new Date(firstSaleDate.getFullYear(), firstSaleDate.getMonth(), 1);
+      const allMonthKeys = new Set(salesData.map(s => `${s.año}-${s.mes}`));
+      const sortedMonthKeys = Array.from(allMonthKeys).sort();
 
-      while(currentHorizonDate <= lastSaleDate) {
-          planningHorizon.push({ year: currentHorizonDate.getFullYear(), month: currentHorizonDate.getMonth() + 1 });
-          currentHorizonDate.setMonth(currentHorizonDate.getMonth() + 1);
+      const [firstYear, firstMonth] = sortedMonthKeys[0].split('-').map(Number);
+      const [lastYear, lastMonth] = sortedMonthKeys[sortedMonthKeys.length - 1].split('-').map(Number);
+      
+      let currentYear = firstYear;
+      let currentMonth = firstMonth;
+
+      while (currentYear < lastYear || (currentYear === lastYear && currentMonth <= lastMonth)) {
+          planningHorizon.push({ year: currentYear, month: currentMonth });
+          currentMonth++;
+          if (currentMonth > 12) {
+              currentMonth = 1;
+              currentYear++;
+          }
       }
   }
   // --- End Horizon Calculation ---
