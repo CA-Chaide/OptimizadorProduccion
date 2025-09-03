@@ -1,5 +1,6 @@
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -153,6 +154,8 @@ export function processAndValidateAssemblyData(
                 minStock: parseInt(String(inventoryDataSource.StockSeguridad || 0), 10),
                 maxStock: parseInt(String(inventoryDataSource.StockMaximo || 0), 10),
                 currentStock: parseInt(String(inventoryDataSource.StockActual || 0), 10),
+                lotMin: parseInt(String(inventoryDataSource.TamLoteMin || 1), 10) || 1,
+                lotMax: inventoryDataSource.TamLoteMax ? parseInt(String(inventoryDataSource.TamLoteMax), 10) : null,
             });
         }
 
@@ -794,7 +797,7 @@ export const generateProductionPlan = async (
     }
     entry.totalQuantityToProduce += item.quantityToProduce;
     entry.totalHoursWorked += item.hoursWorked;
-    entry.totalEstimatedLaborCost += item.totalEstimatedLaborCost;
+    entry.totalEstimatedLaborCost += item.estimatedLaborCost;
     aggregatedMonthlyPlan.set(key, entry);
   });
   
@@ -870,4 +873,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-

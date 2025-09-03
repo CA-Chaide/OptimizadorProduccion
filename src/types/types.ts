@@ -1,5 +1,6 @@
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -174,6 +175,8 @@ export interface InventorySetting {
   minStock: number;
   maxStock: number;
   currentStock: number; // Initial stock level at the beginning of planning
+  lotMin: number; // New: Minimum production lot size
+  lotMax: number | null; // New: Maximum production lot size (optional)
 }
 
 export interface Bottleneck { // Kept for future, not used in current optimization
@@ -480,6 +483,8 @@ export interface TiempoEnsambleItem {
   StockActual: number;
   StockSeguridad: number;
   StockMaximo: number;
+  TamLoteMin: number;
+  TamLoteMax: number | null;
   GrupoCompras: string;
   ClaseAprovisionamiento: 'E' | 'X' | 'F' | null;
 }
