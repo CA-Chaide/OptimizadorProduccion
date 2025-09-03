@@ -66,15 +66,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   useEffect(() => {
     const loadFilterOptions = async () => {
-      console.log("[LOG] Iniciando la carga de opciones para filtros...");
       try {
         const [añosData, centrosData, etiquetasData] = await Promise.all([
           queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' }),
           queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' }),
           queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' })
         ]);
-
-        console.log("[LOG] Datos de filtros recibidos de la API:", { añosData, centrosData, etiquetasData });
 
         const currentYear = new Date().getFullYear();
         const añosSet = new Set(añosData.map((item: any) => item['Año']));
@@ -86,15 +83,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })).sort((a,b) => a.label.localeCompare(b.label)),
         };
 
-        console.log("[LOG] Opciones de filtro procesadas:", newFilterOptions);
-
         setFilterOptions(prev => ({
           ...prev,
           ...newFilterOptions,
         }));
 
       } catch (error) {
-        console.error("[ERROR] No se pudieron cargar las opciones para los filtros desde la API.", error);
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
       }
     };
@@ -139,12 +133,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         }
         aggregationResult[key].unitsByCenter[centerName] += row.unidadesProyectado;
     });
-    console.log("[LOG] Datos agregados para la tabla de previsualización:", aggregationResult);
     return aggregationResult;
   }, [previewData, groupBy]);
 
   const handlePreviewData = useCallback(async () => {
-      console.log("[LOG] handlePreviewData: Iniciando previsualización con filtros:", filters);
       setIsProcessing(true);
       setPreviewData([]);
       setSelectedGroups(new Set()); 
@@ -157,7 +149,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           if(filters.centro) apiFilters['Centro'] = filters.centro;
           if(filters.etiqueta) apiFilters['Etiqueta'] = filters.etiqueta;
 
-          console.log("[LOG] handlePreviewData: Enviando consulta a la API con filtros:", apiFilters);
           const dataFromApi: PresupuestoItem[] = await queryApi({
             source: 'Presupuesto',
             operation: 'get_data',
@@ -166,13 +157,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           });
           
           if (dataFromApi.length === 0) {
-              console.warn("[LOG] handlePreviewData: La API no devolvió datos.");
               addNotification('warning', 'La API no devolvió datos para los filtros seleccionados.');
               setIsProcessing(false);
               return;
           }
 
-          console.log(`[LOG] handlePreviewData: Se recibieron ${'${dataFromApi.length}'} registros de la API.`);
           const mappedData: SalesDataRow[] = dataFromApi.map((item, index) => ({
               id: `row-${'${Date.now()}'}-${'${index}'}`,
               año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
@@ -187,33 +176,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           addNotification('success', `Se han pre-cargado ${'${mappedData.length}'} registros para previsualización.`);
 
       } catch (error) {
-          console.error("[ERROR] Error al cargar datos de previsualización:", error);
           addNotification('error', `Error al cargar datos de previsualización: ${(error as Error).message}`);
       } finally {
-          console.log("[LOG] handlePreviewData: Finalizó el proceso de previsualización.");
           setIsProcessing(false);
       }
   }, [filters, addNotification]);
 
   React.useEffect(() => {
     if (aggregatedData) {
-        console.log("[LOG] useEffect[aggregatedData]: Actualizando grupos seleccionados.");
         setSelectedGroups(new Set(Object.keys(aggregatedData)));
     }
   }, [aggregatedData]);
 
   const handleAcceptAndLoadData = async () => {
-    console.log("[LOG] handleAcceptAndLoadData: Iniciando carga final con filtros:", filters);
     setIsProcessing(true);
     addNotification('info', `Cargando datos completos para planificación...`);
     try {
-        const startMonth = filters.mes ? parseInt(filters.mes, 10) : 1;
-
-        // Perform a new, broader query for the final data load
         const finalApiFilters: { [key: string]: any } = {
             'Año': Number(filters.año)
         };
-        console.log("[LOG] handleAcceptAndLoadData: Consultando datos de todo el año:", finalApiFilters);
 
         const allYearData: PresupuestoItem[] = await queryApi({
             source: 'Presupuesto',
@@ -223,13 +204,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         });
 
         if (allYearData.length === 0) {
-            console.error("[LOG] handleAcceptAndLoadData: No se encontraron datos para el año seleccionado.");
             addNotification('error', 'No se encontraron datos para el año seleccionado.');
             setIsProcessing(false);
             return;
         }
 
-        console.log(`[LOG] handleAcceptAndLoadData: Se recibieron ${'${allYearData.length}'} registros para todo el año.`);
         const mappedData: SalesDataRow[] = allYearData.map((item, index) => ({
             id: `row-final-${'${Date.now()}'}-${'${index}'}`,
             año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
@@ -240,29 +219,21 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             familia: item.Familia, marca: item.Marca, lineaProduccion: '',
         }));
 
-        // Filter the complete data from the start month onwards
-        const dataForPlanning = mappedData.filter(row => {
-            const rowDate = new Date(row.año, row.mes - 1);
-            const startDate = new Date(Number(filters.año), startMonth - 1);
-            return rowDate >= startDate;
-        });
+        // Pass all data for the selected year to the planner
+        const dataForPlanning = mappedData;
 
         if (dataForPlanning.length === 0) {
-            console.warn("[LOG] handleAcceptAndLoadData: No hay datos de ventas disponibles a partir del mes seleccionado.");
-            addNotification('warning', 'No hay datos de ventas disponibles a partir del mes seleccionado.');
+            addNotification('warning', 'No hay datos de ventas disponibles para el año seleccionado.');
             setIsProcessing(false);
             return;
         }
         
-        console.log(`[LOG] handleAcceptAndLoadData: ${'${dataForPlanning.length}'} registros finales serán pasados a onDataImported.`);
         onDataImported(dataForPlanning);
         setPreviewData([]);
         setSelectedGroups(new Set());
     } catch (error) {
-        console.error("[ERROR] Error al cargar datos para planificación:", error);
         addNotification('error', `Error al cargar datos para planificación: ${(error as Error).message}`);
     } finally {
-        console.log("[LOG] handleAcceptAndLoadData: Finalizó el proceso de carga final.");
         setIsProcessing(false);
     }
   };
