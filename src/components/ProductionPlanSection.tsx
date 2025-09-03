@@ -337,7 +337,7 @@ export const ProductionPlanSection: React.FC = () => {
     <div>
         <h3 className="text-lg font-semibold text-gray-800 mb-2">Paso 2: Cálculo de Necesidades de Producción</h3>
          <p className="text-sm text-gray-600 mb-4">
-            Se ha calculado la necesidad de producción neta para cada mes, considerando la demanda y los niveles de stock.
+            Se ha calculado la necesidad de producción neta para cada mes, considerando la demanda, el stock y la producción que se debe adelantar o posponer.
         </p>
         <div className="grid grid-cols-2 gap-3 p-3 border rounded-lg bg-gray-50 mb-4">
             <FilterInput label="Producto" value={filterInputs.product} onChange={v => setFilterInputs(f => ({...f, product: v}))} />
@@ -349,8 +349,8 @@ export const ProductionPlanSection: React.FC = () => {
                     <tr>
                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Mes</th>
                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto</th>
-                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
-                        <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción Requerida</th>
+                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro Demanda</th>
+                        <th className="px-2 py-2 text-right font-semibold text-gray-600">Total Requerido</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -359,7 +359,7 @@ export const ProductionPlanSection: React.FC = () => {
                             <td className="px-2 py-1">{`${MONTH_NAMES[n.month-1].slice(0,3)} ${n.year}`}</td>
                             <td className="px-2 py-1">{n.productId}</td>
                             <td className="px-2 py-1">{n.centerName}</td>
-                            <td className="px-2 py-1 text-right">{Math.round(n.productionNeeded).toLocaleString()}</td>
+                            <td className="px-2 py-1 text-right font-bold">{Math.round(n.productionNeeded).toLocaleString()}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -376,7 +376,7 @@ export const ProductionPlanSection: React.FC = () => {
         </p>
          <div className="grid grid-cols-3 gap-3 p-3 border rounded-lg bg-gray-50 mb-4">
             <FilterInput label="Producto" value={filterInputs.product} onChange={v => setFilterInputs(f => ({...f, product: v}))} />
-            <FilterInput label="Centro" value={filterInputs.center} onChange={v => setFilterInputs(f => ({...f, center: v}))} />
+            <FilterInput label="Centro Prod." value={filterInputs.center} onChange={v => setFilterInputs(f => ({...f, center: v}))} />
             <FilterInput label="Línea" value={filterInputs.line} onChange={v => setFilterInputs(f => ({...f, line: v}))} />
         </div>
         <div className="overflow-auto max-h-[60vh] border rounded-lg">
@@ -386,26 +386,29 @@ export const ProductionPlanSection: React.FC = () => {
                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Mes</th>
                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Línea</th>
                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto</th>
-                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
+                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro Prod.</th>
                         <th className="px-2 py-2 text-right font-semibold text-gray-600">U. Planificadas</th>
-                        <th className="px-2 py-2 text-right font-semibold text-gray-600">U. Mes</th>
-                        <th className="px-2 py-2 text-right font-semibold text-gray-600">U. Adelanto</th>
+                        <th className="px-2 py-2 text-right font-semibold text-gray-600">U. del Mes</th>
+                        <th className="px-2 py-2 text-right font-semibold text-gray-600">U. Adelantadas</th>
                         <th className="px-2 py-2 text-right font-semibold text-gray-600">Horas Req.</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredAssignments?.map((as, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                            <td className="px-2 py-1">{`${MONTH_NAMES[detailedProductionPlan!.planningGroupDetails.find(d => d.month-1 === as.monthIndex)?.month-1 || 0]?.slice(0,3)} ${detailedProductionPlan!.planningGroupDetails.find(d => d.month-1 === as.monthIndex)?.year}`}</td>
-                            <td className="px-2 py-1">{as.lineName}</td>
-                            <td className="px-2 py-1">{as.productId}</td>
-                            <td className="px-2 py-1">{as.centerName}</td>
-                            <td className="px-2 py-1 text-right">{Math.round(as.units).toLocaleString()}</td>
-                            <td className="px-2 py-1 text-right">{Math.round(as.originalNeedUnits).toLocaleString()}</td>
-                            <td className="px-2 py-1 text-right">{Math.round(as.advancedUnits).toLocaleString()}</td>
-                            <td className="px-2 py-1 text-right">{as.totalHours.toFixed(2)}</td>
-                        </tr>
-                    ))}
+                    {filteredAssignments?.sort((a,b) => a.monthIndex - b.monthIndex).map((as, i) => {
+                         const { year, month } = detailedProductionPlan!.planningGroupDetails.find(d => d.month-1 === as.monthIndex)!;
+                         return (
+                            <tr key={i} className="hover:bg-gray-50">
+                                <td className="px-2 py-1">{`${MONTH_NAMES[month-1]?.slice(0,3)} ${year}`}</td>
+                                <td className="px-2 py-1">{as.lineName}</td>
+                                <td className="px-2 py-1">{as.productId}</td>
+                                <td className="px-2 py-1">{as.centerName}</td>
+                                <td className="px-2 py-1 text-right font-bold">{Math.round(as.units).toLocaleString()}</td>
+                                <td className="px-2 py-1 text-right">{Math.round(as.originalNeedUnits).toLocaleString()}</td>
+                                <td className="px-2 py-1 text-right text-blue-600">{Math.round(as.advancedUnits).toLocaleString()}</td>
+                                <td className="px-2 py-1 text-right">{as.totalHours.toFixed(2)}</td>
+                            </tr>
+                         )
+                    })}
                 </tbody>
             </table>
         </div>
@@ -623,5 +626,3 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
-
-    

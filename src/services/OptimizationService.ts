@@ -416,7 +416,6 @@ export const generateProductionPlan = async (
     });
   
   // --- Robust Planning Horizon Calculation ---
-  // This ensures the planner always considers a full year.
   const planningYear = salesData[0]?.año;
   if (!planningYear) {
       auditLog.push('Error: No se pudo determinar el año de planificación a partir de los datos de ventas.');
@@ -505,24 +504,6 @@ export const generateProductionPlan = async (
       productionNeedsMap.set(pairKey, needs);
   });
   
-  const productionNeeds: MonthlyNeed[] = [];
-  productionNeedsMap.forEach((needs, pairKey) => {
-      const [productId, centerName] = pairKey.split('---');
-      needs.forEach((need, index) => {
-          if (need > 0) {
-              const { year, month } = planningHorizon[index];
-              productionNeeds.push({
-                  pairKey,
-                  productId,
-                  centerName,
-                  year,
-                  month,
-                  productionNeeded: need,
-              });
-          }
-      });
-  });
-
   const monthlyAssignments: MonthlyAssignment[] = [];
   const activeLines = productionLines.filter(l => l.isActive !== false);
   const lineMonthlyHours = new Map<string, LineHourAvailability[]>();
@@ -545,9 +526,12 @@ export const generateProductionPlan = async (
   });
   
   const monthlyOriginalNeeds = new Map<string, number>();
-  productionNeeds.forEach(need => {
-      const key = `${need.pairKey}---${need.year}-${need.month}`;
-      monthlyOriginalNeeds.set(key, need.productionNeeded);
+  productionNeedsMap.forEach((needs, pairKey) => {
+    needs.forEach((need, index) => {
+        const { year, month } = planningHorizon[index];
+        const key = `${pairKey}---${year}-${month}`;
+        monthlyOriginalNeeds.set(key, need);
+    });
   });
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
@@ -623,6 +607,25 @@ export const generateProductionPlan = async (
         }
     }
   }
+
+  // Final corrected production needs for display
+  const productionNeeds: MonthlyNeed[] = [];
+  productionNeedsMap.forEach((needs, pairKey) => {
+      const [productId, centerName] = pairKey.split('---');
+      needs.forEach((need, index) => {
+          if (need > 0) {
+              const { year, month } = planningHorizon[index];
+              productionNeeds.push({
+                  pairKey,
+                  productId,
+                  centerName,
+                  year,
+                  month,
+                  productionNeeded: need,
+              });
+          }
+      });
+  });
 
   // --- Daily Plan Generation ---
   const dailyPlan: ProductionPlanItem[] = [];
@@ -791,7 +794,7 @@ export const generateProductionPlan = async (
     }
     entry.totalQuantityToProduce += item.quantityToProduce;
     entry.totalHoursWorked += item.hoursWorked;
-    entry.totalEstimatedLaborCost += item.estimatedLaborCost;
+    entry.totalEstimatedLaborCost += item.totalEstimatedLaborCost;
     aggregatedMonthlyPlan.set(key, entry);
   });
   
