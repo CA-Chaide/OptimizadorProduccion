@@ -747,7 +747,7 @@ export const generateProductionPlan = async (
                 
 
                 dailyPlan.push({
-                    id: `${year}-${month}-${day}-${productId}-${line.id}`,
+                    id: `${year}-${month}-${day}-${productId}-${line.id}-${Math.random()}`,
                     year, month, day, week: 0,
                     productId: productId,
                     productName: productNamesMap.get(productId) || productId,
