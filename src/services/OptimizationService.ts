@@ -416,29 +416,19 @@ export const generateProductionPlan = async (
     });
   
   // --- Robust Planning Horizon Calculation ---
-  const planningHorizon: { year: number, month: number }[] = [];
-  if (salesData.length > 0) {
-      const allMonthKeys = new Set(salesData.map(s => `${s.año}-${s.mes}`));
-      const sortedMonthKeys = Array.from(allMonthKeys).sort();
-
-      const [firstYear, firstMonth] = sortedMonthKeys[0].split('-').map(Number);
-      const [lastYear, lastMonth] = sortedMonthKeys[sortedMonthKeys.length - 1].split('-').map(Number);
-      
-      let currentYear = firstYear;
-      let currentMonth = firstMonth;
-
-      while (currentYear < lastYear || (currentYear === lastYear && currentMonth <= lastMonth)) {
-          planningHorizon.push({ year: currentYear, month: currentMonth });
-          currentMonth++;
-          if (currentMonth > 12) {
-              currentMonth = 1;
-              currentYear++;
-          }
-      }
+  // This ensures the planner always considers a full year.
+  const planningYear = salesData[0]?.año;
+  if (!planningYear) {
+      auditLog.push('Error: No se pudo determinar el año de planificación a partir de los datos de ventas.');
+      return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
+  const planningHorizon = Array.from({ length: 12 }, (_, i) => ({
+      year: planningYear,
+      month: i + 1,
+  }));
   // --- End Horizon Calculation ---
 
-  auditLog.push(`Horizonte de planificación: ${planningHorizon.length} meses.`);
+  auditLog.push(`Horizonte de planificación: ${planningHorizon.length} meses para el año ${planningYear}.`);
 
   const demandMap = new Map<string, { [monthKey: string]: number }>();
   salesData.forEach(s => {
