@@ -395,7 +395,9 @@ export const ProductionPlanSection: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                     {filteredAssignments?.sort((a,b) => a.monthIndex - b.monthIndex).map((as, i) => {
-                         const { year, month } = detailedProductionPlan!.planningGroupDetails.find(d => d.month-1 === as.monthIndex)!;
+                         const planningYear = detailedProductionPlan?.planningGroupDetails[0]?.year || new Date().getFullYear();
+                         const year = planningYear;
+                         const month = as.monthIndex + 1;
                          return (
                             <tr key={i} className="hover:bg-gray-50">
                                 <td className="px-2 py-1">{`${MONTH_NAMES[month-1]?.slice(0,3)} ${year}`}</td>
