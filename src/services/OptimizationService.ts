@@ -618,8 +618,8 @@ export const generateProductionPlan = async (
 
             unitsLeftToPlan -= unitsToMake;
         }
-        if (unitsLeftToPlan > 0.1 && monthIndex > 0) {
-            productionNeedsMap.get(prod.pairKey)![monthIndex-1] += unitsLeftToPlan;
+        if (unitsLeftToPlan > 0.1 && monthIndex < planningHorizon.length - 1) {
+            productionNeedsMap.get(prod.pairKey)![monthIndex + 1] += unitsLeftToPlan;
         }
     }
   }
@@ -867,3 +867,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
