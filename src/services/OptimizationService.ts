@@ -795,7 +795,6 @@ export const generateProductionPlan = async (
                 const lotMax = invSetting?.lotMax || Infinity;
 
                 const maxUnitsInTime = hoursRemainingToday / manufacturingTime;
-                
                 const unitsToProduceAttempt = Math.max(lotMin, Math.min(unitsLeftForAssignment, maxUnitsInTime, lotMax));
 
                 if (unitsToProduceAttempt < lotMin && unitsLeftForAssignment > unitsToProduceAttempt) {
@@ -1003,8 +1002,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-
-
-
 
