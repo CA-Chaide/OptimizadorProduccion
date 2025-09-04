@@ -307,11 +307,6 @@ export interface DetailedProductionPlan {
 }
 // --- End New Types ---
 
-// New type for daily planning context, inherits from MonthlyAssignment
-export interface DailyPlanContext extends MonthlyAssignment {
-    remainingUnits: number;
-}
-
 
 // New: Type for the summary sheet in Excel export
 export interface LineMonthlySummary {

@@ -6,7 +6,7 @@ import {
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
-    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DailyPlanContext 
+    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 
@@ -384,16 +384,16 @@ function getPpiOptionsForProduct(
 // --- Daily Plan Generation Helpers ---
 // ==========================================================================================
 function sequenceDailyProduction(
-    dailyGoals: DailyPlanContext[],
+    dailyGoals: MonthlyAssignment[],
     line: ProductionLine,
     constraints: AppConstraints,
     log: string[]
-): DailyPlanContext[] {
+): MonthlyAssignment[] {
     if (dailyGoals.length <= 1) {
         return dailyGoals;
     }
     // Simple sort by remaining units, more complex logic (like bottleneck rate) can be added here.
-    return dailyGoals.sort((a, b) => b.remainingUnits - a.remainingUnits);
+    return dailyGoals.sort((a, b) => b.units - a.units);
 }
 
 
@@ -753,7 +753,6 @@ export const generateProductionPlan = async (
         else hoursPerDay = shiftParameters.saturdayAndHolidayHours;
         
         const assignmentsByLine = new Map<string, MonthlyAssignment[]>();
-        // CORRECTED LOGIC: Only consider assignments that still have units to produce.
         const activeAssignments = assignmentsForMonth.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1);
 
         for (const assignment of activeAssignments) {
@@ -764,7 +763,6 @@ export const generateProductionPlan = async (
         }
         
         // --- Day's Demand Processing ---
-        // First, process all demand for the day to update stock levels before planning production
         for (const [demandKey, demandValue] of dailyDemand.entries()) {
             const [dateKey, productId, centerId] = demandKey.split('---');
             if (dateKey === `${year}-${month}-${day}`) {
@@ -792,18 +790,15 @@ export const generateProductionPlan = async (
                 
                 const { productId, centerName: productionCenterId } = assignment;
                 
-                // New logic to handle lot sizes
                 const invSetting = inventorySettings.find(i => i.itemId === productId && i.centerId === productionCenterId);
                 const lotMin = invSetting?.lotMin || 1;
                 const lotMax = invSetting?.lotMax || Infinity;
 
                 const maxUnitsInTime = hoursRemainingToday / manufacturingTime;
                 
-                // We must produce at least the minimum lot, but not more than we need for the month, or can make today, or the max lot size.
                 const unitsToProduceAttempt = Math.max(lotMin, Math.min(unitsLeftForAssignment, maxUnitsInTime, lotMax));
 
                 if (unitsToProduceAttempt < lotMin && unitsLeftForAssignment > unitsToProduceAttempt) {
-                     // If we can't even make the min lot, skip for today unless it's all that's left
                      continue;
                 }
 
@@ -822,15 +817,14 @@ export const generateProductionPlan = async (
                 localAuditLog.push(`    Línea ${line.name}: Produce ${unitsToProduce.toFixed(0)} u de ${productId}. Horas consumidas: ${hoursConsumed.toFixed(2)}. Horas restantes hoy: ${hoursRemainingToday.toFixed(2)}.`);
                 
                 
-                // --- Start Transfer & Demand Logic ---
                 const originalDemands = salesData.filter(s => {
                     const sProdId = normalizeMaterialCode(s.código);
                     const sCenterId = String(s.centro).trim();
 
-                    const ruleRow = apiData.find(row => 
-                        normalizeMaterialCode(row.CodMaterial) === sProdId && 
-                        (String(row.Centro).trim() === sCenterId || !row.Centro)
-                    ) || apiData.find(row => normalizeMaterialCode(row.CodMaterial) === sProdId);
+                    const ruleRow = apiData.find(d => 
+                        normalizeMaterialCode(d.CodMaterial) === sProdId && 
+                        (String(d.Centro).trim() === sCenterId || !d.Centro)
+                    ) || apiData.find(d => normalizeMaterialCode(d.CodMaterial) === sProdId);
                     
                     const provRule = ruleRow?.ClaseAprovisionamiento || 'E';
                     const prodCenterForDemand = provRule === 'F' ? "1000" : sCenterId;
@@ -841,8 +835,8 @@ export const generateProductionPlan = async (
                 let unitsToDistribute = unitsToProduce;
                 inventoryState.set(prodStockKey, initialStockOnDay + unitsToProduce);
 
-                for (const originalDemand of originalDemands) {
-                    if (unitsToDistribute <= 0) break;
+                originalDemands.forEach(originalDemand => {
+                    if (unitsToDistribute <= 0) return;
                     
                     const demandCenterId = String(originalDemand.centro).trim();
                     const demandKey = `${year}-${month}-${day}---${productId}---${demandCenterId}`;
@@ -898,8 +892,8 @@ export const generateProductionPlan = async (
                     });
                     
                     unitsToDistribute -= unitsForThisPlanItem;
-                    if (!isTransfer) break; // If not a transfer, all production is for the production center itself.
-                }
+                    if (!isTransfer) return;
+                });
 
             }
         }
@@ -1009,6 +1003,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
