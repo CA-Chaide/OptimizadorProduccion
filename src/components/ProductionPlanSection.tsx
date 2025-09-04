@@ -45,6 +45,7 @@ const DailyPlanRow = React.memo(({ item, lineName }: { item: ProductionPlanItem;
         <td className="px-2 py-1 text-right">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
         <td className="px-2 py-1">{lineName}</td>
         <td className="px-2 py-1">{item.producingCenterId}</td>
+        <td className="px-2 py-1">{item.demandCenterId}</td>
         <td className="px-2 py-1 text-right">{item.hoursWorked.toFixed(2)}</td>
     </tr>
 ));
@@ -151,7 +152,8 @@ export const ProductionPlanSection: React.FC = () => {
         }
 
         const centerId = item.producingCenterId || '';
-        if (centerFilter && !centerId.toLowerCase().includes(centerFilter)) {
+        const demandCenterId = item.demandCenterId || '';
+        if (centerFilter && !centerId.toLowerCase().includes(centerFilter) && !demandCenterId.toLowerCase().includes(centerFilter)) {
             return false;
         }
 
@@ -457,10 +459,11 @@ export const ProductionPlanSection: React.FC = () => {
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto (Cód)</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Inicial</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Demanda Día</th>
-                <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción/Transfer</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Final</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Línea</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro Prod.</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro Demanda</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Horas Req.</th>
               </tr>
             </thead>
