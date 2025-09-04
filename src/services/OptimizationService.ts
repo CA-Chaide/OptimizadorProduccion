@@ -283,7 +283,7 @@ function getPpiOptionsForProduct(
     demandCenterId: string,
     constraints: AppConstraints,
     apiData: TiempoEnsambleItem[],
-    log: string[]
+    localAuditLog: string[]
 ): ProductProcessInfo[] {
     const { productionLines, workstationDefinitions } = constraints;
     const ppiCandidates: ProductProcessInfo[] = [];
@@ -339,13 +339,13 @@ function getPpiOptionsForProduct(
 
     if (allCapableLines.length === 0) {
         // Log if no lines are found, this is useful for debugging.
-        log.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
+        localAuditLog.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
         return [];
     }
 
     // Step 4: For each capable line, calculate its effective manufacturing time and create a PPI option.
     allCapableLines.forEach(line => {
-        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, log);
+        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, localAuditLog);
 
         if (manufacturingTime < Infinity && manufacturingTime > 0) {
             const ppiId = `${productId}---${line.id}`;
@@ -354,7 +354,7 @@ function getPpiOptionsForProduct(
                  const apiRow = apiData.find(d => 
                     normalizeMaterialCode(d.CodMaterial) === productId &&
                     String(d.Centro).trim() === line.workCenterId &&
-                    String(d.Linea).trim() === line.name &&
+                    String(row.Linea).trim() === line.name &&
                     String(d.PuestoTrabajo).trim() === workstationDef.name
                 );
                 return {
@@ -577,8 +577,8 @@ export const generateProductionPlan = async (
   });
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
+    console.log(`--- Planificando Mes ${monthIndex + 1} / 12 ---`);
     localAuditLog.push(`--- Planificando Mes ${monthIndex + 1} / ${planningHorizon.length} ---`);
-    console.log(`--- Planificando Mes ${monthIndex + 1} / ${planningHorizon.length} ---`);
 
     await new Promise(resolve => setTimeout(resolve, 0));
     
@@ -594,8 +594,8 @@ export const generateProductionPlan = async (
         })
         .filter(p => p.ppiOptions.length > 0)
         .sort((a,b) => a.ppiOptions[0].totalManufacturingTimeHours - b.ppiOptions[0].totalManufacturingTimeHours);
-    localAuditLog.push(`Mes ${monthIndex + 1}: ${productsToPlanThisMonth.length} productos con necesidad de producción.`);
     console.log(`Mes ${monthIndex + 1}: ${productsToPlanThisMonth.length} productos con necesidad de producción.`);
+    localAuditLog.push(`Mes ${monthIndex + 1}: ${productsToPlanThisMonth.length} productos con necesidad de producción.`);
 
     for(const prod of productsToPlanThisMonth) {
         let unitsLeftToPlan = prod.units;
@@ -645,15 +645,15 @@ export const generateProductionPlan = async (
                 totalHours: hoursToConsume,
                 laborCost: laborCost
             });
-            localAuditLog.push(`  Asignación Mes ${monthIndex + 1}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
             console.log(`  Asignación Mes ${monthIndex + 1}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
+            localAuditLog.push(`  Asignación Mes ${monthIndex + 1}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
 
             unitsLeftToPlan -= unitsToMake;
         }
         if (unitsLeftToPlan > 0.1 && monthIndex < planningHorizon.length - 1) {
             productionNeedsMap.get(prod.pairKey)![monthIndex + 1] += unitsLeftToPlan;
-            localAuditLog.push(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${productId} se mueven al mes ${monthIndex + 2}.`);
             console.log(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${productId} se mueven al mes ${monthIndex + 2}.`);
+            localAuditLog.push(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${productId} se mueven al mes ${monthIndex + 2}.`);
         }
     }
   }
@@ -753,13 +753,14 @@ export const generateProductionPlan = async (
         else hoursPerDay = shiftParameters.saturdayAndHolidayHours;
         
         const assignmentsByLine = new Map<string, MonthlyAssignment[]>();
-        for (const assignment of assignmentsForMonth) {
-            if((remainingUnitsToProduce.get(assignment.id) || 0) > 0.1) {
-                if (!assignmentsByLine.has(assignment.lineId)) {
-                    assignmentsByLine.set(assignment.lineId, []);
-                }
-                assignmentsByLine.get(assignment.lineId)!.push(assignment);
+        // CORRECTED LOGIC: Only consider assignments that still have units to produce.
+        const activeAssignments = assignmentsForMonth.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1);
+
+        for (const assignment of activeAssignments) {
+            if (!assignmentsByLine.has(assignment.lineId)) {
+                assignmentsByLine.set(assignment.lineId, []);
             }
+            assignmentsByLine.get(assignment.lineId)!.push(assignment);
         }
         
         // --- Day's Demand Processing ---
@@ -881,7 +882,7 @@ export const generateProductionPlan = async (
                         productId: productId,
                         productName: productNamesMap.get(productId) || productId,
                         quantityToProduce: unitsForThisPlanItem,
-                        demandOnDay: demandOnDay, 
+                        demandOnDay: dailyDemand.get(demandKey) || 0, // CORRECTED
                         initialStockOnDay: initialStockInDemandCenter - unitsForThisPlanItem, // Stock before this item's production/transfer
                         finalStockOnDay: finalStockOnDay,
                         assignedLineId: line.id,
@@ -1008,4 +1009,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
