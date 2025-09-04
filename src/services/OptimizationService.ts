@@ -244,11 +244,11 @@ const calculateEffectiveManufacturingTime = (
         if (!workstationDef) continue;
         
         // Find the specific time for this product-line-workstation combination in the API data
-        const apiRow = apiData.find(d => 
-            normalizeMaterialCode(d.CodMaterial) === productId &&
-            String(d.Centro).trim() === line.workCenterId &&
-            String(d.Linea).trim() === line.name &&
-            String(d.PuestoTrabajo).trim() === workstationDef.name
+        const apiRow = apiData.find(row => 
+            normalizeMaterialCode(row.CodMaterial) === productId &&
+            String(row.Centro).trim() === line.workCenterId &&
+            String(row.Linea).trim() === line.name &&
+            String(row.PuestoTrabajo).trim() === workstationDef.name
         );
         
         if (apiRow && apiRow.Tiempo > 0) {
@@ -1009,6 +1009,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
