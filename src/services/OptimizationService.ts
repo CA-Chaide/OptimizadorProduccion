@@ -316,7 +316,8 @@ function getPpiOptionsForProduct(
             allowedProductionCenters = [demandCenterId];
             break;
         case 'F': // Must be sourced from a different center (transfer).
-            allowedProductionCenters = allCenterIds.filter(id => id !== demandCenterId);
+            // Hardcoded rule: For now, all external sourcing is from center 1000.
+            allowedProductionCenters = ["1000"];
             break;
         case 'X': // Can be produced in any center.
         default:
