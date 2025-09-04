@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/Aplicativos/ApiOptimizadorProduccion/:path*',
-        destination: 'http://172.16.10.35:8091/Aplicativos/ApiOptimizadorProduccion/:path*',
+        destination: 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion/:path*',
       },
     ]
   },
