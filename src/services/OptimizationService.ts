@@ -330,10 +330,10 @@ function getPpiOptionsForProduct(
         // Is the line in an allowed production center?
         allowedProductionCenters.includes(line.workCenterId) &&
         // Does any API data exist linking this product to this line?
-        apiData.some(row => 
-            normalizeMaterialCode(row.CodMaterial) === productId &&
-            String(row.Centro).trim() === line.workCenterId &&
-            String(row.Linea).trim() === line.name
+        apiData.some(d => 
+            normalizeMaterialCode(d.CodMaterial) === productId &&
+            String(d.Centro).trim() === line.workCenterId &&
+            String(d.Linea).trim() === line.name
         )
     );
 
@@ -354,7 +354,7 @@ function getPpiOptionsForProduct(
                  const apiRow = apiData.find(d => 
                     normalizeMaterialCode(d.CodMaterial) === productId &&
                     String(d.Centro).trim() === line.workCenterId &&
-                    String(row.Linea).trim() === line.name &&
+                    String(d.Linea).trim() === line.name &&
                     String(d.PuestoTrabajo).trim() === workstationDef.name
                 );
                 return {
@@ -1009,5 +1009,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
