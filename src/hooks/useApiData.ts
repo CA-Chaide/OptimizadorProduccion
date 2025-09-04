@@ -1,8 +1,9 @@
 
+
 import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
-const API_BASE_URL = 'https://intranet.chaide.com'; 
+const API_BASE_URL = ''; 
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
 
 /**
