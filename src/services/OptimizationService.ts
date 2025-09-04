@@ -233,7 +233,7 @@ const calculateEffectiveManufacturingTime = (
     line: ProductionLine,
     apiData: TiempoEnsambleItem[],
     workstationDefs: WorkstationDefinition[],
-    localAuditLog: string[]
+    log: string[]
 ): number => {
     
     const workstationEffectiveTimes: number[] = [];
@@ -262,7 +262,7 @@ const calculateEffectiveManufacturingTime = (
 
     // If a product requires passing through workstations but no times were found for it, it cannot be made.
     if (line.assignedWorkstations.length > 0 && workstationEffectiveTimes.length !== line.assignedWorkstations.length) {
-        localAuditLog.push(`Alerta: Para producto ${productId} en línea ${line.name}, no se encontraron tiempos para todos los puestos de trabajo asignados. Se requieren ${line.assignedWorkstations.length}, se encontraron ${workstationEffectiveTimes.length}. La línea no se considerará.`);
+        log.push(`Alerta: Para producto ${productId} en línea ${line.name}, no se encontraron tiempos para todos los puestos de trabajo asignados. Se requieren ${line.assignedWorkstations.length}, se encontraron ${workstationEffectiveTimes.length}. La línea no se considerará.`);
         return Infinity;
     }
     
@@ -283,7 +283,7 @@ function getPpiOptionsForProduct(
     demandCenterId: string,
     constraints: AppConstraints,
     apiData: TiempoEnsambleItem[],
-    localAuditLog: string[]
+    log: string[]
 ): ProductProcessInfo[] {
     const { productionLines, workstationDefinitions } = constraints;
     const ppiCandidates: ProductProcessInfo[] = [];
@@ -333,19 +333,19 @@ function getPpiOptionsForProduct(
         apiData.some(row => 
             normalizeMaterialCode(row.CodMaterial) === productId &&
             String(row.Centro).trim() === line.workCenterId &&
-            String(d.Linea).trim() === line.name
+            String(row.Linea).trim() === line.name
         )
     );
 
     if (allCapableLines.length === 0) {
         // Log if no lines are found, this is useful for debugging.
-        localAuditLog.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
+        log.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
         return [];
     }
 
     // Step 4: For each capable line, calculate its effective manufacturing time and create a PPI option.
     allCapableLines.forEach(line => {
-        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, localAuditLog);
+        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, log);
 
         if (manufacturingTime < Infinity && manufacturingTime > 0) {
             const ppiId = `${productId}---${line.id}`;
@@ -387,7 +387,7 @@ function sequenceDailyProduction(
     dailyGoals: DailyPlanContext[],
     line: ProductionLine,
     constraints: AppConstraints,
-    localAuditLog: string[]
+    log: string[]
 ): DailyPlanContext[] {
     if (dailyGoals.length <= 1) {
         return dailyGoals;
@@ -577,8 +577,8 @@ export const generateProductionPlan = async (
   });
 
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
-    console.log(`--- Planificando Mes ${monthIndex + 1} / ${planningHorizon.length} ---`);
     localAuditLog.push(`--- Planificando Mes ${monthIndex + 1} / ${planningHorizon.length} ---`);
+    console.log(`--- Planificando Mes ${monthIndex + 1} / ${planningHorizon.length} ---`);
 
     await new Promise(resolve => setTimeout(resolve, 0));
     
@@ -594,8 +594,8 @@ export const generateProductionPlan = async (
         })
         .filter(p => p.ppiOptions.length > 0)
         .sort((a,b) => a.ppiOptions[0].totalManufacturingTimeHours - b.ppiOptions[0].totalManufacturingTimeHours);
-    console.log(`Mes ${monthIndex + 1}: ${productsToPlanThisMonth.length} productos con necesidad de producción.`);
     localAuditLog.push(`Mes ${monthIndex + 1}: ${productsToPlanThisMonth.length} productos con necesidad de producción.`);
+    console.log(`Mes ${monthIndex + 1}: ${productsToPlanThisMonth.length} productos con necesidad de producción.`);
 
     for(const prod of productsToPlanThisMonth) {
         let unitsLeftToPlan = prod.units;
@@ -645,15 +645,15 @@ export const generateProductionPlan = async (
                 totalHours: hoursToConsume,
                 laborCost: laborCost
             });
-            console.log(`  Asignación Mes ${monthIndex + 1}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
             localAuditLog.push(`  Asignación Mes ${monthIndex + 1}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
+            console.log(`  Asignación Mes ${monthIndex + 1}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
 
             unitsLeftToPlan -= unitsToMake;
         }
         if (unitsLeftToPlan > 0.1 && monthIndex < planningHorizon.length - 1) {
             productionNeedsMap.get(prod.pairKey)![monthIndex + 1] += unitsLeftToPlan;
-            console.log(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${productId} se mueven al mes ${monthIndex + 2}.`);
             localAuditLog.push(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${productId} se mueven al mes ${monthIndex + 2}.`);
+            console.log(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${productId} se mueven al mes ${monthIndex + 2}.`);
         }
     }
   }
