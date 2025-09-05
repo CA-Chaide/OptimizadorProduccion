@@ -232,8 +232,7 @@ const calculateEffectiveManufacturingTime = (
     productId: string,
     line: ProductionLine,
     apiData: TiempoEnsambleItem[],
-    workstationDefs: WorkstationDefinition[],
-    log: string[]
+    workstationDefs: WorkstationDefinition[]
 ): number => {
     
     const workstationEffectiveTimes: number[] = [];
@@ -281,8 +280,7 @@ function getPpiOptionsForProduct(
     productId: string,
     demandCenterId: string,
     constraints: AppConstraints,
-    apiData: TiempoEnsambleItem[],
-    log: string[]
+    apiData: TiempoEnsambleItem[]
 ): ProductProcessInfo[] {
     const { productionLines, workstationDefinitions } = constraints;
     const ppiCandidates: ProductProcessInfo[] = [];
@@ -305,30 +303,11 @@ function getPpiOptionsForProduct(
     
     // Default to 'E' (produce in same center) if no specific rule is found at all.
     const provisioningRule = ruleRow?.ClaseAprovisionamiento || 'E';
+    const productionCenterId = provisioningRule === 'F' ? "1000" : demandCenterId;
 
-    // Step 2: Determine which production centers are allowed based on the rule.
-    let allowedProductionCenters: string[];
-    const allCenterIds = Array.from(new Set(productionLines.map(l => l.workCenterId)));
-
-    switch(provisioningRule) {
-        case 'E': // Must be produced in the same center as demand.
-            allowedProductionCenters = [demandCenterId];
-            break;
-        case 'F': // Must be sourced from a different center (transfer).
-            // Hardcoded rule: For now, all external sourcing is from center 1000.
-            allowedProductionCenters = ["1000"];
-            break;
-        case 'X': // Can be produced in any center.
-        default:
-            allowedProductionCenters = allCenterIds;
-            break;
-    }
-
-    // Step 3: Find all lines in the allowed centers that can actually make the product.
+    // Step 2: Find all lines in the designated production center that can make the product.
     const allCapableLines = productionLines.filter(line => 
-        // Is the line in an allowed production center?
-        allowedProductionCenters.includes(line.workCenterId) &&
-        // Does any API data exist linking this product to this line?
+        line.workCenterId === productionCenterId &&
         apiData.some(d => 
             normalizeMaterialCode(d.CodMaterial) === productId &&
             String(d.Centro).trim() === line.workCenterId &&
@@ -340,15 +319,15 @@ function getPpiOptionsForProduct(
         return [];
     }
 
-    // Step 4: For each capable line, calculate its effective manufacturing time and create a PPI option.
+    // Step 3: For each capable line, calculate its effective manufacturing time and create a PPI option.
     allCapableLines.forEach(line => {
-        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, log);
+        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
 
         if (manufacturingTime < Infinity && manufacturingTime > 0) {
             const ppiId = `${productId}---${line.id}`;
             const workstationTimes = line.assignedWorkstations.map(as => {
                  const workstationDef = workstationDefinitions.find(wd => wd.id === as.definitionId)!;
-                 const apiRow = apiData.find(d => 
+                 const apiTimeRow = apiData.find(d => 
                     normalizeMaterialCode(d.CodMaterial) === productId &&
                     String(d.Centro).trim() === line.workCenterId &&
                     String(d.Linea).trim() === line.name &&
@@ -356,7 +335,7 @@ function getPpiOptionsForProduct(
                 );
                 return {
                     workstationDefinitionId: as.definitionId,
-                    timeHours: (apiRow?.Tiempo || 0) / 60
+                    timeHours: (apiTimeRow?.Tiempo || 0) / 60
                 };
             }).filter(wt => wt.timeHours > 0);
 
@@ -417,8 +396,7 @@ export const generateProductionPlan = async (
   constraints: AppConstraints,
   apiData: TiempoEnsambleItem[] 
 ): Promise<DetailedProductionPlan> => {
-  const localAuditLog: string[] = [];
-
+  
   const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
   
   if (!salesData || salesData.length === 0) {
@@ -581,7 +559,7 @@ export const generateProductionPlan = async (
         .filter(([_, needs]) => needs[monthIndex] > 0)
         .map(([pairKey, needs]) => {
             const [productId, centerId] = pairKey.split('---');
-            const ppiOptions = getPpiOptionsForProduct(productId, centerId, constraints, apiData, localAuditLog);
+            const ppiOptions = getPpiOptionsForProduct(productId, centerId, constraints, apiData);
             return { pairKey, units: needs[monthIndex], ppiOptions };
         })
         .filter(p => p.ppiOptions.length > 0)
@@ -891,7 +869,7 @@ export const generateProductionPlan = async (
   });
   
   return { 
-    finalPlan: { dailyPlan, monthlyPlan: Array.from(aggregatedMonthlyPlan.values()), auditLog: localAuditLog },
+    finalPlan: { dailyPlan, monthlyPlan: Array.from(aggregatedMonthlyPlan.values()), auditLog: [] },
     planningGroupDetails,
     productionNeeds,
     monthlyAssignments,
@@ -963,4 +941,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
