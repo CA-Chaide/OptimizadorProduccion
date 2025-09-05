@@ -98,13 +98,13 @@ export function processAndValidateAssemblyData(
                 capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
                 materialsHandled: [], isActive: true
             });
+
+             if(!discoveredWorkCenters.get(centerId)!.productionLineIds.includes(lineId)){
+                discoveredWorkCenters.get(centerId)!.productionLineIds.push(lineId);
+            }
         }
         
         const line = discoveredLines.get(lineId)!;
-        if(!discoveredWorkCenters.get(centerId)!.productionLineIds.includes(line.id)){
-            discoveredWorkCenters.get(centerId)!.productionLine.push(line.id);
-        }
-
         if (!line.assignedWorkstations.some(as => as.definitionId === workstationId)) {
              const existingAssignment = existingLines.get(lineId)?.assignedWorkstations.find(as => as.definitionId === workstationId);
              line.assignedWorkstations.push({ 
@@ -262,7 +262,6 @@ const calculateEffectiveManufacturingTime = (
 
     // If a product requires passing through workstations but no times were found for it, it cannot be made.
     if (line.assignedWorkstations.length > 0 && workstationEffectiveTimes.length !== line.assignedWorkstations.length) {
-        log.push(`Alerta: Para producto ${productId} en línea ${line.name}, no se encontraron tiempos para todos los puestos de trabajo asignados. Se requieren ${line.assignedWorkstations.length}, se encontraron ${workstationEffectiveTimes.length}. La línea no se considerará.`);
         return Infinity;
     }
     
@@ -338,8 +337,6 @@ function getPpiOptionsForProduct(
     );
 
     if (allCapableLines.length === 0) {
-        // Log if no lines are found, this is useful for debugging.
-        log.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
         return [];
     }
 
@@ -425,8 +422,7 @@ export const generateProductionPlan = async (
   const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
   
   if (!salesData || salesData.length === 0) {
-      localAuditLog.push('Error: No hay datos de ventas para procesar.');
-      return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog: localAuditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
+      return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog: ['Error: No hay datos de ventas para procesar.'] }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
   
   const productNamesMap = new Map<string, string>();
@@ -440,8 +436,7 @@ export const generateProductionPlan = async (
   // --- Robust Planning Horizon Calculation ---
   const planningYear = salesData[0]?.año;
   if (!planningYear) {
-      localAuditLog.push('Error: No se pudo determinar el año de planificación a partir de los datos de ventas.');
-      return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog: localAuditLog }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
+      return { finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog: ['Error: No se pudo determinar el año de planificación a partir de los datos de ventas.'] }, planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] };
   }
   const planningHorizon = Array.from({ length: 12 }, (_, i) => ({
       year: planningYear,
@@ -710,10 +705,9 @@ export const generateProductionPlan = async (
   for (let monthIndex = 0; monthIndex < planningHorizon.length; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
     const assignmentsForMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
-    
     const remainingUnitsToProduce = new Map<string, number>();
     assignmentsForMonth.forEach(a => remainingUnitsToProduce.set(a.id, a.units));
-
+    
     const dailyDemandTotals = new Map<string, number>();
     demandMap.forEach((monthlyDemands, pairKey) => {
         const demand = monthlyDemands[`${year}-${month}`] || 0;
@@ -793,7 +787,6 @@ export const generateProductionPlan = async (
                 remainingUnitsToProduce.set(assignment.id, unitsLeftForAssignment - unitsToProduce);
                 hoursRemainingToday -= hoursConsumed;
                 
-                
                 const originalDemands = salesData.filter(s => {
                     const sProdId = normalizeMaterialCode(s.código);
                     const sCenterId = String(s.centro).trim();
@@ -850,7 +843,7 @@ export const generateProductionPlan = async (
                         productId: productId,
                         productName: productNamesMap.get(productId) || productId,
                         quantityToProduce: unitsForThisPlanItem,
-                        demandOnDay: dailyDemand.get(demandKey) || 0, // CORRECTED
+                        demandOnDay: dailyDemand.get(demandKey) || 0,
                         initialStockOnDay: initialStockInDemandCenter - unitsForThisPlanItem, // Stock before this item's production/transfer
                         finalStockOnDay: finalStockOnDay,
                         assignedLineId: line.id,
@@ -970,7 +963,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-
-
 
