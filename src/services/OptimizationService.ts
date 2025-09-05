@@ -283,7 +283,7 @@ function getPpiOptionsForProduct(
     demandCenterId: string,
     constraints: AppConstraints,
     apiData: TiempoEnsambleItem[],
-    localAuditLog: string[]
+    log: string[]
 ): ProductProcessInfo[] {
     const { productionLines, workstationDefinitions } = constraints;
     const ppiCandidates: ProductProcessInfo[] = [];
@@ -339,13 +339,13 @@ function getPpiOptionsForProduct(
 
     if (allCapableLines.length === 0) {
         // Log if no lines are found, this is useful for debugging.
-        localAuditLog.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
+        log.push(`Info: Producto ${productId} (Demanda en ${demandCenterId}, Regla: ${provisioningRule}) no tiene líneas de producción válidas en los centros permitidos: [${allowedProductionCenters.join(', ')}].`);
         return [];
     }
 
     // Step 4: For each capable line, calculate its effective manufacturing time and create a PPI option.
     allCapableLines.forEach(line => {
-        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, localAuditLog);
+        const manufacturingTime = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions, log);
 
         if (manufacturingTime < Infinity && manufacturingTime > 0) {
             const ppiId = `${productId}---${line.id}`;
@@ -734,9 +734,9 @@ export const generateProductionPlan = async (
     console.log(`--- Procesando Plan Diario para Mes ${month}/${year}. ${assignmentsForMonth.length} asignaciones a procesar.`);
     localAuditLog.push(`--- Procesando Plan Diario para Mes ${month}/${year}. ${assignmentsForMonth.length} asignaciones a procesar.`);
     
-    const remainingUnitsToProduce = new Map<string, number>(); // key: assignment.id
+    const remainingUnitsToProduce = new Map<string, number>();
     assignmentsForMonth.forEach(a => remainingUnitsToProduce.set(a.id, a.units));
-
+    
     const daysInMonth = new Date(year, month, 0).getDate();
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -795,13 +795,13 @@ export const generateProductionPlan = async (
                 const lotMax = invSetting?.lotMax || Infinity;
 
                 const maxUnitsInTime = hoursRemainingToday / manufacturingTime;
-                const unitsToProduceAttempt = Math.max(lotMin, Math.min(unitsLeftForAssignment, maxUnitsInTime, lotMax));
-
-                if (unitsToProduceAttempt < lotMin && unitsLeftForAssignment > unitsToProduceAttempt) {
+                let unitsToProduce = Math.max(0, Math.min(unitsLeftForAssignment, maxUnitsInTime));
+                
+                if (unitsToProduce < lotMin && unitsLeftForAssignment > unitsToProduce) {
                      continue;
                 }
+                unitsToProduce = Math.min(unitsToProduce, lotMax);
 
-                const unitsToProduce = Math.min(unitsLeftForAssignment, unitsToProduceAttempt);
 
                 if (unitsToProduce < 0.1) continue;
 
@@ -1002,4 +1002,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
