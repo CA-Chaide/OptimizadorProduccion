@@ -102,7 +102,7 @@ export function processAndValidateAssemblyData(
         
         const line = discoveredLines.get(lineId)!;
         if(!discoveredWorkCenters.get(centerId)!.productionLineIds.includes(line.id)){
-            discoveredWorkCenters.get(centerId)!.productionLineIds.push(line.id);
+            discoveredWorkCenters.get(centerId)!.productionLine.push(line.id);
         }
 
         if (!line.assignedWorkstations.some(as => as.definitionId === workstationId)) {
@@ -244,11 +244,11 @@ const calculateEffectiveManufacturingTime = (
         if (!workstationDef) continue;
         
         // Find the specific time for this product-line-workstation combination in the API data
-        const apiRow = apiData.find(row => 
-            normalizeMaterialCode(row.CodMaterial) === productId &&
-            String(row.Centro).trim() === line.workCenterId &&
-            String(row.Linea).trim() === line.name &&
-            String(row.PuestoTrabajo).trim() === workstationDef.name
+        const apiRow = apiData.find(d => 
+            normalizeMaterialCode(d.CodMaterial) === productId &&
+            String(d.Centro).trim() === line.workCenterId &&
+            String(d.Linea).trim() === line.name &&
+            String(d.PuestoTrabajo).trim() === workstationDef.name
         );
         
         if (apiRow && apiRow.Tiempo > 0) {
@@ -385,15 +385,31 @@ function getPpiOptionsForProduct(
 // ==========================================================================================
 function sequenceDailyProduction(
     dailyGoals: MonthlyAssignment[],
-    line: ProductionLine,
-    constraints: AppConstraints,
-    log: string[]
+    inventoryState: Map<string, number>, // KEY: "productId---centerId"
+    dailyDemand: Map<string, number>, // Key: "YYYY-M-D---productId---centerId"
+    currentDate: Date
 ): MonthlyAssignment[] {
-    if (dailyGoals.length <= 1) {
-        return dailyGoals;
-    }
-    // Simple sort by remaining units, more complex logic (like bottleneck rate) can be added here.
-    return dailyGoals.sort((a, b) => b.units - a.units);
+    
+    const dateKeyPrefix = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getDate()}`;
+
+    // Calculate an "urgency" score for each goal.
+    const scoredGoals = dailyGoals.map(goal => {
+        const stockKey = `${goal.productId}---${goal.demandCenterId}`;
+        const currentStock = inventoryState.get(stockKey) || 0;
+        
+        const demandKey = `${dateKeyPrefix}---${goal.productId}---${goal.demandCenterId}`;
+        const demandToday = dailyDemand.get(demandKey) || 0;
+
+        // A simple urgency score: lower is more urgent.
+        // It prioritizes items with low stock vs their immediate demand.
+        // A small epsilon is added to avoid division by zero.
+        const urgencyScore = (currentStock - demandToday) / (demandToday + 0.1);
+
+        return { ...goal, urgencyScore };
+    });
+
+    // Sort by urgency score, ascending (most urgent first).
+    return scoredGoals.sort((a, b) => a.urgencyScore - b.urgencyScore);
 }
 
 
@@ -652,8 +668,8 @@ export const generateProductionPlan = async (
         }
         if (unitsLeftToPlan > 0.1 && monthIndex < planningHorizon.length - 1) {
             productionNeedsMap.get(prod.pairKey)![monthIndex + 1] += unitsLeftToPlan;
-            console.log(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${productId} se mueven al mes ${monthIndex + 2}.`);
-            localAuditLog.push(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${productId} se mueven al mes ${monthIndex + 2}.`);
+            console.log(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${prod.pairKey.split('---')[0]} se mueven al mes ${monthIndex + 2}.`);
+            localAuditLog.push(`  Adelanto: ${unitsLeftToPlan.toFixed(0)} u de ${prod.pairKey.split('---')[0]} se mueven al mes ${monthIndex + 2}.`);
         }
     }
   }
@@ -777,7 +793,7 @@ export const generateProductionPlan = async (
             const line = activeLines.find(l => l.id === lineId)!;
             let hoursRemainingToday = hoursPerDay;
 
-            const sequencedAssignments = assignments.sort((a,b) => (remainingUnitsToProduce.get(b.id) || 0) - (remainingUnitsToProduce.get(a.id) || 0));
+            const sequencedAssignments = sequenceDailyProduction(assignments, inventoryState, dailyDemand, currentDate);
 
             for (const assignment of sequencedAssignments) {
                 if (hoursRemainingToday <= 0.01) break;
@@ -1002,5 +1018,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
