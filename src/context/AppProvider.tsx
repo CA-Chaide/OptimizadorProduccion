@@ -10,7 +10,7 @@ import {
     DetailedProductionPlan
 } from '@/types/types';
 import { ActiveView } from '@/constants/constants';
-import { generateProductionPlan, generateTacticalPlan, processAndValidateAssemblyData } from '@/services/OptimizationService';
+import { generateProductionPlan, processAndValidateAssemblyData } from '@/services/OptimizationService';
 import { queryApi } from '@/hooks/useApiData';
 
 const initialState: AppState = {
@@ -293,3 +293,4 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
+

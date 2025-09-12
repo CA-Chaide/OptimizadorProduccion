@@ -74,3 +74,4 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     const fullUrl = API_BASE_URL + endpoint;
     return fetcher(fullUrl, method, body);
 };
+
