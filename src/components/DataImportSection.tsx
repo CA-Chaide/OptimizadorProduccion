@@ -307,10 +307,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           </div>
 
           <div className="overflow-auto bg-gray-50 p-3 rounded-md shadow max-h-[55vh]">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-200 sticky top-0 z-10">
+            <table className="min-w-full text-sm table-fixed">
+              <thead className="bg-gray-200 sticky top-0 z-20">
                 <tr>
-                  <th className="p-2 w-10 text-left">
+                  <th className="p-2 w-10 text-left bg-inherit">
                       <input 
                         type="checkbox"
                         className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
@@ -318,11 +318,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         onChange={(e) => handleSelectAllGroups(e.target.checked)}
                       />
                   </th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">{groupBy === 'sector' ? 'Sector' : (groupBy === 'etiqueta' ? 'Etiqueta' : 'Material')}</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-inherit">{groupBy === 'sector' ? 'Sector' : (groupBy === 'etiqueta' ? 'Etiqueta' : 'Material')}</th>
                   {uniqueCentersInPreviewData.map(center => (
-                    <th key={center} className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{center}</th>
+                    <th key={center} className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-inherit">{center}</th>
                   ))}
-                  <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades Totales</th>
+                  <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-inherit">Unidades Totales</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -346,26 +346,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                   </tr>
                 ))}
               </tbody>
-               <tfoot className="bg-gray-200 sticky bottom-0 z-10">
-                    
-                        <tr className="border-t-2 border-gray-400">
-                            <td colSpan={2} className="px-4 py-2 text-left font-semibold text-gray-600 uppercase">Subtotal Sectores 01-03</td>
-                            {uniqueCentersInPreviewData.map(center => (
-                                <td key={center} className="px-4 py-2 text-right font-semibold text-gray-600">
-                                    {(totals.subtotalSectors[center] || 0).toLocaleString()}
-                                </td>
-                            ))}
-                            <td className="px-4 py-2 text-right font-semibold text-gray-600">{totals.subtotalSectors.total.toLocaleString()}</td>
-                        </tr>
+               <tfoot className="bg-gray-200 sticky bottom-0 z-20">
+                    <tr className="border-t-2 border-gray-400">
+                        <td colSpan={2} className="px-4 py-2 text-left font-semibold text-gray-600 uppercase bg-inherit">Subtotal Sectores 01-03</td>
+                        {uniqueCentersInPreviewData.map(center => (
+                            <td key={center} className="px-4 py-2 text-right font-semibold text-gray-600 bg-inherit">
+                                {(totals.subtotalSectors[center] || 0).toLocaleString()}
+                            </td>
+                        ))}
+                        <td className="px-4 py-2 text-right font-semibold text-gray-600 bg-inherit">{totals.subtotalSectors.total.toLocaleString()}</td>
+                    </tr>
                     
                     <tr>
-                        <td colSpan={2} className="px-4 py-2 text-left font-bold text-gray-700 uppercase">Total Seleccionado</td>
+                        <td colSpan={2} className="px-4 py-2 text-left font-bold text-gray-700 uppercase bg-inherit">Total Seleccionado</td>
                         {uniqueCentersInPreviewData.map(center => (
-                            <td key={center} className="px-4 py-2 text-right font-bold text-gray-700">
+                            <td key={center} className="px-4 py-2 text-right font-bold text-gray-700 bg-inherit">
                                 {(totals.selectedTotal[center] || 0).toLocaleString()}
                             </td>
                         ))}
-                        <td className="px-4 py-2 text-right font-bold text-gray-700">{totals.selectedTotal.total.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right font-bold text-gray-700 bg-inherit">{totals.selectedTotal.total.toLocaleString()}</td>
                     </tr>
                </tfoot>
             </table>
