@@ -202,7 +202,6 @@ function getPpiOptionsForProduct(productId: string, demandCenterId: string, cons
     let ruleRow = apiData.find(row => normalizeMaterialCode(row.CodMaterial) === productId && String(row.Centro).trim() === demandCenterId && row.ClaseAprovisionamiento) || apiData.find(row => normalizeMaterialCode(row.CodMaterial) === productId && row.ClaseAprovisionamiento);
     const provisioningRule = ruleRow?.ClaseAprovisionamiento || 'E';
     
-    // Aquí estaba el error. El centro de producción debe decidirse por la regla, no ser siempre el de la demanda.
     const productionCenterId = provisioningRule === 'F' ? "1000" : demandCenterId;
 
     const allCapableLines = productionLines.filter(line => 
@@ -465,6 +464,12 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
                 const { productId, centerName: productionCenterId } = assignment;
                 const invSetting = inventorySettings.find(i => i.itemId === productId && i.centerId === productionCenterId);
                 const maxUnitsInTime = hoursRemainingToday / manufacturingTime;
+
+                // FIX: Check if we can even produce the minimum lot size
+                if ((invSetting?.lotMin || 1) * manufacturingTime > hoursRemainingToday) {
+                    continue; // Not enough time for min lot, skip to next assignment
+                }
+                
                 let unitsToProduce = Math.max(0, Math.min(unitsLeftForAssignment, maxUnitsInTime, invSetting?.lotMax || Infinity));
                 if (unitsToProduce < (invSetting?.lotMin || 1) && unitsLeftForAssignment > unitsToProduce) continue;
                 if (unitsToProduce < 0.1) continue;
@@ -592,4 +597,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
