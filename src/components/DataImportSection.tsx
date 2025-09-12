@@ -285,7 +285,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             disabled={isProcessing}
             className="w-full h-10 px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
         >
-            {isProcessing ? 'Consultando...' : 'Previsualizar Datos'}
+            {isProcessing ? 'Consultando...' : 'Previsualizar'}
         </button>
       </div>
 
@@ -306,8 +306,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </div>
           </div>
 
-          <div className="overflow-x-auto bg-gray-50 p-3 rounded-md shadow">
-            <table className="min-w-full text-sm divide-y divide-gray-200">
+          <div className="overflow-auto bg-gray-50 p-3 rounded-md shadow max-h-[55vh]">
+            <table className="min-w-full text-sm">
               <thead className="bg-gray-200 sticky top-0 z-10">
                 <tr>
                   <th className="p-2 w-10 text-left">
@@ -325,10 +325,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                   <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades Totales</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200 max-h-[50vh] overflow-y-auto block">
+              <tbody className="bg-white divide-y divide-gray-200">
                 {Object.entries(aggregatedData).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)).map(([key, value]) => (
-                  <tr key={key} className="flex">
-                    <td className="p-2 w-10 flex-shrink-0">
+                  <tr key={key}>
+                    <td className="p-2 w-10">
                         <input 
                             type="checkbox"
                             className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
@@ -336,13 +336,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                             onChange={(e) => handleGroupSelection(key, e.target.checked)}
                         />
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap font-medium flex-1">{key}</td>
+                    <td className="px-4 py-2 whitespace-nowrap font-medium">{key}</td>
                     {uniqueCentersInPreviewData.map(center => (
-                        <td key={center} className="px-4 py-2 whitespace-nowrap text-right w-24">
+                        <td key={center} className="px-4 py-2 whitespace-nowrap text-right">
                             {(value.unitsByCenter[center] || 0).toLocaleString()}
                         </td>
                     ))}
-                    <td className="px-4 py-2 whitespace-nowrap text-right font-bold w-32">{value.totalUnits.toLocaleString()}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-right font-bold">{value.totalUnits.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
