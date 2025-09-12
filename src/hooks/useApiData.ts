@@ -3,7 +3,7 @@
 import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
-const API_BASE_URL = 'https://intranet.chaide.com'; 
+const API_BASE_URL = ''; 
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
 
 /**
@@ -15,7 +15,7 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
     const options: RequestInit = {
         method,
         headers: {
-            'Authorization': `Bearer ${API_TOKEN}`,
+            'Authorization': `Bearer ${'${API_TOKEN}'}`,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         },
@@ -34,7 +34,7 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
             try {
                 error.info = JSON.parse(errorText);
             } catch (e) {
-                error.info = { message: `No se pudo leer el cuerpo del error. Estado: ${res.status}`, statusText: res.statusText, body: errorText };
+                error.info = { message: `No se pudo leer el cuerpo del error. Estado: ${'${res.status}'}`, statusText: res.statusText, body: errorText };
             }
             error.status = res.status;
             throw error;
@@ -72,6 +72,13 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     }
 
     const fullUrl = API_BASE_URL + endpoint;
-    return fetcher(fullUrl, method, body);
+    console.log(`[useApiData] Querying API: ${'${method}'} ${'${fullUrl}'}`, body);
+    try {
+        const response = await fetcher(fullUrl, method, body);
+        console.log('[useApiData] API Response:', response);
+        return response;
+    } catch(e) {
+        console.error('[useApiData] API Fetch failed:', e);
+        throw e;
+    }
 };
-
