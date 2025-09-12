@@ -5,6 +5,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -445,6 +446,7 @@ export type ApiQuery =
   | {
       operation: 'get_data';
       source: string;
+      columns?: string[]; // New optional field to specify columns
       filters?: { [key: string]: any };
       pagination?: { skip?: number; limit?: number };
     }
@@ -490,5 +492,6 @@ export interface TiempoEnsambleItem {
 
 // Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';
+
 
 

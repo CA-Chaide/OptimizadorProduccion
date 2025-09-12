@@ -15,7 +15,7 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
     const options: RequestInit = {
         method,
         headers: {
-            'Authorization': `Bearer ${'${API_TOKEN}'}`,
+            'Authorization': `Bearer ${API_TOKEN}`,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         },
@@ -34,7 +34,7 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
             try {
                 error.info = JSON.parse(errorText);
             } catch (e) {
-                error.info = { message: `No se pudo leer el cuerpo del error. Estado: ${'${res.status}'}`, statusText: res.statusText, body: errorText };
+                error.info = { message: `No se pudo leer el cuerpo del error. Estado: ${res.status}`, statusText: res.statusText, body: errorText };
             }
             error.status = res.status;
             throw error;
@@ -72,7 +72,7 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     }
 
     const fullUrl = API_BASE_URL + endpoint;
-    console.log(`[useApiData] Querying API: ${'${method}'} ${'${fullUrl}'}`, body ? JSON.stringify(body) : 'No Body');
+    console.log(`[useApiData] Querying API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
         console.log('[useApiData] API Response:', response);
@@ -82,4 +82,5 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
         throw e;
     }
 };
+
 

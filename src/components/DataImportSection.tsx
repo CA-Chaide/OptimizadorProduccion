@@ -115,7 +115,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 key = row.etiqueta || 'Sin Etiqueta';
                 break;
             case 'material':
-                key = `${'${row.código}'} - ${'${row.descripciónMaterial}'}`;
+                key = `${row.código} - ${row.descripciónMaterial}`;
                 break;
             default:
                 key = 'Sin Asignar';
@@ -163,7 +163,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           }
 
           const mappedData: SalesDataRow[] = dataFromApi.map((item, index) => ({
-              id: `row-${'${Date.now()}'}-${'${index}'}`,
+              id: `row-${Date.now()}-${index}`,
               año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
               etiqueta: item.Etiqueta || 'Sin Etiqueta', 
               código: normalizeMaterialCode(item.CodMaterial),
@@ -173,7 +173,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           }));
           console.log('[DataImportSection] Mapped data for preview:', mappedData);
           setPreviewData(mappedData);
-          addNotification('success', `Se han pre-cargado ${'${mappedData.length}'} registros para previsualización.`);
+          addNotification('success', `Se han pre-cargado ${mappedData.length} registros para previsualización.`);
 
       } catch (error) {
           addNotification('error', `Error al cargar datos de previsualización: ${(error as Error).message}`);
@@ -190,45 +190,41 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const handleAcceptAndLoadData = async () => {
     setIsProcessing(true);
-    addNotification('info', `Cargando datos completos para planificación...`);
+    addNotification('info', `Iniciando carga de datos para el año ${filters.año}. Esto puede tardar...`);
     try {
-        const finalApiFilters: { [key: string]: any } = {
-            'Año': Number(filters.año)
-        };
+        const allYearData: SalesDataRow[] = [];
+        const planningYear = Number(filters.año);
 
-        const allYearData: PresupuestoItem[] = await queryApi({
-            source: 'Presupuesto',
-            operation: 'get_data',
-            filters: finalApiFilters,
-            pagination: { limit: 50000 }
-        });
+        for (let month = 1; month <= 12; month++) {
+            addNotification('info', `Cargando datos para ${MONTH_NAMES[month-1]} ${planningYear}...`);
+            const monthlyData: PresupuestoItem[] = await queryApi({
+                source: 'Presupuesto',
+                operation: 'get_data',
+                filters: { 'Año': planningYear, 'Mes': month },
+                pagination: { limit: 50000 }
+            });
 
-        if (allYearData.length === 0) {
-            addNotification('error', 'No se encontraron datos para el año seleccionado.');
-            setIsProcessing(false);
-            return;
+            if (monthlyData.length > 0) {
+                const mappedData: SalesDataRow[] = monthlyData.map((item, index) => ({
+                    id: `row-final-${planningYear}-${month}-${index}`,
+                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                    etiqueta: item.Etiqueta || 'Sin Etiqueta', 
+                    código: normalizeMaterialCode(item.CodMaterial),
+                    centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+                    dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
+                    familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+                }));
+                allYearData.push(...mappedData);
+            }
         }
 
-        const mappedData: SalesDataRow[] = allYearData.map((item, index) => ({
-            id: `row-final-${'${Date.now()}'}-${'${index}'}`,
-            año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-            etiqueta: item.Etiqueta || 'Sin Etiqueta', 
-            código: normalizeMaterialCode(item.CodMaterial),
-            centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-            dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
-            familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-        }));
-
-        // Pass all data for the selected year to the planner
-        const dataForPlanning = mappedData;
-
-        if (dataForPlanning.length === 0) {
-            addNotification('warning', 'No hay datos de ventas disponibles para el año seleccionado.');
+        if (allYearData.length === 0) {
+            addNotification('error', `No se encontraron datos de ventas para todo el año ${planningYear}.`);
             setIsProcessing(false);
             return;
         }
         
-        onDataImported(dataForPlanning);
+        onDataImported(allYearData);
         setPreviewData([]);
         setSelectedGroups(new Set());
     } catch (error) {
@@ -398,7 +394,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     className="w-full md:w-auto px-6 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                     disabled={isProcessing}
                 >
-                    Aceptar y Cargar Datos para Planificación
+                    {isProcessing ? 'Cargando Datos...' : 'Aceptar y Cargar Datos para Planificación'}
                 </button>
            </div>
         </div>

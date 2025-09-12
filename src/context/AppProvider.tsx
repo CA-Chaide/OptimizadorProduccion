@@ -15,7 +15,7 @@ import { queryApi } from '@/hooks/useApiData';
 
 const initialState: AppState = {
     year: null,
-    activeView: ActiveView.DASHBOARD,
+    activeView: ActiveView.DATA_IMPORT,
     salesData: [],
     isLoading: false,
     productionPlan: { dailyPlan: [], monthlyPlan: [], auditLog: [] },
@@ -51,10 +51,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_ACTIVE_VIEW':
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
-            console.log("[AppProvider] Setting sales data:", action.payload);
             return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
         case 'SET_CONSTRAINTS':
-             console.log("[AppProvider] Setting constraints:", action.payload);
             return { ...state, constraints: action.payload };
         case 'SET_EMPLOYEES':
             return { ...state, employees: action.payload };
@@ -67,10 +65,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_WORK_SHIFTS':
             return { ...state, workShifts: action.payload };
         case 'GENERATE_PRODUCTION_PLAN_START':
-            console.log("[AppProvider] Starting production plan generation...");
             return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan };
         case 'GENERATE_PRODUCTION_PLAN_SUCCESS':
-            console.log("[AppProvider] Production plan generation successful:", action.payload);
             return { 
                 ...state, 
                 isLoading: false, 
@@ -78,7 +74,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 detailedProductionPlan: action.payload,
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
-            console.error("[AppProvider] Production plan generation failed:", action.payload);
             return { 
                 ...state, 
                 isLoading: false, 
@@ -88,7 +83,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'GENERATE_TACTICAL_PLAN':
             return { ...state, tacticalPlanResult: action.payload };
         case 'SET_SYNC_STATUS':
-             console.log("[AppProvider] Setting sync status:", action.payload);
             return { ...state, syncStatus: action.payload };
         default:
             return state;
@@ -142,7 +136,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [apiAssemblyData, setApiAssemblyData] = useState<TiempoEnsambleItem[]>([]);
 
     useEffect(() => {
-        dispatch({ type: 'SET_YEAR', payload: new Date().getFullYear() });
+        const year = new Date().getFullYear();
+        dispatch({ type: 'SET_YEAR', payload: year });
     }, []);
 
     const addNotification = useCallback((type: NotificationMessage['type'], text: string, errors: string[] = []) => {
@@ -167,7 +162,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleDataImported = (data: SalesDataRow[]) => {
         dispatch({ type: 'SET_SALES_DATA', payload: data });
-        addNotification('success', `Se importaron ${data.length} registros de ventas.`);
+        // Instead of triggering a full year load, we just move to the next logical step.
+        // The planner will now fetch data month-by-month.
         dispatch({ type: 'SET_ACTIVE_VIEW', payload: ActiveView.CONSTRAINTS });
     };
 
@@ -189,10 +185,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Store the raw data
             setApiAssemblyData(assemblyData);
 
+            // Sales data is no longer passed here, as it will be fetched inside the planner
             const { newConstraints, validationErrors, dataCompletenessErrors } = processAndValidateAssemblyData(
                 assemblyData,
                 state.constraints, 
-                state.salesData
+                state.salesData // Pass empty array as placeholder, not used for structure validation
             );
 
             const allErrors = [...validationErrors, ...dataCompletenessErrors];
@@ -217,8 +214,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state.constraints, state.salesData, addNotification]);
 
     const handleGeneratePlan = useCallback(async () => {
-        if (state.salesData.length === 0) {
-            addNotification('warning', 'Por favor, carga primero los datos de ventas.');
+        if (!state.year) {
+            addNotification('warning', 'Por favor, seleccione un año en la pestaña de importación.');
             return false;
         }
         if (!state.syncStatus?.isSynced || apiAssemblyData.length === 0) {
@@ -229,8 +226,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
         
         try {
-            addNotification('info', 'Generando plan de producción... Esto puede tardar unos momentos.');
-            const detailedPlan = await generateProductionPlan(state.salesData, state.constraints, apiAssemblyData);
+            addNotification('info', 'Generando plan de producción... La carga de datos se realizará mes a mes. Esto puede tardar.');
+            // The planner now fetches its own sales data based on the year.
+            const detailedPlan = await generateProductionPlan(state.year, state.constraints, apiAssemblyData);
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');
             return true;
@@ -241,7 +239,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
         }
-    }, [state.salesData, state.constraints, state.syncStatus, apiAssemblyData, addNotification]);
+    }, [state.year, state.constraints, state.syncStatus, apiAssemblyData, addNotification]);
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
@@ -292,5 +290,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-
-
