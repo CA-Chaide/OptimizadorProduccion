@@ -389,7 +389,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
             monthlyOriginalNeeds.set(originalNeedKey, originalNeed - originalUnitsToMake);
             const advancedUnitsToMake = Math.max(0, unitsToMake - originalUnitsToMake);
             const line = activeLines.find(l=>l.id === ppi.productionLineId)!;
-            console.log(`Asignación Mes ${month}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
+            if(unitsToMake > 0) console.log(`Asignación Mes ${month}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
             if(advancedUnitsToMake > 0 && horizonMonths > 1) console.log(`Adelanto: ${advancedUnitsToMake.toFixed(0)} u de ${productId} se adelantaron de meses futuros.`);
             monthlyAssignments.push({ id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`, monthIndex, lineId: line.id, lineName: line.name, ppiId: ppi.id, productId, centerName: line.workCenterId, demandCenterId: centerId, units: unitsToMake, originalNeedUnits: originalUnitsToMake, advancedUnits: advancedUnitsToMake, totalHours: hoursToConsume, laborCost: calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions) });
             unitsLeftToPlan -= unitsToMake;
@@ -503,13 +503,15 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
                       continue; 
                   }
                 }
+                
+                unitsToProduce = Math.floor(unitsToProduce);
 
                 if (unitsToProduce < 0.1) continue;
 
                 const hoursConsumed = unitsToProduce * manufacturingTime;
                 if (hoursConsumed > hoursRemainingTodayForLine) continue;
 
-                console.log(`Línea [${assignment.lineName}]: Produce ${unitsToProduce.toFixed(0)} u de ${assignment.productId}. Horas consumidas: ${hoursConsumed.toFixed(2)}. Horas restantes hoy: ${(hoursRemainingTodayForLine - hoursConsumed).toFixed(2)}`);
+                //console.log(`Línea [${assignment.lineName}]: Produce ${unitsToProduce.toFixed(0)} u de ${assignment.productId}. Horas consumidas: ${hoursConsumed.toFixed(2)}. Horas restantes hoy: ${(hoursRemainingTodayForLine - hoursConsumed).toFixed(2)}`);
 
                 const prodStockKey = `${assignment.productId}---${assignment.centerName}`;
                 const initialStockOnDay = inventoryState.get(prodStockKey) || 0;
@@ -607,3 +609,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
+    
