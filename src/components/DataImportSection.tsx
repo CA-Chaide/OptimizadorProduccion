@@ -241,6 +241,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       return result;
   }, [aggregatedData, selectedGroups, uniqueCentersInPreviewData]);
 
+  const handleAcceptAndLoadData = () => {
+    if (!aggregatedData) {
+        addNotification('warning', 'No hay datos previsualizados para cargar.');
+        return;
+    }
+
+    const dataToLoad = Object.entries(aggregatedData)
+      .filter(([key]) => selectedGroups.has(key))
+      .flatMap(([, value]) => value.dataRows);
+
+    if (dataToLoad.length === 0) {
+      addNotification('warning', 'No ha seleccionado ningún grupo para cargar. Por favor, marque las casillas de los grupos que desea incluir en el plan.');
+      return;
+    }
+
+    onDataImported(dataToLoad);
+    addNotification('success', `${dataToLoad.length} registros de ventas han sido cargados y están listos para la planificación.`);
+  };
+
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -250,7 +269,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Utilice los filtros para **previsualizar** una muestra de los datos de ventas. El año que seleccione aquí será el utilizado para la planificación global.
+        Utilice los filtros para **previsualizar** los datos de ventas. Luego, seleccione los grupos que desea incluir y presione "Usar estos Datos para Planificar".
       </p>
 
       {/* --- Filtros --- */}
@@ -265,7 +284,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             disabled={isProcessing}
             className="w-full h-10 px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
         >
-            {isProcessing ? 'Consultando...' : 'Previsualizar Muestra'}
+            {isProcessing ? 'Consultando...' : 'Previsualizar Datos'}
         </button>
       </div>
 
@@ -349,6 +368,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     </tr>
                </tfoot>
             </table>
+          </div>
+          <div className="pt-4 flex justify-end">
+            <button
+                onClick={handleAcceptAndLoadData}
+                disabled={isProcessing || previewData.length === 0}
+                className="px-6 py-3 bg-green-600 text-white font-bold rounded-md shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+                Usar estos Datos para Planificar
+            </button>
           </div>
         </div>
       )}

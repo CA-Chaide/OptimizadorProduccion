@@ -72,8 +72,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 ...state, 
                 isLoading: false, 
                 productionPlan: action.payload.finalPlan,
-                detailedProductionPlan: action.payload.details,
-                salesData: action.payload.salesData,
+                detailedProductionPlan: action.payload.details
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
             return { 
@@ -220,6 +219,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
             return false;
         }
+        if (state.salesData.length === 0) {
+            addNotification('error', 'No hay datos de ventas cargados. Por favor, importe los datos antes de generar un plan.');
+            return false;
+        }
         if (!state.syncStatus?.isSynced || apiAssemblyData.length === 0) {
             addNotification('error', 'Debe sincronizar y validar los datos de ensamble antes de generar el plan.');
             return false;
@@ -228,7 +231,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
         
         try {
-            const detailedPlan = await generateProductionPlan(state.year, state.constraints, apiAssemblyData);
+            const detailedPlan = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData);
 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');
@@ -240,7 +243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
         }
-    }, [state.year, state.constraints, state.syncStatus, apiAssemblyData, addNotification]);
+    }, [state.year, state.constraints, state.syncStatus, apiAssemblyData, state.salesData, addNotification]);
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
@@ -291,4 +294,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-

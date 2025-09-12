@@ -28,7 +28,7 @@ export type AppAction =
   | { type: 'SET_ACTIVE_VIEW'; payload: ActiveView }
   | { type: 'SET_SALES_DATA'; payload: SalesDataRow[] }
   | { type: 'GENERATE_PRODUCTION_PLAN_START' }
-  | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: { finalPlan: ProductionPlan, details: DetailedProductionPlan, salesData: SalesDataRow[] } }
+  | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: { finalPlan: ProductionPlan, details: DetailedProductionPlan } }
   | { type: 'GENERATE_PRODUCTION_PLAN_ERROR'; payload?: string }
   | { type: 'SET_CONSTRAINTS'; payload: AppConstraints }
   | { type: 'SET_EMPLOYEES'; payload: Employee[] }

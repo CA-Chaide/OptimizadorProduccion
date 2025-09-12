@@ -240,42 +240,9 @@ function sequenceDailyProduction(dailyGoals: MonthlyAssignment[], inventoryState
     return scoredGoals.sort((a, b) => a.urgencyScore - b.urgencyScore);
 }
 
-export const generateProductionPlan = async (planningYear: number, constraints: AppConstraints, apiData: TiempoEnsambleItem[]): Promise<{ finalPlan: ProductionPlan, details: DetailedProductionPlan, salesData: SalesDataRow[] }> => {
+export const generateProductionPlan = async (planningYear: number, constraints: AppConstraints, apiData: TiempoEnsambleItem[], salesData: SalesDataRow[]): Promise<{ finalPlan: ProductionPlan, details: DetailedProductionPlan }> => {
   console.log('--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---');
   const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
-  
-  // 1. Cargar todos los datos de ventas para el año
-  const allSalesData: SalesDataRow[] = [];
-  for (let month = 1; month <= 12; month++) {
-    console.log(`Cargando datos de ventas para ${MONTH_NAMES[month - 1]} ${planningYear}...`);
-    try {
-        const monthData: PresupuestoItem[] = await queryApi({
-            source: 'Presupuesto',
-            operation: 'get_data',
-            filters: { 'Año': planningYear, 'Mes': month },
-            pagination: { limit: 50000 },
-        });
-        const mappedData: SalesDataRow[] = monthData.map((item, index) => ({
-            id: `row-${planningYear}-${month}-${index}`,
-            año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-            etiqueta: item.Etiqueta || 'Sin Etiqueta', 
-            código: normalizeMaterialCode(item.CodMaterial),
-            centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-            dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
-            familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-        }));
-        allSalesData.push(...mappedData);
-    } catch(e) {
-        console.error(`Error cargando datos para el mes ${month}`, e);
-        throw new Error(`Fallo al cargar datos de ventas para el mes ${month}. El proceso no puede continuar.`);
-    }
-  }
-  
-  if (allSalesData.length === 0) {
-      throw new Error("No se encontraron datos de ventas para el año seleccionado. No se puede generar un plan.");
-  }
-  console.log(`Carga de datos de ventas completada. Se encontraron ${allSalesData.length} registros. Iniciando motor de optimización...`);
-  const salesData = allSalesData;
 
   const planningHorizon = Array.from({ length: 12 }, (_, i) => ({ year: planningYear, month: i + 1 }));
 
@@ -502,11 +469,11 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
                 const invSetting = inventorySettings.find(i => i.itemId === assignment.productId && i.centerId === assignment.centerName);
                 
                 let unitsToProduce = Math.min(unitsLeftForAssignment, hoursRemainingToday / manufacturingTime);
-                if (unitsToProduce < (invSetting?.lotMin || 1)) {
-                    if (hoursRemainingToday < ((invSetting?.lotMin || 1) * manufacturingTime)) {
-                        continue; 
-                    }
-                    unitsToProduce = Math.min(unitsLeftForAssignment, (invSetting?.lotMin || 1));
+                if(invSetting && unitsToProduce < invSetting.lotMin) {
+                  if (hoursRemainingToday < (invSetting.lotMin * manufacturingTime)) {
+                    continue; 
+                  }
+                  unitsToProduce = Math.min(unitsLeftForAssignment, invSetting.lotMin);
                 }
 
                 if (unitsToProduce < 0.1) continue;
@@ -568,7 +535,6 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
   return { 
     finalPlan: { dailyPlan, monthlyPlan: Array.from(aggregatedMonthlyPlan.values()), auditLog: [] },
     details: { planningGroupDetails, productionNeeds, monthlyAssignments },
-    salesData: salesData,
   };
 };
 
@@ -612,7 +578,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-
-
 
