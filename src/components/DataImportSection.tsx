@@ -188,50 +188,34 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   }, [aggregatedData]);
 
-  const handleAcceptAndLoadData = async () => {
-    setIsProcessing(true);
-    addNotification('info', `Iniciando carga de datos para el año ${filters.año}. Esto puede tardar...`);
-    try {
-        const allYearData: SalesDataRow[] = [];
-        const planningYear = Number(filters.año);
-
-        for (let month = 1; month <= 12; month++) {
-            addNotification('info', `Cargando datos para ${MONTH_NAMES[month-1]} ${planningYear}...`);
-            const monthlyData: PresupuestoItem[] = await queryApi({
-                source: 'Presupuesto',
-                operation: 'get_data',
-                filters: { 'Año': planningYear, 'Mes': month },
-                pagination: { limit: 50000 }
-            });
-
-            if (monthlyData.length > 0) {
-                const mappedData: SalesDataRow[] = monthlyData.map((item, index) => ({
-                    id: `row-final-${planningYear}-${month}-${index}`,
-                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta', 
-                    código: normalizeMaterialCode(item.CodMaterial),
-                    centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-                    dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-                }));
-                allYearData.push(...mappedData);
-            }
-        }
-
-        if (allYearData.length === 0) {
-            addNotification('error', `No se encontraron datos de ventas para todo el año ${planningYear}.`);
-            setIsProcessing(false);
-            return;
-        }
-        
-        onDataImported(allYearData);
-        setPreviewData([]);
-        setSelectedGroups(new Set());
-    } catch (error) {
-        addNotification('error', `Error al cargar datos para planificación: ${(error as Error).message}`);
-    } finally {
-        setIsProcessing(false);
+  const handleAcceptAndLoadData = () => {
+    if (previewData.length === 0) {
+        addNotification('warning', 'No hay datos en la previsualización para cargar.');
+        return;
     }
+    
+    // Filter the data based on selected groups
+    const selectedData: SalesDataRow[] = [];
+    if(aggregatedData && selectedGroups.size > 0) {
+        selectedGroups.forEach(groupKey => {
+            if(aggregatedData[groupKey]) {
+                selectedData.push(...aggregatedData[groupKey].dataRows);
+            }
+        });
+    } else {
+        // If no grouping or selection, load all previewed data
+        selectedData.push(...previewData);
+    }
+
+    if (selectedData.length === 0) {
+        addNotification('warning', 'Ningún grupo seleccionado contiene datos. No se cargó nada.');
+        return;
+    }
+
+    onDataImported(selectedData);
+    setPreviewData([]);
+    setSelectedGroups(new Set());
+    addNotification('info', `Se han transferido ${selectedData.length} registros al motor de planificación.`);
   };
 
   const handleGroupSelection = (groupKey: string, isSelected: boolean) => {
@@ -287,13 +271,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para **previsualizar** una muestra de los datos y validar su correctitud. Luego, presione **Aceptar y Cargar** para iniciar la planificación con todos los datos a partir del mes y año seleccionados.
+        Use los filtros para **previsualizar** los datos de ventas. Luego, puede seleccionar grupos específicos y presionar **"Usar Datos para Planificación"** para cargarlos en el motor.
       </p>
 
       {/* --- Filtros --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end p-4 border rounded-lg bg-gray-50">
         <SelectField label="Año" id="año" name="año" value={filters.año} onChange={handleFilterChange} options={filterOptions.años}/>
-        <SelectField label="Mes (Para previsualizar)" id="mes" name="mes" value={filters.mes} onChange={handleFilterChange} options={filterOptions.meses} title="Filtra la previsualización. La carga final comenzará desde este mes."/>
+        <SelectField label="Mes (Para previsualizar)" id="mes" name="mes" value={filters.mes} onChange={handleFilterChange} options={filterOptions.meses}/>
         <SelectField label="Centro (Para previsualizar)" id="centro" name="centro" value={filters.centro} onChange={handleFilterChange} options={filterOptions.centros}/>
         <SelectField label="Etiqueta (Para previsualizar)" id="etiqueta" name="etiqueta" value={filters.etiqueta} onChange={handleFilterChange} options={filterOptions.etiquetas}/>
         
@@ -392,9 +376,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 <button
                     onClick={handleAcceptAndLoadData}
                     className="w-full md:w-auto px-6 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                    disabled={isProcessing}
+                    disabled={isProcessing || previewData.length === 0}
                 >
-                    {isProcessing ? 'Cargando Datos...' : 'Aceptar y Cargar Datos para Planificación'}
+                    {isProcessing ? 'Cargando...' : 'Usar Datos para Planificación'}
                 </button>
            </div>
         </div>

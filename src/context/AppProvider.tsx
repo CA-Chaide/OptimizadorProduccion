@@ -65,14 +65,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_WORK_SHIFTS':
             return { ...state, workShifts: action.payload };
         case 'GENERATE_PRODUCTION_PLAN_START':
-            return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan, salesData: [] };
+            return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan };
         case 'GENERATE_PRODUCTION_PLAN_SUCCESS':
             return { 
                 ...state, 
                 isLoading: false, 
                 productionPlan: action.payload.finalPlan,
                 detailedProductionPlan: action.payload.details,
-                salesData: action.payload.salesData,
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
             return { 
@@ -169,7 +168,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleDataImported = (data: SalesDataRow[]) => {
         dispatch({ type: 'SET_SALES_DATA', payload: data });
-        addNotification('success', `Se han cargado ${data.length} registros para el período seleccionado.`);
     };
 
     const handleSyncAndValidate = useCallback(async (): Promise<boolean> => {
@@ -216,57 +214,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state.constraints, addNotification]);
 
     const handleGeneratePlan = useCallback(async () => {
-        if (!state.year) {
-            addNotification('warning', 'Por favor, seleccione un año en la pestaña de importación.');
+        if (!state.salesData || state.salesData.length === 0) {
+            addNotification('warning', 'Por favor, cargue los datos de ventas antes de generar un plan.');
             return false;
         }
         if (!state.syncStatus?.isSynced || apiAssemblyData.length === 0) {
             addNotification('error', 'Debe sincronizar y validar los datos de ensamble antes de generar el plan.');
             return false;
         }
+        
+        const planningYear = state.salesData[0]?.año;
+        if (!planningYear) {
+            addNotification('error', 'Los datos de ventas no contienen un año válido.');
+            return false;
+        }
 
         dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
         
         try {
-            addNotification('info', 'Generando plan de producción... La carga de datos de ventas se realizará mes a mes.');
+            addNotification('info', `Generando plan de producción para el año ${planningYear} basado en ${state.salesData.length} registros de ventas...`);
             
-            const allYearSalesData: SalesDataRow[] = [];
-            const planningYear = state.year;
-            
-            for (let month = 1; month <= 12; month++) {
-                addNotification('info', `Cargando datos de ventas para ${MONTH_NAMES[month-1]} ${planningYear}...`);
-                const monthlyData: PresupuestoItem[] = await queryApi({
-                    source: 'Presupuesto',
-                    operation: 'get_data',
-                    filters: { 'Año': planningYear, 'Mes': month },
-                    pagination: { limit: 50000 }
-                });
+            const detailedPlan = await generateProductionPlan(planningYear, state.constraints, apiAssemblyData, state.salesData);
 
-                if (monthlyData.length > 0) {
-                    const mappedData: SalesDataRow[] = monthlyData.map((item, index) => ({
-                        id: `row-final-${planningYear}-${month}-${index}`,
-                        año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                        etiqueta: item.Etiqueta || 'Sin Etiqueta', 
-                        código: normalizeMaterialCode(item.CodMaterial),
-                        centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-                        dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
-                        familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-                    }));
-                    allYearSalesData.push(...mappedData);
-                }
-            }
-
-            if (allYearSalesData.length === 0) {
-                addNotification('error', `No se encontraron datos de ventas para todo el año ${planningYear}. No se puede generar un plan.`);
-                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: 'No hay datos de ventas para el año seleccionado.' });
-                return false;
-            }
-            
-            addNotification('success', `Carga de datos de ventas completada. Se encontraron ${allYearSalesData.length} registros. Iniciando motor de optimización...`);
-            
-            const detailedPlan = await generateProductionPlan(planningYear, state.constraints, apiAssemblyData, allYearSalesData);
-
-            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: { ...detailedPlan, salesData: allYearSalesData } });
+            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: { ...detailedPlan, salesData: state.salesData } });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');
             return true;
 
@@ -276,7 +246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
         }
-    }, [state.year, state.constraints, state.syncStatus, apiAssemblyData, addNotification]);
+    }, [state.salesData, state.constraints, state.syncStatus, apiAssemblyData, addNotification]);
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
