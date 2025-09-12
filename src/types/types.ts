@@ -4,6 +4,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -87,8 +88,6 @@ export interface Qualification {
 export interface EmployeeSkill {
   employeeId: string;
   machineCode: string; // Links to Machine.code from catalog
-  workstationDefinitionId?: string; //DEPRECATED, USE machineCode
-  skillLevel?: number; // DEPRECATED, USE qualifications
   qualifications: Qualification[];
 }
 
@@ -491,4 +490,5 @@ export interface TiempoEnsambleItem {
 
 // Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';
+
 

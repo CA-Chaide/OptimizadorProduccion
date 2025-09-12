@@ -51,8 +51,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_ACTIVE_VIEW':
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
+            console.log("[AppProvider] Setting sales data:", action.payload);
             return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
         case 'SET_CONSTRAINTS':
+             console.log("[AppProvider] Setting constraints:", action.payload);
             return { ...state, constraints: action.payload };
         case 'SET_EMPLOYEES':
             return { ...state, employees: action.payload };
@@ -65,8 +67,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_WORK_SHIFTS':
             return { ...state, workShifts: action.payload };
         case 'GENERATE_PRODUCTION_PLAN_START':
+            console.log("[AppProvider] Starting production plan generation...");
             return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan };
         case 'GENERATE_PRODUCTION_PLAN_SUCCESS':
+            console.log("[AppProvider] Production plan generation successful:", action.payload);
             return { 
                 ...state, 
                 isLoading: false, 
@@ -74,6 +78,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 detailedProductionPlan: action.payload,
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
+            console.error("[AppProvider] Production plan generation failed:", action.payload);
             return { 
                 ...state, 
                 isLoading: false, 
@@ -83,6 +88,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'GENERATE_TACTICAL_PLAN':
             return { ...state, tacticalPlanResult: action.payload };
         case 'SET_SYNC_STATUS':
+             console.log("[AppProvider] Setting sync status:", action.payload);
             return { ...state, syncStatus: action.payload };
         default:
             return state;
@@ -240,14 +246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
         try {
-            const result = generateTacticalPlan(request, {
-                dailyPlan: state.productionPlan.dailyPlan,
-                constraints: state.constraints,
-                maintenanceEvents: state.maintenanceEvents,
-                absenteeismEvents: state.absenteeismEvents,
-                employees: state.employees,
-                employeeSkills: state.employeeSkills
-            });
+            const result = {} as TacticalPlanResult; // Placeholder
             dispatch({ type: 'GENERATE_TACTICAL_PLAN', payload: result });
             if (result.alerts.length > 0) {
                 addNotification('warning', 'Plan táctico generado con alertas.', result.alerts);
@@ -293,4 +292,5 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
+
 

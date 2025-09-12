@@ -171,7 +171,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
               familia: item.Familia, marca: item.Marca, lineaProduccion: '',
           }));
-          
+          console.log('[DataImportSection] Mapped data for preview:', mappedData);
           setPreviewData(mappedData);
           addNotification('success', `Se han pre-cargado ${'${mappedData.length}'} registros para previsualización.`);
 

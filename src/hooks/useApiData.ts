@@ -72,7 +72,7 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     }
 
     const fullUrl = API_BASE_URL + endpoint;
-    console.log(`[useApiData] Querying API: ${'${method}'} ${'${fullUrl}'}`, body);
+    console.log(`[useApiData] Querying API: ${'${method}'} ${'${fullUrl}'}`, body ? JSON.stringify(body) : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
         console.log('[useApiData] API Response:', response);
@@ -82,3 +82,4 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
         throw e;
     }
 };
+
