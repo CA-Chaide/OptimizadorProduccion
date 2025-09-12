@@ -245,11 +245,12 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
   const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
 
   // Determine planning horizon from sales data
-  const monthsInSalesData = new Set(salesData.map(s => `${s.año}-${s.mes}`));
-  const planningHorizon = Array.from(monthsInSalesData).map(m => {
+  const monthKeysInSales = new Set(salesData.map(s => `${s.año}-${s.mes}`));
+  const planningHorizon = Array.from(monthKeysInSales).map(m => {
     const [year, month] = m.split('-').map(Number);
     return { year, month };
   }).sort((a, b) => a.year - b.year || a.month - b.month);
+
 
   if (planningHorizon.length === 0) {
       const emptyResult = { 
@@ -348,8 +349,10 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
   
   const monthlyOriginalNeeds = new Map<string, number>();
   productionNeedsMap.forEach((needs, pairKey) => needs.forEach((need, index) => {
-      const { year, month } = planningHorizon[index];
-      monthlyOriginalNeeds.set(`${pairKey}---${year}-${month}`, need);
+      if (index < planningHorizon.length) {
+          const { year, month } = planningHorizon[index];
+          monthlyOriginalNeeds.set(`${pairKey}---${year}-${month}`, need);
+      }
   }));
 
   for (let monthIndex = 0; monthIndex < horizonMonths; monthIndex++) {
@@ -403,7 +406,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
   productionNeedsMap.forEach((needs, pairKey) => {
       const [productId, centerName] = pairKey.split('---');
       needs.forEach((need, index) => {
-          if (need > 0) {
+          if (need > 0 && index < planningHorizon.length) {
               const { year, month } = planningHorizon[index];
               productionNeeds.push({ pairKey, productId, centerName, year, month, productionNeeded: need });
           }
@@ -449,7 +452,8 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
     const dailyDemandTotals = new Map<string, number>();
     demandMap.forEach((monthlyDemands, pairKey) => dailyDemandTotals.set(pairKey, monthlyDemands[`${year}-${month}`] || 0));
     
-    for (let day = 1; day <= new Date(year, month, 0).getDate(); day++) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (let day = 1; day <= daysInMonth; day++) {
         await new Promise(resolve => setTimeout(resolve, 0));
         const currentDate = new Date(year, month - 1, day);
         const dayType = getDayTypeForProduction(currentDate, holidays);
@@ -457,6 +461,8 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
         console.log(`Día ${day}: Procesando...`);
         
         let hoursPerDay = (dayType === 'Weekday') ? shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay : shiftParameters.saturdayAndHolidayHours;
+        const hoursByLine = new Map<string, number>();
+        activeLines.forEach(line => hoursByLine.set(line.id, hoursPerDay));
         
         for (const [demandKey, demandValue] of dailyDemand.entries()) {
             const [dateKey, productId, centerId] = demandKey.split('---');
@@ -474,13 +480,11 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
         });
 
         for (const [lineId, assignments] of assignmentsByLine.entries()) {
-            let hoursRemainingToday = hoursPerDay;
-            const lineName = assignments[0].lineName;
-            
+            let hoursRemainingTodayForLine = hoursByLine.get(lineId) || 0;
             const sequencedAssignments = sequenceDailyProduction(assignments.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1), inventoryState, dailyDemand, currentDate, dailyDemandTotals);
             
             for (const assignment of sequencedAssignments) {
-                if (hoursRemainingToday <= 0.01) break;
+                if (hoursRemainingTodayForLine <= 0.01) break;
                 
                 const unitsLeftForAssignment = remainingUnitsToProduce.get(assignment.id) || 0;
                 if (unitsLeftForAssignment <= 0.1) continue;
@@ -490,26 +494,28 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
                 
                 const invSetting = inventorySettings.find(i => i.itemId === assignment.productId && i.centerId === assignment.centerName);
                 
-                let unitsToProduce = Math.min(unitsLeftForAssignment, hoursRemainingToday / manufacturingTime);
-                if(invSetting && unitsToProduce < invSetting.lotMin) {
-                  if (hoursRemainingToday < (invSetting.lotMin * manufacturingTime)) {
-                    continue; 
+                let unitsToProduce = Math.min(unitsLeftForAssignment, hoursRemainingTodayForLine / manufacturingTime);
+                
+                if (invSetting && unitsToProduce > 0 && unitsToProduce < invSetting.lotMin) {
+                  if (hoursRemainingTodayForLine >= (invSetting.lotMin * manufacturingTime)) {
+                      unitsToProduce = Math.min(unitsLeftForAssignment, invSetting.lotMin);
+                  } else {
+                      continue; 
                   }
-                  unitsToProduce = Math.min(unitsLeftForAssignment, invSetting.lotMin);
                 }
 
                 if (unitsToProduce < 0.1) continue;
 
                 const hoursConsumed = unitsToProduce * manufacturingTime;
-                if (hoursConsumed > hoursRemainingToday) continue;
+                if (hoursConsumed > hoursRemainingTodayForLine) continue;
 
-                console.log(`Línea [${lineName}]: Produce ${unitsToProduce.toFixed(0)} u de ${assignment.productId}. Horas consumidas: ${hoursConsumed.toFixed(2)}. Horas restantes hoy: ${(hoursRemainingToday - hoursConsumed).toFixed(2)}`);
+                console.log(`Línea [${assignment.lineName}]: Produce ${unitsToProduce.toFixed(0)} u de ${assignment.productId}. Horas consumidas: ${hoursConsumed.toFixed(2)}. Horas restantes hoy: ${(hoursRemainingTodayForLine - hoursConsumed).toFixed(2)}`);
 
                 const prodStockKey = `${assignment.productId}---${assignment.centerName}`;
                 const initialStockOnDay = inventoryState.get(prodStockKey) || 0;
                 
                 remainingUnitsToProduce.set(assignment.id, unitsLeftForAssignment - unitsToProduce);
-                hoursRemainingToday -= hoursConsumed;
+                hoursRemainingTodayForLine -= hoursConsumed;
                 
                 inventoryState.set(prodStockKey, initialStockOnDay + unitsToProduce);
 
@@ -532,6 +538,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
                     transferDestinationCenterId: isTransfer ? assignment.demandCenterId : undefined,
                 });
             }
+             hoursByLine.set(lineId, hoursRemainingTodayForLine);
         }
     }
   }
@@ -600,5 +607,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-
