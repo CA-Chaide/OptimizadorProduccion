@@ -1,26 +1,17 @@
 
-
-
-
-
-
-
-
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
     errors: string[];
 }
 
-
-// Este AppState ya no será necesario, se moverá al hook useAppState
 export type AppState = {
   year: number | null;
   activeView: ActiveView;
   salesData: SalesDataRow[];
   isLoading: boolean;
   productionPlan: ProductionPlan;
-  detailedProductionPlan: DetailedProductionPlan | null; // New
+  detailedProductionPlan: DetailedProductionPlan | null;
   constraints: AppConstraints;
   employees: Employee[];
   employeeSkills: EmployeeSkill[];
@@ -31,14 +22,13 @@ export type AppState = {
   syncStatus: SyncStatus | null;
 };
 
-// Tipos de acción para el reducer
 export type AppAction =
   | { type: 'SET_YEAR'; payload: number }
   | { type: 'SET_ACTIVE_VIEW'; payload: ActiveView }
   | { type: 'SET_SALES_DATA'; payload: SalesDataRow[] }
   | { type: 'GENERATE_PRODUCTION_PLAN_START' }
-  | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: DetailedProductionPlan } // Modified
-  | { type: 'GENERATE_PRODUCTION_PLAN_ERROR'; payload?: string } // Allow error message
+  | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: { finalPlan: ProductionPlan, details: DetailedProductionPlan, salesData: SalesDataRow[] } }
+  | { type: 'GENERATE_PRODUCTION_PLAN_ERROR'; payload?: string }
   | { type: 'SET_CONSTRAINTS'; payload: AppConstraints }
   | { type: 'SET_EMPLOYEES'; payload: Employee[] }
   | { type: 'SET_EMPLOYEE_SKILLS'; payload: EmployeeSkill[] }
@@ -51,11 +41,11 @@ export type AppAction =
 export type AbsenteeismEvent = {
   id: string;
   reason: 'Vacaciones' | 'Cita Médica' | 'Capacitaciones';
-  startDate: string; // YYYY-MM-DD
-  startTime: string; // HH:MM
-  endDate: string;   // YYYY-MM-DD
-  endTime: string;   // HH:MM
-  employeeIds: string[]; // Can contain one or more employee IDs
+  startDate: string; 
+  startTime: string; 
+  endDate: string;   
+  endTime: string;   
+  employeeIds: string[]; 
   notes?: string;
 };
 
@@ -64,11 +54,11 @@ export type MaintenanceEvent = {
   title: string;
   processType: ProcessType; 
   workstationDefinitionId: string; 
-  productionLineId?: string; // Optional: May not be tied to a single line
-  startDate: string; // YYYY-MM-DD
-  startTime: string; // HH:MM
-  endDate: string;   // YYYY-MM-DD
-  endTime: string;   // HH:MM
+  productionLineId?: string; 
+  startDate: string; 
+  startTime: string; 
+  endDate: string;   
+  endTime: string;   
 };
 
 export type Employee = {
@@ -78,68 +68,64 @@ export type Employee = {
   isActive?: boolean;
 };
 
-// Represents the qualification of an employee for a specific role at a specific center.
 export interface Qualification {
   centerId: string;
   role: 'Operador' | 'Ayudante';
-  skillLevel: number; // 0-100
+  skillLevel: number; 
 }
 
-// A skill is defined for a specific machine and contains multiple qualifications.
 export interface EmployeeSkill {
   employeeId: string;
-  machineCode: string; // Links to Machine.code from catalog
+  machineCode: string; 
   qualifications: Qualification[];
 }
-
 
 export type ProcessType = 'Colchones' | 'Forros' | 'Bases' | 'Paneles' | 'Espuma' | 'Muebles';
 
 export interface SalesDataRow {
-  id: string; // Unique ID for the row, can be generated on import
+  id: string; 
   año: number;
   mes: number;
-  sector: string; // Describes the market or customer segment
-  etiqueta: string; // Additional categorization for sales data
-  código: string; // Product code
-  centro: string; // Work center name where DEMAND originates (from import)
+  sector: string; 
+  etiqueta: string; 
+  código: string; 
+  centro: string; 
   unidadesProyectado: number;
   dolaresProyectado: number;
-  descripciónMaterial: string; // Used for material requirements planning
+  descripciónMaterial: string; 
   familia: string;
   marca: string;
-  lineaProduccion: string; // Suggested production line name (from import, map to ID)
+  lineaProduccion: string; 
 }
 
-// New: Global definition for a type of workstation
 export interface WorkstationDefinition {
   id:string;
-  name: string; // Unique name for the workstation type, e.g., "Cerrador"
-  employeesPerWorkstation: number; // How many employees operate ONE such workstation
-  machineCode: string | null; // New: Unique code for the machine associated with this workstation
+  name: string; 
+  employeesPerWorkstation: number; 
+  machineCode: string | null; 
   isActive?: boolean;
 }
 
 export interface ProductProcessInfo {
-  id: string; // Unique ID for this process info
-  productId: string; // Links to SalesDataRow.código
-  productName?: string; // For easier display
-  productionLineId: string; // The line where this process happens
-  workstationTimes: Array<{ workstationDefinitionId: string; timeHours: number }>; // Time in hours per unit, links to WorkstationDefinition
-  totalManufacturingTimeHours: number; // Sum of workstationTimes per unit
-  aprovisionamientoEspecial?: 'E' | 'X' | 'F'; // E=Mismo centro, X=Aprovisionable 1000/2000, F=Solo traslado
+  id: string; 
+  productId: string; 
+  productName?: string; 
+  productionLineId: string; 
+  workstationTimes: Array<{ workstationDefinitionId: string; timeHours: number }>; 
+  totalManufacturingTimeHours: number; 
+  aprovisionamientoEspecial?: 'E' | 'X' | 'F'; 
 }
 
 export interface ProductionLine {
   id: string;
   name: string;
-  workCenterId: string; // The WorkCenter this line belongs to
-  processType: ProcessType; // Type of process this line is for
-  assignedWorkstations: Array<{ // New: Replaces inline workstations
-    definitionId: string; // ID of the WorkstationDefinition
-    quantity: number;     // How many of this type of workstation are on this line
+  workCenterId: string; 
+  processType: ProcessType; 
+  assignedWorkstations: Array<{ 
+    definitionId: string; 
+    quantity: number;     
   }>;
-  capacity: { // General capacity, more specific calculation will use workstation times
+  capacity: { 
     maxUnitsPerHour: number;
     normalUnitsPerHour: number;
     minUnitsPerHour: number;
@@ -150,16 +136,15 @@ export interface ProductionLine {
 
 export interface WorkCenter {
   id: string;
-  name: string; // e.g., "1000", "2000"
+  name: string; 
   productionLineIds: string[];
   isActive?: boolean;
 }
 
-// New structure for Labor Cost Settings
 export interface LaborCostSettings {
-  factorAdicionalDiurno: number; // Percentage, e.g., 50 for 50% extra on base for these hours
-  factorRecargoNocturno: number; // Percentage, e.g., 25 for 25% extra on night hours
-  factorFinSemanaFeriado: number; // Percentage, e.g., 100 for 100% extra on base for weekend/holiday hours
+  factorAdicionalDiurno: number; 
+  factorRecargoNocturno: number; 
+  factorFinSemanaFeriado: number; 
 }
 
 export interface ShiftParameters {
@@ -168,21 +153,20 @@ export interface ShiftParameters {
   saturdayAndHolidayHours: number;
 }
 
-
 export interface InventorySetting {
   id: string;
-  itemId: string; // Product code (código)
+  itemId: string; 
   itemName: string;
-  centerId: string; // WorkCenter ID where this inventory is located
-  isRawMaterial: boolean; // Not used in current logic, but kept for future
+  centerId: string; 
+  isRawMaterial: boolean; 
   minStock: number;
   maxStock: number;
-  currentStock: number; // Initial stock level at the beginning of planning
-  lotMin: number; // New: Minimum production lot size
-  lotMax: number | null; // New: Maximum production lot size (optional)
+  currentStock: number; 
+  lotMin: number; 
+  lotMax: number | null; 
 }
 
-export interface Bottleneck { // Kept for future, not used in current optimization
+export interface Bottleneck { 
   id: string;
   description: string;
   location: string;
@@ -190,7 +174,7 @@ export interface Bottleneck { // Kept for future, not used in current optimizati
   isActive?: boolean;
 }
 
-export interface SupplierDeliveryTime { // Kept for future
+export interface SupplierDeliveryTime { 
   id: string;
   materialId: string;
   materialName: string;
@@ -199,7 +183,7 @@ export interface SupplierDeliveryTime { // Kept for future
   isActive?: boolean;
 }
 
-export interface QualityParameter { // Kept for future
+export interface QualityParameter { 
   id: string;
   name: string;
   description: string;
@@ -216,10 +200,10 @@ export interface SupplyInfo {
 
 export interface Holiday {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string; 
   name: string;
   appliesTo: 'Produccion' | 'Distribucion' | 'Ambos';
-  isProductionAllowed: boolean; // New: To allow production on certain holidays
+  isProductionAllowed: boolean; 
 }
 
 export interface ProductionPlanItem {
@@ -229,17 +213,17 @@ export interface ProductionPlanItem {
   year: number;
   month: number;
   week: number;
-  day: number; // New: Specific day of the month
+  day: number; 
   quantityToProduce: number;
-  demandOnDay: number; // New: To show daily sales demand
-  initialStockOnDay: number; // New: Stock at the beginning of the day
-  finalStockOnDay: number; // New: Stock at the end of the day
+  demandOnDay: number; 
+  initialStockOnDay: number; 
+  finalStockOnDay: number; 
   assignedLineId?: string; 
   producingCenterId?: string; 
-  demandCenterId?: string; // New: To track where the demand originates
+  demandCenterId?: string; 
   shiftId?: string; 
   estimatedLaborCost: number;
-  hoursWorked: number; // Renamed from estimatedManufacturingTimeHours for clarity
+  hoursWorked: number; 
   status: 'Planificado' | 'En Progreso' | 'Completado' | 'Retrasado' | 'Factibilidad Baja' | 'Error en Datos' | 'Transferencia';
   notes?: string;
   isTransfer?: boolean;
@@ -248,7 +232,7 @@ export interface ProductionPlanItem {
 }
 
 export interface MonthlyProductionPlanItem {
-    id: string; // YYYY-MM-ProductId-CenterId
+    id: string; 
     year: number;
     month: number;
     productId: string;
@@ -265,7 +249,6 @@ export interface ProductionPlan {
     auditLog: string[];
 }
 
-// --- New Types for Step-by-Step Debugging ---
 export interface PlanningGroupMonthlyDetail {
   pairKey: string;
   productId: string;
@@ -277,7 +260,6 @@ export interface PlanningGroupMonthlyDetail {
   minStock: number;
 }
 
-// Changed to represent a single monthly need, not an array
 export interface MonthlyNeed {
   pairKey: string;
   productId: string;
@@ -294,8 +276,8 @@ export interface MonthlyAssignment {
   lineName: string;
   ppiId: string;
   productId: string;
-  centerName: string; // This is PRODUCTION center
-  demandCenterId: string; // This is DEMAND center
+  centerName: string; 
+  demandCenterId: string; 
   units: number;
   originalNeedUnits: number;
   advancedUnits: number;
@@ -304,15 +286,11 @@ export interface MonthlyAssignment {
 }
 
 export interface DetailedProductionPlan {
-  finalPlan: ProductionPlan;
   planningGroupDetails: PlanningGroupMonthlyDetail[];
   productionNeeds: MonthlyNeed[];
   monthlyAssignments: MonthlyAssignment[];
 }
-// --- End New Types ---
 
-
-// New: Type for the summary sheet in Excel export
 export interface LineMonthlySummary {
   lineId: string;
   lineName: string;
@@ -328,13 +306,11 @@ export interface LineMonthlySummary {
   avgWeekdayHours: number;
   saturdaysWorked: number;
   avgSaturdayHours: number;
-  holidaysWorked: number;
-  holidayHours: number;
+c_count: number;
 }
 
-
 export interface AppConstraints {
-  workstationDefinitions: WorkstationDefinition[]; // New: Global workstation definitions
+  workstationDefinitions: WorkstationDefinition[]; 
   workCenters: WorkCenter[];
   productionLines: ProductionLine[];
   productProcessInfos: ProductProcessInfo[];
@@ -353,7 +329,7 @@ export interface NotificationMessage {
   id: string;
   type: 'success' | 'error' | 'warning' | 'info';
   text: string;
-  errors?: string[]; // Optional: For displaying a list of detailed error messages
+  errors?: string[]; 
 }
 
 export interface ChartDataItem {
@@ -380,20 +356,19 @@ export interface ShiftProportions {
   nighttimeProportion: number;
 }
 
-// --- Tactical Scheduling Types ---
 export interface ProvisionalOrder {
     rowIndex: number;
     ORDENPREVISIONAL: string;
     MATERIAL: string;
     NOMBRE: string;
     CANTIDAD: number;
-    FECHAINICIO: string; // YYYY-MM-DD
+    FECHAINICIO: string; 
     CENTRO: string;
 }
 
 export interface TacticalRequest {
-    executionDate: string; // YYYY-MM-DD
-    targetDate: string; // YYYY-MM-DD
+    executionDate: string; 
+    targetDate: string; 
     provisionalOrders: ProvisionalOrder[];
 }
 
@@ -420,25 +395,21 @@ export interface TacticalPlanResult {
     alerts: string[];
 }
 
-
-// --- Work Shift Planning ---
 export interface WorkShift {
-  id: string; // e.g., '2023-11-20-lineId1-wsId2-day'
-  date: string; // YYYY-MM-DD
+  id: string; 
+  date: string; 
   lineId: string;
   workstationDefId: string;
   shiftType: 'day' | 'night';
-  employeeIds: string[]; // Can contain multiple employees
+  employeeIds: string[]; 
 }
 
-// --- Machine Catalog ---
 export interface Machine {
     code: string;
     name: string;
     processType: ProcessType;
 }
 
-// --- API Data Types ---
 export type ApiQuery = 
   | {
       operation: 'get_documentation';
@@ -446,7 +417,7 @@ export type ApiQuery =
   | {
       operation: 'get_data';
       source: string;
-      columns?: string[]; // New optional field to specify columns
+      columns?: string[]; 
       filters?: { [key: string]: any };
       pagination?: { skip?: number; limit?: number };
     }
@@ -487,11 +458,4 @@ export interface TiempoEnsambleItem {
   ClaseAprovisionamiento: 'E' | 'X' | 'F' | null;
 }
 
-
-
-
-// Import ActiveView from constants
 import { ActiveView } from '@/constants/constants';
-
-
-
