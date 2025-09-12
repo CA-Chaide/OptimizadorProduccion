@@ -23,8 +23,18 @@ Este documento sirve como una guía paso a paso para depurar y validar todo el f
 
 **Objetivo:** Asegurar que los datos del presupuesto de ventas se cargan y se transforman correctamente desde la API.
 
+### Incidente Común: Error de CORS
+
+Al entrar a la pestaña "Importar Ventas", es posible que la aplicación no muestre las opciones en los filtros y la consola del navegador muestre un **error de CORS**.
+
+- **Log del Error:** `Access to fetch at 'https://intranet.chaide.com/...' has been blocked by CORS policy...`
+- **Causa:** El navegador, por seguridad, bloquea las peticiones desde el dominio de desarrollo hacia el dominio de la API (`intranet.chaide.com`).
+- **Solución Aplicada:** Se configuró un "proxy de reescritura" en el archivo `next.config.ts`. Esto hace que la aplicación apunte a una URL local (ej. `/Aplicativos/Api...`) y el servidor de Next.js redirige la petición de forma interna, evitando el problema de CORS.
+
+### Depuración del Paso 1
+
 **Acción en la UI:**
-1.  Navegue a la sección **"Importar Ventas"**.
+1.  Navegue a la sección **"Importar Ventas"**. (Las opciones de los filtros ya deberían cargar correctamente).
 2.  Seleccione el año `2025` y el mes `Enero`.
 3.  Presione el botón **"Previsualizar"**.
 
@@ -65,41 +75,17 @@ Este documento sirve como una guía paso a paso para depurar y validar todo el f
 
 ---
 
-## **Paso 3: Generación del Plan - Lógica Mensual**
+## **Paso 3: Generación del Plan de Producción**
 
-**Objetivo:** Validar la primera mitad del motor de planificación: el cálculo de necesidades y la asignación de producción a nivel mensual.
+**Objetivo:** Validar que el motor de optimización carga correctamente todos los datos de ventas del año y genera un plan completo.
 
 **Acción en la UI:**
 1.  Navegue a la sección **"Plan de Producción"**.
 2.  Presione el botón **"Iniciar Planificación"**.
 
 **Qué Observar en la Consola:**
-1.  **Inicio:** Busque el log `--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`.
-2.  **Cálculo de Demanda:** Verifique los logs:
-    *   `Paso 3: Demanda de ventas agrupada...`
-    *   `Paso 5: Demanda consolidada...` (Aquí se aplican las reglas de aprovisionamiento 'F').
-3.  **Cálculo de Necesidades:** Revise el log `Paso 6: Calculadas las necesidades de producción mensuales netas...`.
-4.  **Asignaciones Mensuales:** Este es el punto más importante de este paso. Revise los logs `--- Planificando Mes X / 12 ---`.
-    *   Por cada mes, verá `Asignación Mes X:` y `Adelanto:`.
-    *   Estos logs nos dicen cuántas unidades de un producto se planificaron para fabricar en una línea específica y cuántas se adelantaron de meses futuros.
+1.  **Inicio y Carga de Datos:** Verá una serie de notificaciones `Carga de datos de ventas completada. Se encontraron X registros en total...`. El número de registros debe ser grande (decenas de miles) si cargó todo el año.
+2.  **Lógica Mensual:** Revise los logs que comienzan con `--- Planificando Mes X / 12 ---`. Confirme que el proceso avanza por todos los meses que contienen datos de ventas sin detenerse.
+3.  **Lógica Diaria:** Al final, el proceso debe entrar en la generación del plan diario. Verá logs como `--- Procesando Plan Diario para Mes X/2025 ---` y `Día X: Procesando...`.
 
-**Criterio de Éxito:** El proceso debe completar los 12 meses de planificación mensual sin errores. El log `Paso 8: Finalizada la asignación de producción mensual a las líneas.` debe aparecer en la consola.
-
----
-
-## **Paso 4: Generación del Plan - Secuenciación Diaria**
-
-**Objetivo:** Depurar la lógica más compleja: el desglose diario, la priorización por urgencia y la simulación de inventario.
-
-**Acción en la UI:** Ninguna. Este paso se ejecuta inmediatamente después del Paso 3.
-
-**Qué Observar en la Consola:**
-1.  **Inicio del Plan Diario:** Busque el log `--- INICIANDO GENERACIÓN DE PLAN DIARIO ---`.
-2.  **Procesamiento por Día:** Verá una secuencia de logs `--- Procesando Plan Diario para Mes X/2025 ---` y `Día X: Procesando...`.
-3.  **Lógica de Producción Diaria:** Dentro de cada día, observe los logs:
-    *   `Línea [Nombre Línea]: Produce X u de [Producto]. Horas consumidas: Y. Horas restantes hoy: Z.`
-    *   Este es el log más importante. Nos dirá si el sistema está tomando decisiones lógicas sobre qué y cuánto producir cada día.
-    *   Verifique que las `Horas restantes hoy` disminuyen coherentemente y que las líneas no exceden su capacidad.
-4.  **Finalización:** El proceso completo habrá terminado cuando vea en la UI que la carga ha finalizado y la tabla del plan diario se ha llenado de datos.
-
-**Criterio de Éxito:** La ejecución completa los 365 días del año sin entrar en bucles infinitos y sin generar errores en la consola. El plan resultante en la UI es coherente y completo.
+**Criterio de Éxito:** El proceso completo debe terminar, la interfaz debe mostrar los 4 pasos del "wizard" de planificación y la tabla del plan diario debe llenarse con datos correspondientes a los meses cargados, sin que el navegador se congele.

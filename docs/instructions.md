@@ -21,6 +21,7 @@ Estas son las reglas clave del dominio de negocio que deben ser respetadas en to
     - **'E' (In-house):** La producción se realiza en el mismo centro que genera la demanda.
 - **Secuenciación Diaria:** La prioridad de producción diaria **siempre** se basa en la **urgencia**, calculada como los días de cobertura de stock restantes. No se debe priorizar por volumen total, tamaño de orden o ningún otro criterio.
 - **Cálculo de Tiempos:** El tiempo de fabricación de un producto en una línea es igual al del **puesto de trabajo más lento (cuello de botella)** de esa línea para ese producto específico.
+- **Horizonte de Planificación:** El motor de planificación es agnóstico del período. Debe determinar el horizonte de planificación (primer y último mes) dinámicamente basándose **únicamente** en los `salesData` que recibe como entrada. No debe asumir un período de 12 meses.
 
 ## 3. Guías de Estilo de Código y Componentes
 
