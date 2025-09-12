@@ -602,8 +602,8 @@ export const ProductionPlanSection: React.FC = () => {
           {planningStep === 'idle' && (
             <Button
                 onClick={handleStartPlanning}
-                disabled={isLoading || !isDataSynced}
-                title={!isDataSynced ? 'Debe sincronizar los datos de ensamble en la pestaña de restricciones primero' : 'Comenzar la planificación paso a paso'}
+                disabled={isLoading || !isDataSynced || salesData.length === 0}
+                title={!isDataSynced ? 'Debe sincronizar los datos de ensamble en la pestaña de restricciones primero' : (salesData.length === 0 ? 'Debe importar datos de ventas primero' : 'Comenzar la planificación paso a paso')}
             >
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analizando...</> : 'Iniciar Planificación'}
             </Button>

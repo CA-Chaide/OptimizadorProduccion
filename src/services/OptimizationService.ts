@@ -240,10 +240,14 @@ function sequenceDailyProduction(dailyGoals: MonthlyAssignment[], inventoryState
     return scoredGoals.sort((a, b) => a.urgencyScore - b.urgencyScore);
 }
 
-export const generateProductionPlan = async (planningYear: number, constraints: AppConstraints, apiData: TiempoEnsambleItem[], salesData: SalesDataRow[]): Promise<{ finalPlan: ProductionPlan, details: DetailedProductionPlan }> => {
+export const generateProductionPlan = async (salesData: SalesDataRow[], constraints: AppConstraints, apiData: TiempoEnsambleItem[]): Promise<{ finalPlan: ProductionPlan, details: DetailedProductionPlan }> => {
   console.log('--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---');
   const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
   
+  if (salesData.length === 0) {
+      throw new Error("No hay datos de ventas para iniciar la planificación.");
+  }
+  const planningYear = salesData[0].año;
   const planningHorizon = Array.from({ length: 12 }, (_, i) => ({ year: planningYear, month: i + 1 }));
 
   const productNamesMap = new Map<string, string>();
@@ -435,12 +439,6 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
         console.log(`Día ${day}: Procesando...`);
         
         let hoursPerDay = (dayType === 'Weekday') ? shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay : shiftParameters.saturdayAndHolidayHours;
-        const activeAssignments = assignmentsForMonth.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1);
-        const assignmentsByLine = new Map<string, MonthlyAssignment[]>();
-        for (const assignment of activeAssignments) {
-            if (!assignmentsByLine.has(assignment.lineId)) assignmentsByLine.set(assignment.lineId, []);
-            assignmentsByLine.get(assignment.lineId)!.push(assignment);
-        }
         
         for (const [demandKey, demandValue] of dailyDemand.entries()) {
             const [dateKey, productId, centerId] = demandKey.split('---');
@@ -449,85 +447,94 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
                  inventoryState.set(stockKey, (inventoryState.get(stockKey) || 0) - demandValue);
             }
         }
+        
+        const assignmentsByLine = new Map<string, MonthlyAssignment[]>();
+        monthlyAssignments.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1)
+          .forEach(assignment => {
+            if (!assignmentsByLine.has(assignment.lineId)) assignmentsByLine.set(assignment.lineId, []);
+            assignmentsByLine.get(assignment.lineId)!.push(assignment);
+        });
 
         for (const [lineId, assignments] of assignmentsByLine.entries()) {
             let hoursRemainingToday = hoursPerDay;
             const lineName = assignments[0].lineName;
-            const sequencedAssignments = sequenceDailyProduction(assignments, inventoryState, dailyDemand, currentDate, dailyDemandTotals);
-            for (const assignment of sequencedAssignments) {
-                if (hoursRemainingToday <= 0.01) break;
-                const unitsLeftForAssignment = remainingUnitsToProduce.get(assignment.id) || 0;
-                if(unitsLeftForAssignment <= 0.1) continue;
-                const manufacturingTime = assignment.totalHours / assignment.units;
-                if(manufacturingTime <= 0) continue;
+            
+            // Loop while there are hours and products to produce
+            while(hoursRemainingToday > 0.01) {
+                const availableAssignments = assignments.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1);
+                if(availableAssignments.length === 0) break; // No more products for this line this month
                 
-                const { productId, centerName: productionCenterId } = assignment;
-                const invSetting = inventorySettings.find(i => i.itemId === productId && i.centerId === productionCenterId);
-                const maxUnitsInTime = hoursRemainingToday / manufacturingTime;
+                const sequencedAssignments = sequenceDailyProduction(availableAssignments, inventoryState, dailyDemand, currentDate, dailyDemandTotals);
+                let producedSomethingThisCycle = false;
 
-                // FIX: Check if we can even produce the minimum lot size
-                if ((invSetting?.lotMin || 1) * manufacturingTime > hoursRemainingToday) {
-                    continue; // Not enough time for min lot, skip to next assignment
-                }
-                
-                let unitsToProduce = Math.max(0, Math.min(unitsLeftForAssignment, maxUnitsInTime, invSetting?.lotMax || Infinity));
-                if (unitsToProduce < (invSetting?.lotMin || 1) && unitsLeftForAssignment > unitsToProduce) continue;
-                if (unitsToProduce < 0.1) continue;
-
-                const hoursConsumed = unitsToProduce * manufacturingTime;
-                console.log(`Línea [${lineName}]: Produce ${unitsToProduce.toFixed(0)} u de ${productId}. Horas consumidas: ${hoursConsumed.toFixed(2)}. Horas restantes hoy: ${(hoursRemainingToday - hoursConsumed).toFixed(2)}`);
-
-                const prodStockKey = `${productId}---${productionCenterId}`;
-                const initialStockOnDay = inventoryState.get(prodStockKey) || 0;
-                
-                remainingUnitsToProduce.set(assignment.id, unitsLeftForAssignment - unitsToProduce);
-                hoursRemainingToday -= hoursConsumed;
-                
-                const originalDemands = salesData.filter(s => {
-                    const provRule = (apiData.find(d => normalizeMaterialCode(d.CodMaterial) === normalizeMaterialCode(s.código) && (String(d.Centro).trim() === String(s.centro).trim() || !d.Centro)) || apiData.find(d => normalizeMaterialCode(d.CodMaterial) === normalizeMaterialCode(s.código)))?.ClaseAprovisionamiento || 'E';
-                    return normalizeMaterialCode(s.código) === productId && ((provRule === 'F' ? "1000" : String(s.centro).trim()) === productionCenterId);
-                });
-                
-                let unitsToDistribute = unitsToProduce;
-                inventoryState.set(prodStockKey, initialStockOnDay + unitsToProduce);
-
-                originalDemands.forEach(originalDemand => {
-                    if (unitsToDistribute <= 0) return;
-                    const demandCenterId = String(originalDemand.centro).trim();
-                    const demandKey = `${year}-${month}-${day}---${productId}---${demandCenterId}`;
-                    const isTransfer = productionCenterId !== demandCenterId;
-                    const transferAmount = isTransfer ? Math.min(unitsToDistribute, dailyDemand.get(demandKey) || unitsToDistribute) : 0;
+                for (const assignment of sequencedAssignments) {
+                    if (hoursRemainingToday <= 0.01) break;
                     
-                    let unitsForThisPlanItem = isTransfer ? transferAmount : unitsToProduce;
-                    let finalStockOnDay;
-                    const demandStockKey = `${productId}---${demandCenterId}`;
+                    const unitsLeftForAssignment = remainingUnitsToProduce.get(assignment.id) || 0;
+                    if(unitsLeftForAssignment <= 0.1) continue;
 
-                    if (isTransfer) {
-                        inventoryState.set(prodStockKey, (inventoryState.get(prodStockKey) || 0) - transferAmount);
-                        inventoryState.set(demandStockKey, (inventoryState.get(demandStockKey) || 0) + transferAmount);
-                        finalStockOnDay = inventoryState.get(demandStockKey) || 0;
-                    } else {
-                        finalStockOnDay = inventoryState.get(prodStockKey) || 0;
+                    const manufacturingTime = assignment.totalHours / assignment.units;
+                    if(manufacturingTime <= 0) continue;
+                    
+                    const { productId, centerName: productionCenterId } = assignment;
+                    const invSetting = inventorySettings.find(i => i.itemId === productId && i.centerId === productionCenterId);
+                    
+                    const minLotTime = (invSetting?.lotMin || 1) * manufacturingTime;
+                    if (minLotTime > hoursRemainingToday) {
+                        continue; // Not enough time for min lot, try next product
                     }
                     
-                    dailyPlan.push({
-                        id: `${year}-${month}-${day}-${productId}-${lineId}-${demandCenterId}-${Math.random()}`, year, month, day, week: 0, productId,
-                        productName: productNamesMap.get(productId) || productId,
-                        quantityToProduce: unitsForThisPlanItem,
-                        demandOnDay: dailyDemand.get(demandKey) || 0,
-                        initialStockOnDay: (inventoryState.get(demandStockKey) || 0) - unitsForThisPlanItem,
-                        finalStockOnDay, assignedLineId: lineId, producingCenterId: productionCenterId, demandCenterId,
-                        estimatedLaborCost: (assignment.laborCost / assignment.units) * unitsForThisPlanItem, 
-                        hoursWorked: (assignment.totalHours / assignment.units) * unitsForThisPlanItem,
-                        status: isTransfer ? 'Transferencia' : 'Planificado',
-                        notes: isTransfer ? `De ${productionCenterId} a ${demandCenterId}`: '', isTransfer,
-                        transferDestinationCenterId: isTransfer ? demandCenterId : undefined,
-                        transferSourceCenterId: isTransfer ? productionCenterId : undefined,
-                    });
+                    const maxUnitsInTime = hoursRemainingToday / manufacturingTime;
+                    let unitsToProduce = Math.max(0, Math.min(unitsLeftForAssignment, maxUnitsInTime, invSetting?.lotMax || Infinity));
                     
-                    unitsToDistribute -= unitsForThisPlanItem;
-                    if (!isTransfer) return;
-                });
+                    if (unitsToProduce < (invSetting?.lotMin || 1) && unitsLeftForAssignment > unitsToProduce) {
+                        continue; // Don't produce less than min lot if there's more to produce later
+                    }
+                    if (unitsToProduce < 0.1) continue;
+
+                    producedSomethingThisCycle = true;
+                    const hoursConsumed = unitsToProduce * manufacturingTime;
+                    console.log(`Línea [${lineName}]: Produce ${unitsToProduce.toFixed(0)} u de ${productId}. Horas consumidas: ${hoursConsumed.toFixed(2)}. Horas restantes hoy: ${(hoursRemainingToday - hoursConsumed).toFixed(2)}`);
+
+                    const prodStockKey = `${productId}---${productionCenterId}`;
+                    const initialStockOnDay = inventoryState.get(prodStockKey) || 0;
+                    
+                    remainingUnitsToProduce.set(assignment.id, unitsLeftForAssignment - unitsToProduce);
+                    hoursRemainingToday -= hoursConsumed;
+                    
+                    let unitsToDistribute = unitsToProduce;
+                    inventoryState.set(prodStockKey, initialStockOnDay + unitsToProduce);
+
+                    const demandForThisProduct = salesData.filter(s => normalizeMaterialCode(s.código) === productId);
+
+                    demandForThisProduct.forEach(originalDemand => {
+                        if (unitsToDistribute <= 0) return;
+                        const demandCenterId = String(originalDemand.centro).trim();
+                        const isTransfer = productionCenterId !== demandCenterId;
+
+                        if (!isTransfer && demandCenterId === productionCenterId) {
+                            const demandKey = `${year}-${month}-${day}---${productId}---${demandCenterId}`;
+                            dailyPlan.push({
+                                id: `${year}-${month}-${day}-${productId}-${lineId}-${demandCenterId}-${Math.random()}`, year, month, day, week: 0, productId,
+                                productName: productNamesMap.get(productId) || productId,
+                                quantityToProduce: unitsToProduce,
+                                demandOnDay: dailyDemand.get(demandKey) || 0,
+                                initialStockOnDay: initialStockOnDay,
+                                finalStockOnDay: initialStockOnDay + unitsToProduce - (dailyDemand.get(demandKey) || 0), 
+                                assignedLineId: lineId, producingCenterId: productionCenterId, demandCenterId,
+                                estimatedLaborCost: (assignment.laborCost / assignment.units) * unitsToProduce, 
+                                hoursWorked: hoursConsumed,
+                                status: 'Planificado', notes: '', isTransfer: false,
+                            });
+                            unitsToDistribute = 0; // Mark as fully processed
+                        }
+                    });
+                }
+                
+                // If we went through all prioritized products and couldn't produce anything, break to avoid infinite loop
+                if (!producedSomethingThisCycle) {
+                    break;
+                }
             }
         }
     }
@@ -597,5 +604,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 

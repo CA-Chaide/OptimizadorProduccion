@@ -215,7 +215,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleGeneratePlan = useCallback(async () => {
         if (!state.salesData || state.salesData.length === 0) {
-            addNotification('warning', 'Por favor, cargue los datos de ventas antes de generar un plan.');
+            addNotification('warning', 'No hay datos de ventas cargados para planificar. Por favor, importe datos primero.');
             return false;
         }
         if (!state.syncStatus?.isSynced || apiAssemblyData.length === 0) {
@@ -223,18 +223,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return false;
         }
         
-        const planningYear = state.salesData[0]?.año;
-        if (!planningYear) {
-            addNotification('error', 'Los datos de ventas no contienen un año válido.');
-            return false;
-        }
-
         dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
         
         try {
-            addNotification('info', `Generando plan de producción para el año ${planningYear} basado en ${state.salesData.length} registros de ventas...`);
+            addNotification('info', `Generando plan de producción basado en ${state.salesData.length} registros de ventas...`);
             
-            const detailedPlan = await generateProductionPlan(planningYear, state.constraints, apiAssemblyData, state.salesData);
+            const detailedPlan = await generateProductionPlan(state.salesData, state.constraints, apiData);
 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: { ...detailedPlan, salesData: state.salesData } });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');

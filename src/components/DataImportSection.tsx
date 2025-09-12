@@ -188,34 +188,51 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   }, [aggregatedData]);
 
-  const handleAcceptAndLoadData = () => {
+  const handleAcceptAndLoadData = async () => {
     if (previewData.length === 0) {
         addNotification('warning', 'No hay datos en la previsualización para cargar.');
         return;
     }
     
-    // Filter the data based on selected groups
-    const selectedData: SalesDataRow[] = [];
-    if(aggregatedData && selectedGroups.size > 0) {
-        selectedGroups.forEach(groupKey => {
-            if(aggregatedData[groupKey]) {
-                selectedData.push(...aggregatedData[groupKey].dataRows);
-            }
-        });
-    } else {
-        // If no grouping or selection, load all previewed data
-        selectedData.push(...previewData);
-    }
+    setIsProcessing(true);
+    let allSalesData: SalesDataRow[] = [];
+    const planningYear = filters.año ? parseInt(filters.año, 10) : new Date().getFullYear();
 
-    if (selectedData.length === 0) {
-        addNotification('warning', 'Ningún grupo seleccionado contiene datos. No se cargó nada.');
-        return;
-    }
+    try {
+        for (let i = 1; i <= 12; i++) {
+            addNotification('info', `Cargando datos de ventas para ${MONTH_NAMES[i-1]} ${planningYear}...`);
+            const data: PresupuestoItem[] = await queryApi({
+                source: 'Presupuesto',
+                operation: 'get_data',
+                filters: { 'Año': planningYear, 'Mes': i },
+                pagination: { limit: 50000 },
+            });
+            const mappedData: SalesDataRow[] = data.map((item, index) => ({
+              id: `row-${planningYear}-${i}-${index}`,
+              año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+              etiqueta: item.Etiqueta || 'Sin Etiqueta', 
+              código: normalizeMaterialCode(item.CodMaterial),
+              centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+              dolaresProyectado: item.DolaresProyectado, descripciónMaterial: item.Material,
+              familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+            }));
+            allSalesData.push(...mappedData);
+        }
+        
+        if (allSalesData.length === 0) {
+            addNotification('warning', `No se encontraron datos de ventas para el año ${planningYear}.`);
+            setIsProcessing(false);
+            return;
+        }
 
-    onDataImported(selectedData);
-    setPreviewData([]);
-    setSelectedGroups(new Set());
-    addNotification('info', `Se han transferido ${selectedData.length} registros al motor de planificación.`);
+        onDataImported(allSalesData);
+        addNotification('success', `Carga de datos de ventas completada. Se encontraron ${allSalesData.length} registros para el año ${planningYear}. Ahora puede generar un plan.`);
+
+    } catch (error) {
+        addNotification('error', `Error durante la carga secuencial de datos: ${(error as Error).message}`);
+    } finally {
+        setIsProcessing(false);
+    }
   };
 
   const handleGroupSelection = (groupKey: string, isSelected: boolean) => {
@@ -271,7 +288,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para **previsualizar** los datos de ventas. Luego, puede seleccionar grupos específicos y presionar **"Usar Datos para Planificación"** para cargarlos en el motor.
+        Utilice los filtros para **previsualizar** una muestra de los datos de ventas. Luego, presione **"Cargar Año Completo para Planificar"** para obtener todos los datos del año seleccionado y habilitar la generación del plan.
       </p>
 
       {/* --- Filtros --- */}
@@ -378,7 +395,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     className="w-full md:w-auto px-6 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                     disabled={isProcessing || previewData.length === 0}
                 >
-                    {isProcessing ? 'Cargando...' : 'Usar Datos para Planificación'}
+                    {isProcessing ? 'Cargando...' : 'Cargar Año Completo para Planificar'}
                 </button>
            </div>
         </div>
