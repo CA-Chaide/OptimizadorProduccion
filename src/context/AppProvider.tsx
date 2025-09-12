@@ -163,7 +163,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             variant: type === 'error' ? 'destructive' : 'default',
             title: type.charAt(0).toUpperCase() + type.slice(1),
             description: description,
-            duration: type === 'error' ? 15000 : 5000,
+            duration: 1500,
         });
     }, [toast]);
 

@@ -284,7 +284,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             disabled={isProcessing}
             className="w-full h-10 px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
         >
-            {isProcessing ? 'Consultando...' : 'Previsualizar Datos'}
+            {isProcessing ? 'Consultando...' : 'Previsualizar'}
         </button>
       </div>
 
