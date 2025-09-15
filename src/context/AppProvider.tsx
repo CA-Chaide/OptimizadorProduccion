@@ -114,7 +114,7 @@ type AppContextType = {
     apiAssemblyData: TiempoEnsambleItem[]; // New: Store raw API data
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
-    handleDataImported: (data: SalesDataRow[]) => void;
+    handleDataImported: (data: SalesDataRow[], year: number) => void;
     handleGeneratePlan: () => Promise<boolean>;
     handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
     setEmployees: (employees: Employee[]) => void;
@@ -167,9 +167,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
     }, [toast]);
 
-    const handleDataImported = (data: SalesDataRow[]) => {
-        dispatch({ type: 'SET_SALES_DATA', payload: data });
-    };
+    const handleDataImported = useCallback(async (dataToLoad: SalesDataRow[], year: number) => {
+        dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
+        try {
+            const allSalesData: SalesDataRow[] = [];
+            for (let i = 1; i <= 12; i++) {
+                addNotification('info', `Cargando datos de ventas para ${MONTH_NAMES[i-1]} de ${year}...`);
+                const monthData: PresupuestoItem[] = await queryApi({
+                    source: 'Presupuesto',
+                    operation: 'get_data',
+                    filters: { 'Año': year, 'Mes': i },
+                    pagination: { limit: 50000 }
+                });
+
+                const mappedData: SalesDataRow[] = monthData.map((item, index) => ({
+                    id: `row-${year}-${i}-${index}`,
+                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                    código: normalizeMaterialCode(item.CodMaterial),
+                    centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+                    dolaresProyectado: 0,
+                    descripciónMaterial: item.Material,
+                    familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+                }));
+                allSalesData.push(...mappedData);
+            }
+             if (allSalesData.length === 0) {
+                addNotification('warning', `No se encontraron datos de ventas para el año ${year}.`);
+                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
+                return;
+            }
+            
+            dispatch({ type: 'SET_SALES_DATA', payload: allSalesData });
+            addNotification('success', `Carga de datos de ventas completada. Se encontraron ${allSalesData.length} registros en total para el año ${year}.`);
+
+        } catch(e) {
+            addNotification('error', `Error durante la carga de datos de ventas: ${(e as Error).message}`);
+            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
+        }
+    }, [addNotification]);
+
 
     const handleSyncAndValidate = useCallback(async (): Promise<boolean> => {
         addNotification('info', 'Sincronizando y validando estructura y tiempos desde la API...');

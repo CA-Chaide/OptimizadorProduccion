@@ -290,7 +290,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
           }
       });
   });
-  console.log('Paso 3: Detalles de demanda mensual generados:', planningGroupDetails);
+  console.log('Paso 3: Detalles de demanda mensual generados.');
   
   console.log("Paso 4: Consolidando demanda según reglas de aprovisionamiento ('F' -> Centro 1000)...");
   const consolidatedDemandMap = new Map<string, { [monthKey: string]: number }>();
@@ -304,7 +304,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
     const destMap = consolidatedDemandMap.get(consolidatedKey)!;
     for (const [monthKey, demand] of Object.entries(monthlyDemands)) destMap[monthKey] = (destMap[monthKey] || 0) + demand;
   });
-  console.log('Paso 5: Demanda consolidada en centro de producción:', consolidatedDemandMap);
+  console.log('Paso 5: Demanda consolidada en centro de producción.');
 
   const productionNeedsMap = new Map<string, number[]>();
   consolidatedDemandMap.forEach((monthlyDemands, pairKey) => {
@@ -324,7 +324,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
       }
       productionNeedsMap.set(pairKey, needs);
   });
-  console.log('Paso 6: Calculadas las necesidades de producción mensuales netas:', productionNeedsMap);
+  console.log('Paso 6: Calculadas las necesidades de producción mensuales netas.');
   
   const monthlyAssignments: MonthlyAssignment[] = [];
   const activeLines = productionLines.filter(l => l.isActive !== false);
@@ -389,13 +389,12 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
             monthlyOriginalNeeds.set(originalNeedKey, originalNeed - originalUnitsToMake);
             const advancedUnitsToMake = Math.max(0, unitsToMake - originalUnitsToMake);
             const line = activeLines.find(l=>l.id === ppi.productionLineId)!;
-            if(unitsToMake > 0) console.log(`Asignación Mes ${month}: ${unitsToMake.toFixed(0)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
-            if(advancedUnitsToMake > 0 && horizonMonths > 1) console.log(`Adelanto: ${advancedUnitsToMake.toFixed(0)} u de ${productId} se adelantaron de meses futuros.`);
-            monthlyAssignments.push({ id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`, monthIndex, lineId: line.id, lineName: line.name, ppiId: ppi.id, productId, centerName: line.workCenterId, demandCenterId: centerId, units: unitsToMake, originalNeedUnits: originalUnitsToMake, advancedUnits: advancedUnitsToMake, totalHours: hoursToConsume, laborCost: calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions) });
+            if(unitsToMake > 0) {
+              monthlyAssignments.push({ id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`, monthIndex, lineId: line.id, lineName: line.name, ppiId: ppi.id, productId, centerName: line.workCenterId, demandCenterId: centerId, units: unitsToMake, originalNeedUnits: originalUnitsToMake, advancedUnits: advancedUnitsToMake, totalHours: hoursToConsume, laborCost: calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions) });
+            }
             unitsLeftToPlan -= unitsToMake;
         }
         if (unitsLeftToPlan > 0.1 && monthIndex < horizonMonths - 1) {
-            console.log(`Pospuesto: ${unitsLeftToPlan.toFixed(0)} u de ${prod.pairKey.split('---')[0]} se mueven al mes ${planningHorizon[monthIndex + 1].month}.`);
             productionNeedsMap.get(prod.pairKey)![monthIndex + 1] += unitsLeftToPlan;
         }
     }
@@ -510,8 +509,6 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
 
                 const hoursConsumed = unitsToProduce * manufacturingTime;
                 if (hoursConsumed > hoursRemainingTodayForLine) continue;
-
-                //console.log(`Línea [${assignment.lineName}]: Produce ${unitsToProduce.toFixed(0)} u de ${assignment.productId}. Horas consumidas: ${hoursConsumed.toFixed(2)}. Horas restantes hoy: ${(hoursRemainingTodayForLine - hoursConsumed).toFixed(2)}`);
 
                 const prodStockKey = `${assignment.productId}---${assignment.centerName}`;
                 const initialStockOnDay = inventoryState.get(prodStockKey) || 0;

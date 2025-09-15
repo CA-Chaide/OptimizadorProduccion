@@ -7,7 +7,7 @@ import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/const
 import { useAppContext } from '@/context/AppProvider';
 
 interface DataImportSectionProps {
-  onDataImported: (data: SalesDataRow[]) => void;
+  onDataImported: (data: SalesDataRow[], year: number) => void;
 }
 
 type GroupByOption = 'sector' | 'etiqueta' | 'material';
@@ -42,7 +42,7 @@ const SelectField: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { la
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [previewData, setPreviewData] = useState<SalesDataRow[]>([]);
-  const { addNotification, dispatch } = useAppContext();
+  const { addNotification, dispatch, isLoading } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: number, label: string}[],
@@ -247,6 +247,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('warning', 'No hay datos previsualizados para cargar.');
         return;
     }
+    const year = parseInt(filters.año, 10);
+     if (isNaN(year)) {
+        addNotification('error', 'El año seleccionado no es válido.');
+        return;
+    }
 
     const dataToLoad = Object.entries(aggregatedData)
       .filter(([key]) => selectedGroups.has(key))
@@ -257,8 +262,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       return;
     }
 
-    onDataImported(dataToLoad);
-    addNotification('success', `${dataToLoad.length} registros de ventas han sido cargados y están listos para la planificación.`);
+    onDataImported(dataToLoad, year);
+    // The notification is now handled in the AppProvider after full load.
   };
 
 
@@ -270,7 +275,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Utilice los filtros para **previsualizar** los datos de ventas. Luego, seleccione los grupos que desea incluir y presione "Usar estos Datos para Planificar".
+        Utilice los filtros para **previsualizar** los datos de ventas. Luego, seleccione los grupos que desea incluir y presione "Cargar Datos del Año Completo".
       </p>
 
       {/* --- Filtros --- */}
@@ -372,10 +377,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           <div className="pt-4 flex justify-end">
             <button
                 onClick={handleAcceptAndLoadData}
-                disabled={isProcessing || previewData.length === 0}
+                disabled={isLoading || isProcessing || previewData.length === 0}
                 className="px-6 py-3 bg-green-600 text-white font-bold rounded-md shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-                Usar estos Datos para Planificar
+                {isLoading ? 'Cargando datos...' : 'Cargar Datos del Año Completo'}
             </button>
           </div>
         </div>
