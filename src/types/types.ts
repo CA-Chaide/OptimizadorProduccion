@@ -37,6 +37,7 @@ export type AppAction =
   | { type: 'SET_ABSENTEEISM_EVENTS'; payload: AbsenteeismEvent[] }
   | { type: 'SET_WORK_SHIFTS'; payload: WorkShift[] }
   | { type: 'GENERATE_TACTICAL_PLAN'; payload: TacticalPlanResult | null }
+  | { type: 'SET_IS_LOADING'; payload: boolean }
   | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
 
 export type AbsenteeismEvent = {

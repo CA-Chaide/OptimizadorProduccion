@@ -275,7 +275,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Utilice los filtros para **previsualizar** los datos de ventas. Luego, seleccione los grupos que desea incluir y presione "Cargar Datos del Año Completo".
+        Utilice los filtros para **previsualizar** los datos de ventas. Luego, seleccione los grupos que desea incluir y presione "Usar estos Datos para Planificar".
       </p>
 
       {/* --- Filtros --- */}
@@ -311,7 +311,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </div>
           </div>
 
-          <div className="overflow-auto bg-gray-50 p-3 rounded-md shadow max-h-[55vh]">
+          <div className="overflow-auto bg-gray-50 p-3 rounded-md shadow max-h-[55vh] relative">
             <table className="min-w-full text-sm table-fixed">
               <thead className="bg-gray-200 sticky top-0 z-20">
                 <tr>
@@ -380,7 +380,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 disabled={isLoading || isProcessing || previewData.length === 0}
                 className="px-6 py-3 bg-green-600 text-white font-bold rounded-md shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-                {isLoading ? 'Cargando datos...' : 'Cargar Datos del Año Completo'}
+                {isLoading ? 'Cargando datos...' : 'Usar estos Datos para Planificar'}
             </button>
           </div>
         </div>

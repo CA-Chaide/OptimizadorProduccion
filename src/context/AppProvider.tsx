@@ -52,7 +52,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_ACTIVE_VIEW':
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
-            return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
+            return { ...state, isLoading: false, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
         case 'SET_CONSTRAINTS':
             return { ...state, constraints: action.payload };
         case 'SET_EMPLOYEES':
@@ -85,6 +85,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, tacticalPlanResult: action.payload };
         case 'SET_SYNC_STATUS':
             return { ...state, syncStatus: action.payload };
+        case 'SET_IS_LOADING':
+            return { ...state, isLoading: action.payload };
         default:
             return state;
     }
@@ -167,49 +169,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
     }, [toast]);
 
-    const handleDataImported = useCallback(async (dataToLoad: SalesDataRow[], year: number) => {
-        dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
-        try {
-            const allSalesData: SalesDataRow[] = [];
-            for (let i = 1; i <= 12; i++) {
-                addNotification('info', `Cargando datos de ventas para ${MONTH_NAMES[i-1]} de ${year}...`);
-                const monthData: PresupuestoItem[] = await queryApi({
-                    source: 'Presupuesto',
-                    operation: 'get_data',
-                    filters: { 'Año': year, 'Mes': i },
-                    pagination: { limit: 50000 }
-                });
-
-                const mappedData: SalesDataRow[] = monthData.map((item, index) => ({
-                    id: `row-${year}-${i}-${index}`,
-                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                    código: normalizeMaterialCode(item.CodMaterial),
-                    centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-                    dolaresProyectado: 0,
-                    descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-                }));
-                allSalesData.push(...mappedData);
-            }
-             if (allSalesData.length === 0) {
-                addNotification('warning', `No se encontraron datos de ventas para el año ${year}.`);
-                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
-                return;
-            }
-            
-            dispatch({ type: 'SET_SALES_DATA', payload: allSalesData });
-            addNotification('success', `Carga de datos de ventas completada. Se encontraron ${allSalesData.length} registros en total para el año ${year}.`);
-
-        } catch(e) {
-            addNotification('error', `Error durante la carga de datos de ventas: ${(e as Error).message}`);
-            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR' });
+    const handleDataImported = useCallback((dataToLoad: SalesDataRow[], year: number) => {
+        if (dataToLoad.length === 0) {
+            addNotification('warning', 'No se han seleccionado datos para importar.');
+            return;
         }
+        dispatch({ type: 'SET_IS_LOADING', payload: true });
+        dispatch({ type: 'SET_SALES_DATA', payload: dataToLoad });
+        dispatch({ type: 'SET_YEAR', payload: year });
+        addNotification('success', `Éxito: Se han cargado ${dataToLoad.length} registros de ventas. Ahora puede proceder a generar el plan de producción.`);
+        dispatch({ type: 'SET_IS_LOADING', payload: false });
     }, [addNotification]);
 
 
     const handleSyncAndValidate = useCallback(async (): Promise<boolean> => {
         addNotification('info', 'Sincronizando y validando estructura y tiempos desde la API...');
+        dispatch({ type: 'SET_IS_LOADING', payload: true });
         try {
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
@@ -248,6 +223,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('error', errorMessage);
             dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: [errorMessage] }});
             return false;
+        } finally {
+            dispatch({ type: 'SET_IS_LOADING', payload: false });
         }
     }, [state.constraints, addNotification]);
 
@@ -268,6 +245,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
         
         try {
+            // Using a timeout to allow the UI to update to the loading state before the heavy computation starts
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+            
             const detailedPlan = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData);
 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
