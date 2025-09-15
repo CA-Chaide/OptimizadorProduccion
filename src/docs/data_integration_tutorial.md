@@ -19,9 +19,9 @@ Este documento sirve como una guía paso a paso para depurar y validar todo el f
 
 ---
 
-## **Paso 1: Importación y Validación de Datos de Ventas**
+## **Paso 1: Importación y Validación de Datos de Ventas (Año Completo)**
 
-**Objetivo:** Asegurar que los datos del presupuesto de ventas se cargan y se transforman correctamente desde la API.
+**Objetivo:** Asegurar que los datos del presupuesto de ventas para **todo el año** se cargan y transforman correctamente desde la API.
 
 ### Incidente Común: Error de CORS
 
@@ -34,21 +34,17 @@ Al entrar a la pestaña "Importar Ventas", es posible que la aplicación no mues
 ### Depuración del Paso 1
 
 **Acción en la UI:**
-1.  Navegue a la sección **"Importar Ventas"**. (Las opciones de los filtros ya deberían cargar correctamente).
-2.  Seleccione el año `2025` y el mes `Enero`.
-3.  Presione el botón **"Previsualizar"**.
+1.  Navegue a la sección **"Importar Ventas"**.
+2.  Seleccione el año deseado (ej. `2025`).
+3.  Presione el botón **"Cargar Datos del Año Completo"**.
 
 **Qué Observar en la Consola:**
-1.  **Consulta a la API:** Busque el log que comienza con `[useApiData] Querying API:`.
-    *   Verifique que el objeto `filters` contenga `Año: 2025` y `Mes: 1`.
-    *   **Esta es la consulta exacta que puede replicar en Swagger para validar la respuesta de la API.**
-2.  **Respuesta de la API:** Busque el log `[useApiData] API Response:`.
-    *   Confirme que la respuesta es un arreglo de objetos y no está vacío.
-3.  **Transformación de Datos:** Busque el log `[DataImportSection] Mapped data for preview:`.
-    *   Verifique que el número de registros coincide con la respuesta de la API.
-    *   Inspeccione uno o dos objetos del arreglo y confirme que la estructura coincide con el tipo `SalesDataRow` (ej. `código` normalizado a 8 dígitos, `centro` sin espacios extra, etc.).
+1.  **Inicio de Carga:** Verá una notificación en la UI y un log en consola: `[DataImportSection] Solicitando carga de datos para el año completo: 2025`.
+2.  **Carga Secuencial:** Aparecerá una serie de notificaciones en la UI, una por cada mes: `Cargando datos de ventas para Enero 2025...`, `Cargando datos de ventas para Febrero 2025...`, etc.
+3.  **Consultas a la API:** En paralelo, verá en la consola 12 bloques de logs de `[useApiData] Querying API:`. Cada uno debe tener los `filters` correctos para cada mes (`"Mes":1`, `"Mes":2`, etc.).
+4.  **Carga Exitosa:** Al finalizar, debe aparecer una notificación verde de éxito en la UI y un log final en la consola: `Carga de datos de ventas completada. Se encontraron X registros en total para el año 2025.`. Verifique que el número de registros sea alto (decenas de miles), lo que confirma que se cargó todo el año.
 
-**Criterio de Éxito:** La tabla de previsualización en la interfaz se llena con datos y los logs en la consola confirman que la consulta a la API y la transformación de datos son correctas. Solo entonces avanzaremos.
+**Criterio de Éxito:** El proceso termina, la notificación de éxito aparece y el número de registros en el log de consola es significativamente mayor a 50,000. Solo entonces avanzaremos.
 
 ---
 
@@ -84,9 +80,7 @@ Al entrar a la pestaña "Importar Ventas", es posible que la aplicación no mues
 2.  Presione el botón **"Iniciar Planificación"**.
 
 **Qué Observar en la Consola:**
-1.  **Inicio y Carga de Datos:** Verá una serie de notificaciones `Cargando datos de ventas para...` para cada mes del año. Esto confirma que estamos usando la nueva estrategia de carga secuencial.
-2.  **Carga Completa:** Busque el mensaje `Carga de datos de ventas completada. Se encontraron X registros. Iniciando motor de optimización...`. El número de registros debe ser grande (decenas de miles).
-3.  **Lógica Mensual:** Revise los logs que comienzan con `--- Planificando Mes X / 12 ---`. Confirme que el proceso avanza por los 12 meses sin detenerse.
-4.  **Lógica Diaria:** Al final, el proceso debe entrar en la generación del plan diario. Verá logs como `--- Procesando Plan Diario para Mes X/2025 ---` y `Día X: Procesando...`.
+1.  **Lógica Mensual:** Revise los logs que comienzan con `--- Planificando Mes X / 12 ---`. Confirme que el proceso avanza por los 12 meses (o los meses con datos de ventas) sin detenerse. Busque logs de `Asignación Mes...` y `Pospuesto...` que indican que el motor está funcionando.
+2.  **Lógica Diaria:** Al final, el proceso debe entrar en la generación del plan diario. Verá logs como `--- Procesando Plan Diario para Mes X/2025 ---` y `Día X: Procesando...`.
 
-**Criterio de Éxito:** El proceso completo debe terminar, la interfaz debe mostrar los 4 pasos del "wizard" de planificación y la tabla del plan diario debe llenarse con datos de todo el año, sin quedarse en un bucle infinito.
+**Criterio de Éxito:** El proceso completo debe terminar, la interfaz debe mostrar los 4 pasos del "wizard" de planificación y la tabla del plan diario debe llenarse con datos correspondientes a los meses cargados, sin que el navegador se congele. El plan debe contener datos para todos los meses que tenían ventas, no solo hasta abril.

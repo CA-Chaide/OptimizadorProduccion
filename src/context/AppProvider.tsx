@@ -52,7 +52,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_ACTIVE_VIEW':
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
-            return { ...state, isLoading: false, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
+            return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
         case 'SET_CONSTRAINTS':
             return { ...state, constraints: action.payload };
         case 'SET_EMPLOYEES':
@@ -116,7 +116,7 @@ type AppContextType = {
     apiAssemblyData: TiempoEnsambleItem[]; // New: Store raw API data
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
-    handleDataImported: (data: SalesDataRow[], year: number) => void;
+    handleDataImported: (year: number) => void;
     handleGeneratePlan: () => Promise<boolean>;
     handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
     setEmployees: (employees: Employee[]) => void;
@@ -165,20 +165,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             variant: type === 'error' ? 'destructive' : 'default',
             title: type.charAt(0).toUpperCase() + type.slice(1),
             description: description,
-            duration: 1500,
+            duration: 5000,
         });
     }, [toast]);
 
-    const handleDataImported = useCallback((dataToLoad: SalesDataRow[], year: number) => {
-        if (dataToLoad.length === 0) {
-            addNotification('warning', 'No se han seleccionado datos para importar.');
-            return;
-        }
+    const handleDataImported = useCallback(async (year: number) => {
         dispatch({ type: 'SET_IS_LOADING', payload: true });
-        dispatch({ type: 'SET_SALES_DATA', payload: dataToLoad });
-        dispatch({ type: 'SET_YEAR', payload: year });
-        addNotification('success', `Éxito: Se han cargado ${dataToLoad.length} registros de ventas. Ahora puede proceder a generar el plan de producción.`);
-        dispatch({ type: 'SET_IS_LOADING', payload: false });
+        addNotification('info', `Iniciando carga de datos de ventas para todo el año ${year}...`);
+
+        const allSalesData: SalesDataRow[] = [];
+        try {
+            for (let month = 1; month <= 12; month++) {
+                addNotification('info', `Cargando datos de ventas para ${MONTH_NAMES[month-1]} ${year}...`);
+                const monthlyData: PresupuestoItem[] = await queryApi({
+                    source: 'Presupuesto',
+                    operation: 'get_data',
+                    filters: { Año: year, Mes: month },
+                    pagination: { limit: 50000 }
+                });
+
+                if (monthlyData && monthlyData.length > 0) {
+                    const mappedData: SalesDataRow[] = monthlyData.map((item, index) => ({
+                        id: `row-${year}-${month}-${index}`,
+                        año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                        etiqueta: item.Etiqueta || 'Sin Etiqueta', 
+                        código: normalizeMaterialCode(item.CodMaterial),
+                        centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+                        dolaresProyectado: 0,
+                        descripciónMaterial: item.Material,
+                        familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+                    }));
+                    allSalesData.push(...mappedData);
+                }
+            }
+
+            if (allSalesData.length === 0) {
+                addNotification('warning', `No se encontraron datos de ventas para el año ${year}.`);
+            } else {
+                console.log(`Carga de datos de ventas completada. Se encontraron ${allSalesData.length} registros en total para el año ${year}.`);
+                dispatch({ type: 'SET_SALES_DATA', payload: allSalesData });
+                dispatch({ type: 'SET_YEAR', payload: year });
+                addNotification('success', `Éxito: Se han cargado ${allSalesData.length} registros de ventas para ${year}. Ahora puede proceder a la planificación.`);
+            }
+
+        } catch (error) {
+            const errorMessage = `Error durante la carga masiva de datos de ventas: ${(error as Error).message}`;
+            console.error(errorMessage, error);
+            addNotification('error', errorMessage);
+        } finally {
+            dispatch({ type: 'SET_IS_LOADING', payload: false });
+        }
     }, [addNotification]);
 
 

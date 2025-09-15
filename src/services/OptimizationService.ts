@@ -290,7 +290,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
           }
       });
   });
-  console.log('Paso 3: Detalles de demanda mensual generados.');
+  console.log('Paso 3: Detalles de demanda mensual generados:', planningGroupDetails);
   
   console.log("Paso 4: Consolidando demanda según reglas de aprovisionamiento ('F' -> Centro 1000)...");
   const consolidatedDemandMap = new Map<string, { [monthKey: string]: number }>();
@@ -304,7 +304,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
     const destMap = consolidatedDemandMap.get(consolidatedKey)!;
     for (const [monthKey, demand] of Object.entries(monthlyDemands)) destMap[monthKey] = (destMap[monthKey] || 0) + demand;
   });
-  console.log('Paso 5: Demanda consolidada en centro de producción.');
+  console.log('Paso 5: Demanda consolidada en centro de producción:', consolidatedDemandMap);
 
   const productionNeedsMap = new Map<string, number[]>();
   consolidatedDemandMap.forEach((monthlyDemands, pairKey) => {
@@ -324,7 +324,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
       }
       productionNeedsMap.set(pairKey, needs);
   });
-  console.log('Paso 6: Calculadas las necesidades de producción mensuales netas.');
+  console.log('Paso 6: Calculadas las necesidades de producción mensuales netas:', productionNeedsMap);
   
   const monthlyAssignments: MonthlyAssignment[] = [];
   const activeLines = productionLines.filter(l => l.isActive !== false);
@@ -390,11 +390,13 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
             const advancedUnitsToMake = Math.max(0, unitsToMake - originalUnitsToMake);
             const line = activeLines.find(l=>l.id === ppi.productionLineId)!;
             if(unitsToMake > 0) {
+              console.log(`Asignación Mes ${monthIndex + 1}: ${Math.round(unitsToMake)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
               monthlyAssignments.push({ id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`, monthIndex, lineId: line.id, lineName: line.name, ppiId: ppi.id, productId, centerName: line.workCenterId, demandCenterId: centerId, units: unitsToMake, originalNeedUnits: originalUnitsToMake, advancedUnits: advancedUnitsToMake, totalHours: hoursToConsume, laborCost: calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions) });
             }
             unitsLeftToPlan -= unitsToMake;
         }
         if (unitsLeftToPlan > 0.1 && monthIndex < horizonMonths - 1) {
+            console.log(`Pospuesto: ${Math.round(unitsLeftToPlan)} u de ${prod.pairKey.split('---')[0]} se mueven al mes ${monthIndex + 2}.`);
             productionNeedsMap.get(prod.pairKey)![monthIndex + 1] += unitsLeftToPlan;
         }
     }
@@ -606,5 +608,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-    
