@@ -98,7 +98,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             source: 'Presupuesto',
             operation: 'get_data',
             filters: queryFilters,
-            pagination: { limit: 50000 } // Limite de seguridad
+            pagination: { limit: 50000 } // Limit preview to avoid browser crash
         });
 
         if (response && response.length > 0) {
@@ -127,13 +127,57 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   };
   
-  const handleAcceptAndLoadData = () => {
-      console.log("[DataImportSection] handleAcceptAndLoadData: Confirmando y cargando datos al estado global.");
-      if (previewData.length === 0) {
-          addNotification('warning', 'No hay datos previsualizados para cargar.');
+  const handleLoadFullYear = async () => {
+      console.log("[DataImportSection] handleLoadFullYear: Iniciando carga del año completo.");
+      if (!filters.año) {
+          addNotification('warning', 'Por favor, seleccione un año para la carga masiva.');
           return;
       }
-      onDataImported(previewData);
+      
+      setIsProcessing(true);
+      setPreviewData([]); // Clear preview while loading full data
+      const yearToLoad = parseInt(filters.año, 10);
+      let allYearData: SalesDataRow[] = [];
+      
+      try {
+          for (let month = 1; month <= 12; month++) {
+              console.log(`Cargando datos para el mes ${month}/${yearToLoad}...`);
+              addNotification('info', `Cargando mes ${month}/12...`);
+              const response: PresupuestoItem[] = await queryApi({
+                  source: 'Presupuesto',
+                  operation: 'get_data',
+                  filters: { 'Año': yearToLoad, 'Mes': month },
+              });
+              
+              if (response && response.length > 0) {
+                  const mappedData: SalesDataRow[] = response.map((item, index) => ({
+                    id: `row-${item.Año}-${item.Mes}-${index}`,
+                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                    código: normalizeMaterialCode(item.CodMaterial),
+                    centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+                    dolaresProyectado: 0,
+                    descripciónMaterial: item.Material,
+                    familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+                  }));
+                  allYearData = [...allYearData, ...mappedData];
+                  console.log(`Mes ${month} cargado con ${response.length} registros. Total hasta ahora: ${allYearData.length}`);
+              }
+          }
+          
+          if (allYearData.length > 0) {
+              onDataImported(allYearData);
+              addNotification('success', `Carga de datos anual completada. Se encontraron ${allYearData.length} registros en total para el año ${yearToLoad}.`);
+              setPreviewData(allYearData); // Optionally show the full data in preview
+          } else {
+              addNotification('warning', `No se encontraron datos de ventas para el año ${yearToLoad}.`);
+          }
+
+      } catch (error) {
+           addNotification('error', `Error durante la carga masiva de datos: ${(error as Error).message}`);
+      } finally {
+          setIsProcessing(false);
+      }
   };
   
   const { aggregatedData, centers } = useMemo(() => {
@@ -174,7 +218,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Seleccione los filtros para consultar las ventas proyectadas. Presione "Previsualizar" para ver los datos y luego "Usar estos Datos" para cargarlos en el sistema y poder generar el plan de producción.
+        Use los filtros para previsualizar una muestra de los datos. Para realizar la planificación anual, presione "Cargar Año Completo" para obtener todos los registros de ventas del año seleccionado.
       </p>
 
       {/* --- Filtros --- */}
@@ -184,13 +228,22 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         <SelectField label="Centro" id="centro" name="centro" value={filters.centro} onChange={handleFilterChange} options={filterOptions.centros}/>
         <SelectField label="Etiqueta" id="etiqueta" name="etiqueta" value={filters.etiqueta} onChange={handleFilterChange} options={filterOptions.etiquetas}/>
         
-        <button
-            onClick={handlePreview}
-            disabled={isProcessing}
-            className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-            {isProcessing ? 'Consultando...' : 'Previsualizar'}
-        </button>
+        <div className="flex flex-col gap-2">
+            <button
+                onClick={handlePreview}
+                disabled={isProcessing}
+                className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+                {isProcessing ? 'Consultando...' : 'Previsualizar'}
+            </button>
+             <button
+                onClick={handleLoadFullYear}
+                disabled={isProcessing || !filters.año}
+                className="w-full h-10 px-4 py-2 bg-green-600 text-white font-bold rounded-md shadow-md hover:bg-green-700 disabled:bg-gray-400"
+            >
+                {isProcessing ? 'Cargando...' : 'Cargar Año Completo'}
+            </button>
+        </div>
       </div>
 
        {previewData.length > 0 && (
@@ -234,10 +287,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </div>
              <div className="flex justify-end">
                 <button
-                    onClick={handleAcceptAndLoadData}
-                    className="px-6 py-2 bg-green-600 text-white font-bold rounded-md shadow-md hover:bg-green-700"
+                    onClick={() => onDataImported(previewData)}
+                    className="px-6 py-2 bg-purple-600 text-white font-bold rounded-md shadow-md hover:bg-purple-700"
+                    title="Usa solo los datos actualmente previsualizados para la planificación."
                 >
-                    Usar estos Datos para Planificar
+                    Usar Solo Datos Previsualizados
                 </button>
             </div>
         </div>

@@ -232,6 +232,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state.constraints, addNotification]);
 
     const handleGeneratePlan = useCallback(async () => {
+        console.log('[AppProvider] handleGeneratePlan invocado.');
         if (!state.year) {
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
             return false;
