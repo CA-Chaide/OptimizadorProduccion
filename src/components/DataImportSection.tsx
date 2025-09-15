@@ -98,7 +98,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             source: 'Presupuesto',
             operation: 'get_data',
             filters: queryFilters,
-            pagination: { limit: 50000 } // Limit preview to avoid browser crash
         });
 
         if (response && response.length > 0) {
