@@ -52,6 +52,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_ACTIVE_VIEW':
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
+            console.log("[AppContext] Action: SET_SALES_DATA. Reseteando plan de producción.");
             return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
         case 'SET_CONSTRAINTS':
             return { ...state, constraints: action.payload };
@@ -66,8 +67,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_WORK_SHIFTS':
             return { ...state, workShifts: action.payload };
         case 'GENERATE_PRODUCTION_PLAN_START':
+            console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_START. isLoading: true.");
             return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan };
         case 'GENERATE_PRODUCTION_PLAN_SUCCESS':
+            console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_SUCCESS. isLoading: false.");
             return { 
                 ...state, 
                 isLoading: false, 
@@ -75,6 +78,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 detailedProductionPlan: action.payload.details
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
+             console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_ERROR. isLoading: false.");
             return { 
                 ...state, 
                 isLoading: false, 
@@ -86,6 +90,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_SYNC_STATUS':
             return { ...state, syncStatus: action.payload };
         case 'SET_IS_LOADING':
+            console.log(`[AppContext] Action: SET_IS_LOADING. Payload: ${action.payload}`);
             return { ...state, isLoading: action.payload };
         default:
             return state;
@@ -116,7 +121,7 @@ type AppContextType = {
     apiAssemblyData: TiempoEnsambleItem[]; // New: Store raw API data
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
-    handleDataImported: (year: number) => void;
+    handleDataImported: (data: SalesDataRow[]) => void;
     handleGeneratePlan: () => Promise<boolean>;
     handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
     setEmployees: (employees: Employee[]) => void;
@@ -169,51 +174,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
     }, [toast]);
 
-    const handleDataImported = useCallback(async (year: number) => {
-        dispatch({ type: 'SET_IS_LOADING', payload: true });
-        addNotification('info', `Iniciando carga de datos de ventas para todo el año ${year}...`);
-
-        const allSalesData: SalesDataRow[] = [];
-        try {
-            for (let month = 1; month <= 12; month++) {
-                addNotification('info', `Cargando datos de ventas para ${MONTH_NAMES[month-1]} ${year}...`);
-                const monthlyData: PresupuestoItem[] = await queryApi({
-                    source: 'Presupuesto',
-                    operation: 'get_data',
-                    filters: { Año: year, Mes: month },
-                    pagination: { limit: 50000 }
-                });
-
-                if (monthlyData && monthlyData.length > 0) {
-                    const mappedData: SalesDataRow[] = monthlyData.map((item, index) => ({
-                        id: `row-${year}-${month}-${index}`,
-                        año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                        etiqueta: item.Etiqueta || 'Sin Etiqueta', 
-                        código: normalizeMaterialCode(item.CodMaterial),
-                        centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-                        dolaresProyectado: 0,
-                        descripciónMaterial: item.Material,
-                        familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-                    }));
-                    allSalesData.push(...mappedData);
-                }
-            }
-
-            if (allSalesData.length === 0) {
-                addNotification('warning', `No se encontraron datos de ventas para el año ${year}.`);
-            } else {
-                console.log(`Carga de datos de ventas completada. Se encontraron ${allSalesData.length} registros en total para el año ${year}.`);
-                dispatch({ type: 'SET_SALES_DATA', payload: allSalesData });
-                dispatch({ type: 'SET_YEAR', payload: year });
-                addNotification('success', `Éxito: Se han cargado ${allSalesData.length} registros de ventas para ${year}. Ahora puede proceder a la planificación.`);
-            }
-
-        } catch (error) {
-            const errorMessage = `Error durante la carga masiva de datos de ventas: ${(error as Error).message}`;
-            console.error(errorMessage, error);
-            addNotification('error', errorMessage);
-        } finally {
-            dispatch({ type: 'SET_IS_LOADING', payload: false });
+    const handleDataImported = useCallback((data: SalesDataRow[]) => {
+        console.log(`[AppProvider] handleDataImported llamado con ${data.length} registros.`);
+        dispatch({ type: 'SET_SALES_DATA', payload: data });
+        if (data.length > 0) {
+            addNotification('success', `Éxito: Se han cargado ${data.length} registros de ventas. Ahora puede proceder a la planificación.`);
+        } else {
+            addNotification('warning', `Se han cargado 0 registros. No podrá generar un plan de producción.`);
         }
     }, [addNotification]);
 
