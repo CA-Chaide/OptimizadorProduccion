@@ -365,7 +365,7 @@ export const generateProductionPlan = async (
   for (let monthIndex = 0; monthIndex < horizonMonths; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
     onProgress({ message: `Analizando capacidad mensual...`, step: 'monthly', current: monthIndex + 1, total: horizonMonths });
-    await new Promise(resolve => setTimeout(resolve, 20)); // Allow UI to update
+    
     const availableHoursThisMonth = new Map<string, LineHourAvailability>();
     lineMonthlyHours.forEach((monthlyAvail, lineId) => availableHoursThisMonth.set(lineId, { ...monthlyAvail[monthIndex] }));
     const productsToPlanThisMonth = Array.from(productionNeedsMap.entries()).filter(([_, needs]) => needs[monthIndex] > 0).map(([pairKey, needs]) => ({ pairKey, units: needs[monthIndex], ppiOptions: getPpiOptionsForProduct(pairKey.split('---')[0], pairKey.split('---')[1], constraints, apiData) })).filter(p => p.ppiOptions.length > 0).sort((a,b) => a.ppiOptions[0].totalManufacturingTimeHours - b.ppiOptions[0].totalManufacturingTimeHours);
@@ -451,8 +451,7 @@ export const generateProductionPlan = async (
   for (let monthIndex = 0; monthIndex < horizonMonths; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
     const daysInMonth = new Date(year, month, 0).getDate();
-    onProgress({ message: `Generando plan diario para ${MONTH_NAMES[month-1]}...`, step: 'daily', current: 0, total: daysInMonth });
-
+    
     const assignmentsForMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
     const remainingUnitsToProduce = new Map<string, number>();
     assignmentsForMonth.forEach(a => remainingUnitsToProduce.set(a.id, a.units));
@@ -462,7 +461,6 @@ export const generateProductionPlan = async (
     
     for (let day = 1; day <= daysInMonth; day++) {
         onProgress({ message: `Generando plan diario para ${MONTH_NAMES[month-1]}...`, step: 'daily', current: day, total: daysInMonth });
-        await new Promise(resolve => setTimeout(resolve, 0)); // Allow UI to update
         
         const currentDate = new Date(year, month - 1, day);
         const dayType = getDayTypeForProduction(currentDate, holidays);
@@ -616,3 +614,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+

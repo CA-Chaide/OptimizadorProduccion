@@ -69,7 +69,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, workShifts: action.payload };
         case 'GENERATE_PRODUCTION_PLAN_START':
             console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_START. isLoading: true.");
-            return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan, planningProgress: null };
+            return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan, planningProgress: { message: 'Iniciando...', step: 'monthly', current: 0, total: 12 } };
         case 'GENERATE_PRODUCTION_PLAN_SUCCESS':
             console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_SUCCESS. isLoading: false.");
             return { 
@@ -237,7 +237,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state.constraints, addNotification]);
 
-    const handleGeneratePlan = useCallback(async () => {
+    const handleGeneratePlan = useCallback(async (): Promise<boolean> => {
         console.log('[AppProvider] handleGeneratePlan invocado.');
         if (!state.year) {
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
@@ -259,6 +259,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
             
+            // Correctly await the entire planning process
             const detailedPlan = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
@@ -267,6 +268,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         } catch (error) {
             const errorMessage = (error as Error).message;
+            console.error('[AppProvider] Error en handleGeneratePlan:', error);
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: errorMessage });
             addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
@@ -322,3 +324,4 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
+
