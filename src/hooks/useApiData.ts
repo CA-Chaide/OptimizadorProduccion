@@ -75,12 +75,10 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     console.log(`[useApiData] Querying API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
-        console.log('[useApiData] API Response:', response);
+        console.log(`[useApiData] API Response:`, response);
         return response;
     } catch(e) {
         console.error('[useApiData] API Fetch failed:', e);
         throw e;
     }
 };
-
-

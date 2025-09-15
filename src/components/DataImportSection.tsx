@@ -146,9 +146,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                   source: 'Presupuesto',
                   operation: 'get_data',
                   filters: { 'Año': yearToLoad, 'Mes': month },
+                  pagination: { limit: 50000 } // Use a large limit to fetch all data for the month
               });
               
               if (response && response.length > 0) {
+                  console.log(`Mes ${month} cargado con ${response.length} registros.`);
                   const mappedData: SalesDataRow[] = response.map((item, index) => ({
                     id: `row-${item.Año}-${item.Mes}-${index}`,
                     año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
@@ -160,7 +162,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     familia: item.Familia, marca: item.Marca, lineaProduccion: '',
                   }));
                   allYearData = [...allYearData, ...mappedData];
-                  console.log(`Mes ${month} cargado con ${response.length} registros. Total hasta ahora: ${allYearData.length}`);
+                  console.log(`Total acumulado hasta ahora: ${allYearData.length}`);
               }
           }
           
