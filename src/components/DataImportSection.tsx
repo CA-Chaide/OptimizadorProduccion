@@ -38,7 +38,7 @@ const SelectField: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { la
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
-  const { addNotification, dispatch, isLoading } = useAppContext();
+  const { addNotification, isLoading: isAppLoading } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: number, label: string}[],
@@ -53,7 +53,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       etiqueta: '',
   });
 
-  const [previewData, setPreviewData] = useState<SalesDataRow[]>([]);
+  const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -83,110 +83,90 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     loadFilterOptions();
   }, [addNotification]);
   
-  const handlePreview = async () => {
-    console.log("[DataImportSection] Iniciando previsualización con filtros:", filters);
+  const handleLoadData = async () => {
     setIsProcessing(true);
-    addNotification('info', 'Consultando datos para previsualización...');
-    try {
-        const queryFilters: { [key: string]: any } = {};
-        if (filters.año) queryFilters['Año'] = parseInt(filters.año, 10);
-        if (filters.mes) queryFilters['Mes'] = parseInt(filters.mes, 10);
-        if (filters.centro) queryFilters['Centro'] = filters.centro;
-        if (filters.etiqueta) queryFilters['Etiqueta'] = filters.etiqueta;
+    setLoadedData([]);
+    let finalData: SalesDataRow[] = [];
 
-        const response: PresupuestoItem[] = await queryApi({
+    try {
+      const baseFilters: { [key: string]: any } = {};
+      if (filters.año) baseFilters['Año'] = parseInt(filters.año, 10);
+      if (filters.centro) baseFilters['Centro'] = filters.centro;
+      if (filters.etiqueta) baseFilters['Etiqueta'] = filters.etiqueta;
+
+      if (!filters.mes) { // Carga de año completo
+        addNotification('info', `Iniciando carga completa para el año ${filters.año}...`);
+        for (let month = 1; month <= 12; month++) {
+          console.log(`Cargando datos para el mes ${month}/${filters.año}...`);
+          addNotification('info', `Cargando mes ${month}/12...`);
+          
+          const monthFilters = { ...baseFilters, 'Mes': month };
+          const response: PresupuestoItem[] = await queryApi({
             source: 'Presupuesto',
             operation: 'get_data',
-            filters: queryFilters,
+            filters: monthFilters,
             pagination: { limit: 50000 }
-        });
-
-        if (response && response.length > 0) {
+          });
+          
+          if (response && response.length > 0) {
+            console.log(`Mes ${month} cargado con ${response.length} registros.`);
             const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                id: `row-${item.Año}-${item.Mes}-${index}`,
-                año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                código: normalizeMaterialCode(item.CodMaterial),
-                centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-                dolaresProyectado: 0,
-                descripciónMaterial: item.Material,
-                familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+              id: `row-${item.Año}-${item.Mes}-${index}`,
+              año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+              etiqueta: item.Etiqueta || 'Sin Etiqueta',
+              código: normalizeMaterialCode(item.CodMaterial),
+              centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+              dolaresProyectado: 0,
+              descripciónMaterial: item.Material,
+              familia: item.Familia, marca: item.Marca, lineaProduccion: '',
             }));
-            console.log(`[DataImportSection] Mapped data for preview:`, mappedData);
-            setPreviewData(mappedData);
-            addNotification('success', `Se encontraron ${mappedData.length} registros para la previsualización.`);
-        } else {
-            setPreviewData([]);
-            addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
+            finalData = [...finalData, ...mappedData];
+            console.log(`Total acumulado hasta ahora: ${finalData.length}`);
+          }
         }
+      } else { // Carga filtrada
+        addNotification('info', 'Consultando datos filtrados...');
+        const queryFilters = { ...baseFilters, 'Mes': parseInt(filters.mes, 10) };
+        const response: PresupuestoItem[] = await queryApi({
+          source: 'Presupuesto',
+          operation: 'get_data',
+          filters: queryFilters,
+          pagination: { limit: 50000 }
+        });
+        if (response && response.length > 0) {
+          const mappedData: SalesDataRow[] = response.map((item, index) => ({
+            id: `row-${item.Año}-${item.Mes}-${index}`,
+            año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+            etiqueta: item.Etiqueta || 'Sin Etiqueta',
+            código: normalizeMaterialCode(item.CodMaterial),
+            centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+            dolaresProyectado: 0,
+            descripciónMaterial: item.Material,
+            familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+          }));
+          finalData = mappedData;
+        }
+      }
+
+      if (finalData.length > 0) {
+        setLoadedData(finalData);
+        onDataImported(finalData); // Esto ahora solo notifica y guarda en el estado global
+        addNotification('success', `Carga completada. Se importaron ${finalData.length} registros.`);
+      } else {
+        addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
+      }
     } catch (error) {
-        setPreviewData([]);
-        addNotification('error', `Error al previsualizar los datos: ${(error as Error).message}`);
+        addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
     } finally {
         setIsProcessing(false);
     }
-  };
-  
-  const handleLoadFullYear = async () => {
-      console.log("[DataImportSection] handleLoadFullYear: Iniciando carga del año completo.");
-      if (!filters.año) {
-          addNotification('warning', 'Por favor, seleccione un año para la carga masiva.');
-          return;
-      }
-      
-      setIsProcessing(true);
-      setPreviewData([]); // Clear preview while loading full data
-      const yearToLoad = parseInt(filters.año, 10);
-      let allYearData: SalesDataRow[] = [];
-      
-      try {
-          for (let month = 1; month <= 12; month++) {
-              console.log(`Cargando datos para el mes ${month}/${yearToLoad}...`);
-              addNotification('info', `Cargando mes ${month}/12...`);
-              const response: PresupuestoItem[] = await queryApi({
-                  source: 'Presupuesto',
-                  operation: 'get_data',
-                  filters: { 'Año': yearToLoad, 'Mes': month },
-                  pagination: { limit: 50000 } // Use a large limit to fetch all data for the month
-              });
-              
-              if (response && response.length > 0) {
-                  console.log(`Mes ${month} cargado con ${response.length} registros.`);
-                  const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${index}`,
-                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                    código: normalizeMaterialCode(item.CodMaterial),
-                    centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-                    dolaresProyectado: 0,
-                    descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-                  }));
-                  allYearData = [...allYearData, ...mappedData];
-                  console.log(`Total acumulado hasta ahora: ${allYearData.length}`);
-              }
-          }
-          
-          if (allYearData.length > 0) {
-              onDataImported(allYearData);
-              addNotification('success', `Carga de datos anual completada. Se encontraron ${allYearData.length} registros en total para el año ${yearToLoad}.`);
-              setPreviewData(allYearData); // Optionally show the full data in preview
-          } else {
-              addNotification('warning', `No se encontraron datos de ventas para el año ${yearToLoad}.`);
-          }
-
-      } catch (error) {
-           addNotification('error', `Error durante la carga masiva de datos: ${(error as Error).message}`);
-      } finally {
-          setIsProcessing(false);
-      }
   };
   
   const { aggregatedData, centers } = useMemo(() => {
     const data: AggregatedData = {};
     const centerSet = new Set<string>();
 
-    previewData.forEach(row => {
+    loadedData.forEach(row => {
       const key = row.etiqueta;
       if (!data[key]) {
         data[key] = { totalUnits: 0, unitsByCenter: {}, dataRows: [] };
@@ -198,7 +178,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     });
 
     return { aggregatedData: data, centers: Array.from(centerSet).sort() };
-  }, [previewData]);
+  }, [loadedData]);
 
   const footerTotals = useMemo(() => {
     const totals: { [centerName: string]: number } = {};
@@ -220,7 +200,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para previsualizar una muestra de los datos. Para realizar la planificación anual, presione "Cargar Año Completo" para obtener todos los registros de ventas del año seleccionado.
+        Use los filtros para definir el alcance de los datos. Si deja el campo "Mes" vacío, se cargarán todos los meses del año seleccionado.
       </p>
 
       {/* --- Filtros --- */}
@@ -230,26 +210,20 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         <SelectField label="Centro" id="centro" name="centro" value={filters.centro} onChange={handleFilterChange} options={filterOptions.centros}/>
         <SelectField label="Etiqueta" id="etiqueta" name="etiqueta" value={filters.etiqueta} onChange={handleFilterChange} options={filterOptions.etiquetas}/>
         
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col">
             <button
-                onClick={handlePreview}
-                disabled={isProcessing}
+                onClick={handleLoadData}
+                disabled={isProcessing || isAppLoading || !filters.año}
                 className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-                {isProcessing ? 'Consultando...' : 'Previsualizar'}
-            </button>
-             <button
-                onClick={handleLoadFullYear}
-                disabled={isProcessing || !filters.año}
-                className="w-full h-10 px-4 py-2 bg-green-600 text-white font-bold rounded-md shadow-md hover:bg-green-700 disabled:bg-gray-400"
-            >
-                {isProcessing ? 'Cargando...' : 'Cargar Año Completo'}
+                {isProcessing ? 'Cargando...' : 'Cargar Datos'}
             </button>
         </div>
       </div>
 
-       {previewData.length > 0 && (
+       {loadedData.length > 0 && (
          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta</h3>
             <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
                 <table className="min-w-full text-xs divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10">
@@ -286,15 +260,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         </tr>
                     </tfoot>
                 </table>
-            </div>
-             <div className="flex justify-end">
-                <button
-                    onClick={() => onDataImported(previewData)}
-                    className="px-6 py-2 bg-purple-600 text-white font-bold rounded-md shadow-md hover:bg-purple-700"
-                    title="Usa solo los datos actualmente previsualizados para la planificación."
-                >
-                    Usar Solo Datos Previsualizados
-                </button>
             </div>
         </div>
       )}
