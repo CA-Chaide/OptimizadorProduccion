@@ -6,7 +6,8 @@ import {
     MonthlyInventoryState, ProcessType, WorkstationDefinition,
     SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
-    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, PresupuestoItem
+    Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, PresupuestoItem,
+    PlanningProgress
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 import { queryApi } from '@/hooks/useApiData';
@@ -240,11 +241,16 @@ function sequenceDailyProduction(dailyGoals: MonthlyAssignment[], inventoryState
     return scoredGoals.sort((a, b) => a.urgencyScore - b.urgencyScore);
 }
 
-export const generateProductionPlan = async (planningYear: number, constraints: AppConstraints, apiData: TiempoEnsambleItem[], salesData: SalesDataRow[]): Promise<{ finalPlan: ProductionPlan, details: DetailedProductionPlan }> => {
+export const generateProductionPlan = async (
+    planningYear: number, 
+    constraints: AppConstraints, 
+    apiData: TiempoEnsambleItem[], 
+    salesData: SalesDataRow[],
+    onProgress: (progress: PlanningProgress | null) => void,
+): Promise<{ finalPlan: ProductionPlan, details: DetailedProductionPlan }> => {
   console.log('--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---');
   const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
 
-  // Determine planning horizon from sales data
   const monthKeysInSales = new Set(salesData.map(s => `${s.año}-${s.mes}`));
   const planningHorizon = Array.from(monthKeysInSales).map(m => {
     const [year, month] = m.split('-').map(Number);
@@ -253,6 +259,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
 
 
   if (planningHorizon.length === 0) {
+      onProgress(null);
       const emptyResult = { 
         finalPlan: { dailyPlan: [], monthlyPlan: [], auditLog: ["No hay datos de ventas para planificar."] },
         details: { planningGroupDetails: [], productionNeeds: [], monthlyAssignments: [] },
@@ -357,8 +364,8 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
 
   for (let monthIndex = 0; monthIndex < horizonMonths; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
-    console.log(`--- Planificando Mes ${monthIndex + 1} / ${horizonMonths} (${MONTH_NAMES[month-1]} ${year}) ---`);
-    await new Promise(resolve => setTimeout(resolve, 0));
+    onProgress({ message: `Analizando capacidad mensual...`, step: 'monthly', current: monthIndex + 1, total: horizonMonths });
+    await new Promise(resolve => setTimeout(resolve, 20)); // Allow UI to update
     const availableHoursThisMonth = new Map<string, LineHourAvailability>();
     lineMonthlyHours.forEach((monthlyAvail, lineId) => availableHoursThisMonth.set(lineId, { ...monthlyAvail[monthIndex] }));
     const productsToPlanThisMonth = Array.from(productionNeedsMap.entries()).filter(([_, needs]) => needs[monthIndex] > 0).map(([pairKey, needs]) => ({ pairKey, units: needs[monthIndex], ppiOptions: getPpiOptionsForProduct(pairKey.split('---')[0], pairKey.split('---')[1], constraints, apiData) })).filter(p => p.ppiOptions.length > 0).sort((a,b) => a.ppiOptions[0].totalManufacturingTimeHours - b.ppiOptions[0].totalManufacturingTimeHours);
@@ -390,13 +397,11 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
             const advancedUnitsToMake = Math.max(0, unitsToMake - originalUnitsToMake);
             const line = activeLines.find(l=>l.id === ppi.productionLineId)!;
             if(unitsToMake > 0) {
-              console.log(`Asignación Mes ${monthIndex + 1}: ${Math.round(unitsToMake)} u de ${productId} a línea ${line.name}. Horas: ${hoursToConsume.toFixed(2)}.`);
               monthlyAssignments.push({ id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`, monthIndex, lineId: line.id, lineName: line.name, ppiId: ppi.id, productId, centerName: line.workCenterId, demandCenterId: centerId, units: unitsToMake, originalNeedUnits: originalUnitsToMake, advancedUnits: advancedUnitsToMake, totalHours: hoursToConsume, laborCost: calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions) });
             }
             unitsLeftToPlan -= unitsToMake;
         }
         if (unitsLeftToPlan > 0.1 && monthIndex < horizonMonths - 1) {
-            console.log(`Pospuesto: ${Math.round(unitsLeftToPlan)} u de ${prod.pairKey.split('---')[0]} se mueven al mes ${monthIndex + 2}.`);
             productionNeedsMap.get(prod.pairKey)![monthIndex + 1] += unitsLeftToPlan;
         }
     }
@@ -445,7 +450,9 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
 
   for (let monthIndex = 0; monthIndex < horizonMonths; monthIndex++) {
     const { year, month } = planningHorizon[monthIndex];
-    console.log(`--- Procesando Plan Diario para Mes ${month}/${year} ---`);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    onProgress({ message: `Generando plan diario para ${MONTH_NAMES[month-1]}...`, step: 'daily', current: 0, total: daysInMonth });
+
     const assignmentsForMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
     const remainingUnitsToProduce = new Map<string, number>();
     assignmentsForMonth.forEach(a => remainingUnitsToProduce.set(a.id, a.units));
@@ -453,12 +460,13 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
     const dailyDemandTotals = new Map<string, number>();
     demandMap.forEach((monthlyDemands, pairKey) => dailyDemandTotals.set(pairKey, monthlyDemands[`${year}-${month}`] || 0));
     
-    const daysInMonth = new Date(year, month, 0).getDate();
     for (let day = 1; day <= daysInMonth; day++) {
+        onProgress({ message: `Generando plan diario para ${MONTH_NAMES[month-1]}...`, step: 'daily', current: day, total: daysInMonth });
+        await new Promise(resolve => setTimeout(resolve, 0)); // Allow UI to update
+        
         const currentDate = new Date(year, month - 1, day);
         const dayType = getDayTypeForProduction(currentDate, holidays);
         if (dayType === 'Sunday' || dayType === 'NonProductiveHoliday') continue;
-        console.log(`Día ${day}: Procesando...`);
         
         let hoursPerDay = (dayType === 'Weekday') ? shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay : shiftParameters.saturdayAndHolidayHours;
         const hoursByLine = new Map<string, number>();
@@ -561,6 +569,7 @@ export const generateProductionPlan = async (planningYear: number, constraints: 
     aggregatedMonthlyPlan.set(key, entry);
   });
   
+  onProgress(null);
   return { 
     finalPlan: { dailyPlan, monthlyPlan: Array.from(aggregatedMonthlyPlan.values()), auditLog: [] },
     details: { planningGroupDetails, productionNeeds, monthlyAssignments },
@@ -607,4 +616,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-

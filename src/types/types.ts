@@ -1,10 +1,19 @@
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
     errors: string[];
 }
+
+export interface PlanningProgress {
+  message: string;
+  current: number;
+  total: number;
+  step: 'monthly' | 'daily';
+}
+
 
 export type AppState = {
   year: number | null;
@@ -21,6 +30,7 @@ export type AppState = {
   workShifts: WorkShift[];
   tacticalPlanResult: TacticalPlanResult | null;
   syncStatus: SyncStatus | null;
+  planningProgress: PlanningProgress | null;
 };
 
 export type AppAction =
@@ -38,7 +48,8 @@ export type AppAction =
   | { type: 'SET_WORK_SHIFTS'; payload: WorkShift[] }
   | { type: 'GENERATE_TACTICAL_PLAN'; payload: TacticalPlanResult | null }
   | { type: 'SET_IS_LOADING'; payload: boolean }
-  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
+  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus }
+  | { type: 'SET_PLANNING_PROGRESS'; payload: PlanningProgress | null };
 
 export type AbsenteeismEvent = {
   id: string;

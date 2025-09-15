@@ -10,6 +10,8 @@ import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/Opt
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
 import { Loader2 } from 'lucide-react';
+import { Progress } from "@/components/ui/progress"
+
 
 interface FilterInputProps {
   label: string;
@@ -61,6 +63,7 @@ export const ProductionPlanSection: React.FC = () => {
     detailedProductionPlan,
     syncStatus,
     salesData,
+    planningProgress,
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
@@ -543,8 +546,20 @@ export const ProductionPlanSection: React.FC = () => {
         return (
             <div className="text-center py-10 flex flex-col items-center justify-center h-full">
                 <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
-                <h3 className="text-lg font-medium text-gray-900">Procesando información...</h3>
-                <p className="mt-1 text-sm text-gray-500">El motor de planificación está generando el plan diario. Esto puede tardar unos momentos.</p>
+                <h3 className="text-lg font-medium text-gray-900">Procesando Plan de Producción...</h3>
+                {planningProgress && (
+                    <div className="mt-4 w-full max-w-md text-left">
+                        <p className="text-sm text-gray-600 font-medium">{planningProgress.message}</p>
+                        <Progress value={(planningProgress.current / planningProgress.total) * 100} className="w-full mt-2" />
+                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            {planningProgress.step === 'monthly' ? (
+                                <span>Mes: {planningProgress.current} de {planningProgress.total}</span>
+                            ) : (
+                                <span>Día: {planningProgress.current} de {planningProgress.total}</span>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }

@@ -8,7 +8,7 @@ import {
     AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
     TacticalPlanResult, Employee, EmployeeSkill, AbsenteeismEvent, MaintenanceEvent,
     WorkShift, AppConstraints, NotificationMessage, TiempoEnsambleItem, SyncStatus,
-    DetailedProductionPlan, PresupuestoItem
+    DetailedProductionPlan, PresupuestoItem, PlanningProgress
 } from '@/types/types';
 import { ActiveView, MONTH_NAMES } from '@/constants/constants';
 import { generateProductionPlan, processAndValidateAssemblyData } from '@/services/OptimizationService';
@@ -21,6 +21,7 @@ const initialState: AppState = {
     isLoading: false,
     productionPlan: { dailyPlan: [], monthlyPlan: [], auditLog: [] },
     detailedProductionPlan: null, 
+    planningProgress: null,
     constraints: {
         workstationDefinitions: [],
         workCenters: [],
@@ -68,14 +69,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, workShifts: action.payload };
         case 'GENERATE_PRODUCTION_PLAN_START':
             console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_START. isLoading: true.");
-            return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan };
+            return { ...state, isLoading: true, detailedProductionPlan: null, productionPlan: initialState.productionPlan, planningProgress: null };
         case 'GENERATE_PRODUCTION_PLAN_SUCCESS':
             console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_SUCCESS. isLoading: false.");
             return { 
                 ...state, 
                 isLoading: false, 
                 productionPlan: action.payload.finalPlan,
-                detailedProductionPlan: action.payload.details
+                detailedProductionPlan: action.payload.details,
+                planningProgress: null,
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
              console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_ERROR. isLoading: false.");
@@ -83,7 +85,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 ...state, 
                 isLoading: false, 
                 productionPlan: { dailyPlan: [], monthlyPlan: [], auditLog: [action.payload || 'Error desconocido'] },
-                detailedProductionPlan: null 
+                detailedProductionPlan: null,
+                planningProgress: null,
             };
         case 'GENERATE_TACTICAL_PLAN':
             return { ...state, tacticalPlanResult: action.payload };
@@ -92,6 +95,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_IS_LOADING':
             console.log(`[AppContext] Action: SET_IS_LOADING. Payload: ${action.payload}`);
             return { ...state, isLoading: action.payload };
+        case 'SET_PLANNING_PROGRESS':
+            return { ...state, planningProgress: action.payload };
         default:
             return state;
     }
@@ -118,6 +123,7 @@ type AppContextType = {
     workShifts: WorkShift[];
     tacticalPlanResult: TacticalPlanResult | null;
     syncStatus: SyncStatus | null;
+    planningProgress: PlanningProgress | null;
     apiAssemblyData: TiempoEnsambleItem[]; // New: Store raw API data
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
@@ -249,10 +255,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'GENERATE_PRODUCTION_PLAN_START' });
         
         try {
-            // Using a timeout to allow the UI to update to the loading state before the heavy computation starts
-            await new Promise(resolve => setTimeout(resolve, 50)); 
+            const progressCallback = (progress: PlanningProgress | null) => {
+                dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
+            };
             
-            const detailedPlan = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData);
+            const detailedPlan = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');
