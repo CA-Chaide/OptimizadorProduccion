@@ -35,28 +35,22 @@ Al entrar a la pestaña "Importar Ventas", es posible que la aplicación no mues
 
 **Acción en la UI:**
 1.  Navegue a la sección **"Importar Ventas"**.
-2.  Seleccione los filtros que desee (ej. Año `2025`, Mes `Enero` o déjelos en blanco para cargar más datos, consciente del límite de 50,000 registros de la API).
-3.  Presione el botón **"Previsualizar"**.
+2.  Seleccione los filtros que desee. Si deja los campos de mes o centro vacíos, se cargarán todos los meses o centros para los años seleccionados.
+3.  Presione el botón **"Cargar Datos"**.
 
 **Qué Observar en la Consola:**
-1.  **Inicio de la previsualización:** Busque el log `[DataImportSection] Iniciando previsualización con filtros...`. Verifique que el objeto de filtros es correcto.
-2.  **Consulta a la API:** Busque el log `[useApiData] Querying API:`.
-    *   Verifique que el objeto `filters` contenga los valores que seleccionó.
-    *   **Esta es la consulta exacta que puede replicar en la API para validar la respuesta.**
-3.  **Respuesta de la API:** Busque el log `[useApiData] API Response:`.
-    *   Confirme que la respuesta es un arreglo de objetos y no está vacío.
-4.  **Transformación de Datos:** Busque el log `[DataImportSection] Mapped data for preview:`.
-    *   Verifique que el número de registros coincide con la respuesta de la API. La tabla en la UI debe llenarse.
+1.  **Inicio de la carga:** Verá una notificación en la UI y un log en consola: `Iniciando carga de datos...`.
+2.  **Consultas a la API:** Busque los logs que comienzan con `Cargando datos para [Mes] [Año]...`.
+    *   Verifique que la consulta (`queryApi`) se está ejecutando para cada combinación de mes y año que usted espera.
+3.  **Respuesta y Acumulación:** Para cada consulta, verá:
+    *   `Mes X/YYYY cargado con ZZZZ registros.`
+    *   `Total acumulado hasta ahora: WWWW`
+4.  **Confirmación de Carga al Contexto:** Al finalizar todas las consultas, busque los logs:
+    *   `[AppProvider] handleDataImported llamado con XXXXX registros.`
+    *   `[AppContext] Action: SET_SALES_DATA...`
+    *   La tabla de resumen en la UI debe llenarse con los datos agregados.
 
-**Acción Final en la UI:**
-1.  Una vez que esté satisfecho con los datos previsualizados, presione **"Usar estos Datos para Planificar"**.
-
-**Qué Observar en la Consola (Tras la acción final):**
-1.  **Confirmación de Carga:** Busque el log `[DataImportSection] handleAcceptAndLoadData: Confirmando y cargando datos al estado global.`.
-2.  **Llamada al Contexto:** Verá un log `[AppProvider] handleDataImported llamado con X registros.`.
-3.  **Actualización de Estado:** Finalmente, verá `[AppContext] Action: SET_SALES_DATA...`.
-
-**Criterio de Éxito:** La tabla de previsualización se llena, y al presionar el botón final, los logs de la consola confirman que los datos se han pasado al estado global de la aplicación. Una notificación de éxito debe aparecer en la UI. Solo entonces avanzaremos.
+**Criterio de Éxito:** La tabla de resumen se llena con los datos correctos. Los logs de la consola confirman que se hicieron todas las consultas esperadas y que el número total de registros acumulados es el correcto. Una notificación de éxito debe aparecer en la UI. Solo entonces avanzaremos.
 
 ---
 
@@ -95,6 +89,6 @@ Al entrar a la pestaña "Importar Ventas", es posible que la aplicación no mues
 1.  **Inicio de Planificación:** Verá el log `[AppContext] Action: GENERATE_PRODUCTION_PLAN_START...`.
 2.  **Inicio del Motor:** El primer log del servicio debe ser `--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`.
 3.  **Lógica Mensual:** Revise los logs que comienzan con `--- Planificando Mes X / Y ---`. Confirme que el proceso avanza por todos los meses que contienen datos de ventas sin detenerse. Busque logs de `Asignación Mes...` y `Pospuesto...` que indican que el motor está funcionando.
-4.  **Lógica Diaria:** Al final, el proceso debe entrar en la generación del plan diario. Verá logs como `--- Procesando Plan Diario para Mes X/YYYY ---` y `Día X: Procesando...`.
+4.  **Lógica Diaria:** Al final, el proceso debe entrar en la generación del plan diario. Verá una barra de progreso en la UI que indica el avance por cada día del mes.
 
-**Criterio de Éxito:** El proceso completo debe terminar, la interfaz debe mostrar los 4 pasos del "wizard" de planificación y la tabla del plan diario debe llenarse con datos correspondientes a los meses cargados (no solo hasta abril, si cargó más datos), sin que el navegador se congele.
+**Criterio de Éxito:** El proceso completo debe terminar, la interfaz debe mostrar los 4 pasos del "wizard" de planificación y la tabla del plan diario debe llenarse con datos correspondientes a los meses cargados (debería ser el año completo si así se cargó), sin que el navegador se congele.

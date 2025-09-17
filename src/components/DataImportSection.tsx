@@ -6,6 +6,14 @@ import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { Check, ChevronsUpDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+
+
 interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
 }
@@ -25,40 +33,110 @@ const normalizeMaterialCode = (code: string | number): string => {
     return codeStr.slice(-8);
 };
 
-// --- Componentes UI Reutilizables ---
-const SelectField: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; options: Array<{value: string | number; label: string}>; containerClassName?: string }> = ({ label, id, options, containerClassName, ...props }) => (
-    <div className={containerClassName || ""}>
-        <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <select id={id} {...props} className={`w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm ${props.disabled ? 'bg-gray-100' : ''}`}>
-            <option value="">Todos</option>
-            {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-        </select>
+const MultiSelect: React.FC<{
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  className?: string;
+}> = ({ label, options, selected, onChange, className }) => {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (value: string) => {
+    const newSelected = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : [...selected, value];
+    onChange(newSelected);
+  };
+
+  return (
+    <div className={className}>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between h-10"
+          >
+            <span className="truncate">
+              {selected.length === 0
+                ? `Seleccionar ${label}...`
+                : selected.length === 1
+                ? options.find(opt => opt.value === selected[0])?.label
+                : `${selected.length} seleccionados`}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-full p-0">
+          <Command>
+            <CommandInput placeholder={`Buscar ${label}...`} />
+            <CommandEmpty>No hay resultados.</CommandEmpty>
+            <CommandGroup className="max-h-60 overflow-y-auto">
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={(currentValue) => {
+                    handleSelect(currentValue);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      selected.includes(option.value) ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      <div className="pt-1">
+        {selected.map(value => {
+            const label = options.find(opt => opt.value === value)?.label;
+            return (
+                <Badge key={value} variant="secondary" className="mr-1 mb-1">
+                {label}
+                </Badge>
+            );
+        })}
+      </div>
     </div>
-);
+  );
+};
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const { addNotification, isLoading: isAppLoading } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
-      años: [] as {value: number, label: string}[],
+      años: [] as {value: string, label: string}[],
       centros: [] as {value: string, label: string}[],
       etiquetas: [] as {value: string, label: string}[],
   });
 
-  const [filters, setFilters] = useState({
-      año: new Date().getFullYear().toString(),
-      mes: '',
-      centro: '',
+  const [filters, setFilters] = useState<{
+      años: string[];
+      meses: string[];
+      centros: string[];
+      etiqueta: string;
+  }>({
+      años: [new Date().getFullYear().toString()],
+      meses: [],
+      centros: [],
       etiqueta: '',
   });
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
-  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const { name, value } = e.target;
-      setFilters(prev => ({ ...prev, [name]: value }));
+  const handleFilterChange = (name: keyof typeof filters, value: any) => {
+    setFilters(prev => ({ ...prev, [name]: value }));
   };
 
   useEffect(() => {
@@ -71,7 +149,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         ]);
 
         const newFilterOptions = {
-          años: añosData.map((item: any) => ({ value: item['Año'], label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
+          años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
           centros: centrosData.map((item: any) => ({ value: item['Centro'], label: item['Centro'] })),
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
         };
@@ -83,78 +161,68 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     loadFilterOptions();
   }, [addNotification]);
   
-  const handleLoadData = async () => {
+ const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
-    let finalData: SalesDataRow[] = [];
-
+    
+    const yearsToLoad = filters.años.length > 0 ? filters.años.map(Number) : [new Date().getFullYear()];
+    const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
+    
+    let allData: SalesDataRow[] = [];
+    
     try {
-      const baseFilters: { [key: string]: any } = {};
-      if (filters.año) baseFilters['Año'] = parseInt(filters.año, 10);
-      if (filters.centro) baseFilters['Centro'] = filters.centro;
-      if (filters.etiqueta) baseFilters['Etiqueta'] = filters.etiqueta;
+        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}, Meses: ${monthsToLoad.join(', ')}.`);
+        
+        for (const year of yearsToLoad) {
+            for (const month of monthsToLoad) {
+                const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
+                if (filters.centros.length > 0) {
+                    // API does not support array in filters, so we can't filter by multiple centers directly
+                    // This will be handled post-fetch if needed, or by multiple API calls if essential
+                }
+                if (filters.etiqueta) queryFilters['Etiqueta'] = filters.etiqueta;
 
-      if (!filters.mes) { // Carga de año completo
-        addNotification('info', `Iniciando carga completa para el año ${filters.año}...`);
-        for (let month = 1; month <= 12; month++) {
-          console.log(`Cargando datos para el mes ${month}/${filters.año}...`);
-          addNotification('info', `Cargando mes ${month}/12...`);
-          
-          const monthFilters = { ...baseFilters, 'Mes': month };
-          const response: PresupuestoItem[] = await queryApi({
-            source: 'Presupuesto',
-            operation: 'get_data',
-            filters: monthFilters,
-            pagination: { limit: 50000 }
-          });
-          
-          if (response && response.length > 0) {
-            console.log(`Mes ${month} cargado con ${response.length} registros.`);
-            const mappedData: SalesDataRow[] = response.map((item, index) => ({
-              id: `row-${item.Año}-${item.Mes}-${index}`,
-              año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-              etiqueta: item.Etiqueta || 'Sin Etiqueta',
-              código: normalizeMaterialCode(item.CodMaterial),
-              centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-              dolaresProyectado: 0,
-              descripciónMaterial: item.Material,
-              familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-            }));
-            finalData = [...finalData, ...mappedData];
-            console.log(`Total acumulado hasta ahora: ${finalData.length}`);
-          }
-        }
-      } else { // Carga filtrada
-        addNotification('info', 'Consultando datos filtrados...');
-        const queryFilters = { ...baseFilters, 'Mes': parseInt(filters.mes, 10) };
-        const response: PresupuestoItem[] = await queryApi({
-          source: 'Presupuesto',
-          operation: 'get_data',
-          filters: queryFilters,
-          pagination: { limit: 50000 }
-        });
-        if (response && response.length > 0) {
-          const mappedData: SalesDataRow[] = response.map((item, index) => ({
-            id: `row-${item.Año}-${item.Mes}-${index}`,
-            año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-            etiqueta: item.Etiqueta || 'Sin Etiqueta',
-            código: normalizeMaterialCode(item.CodMaterial),
-            centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-            dolaresProyectado: 0,
-            descripciónMaterial: item.Material,
-            familia: item.Familia, marca: item.Marca, lineaProduccion: '',
-          }));
-          finalData = mappedData;
-        }
-      }
+                console.log(`Cargando datos para ${MONTH_NAMES[month-1]} ${year}...`, queryFilters);
+                addNotification('info', `Cargando ${MONTH_NAMES[month-1]} de ${year}...`);
 
-      if (finalData.length > 0) {
-        setLoadedData(finalData);
-        onDataImported(finalData); // Esto ahora solo notifica y guarda en el estado global
-        addNotification('success', `Carga completada. Se importaron ${finalData.length} registros.`);
-      } else {
-        addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
-      }
+                const response: PresupuestoItem[] = await queryApi({
+                    source: 'Presupuesto',
+                    operation: 'get_data',
+                    filters: queryFilters,
+                    pagination: { limit: 50000 } // Keep a safe limit per call
+                });
+
+                if (response && response.length > 0) {
+                    console.log(`Mes ${month}/${year} cargado con ${response.length} registros.`);
+                    const mappedData: SalesDataRow[] = response.map((item, index) => ({
+                      id: `row-${item.Año}-${item.Mes}-${index}`,
+                      año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                      etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                      código: normalizeMaterialCode(item.CodMaterial),
+                      centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
+                      dolaresProyectado: 0,
+                      descripciónMaterial: item.Material,
+                      familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+                    }));
+                    allData = [...allData, ...mappedData];
+                    console.log(`Total acumulado hasta ahora: ${allData.length}`);
+                }
+            }
+        }
+        
+        // Post-fetch filtering for centers if multiple are selected
+        if (filters.centros.length > 0) {
+            allData = allData.filter(row => filters.centros.includes(row.centro));
+        }
+
+        if (allData.length > 0) {
+            setLoadedData(allData);
+            onDataImported(allData);
+            addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
+        } else {
+            addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
+        }
+
     } catch (error) {
         addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
     } finally {
@@ -200,20 +268,41 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para definir el alcance de los datos. Si deja el campo "Mes" vacío, se cargarán todos los meses del año seleccionado.
+        Use los filtros para definir el alcance de los datos. Si no selecciona meses, se cargarán todos los meses de los años seleccionados.
       </p>
 
       {/* --- Filtros --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end p-4 border rounded-lg bg-gray-50">
-        <SelectField label="Año" id="año" name="año" value={filters.año} onChange={handleFilterChange} options={filterOptions.años}/>
-        <SelectField label="Mes" id="mes" name="mes" value={filters.mes} onChange={handleFilterChange} options={MONTH_NAMES.map((m, i) => ({ value: i + 1, label: m }))}/>
-        <SelectField label="Centro" id="centro" name="centro" value={filters.centro} onChange={handleFilterChange} options={filterOptions.centros}/>
-        <SelectField label="Etiqueta" id="etiqueta" name="etiqueta" value={filters.etiqueta} onChange={handleFilterChange} options={filterOptions.etiquetas}/>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
+        <MultiSelect 
+            label="Año(s)"
+            options={filterOptions.años}
+            selected={filters.años}
+            onChange={value => handleFilterChange('años', value)}
+        />
+        <MultiSelect 
+            label="Mes(es)"
+            options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))}
+            selected={filters.meses}
+            onChange={value => handleFilterChange('meses', value)}
+        />
+        <MultiSelect 
+            label="Centro(s)"
+            options={filterOptions.centros}
+            selected={filters.centros}
+            onChange={value => handleFilterChange('centros', value)}
+        />
+        <div>
+             <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
+             <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
+                <option value="">Todas</option>
+                {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+        </div>
         
-        <div className="flex flex-col">
+        <div className="flex flex-col pt-5">
             <button
                 onClick={handleLoadData}
-                disabled={isProcessing || isAppLoading || !filters.año}
+                disabled={isProcessing || isAppLoading || filters.años.length === 0}
                 className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
                 {isProcessing ? 'Cargando...' : 'Cargar Datos'}
