@@ -1,6 +1,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -284,7 +285,8 @@ export interface MonthlyNeed {
 
 export interface MonthlyAssignment {
   id: string; 
-  monthIndex: number;
+  year: number;
+  month: number;
   lineId: string;
   lineName: string;
   ppiId: string;

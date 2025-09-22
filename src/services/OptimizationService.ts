@@ -398,7 +398,7 @@ export const generateProductionPlan = async (
             const advancedUnitsToMake = Math.max(0, unitsToMake - originalUnitsToMake);
             const line = activeLines.find(l=>l.id === ppi.productionLineId)!;
             if(unitsToMake > 0) {
-              monthlyAssignments.push({ id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`, monthIndex, lineId: line.id, lineName: line.name, ppiId: ppi.id, productId, centerName: line.workCenterId, demandCenterId: centerId, units: unitsToMake, originalNeedUnits: originalUnitsToMake, advancedUnits: advancedUnitsToMake, totalHours: hoursToConsume, laborCost: calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions) });
+              monthlyAssignments.push({ id: `${monthIndex}-${ppi.productionLineId}-${productId}-${centerId}`, year, month, lineId: line.id, lineName: line.name, ppiId: ppi.id, productId, centerName: line.workCenterId, demandCenterId: centerId, units: unitsToMake, originalNeedUnits: originalUnitsToMake, advancedUnits: advancedUnitsToMake, totalHours: hoursToConsume, laborCost: calculateLaborCost(consumedHours, ppi, globalBaseCostPerHour, laborCostFactors, workstationDefinitions) });
             }
             unitsLeftToPlan -= unitsToMake;
         }
@@ -453,7 +453,7 @@ export const generateProductionPlan = async (
     const { year, month } = planningHorizon[monthIndex];
     const daysInMonth = new Date(year, month, 0).getDate();
     
-    const assignmentsForMonth = monthlyAssignments.filter(a => a.monthIndex === monthIndex);
+    const assignmentsForMonth = monthlyAssignments.filter(a => a.year === year && a.month === month);
     const remainingUnitsToProduce = new Map<string, number>();
     assignmentsForMonth.forEach(a => remainingUnitsToProduce.set(a.id, a.units));
     
@@ -480,7 +480,7 @@ export const generateProductionPlan = async (
         }
         
         const assignmentsByLine = new Map<string, MonthlyAssignment[]>();
-        monthlyAssignments.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1)
+        assignmentsForMonth.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1)
           .forEach(assignment => {
             if (!assignmentsByLine.has(assignment.lineId)) assignmentsByLine.set(assignment.lineId, []);
             assignmentsByLine.get(assignment.lineId)!.push(assignment);
@@ -615,6 +615,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 

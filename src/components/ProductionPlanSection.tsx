@@ -397,13 +397,10 @@ export const ProductionPlanSection: React.FC = () => {
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredAssignments?.sort((a,b) => a.monthIndex - b.monthIndex).map((as, i) => {
-                         const planningYear = detailedProductionPlan?.planningGroupDetails[0]?.year || new Date().getFullYear();
-                         const year = planningYear;
-                         const month = as.monthIndex + 1;
+                    {filteredAssignments?.sort((a,b) => (a.year * 100 + a.month) - (b.year * 100 + b.month)).map((as, i) => {
                          return (
                             <tr key={i} className="hover:bg-gray-50">
-                                <td className="px-2 py-1">{`${MONTH_NAMES[month-1]?.slice(0,3)} ${year}`}</td>
+                                <td className="px-2 py-1">{`${MONTH_NAMES[as.month-1]?.slice(0,3)} ${as.year}`}</td>
                                 <td className="px-2 py-1">{as.lineName}</td>
                                 <td className="px-2 py-1">{as.productId}</td>
                                 <td className="px-2 py-1">{as.centerName}</td>
@@ -644,4 +641,3 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
-
