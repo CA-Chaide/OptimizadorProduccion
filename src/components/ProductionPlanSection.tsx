@@ -37,14 +37,16 @@ const FilterInput: React.FC<FilterInputProps> = ({ label, value, onChange, place
 
 // --- Memoized Row for Performance ---
 const DailyPlanRow = React.memo(({ item, lineName }: { item: ProductionPlanItem; lineName: string }) => (
-    <tr key={item.id} className="hover:bg-gray-50">
+    <tr key={item.id} className={`hover:bg-gray-50 ${item.quantityToProduce > 0 ? 'bg-green-50' : ''} ${item.isTransfer ? 'bg-blue-50' : ''}`}>
         <td className="px-2 py-1">{`${String(item.day).padStart(2,'0')}/${String(item.month).padStart(2,'0')}/${item.year}`}</td>
         <td className="px-2 py-1 font-medium">{item.productName}</td>
         <td className="px-2 py-1 font-mono">{item.productId}</td>
         <td className="px-2 py-1 text-right">{Math.round(item.initialStockOnDay).toLocaleString()}</td>
+        <td className="px-2 py-1 text-right text-green-600 font-bold">{item.isTransfer ? 0 : Math.round(item.quantityToProduce).toLocaleString()}</td>
+        <td className="px-2 py-1 text-right text-blue-600">{item.isTransfer && item.producingCenterId !== item.demandCenterId ? Math.round(item.quantityToProduce).toLocaleString() : 0}</td>
+        <td className="px-2 py-1 text-right text-orange-600">{0}</td>
         <td className="px-2 py-1 text-right text-red-600">{Math.round(item.demandOnDay).toLocaleString()}</td>
-        <td className="px-2 py-1 text-right font-bold text-green-600">{Math.round(item.quantityToProduce).toLocaleString()}</td>
-        <td className="px-2 py-1 text-right">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
+        <td className="px-2 py-1 text-right font-bold">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
         <td className="px-2 py-1">{lineName}</td>
         <td className="px-2 py-1">{item.producingCenterId}</td>
         <td className="px-2 py-1">{item.demandCenterId}</td>
@@ -154,7 +156,12 @@ export const ProductionPlanSection: React.FC = () => {
             return false;
         }
         
-        if (centerFilter && !( (item.producingCenterId || '').toLowerCase().includes(centerFilter) || (item.demandCenterId || '').toLowerCase().includes(centerFilter) ) ) {
+        if (centerFilter && 
+            !(
+                (item.producingCenterId || '').toLowerCase().includes(centerFilter) || 
+                (item.demandCenterId || '').toLowerCase().includes(centerFilter)
+            )
+        ) {
             return false;
         }
 
@@ -456,8 +463,10 @@ export const ProductionPlanSection: React.FC = () => {
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Nombre Producto</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Producto (Cód)</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Inicial</th>
-                <th className="px-2 py-2 text-right font-semibold text-gray-600">Demanda Día</th>
-                <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción/Transfer</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">Producción</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">T. Entrante</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">T. Saliente</th>
+                <th className="px-2 py-2 text-right font-semibold text-gray-600">Demanda</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Final</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Línea</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro Prod.</th>
@@ -467,7 +476,7 @@ export const ProductionPlanSection: React.FC = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
                 {filteredDailyPlan.map(item => {
-                    const lineName = constraints.productionLines.find(l => l.id === item.assignedLineId)?.name || item.assignedLineId || 'N/A';
+                    const lineName = constraints.productionLines.find(l => l.id === item.assignedLineId)?.name || 'N/A';
                     return <DailyPlanRow key={item.id} item={item} lineName={lineName} />;
                 })}
             </tbody>
