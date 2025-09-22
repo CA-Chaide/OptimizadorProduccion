@@ -251,11 +251,22 @@ export const generateProductionPlan = async (
   console.log('--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---');
   const { inventorySettings, holidays, workCenters, productionLines, globalBaseCostPerHour, laborCostFactors, workstationDefinitions, shiftParameters } = constraints;
 
-  const monthKeysInSales = new Set(salesData.map(s => `${s.año}-${s.mes}`));
-  const planningHorizon = Array.from(monthKeysInSales).map(m => {
-    const [year, month] = m.split('-').map(Number);
-    return { year, month };
-  }).sort((a, b) => a.year - b.year || a.month - b.month);
+  const monthKeysInSales = Array.from(new Set(salesData.map(s => `${s.año}-${s.mes}`))).sort();
+  const planningHorizon: { year: number; month: number }[] = [];
+  if (monthKeysInSales.length > 0) {
+      const [startYear, startMonth] = monthKeysInSales[0].split('-').map(Number);
+      const [endYear, endMonth] = monthKeysInSales[monthKeysInSales.length - 1].split('-').map(Number);
+      let currentYear = startYear;
+      let currentMonth = startMonth;
+      while (currentYear < endYear || (currentYear === endYear && currentMonth <= endMonth)) {
+          planningHorizon.push({ year: currentYear, month: currentMonth });
+          currentMonth++;
+          if (currentMonth > 12) {
+              currentMonth = 1;
+              currentYear++;
+          }
+      }
+  }
 
 
   if (planningHorizon.length === 0) {
@@ -614,5 +625,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
