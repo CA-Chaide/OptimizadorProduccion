@@ -166,19 +166,32 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setLoadedData([]);
     
     const yearsToLoad = filters.años.length > 0 ? filters.años.map(Number) : [new Date().getFullYear()];
-    const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-    
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
     let allData: SalesDataRow[] = [];
     
     try {
-        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}, Meses: ${monthsToLoad.join(', ')}.`);
+        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
         for (const year of yearsToLoad) {
+            if (year < currentYear) continue;
+
+            let monthsToLoad: number[];
+
+            if (filters.meses.length > 0) {
+              monthsToLoad = filters.meses.map(Number);
+            } else {
+              const startMonth = (year === currentYear) ? currentMonth : 1;
+              monthsToLoad = Array.from({length: 12 - startMonth + 1}, (_, i) => i + startMonth);
+            }
+            
             for (const month of monthsToLoad) {
+                 if (year === currentYear && month < currentMonth) continue;
+
                 const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
                 if (filters.centros.length > 0) {
-                    // API does not support array in filters, so we can't filter by multiple centers directly
-                    // This will be handled post-fetch if needed, or by multiple API calls if essential
+                    queryFilters['Centro'] = filters.centros;
                 }
                 if (filters.etiqueta) queryFilters['Etiqueta'] = filters.etiqueta;
 
@@ -189,7 +202,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     source: 'Presupuesto',
                     operation: 'get_data',
                     filters: queryFilters,
-                    pagination: { limit: 50000 } // Keep a safe limit per call
+                    pagination: { limit: 50000 }
                 });
 
                 if (response && response.length > 0) {
@@ -208,11 +221,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     console.log(`Total acumulado hasta ahora: ${allData.length}`);
                 }
             }
-        }
-        
-        // Post-fetch filtering for centers if multiple are selected
-        if (filters.centros.length > 0) {
-            allData = allData.filter(row => filters.centros.includes(row.centro));
         }
 
         if (allData.length > 0) {
