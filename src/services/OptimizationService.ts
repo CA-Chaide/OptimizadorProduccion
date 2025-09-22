@@ -448,6 +448,14 @@ export const generateProductionPlan = async (
     }
   });
 
+  const ppiCache = new Map<string, ProductProcessInfo[]>();
+  const allProductCenterPairsForPpi = new Set<string>();
+  monthlyAssignments.forEach(a => allProductCenterPairsForPpi.add(`${a.productId}---${a.demandCenterId}`));
+  allProductCenterPairsForPpi.forEach(pairKey => {
+      const [productId, centerId] = pairKey.split('---');
+      ppiCache.set(pairKey, getPpiOptionsForProduct(productId, centerId, constraints, apiData));
+  });
+
   for (const { year, month } of planningHorizon) {
     const daysInMonth = new Date(year, month, 0).getDate();
     
@@ -469,7 +477,6 @@ export const generateProductionPlan = async (
         const hoursByLine = new Map<string, number>();
         activeLines.forEach(line => hoursByLine.set(line.id, hoursPerDay));
         
-        // Handle production for the day
         const assignmentsByLine = new Map<string, MonthlyAssignment[]>();
         assignmentsForMonth.filter(a => (remainingUnitsToProduce.get(a.id) || 0) > 0.1)
           .forEach(assignment => {
@@ -503,7 +510,6 @@ export const generateProductionPlan = async (
                 }
                 
                 unitsToProduce = Math.floor(unitsToProduce);
-
                 if (unitsToProduce < 0.1) continue;
 
                 const hoursConsumed = unitsToProduce * manufacturingTime;
@@ -563,8 +569,7 @@ export const generateProductionPlan = async (
     }
   }
 
-    // Final loop to calculate correct stock levels
-    const sortedPlan = dailyPlan.sort((a,b) => (a.year*10000 + a.month*100 + a.day) - (b.year*10000 + b.month*100 + b.day) || a.productId.localeCompare(b.productId));
+    const sortedPlan = dailyPlan.sort((a,b) => (a.year*10000 + a.month*100 + a.day) - (b.year*10000 + b.month*100 + a.day) || a.productId.localeCompare(b.productId));
     
     sortedPlan.forEach(item => {
         const stockKey = `${item.productId}---${item.demandCenterId}`;
@@ -592,7 +597,7 @@ export const generateProductionPlan = async (
     });
 
   const finalDailyPlan = dailyPlan.filter(d => d.demandOnDay > 0 || d.quantityToProduce > 0)
-    .sort((a,b) => (a.year*10000 + a.month*100 + a.day) - (b.year*10000 + b.month*100 + b.day));
+    .sort((a,b) => (a.year*10000 + a.month*100 + a.day) - (b.year*10000 + b.month*100 + a.day));
 
 
   const aggregatedMonthlyPlan = new Map<string, MonthlyProductionPlanItem>();
@@ -663,6 +668,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
