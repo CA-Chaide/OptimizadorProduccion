@@ -153,10 +153,8 @@ export const ProductionPlanSection: React.FC = () => {
         if (lineFilter && !lineName.toLowerCase().includes(lineFilter)) {
             return false;
         }
-
-        const centerId = item.producingCenterId || '';
-        const demandCenterId = item.demandCenterId || '';
-        if (centerFilter && !centerId.toLowerCase().includes(centerFilter) && !demandCenterId.toLowerCase().includes(centerFilter)) {
+        
+        if (centerFilter && !( (item.producingCenterId || '').toLowerCase().includes(centerFilter) || (item.demandCenterId || '').toLowerCase().includes(centerFilter) ) ) {
             return false;
         }
 
@@ -646,3 +644,4 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
