@@ -3,14 +3,98 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
-    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem 
+    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType 
 } from '@/types/types';
 import { PlanIcon, DataImportIcon, MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
-import { Loader2 } from 'lucide-react';
-import { Progress } from "@/components/ui/progress"
+import { Loader2, Check, ChevronsUpDown } from 'lucide-react';
+import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+
+
+// --- Reusable MultiSelect Component ---
+const MultiSelect: React.FC<{
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  className?: string;
+  placeholder?: string;
+}> = ({ label, options, selected, onChange, className, placeholder }) => {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (value: string) => {
+    const newSelected = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : [...selected, value];
+    onChange(newSelected);
+  };
+
+  return (
+    <div className={className}>
+      <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between h-9 font-normal text-xs"
+          >
+            <span className="truncate">
+              {selected.length === 0
+                ? (placeholder || `Seleccionar ${label}...`)
+                : selected.length === 1
+                ? options.find(opt => opt.value === selected[0])?.label
+                : `${selected.length} seleccionados`}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-full p-0">
+          <Command>
+            <CommandInput placeholder={`Buscar ${label}...`} />
+            <CommandEmpty>No hay resultados.</CommandEmpty>
+            <CommandGroup className="max-h-60 overflow-y-auto">
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={(currentValue) => {
+                    handleSelect(option.value); // Use option.value directly
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      selected.includes(option.value) ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      <div className="pt-1 min-h-[18px]">
+        {selected.map(value => {
+            const label = options.find(opt => opt.value === value)?.label;
+            return (
+                <Badge key={value} variant="secondary" className="mr-1 mb-1 text-xs">
+                {label}
+                </Badge>
+            );
+        })}
+      </div>
+    </div>
+  );
+};
 
 
 interface FilterInputProps {
@@ -71,16 +155,19 @@ export const ProductionPlanSection: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'weekly' | 'daily'>('weekly');
   
-  // State for filter inputs
   const [filterInputs, setFilterInputs] = useState<{
+    center: string;
+    processType: string;
+    lines: string[];
+  }>({ center: '', processType: '', lines: [] });
+
+  const [appliedFilters, setAppliedFilters] = useState<{
+    product: string;
     month: string;
     line: string;
     center: string;
-    product: string;
     productCode: string;
   }>({ month: '', line: '', center: '', product: '', productCode: ''});
-  // State for applied filters
-  const [appliedFilters, setAppliedFilters] = useState({ month: '', line: '', center: '', product: '', productCode: ''});
 
 
   const { dailyPlan = [], monthlyPlan = [], weeklyPlan = [], auditLog = [] } = productionPlan || { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [] };
@@ -90,23 +177,15 @@ export const ProductionPlanSection: React.FC = () => {
       exportDailyPlanToExcel(filteredDailyPlan, constraints);
     }
   };
-  const handleExportMonthly = () => {
-    alert("Función de exportación mensual no implementada todavía.");
-  };
 
-  const handleApplyFilters = () => {
-    setAppliedFilters(filterInputs);
-  };
-  
   const handleStartPlanning = async () => {
     const success = await handleGeneratePlan();
   };
   
-  const handleReset = () => {
-    // This function will likely be removed or repurposed
+  const handleApplyDailyFilters = () => {
+    setAppliedFilters(appliedFilters);
   };
-
-  // --- Memos for final plan display ---
+  
   const filteredDailyPlan = useMemo(() => {
     if (!dailyPlan) return [];
     
@@ -157,56 +236,69 @@ export const ProductionPlanSection: React.FC = () => {
 
   
   const weeklyFlow = useMemo(() => {
-      if (!filterInputs.center || !filterInputs.line || !weeklyPlan || weeklyPlan.length === 0) return null;
+      if (!filterInputs.center || filterInputs.lines.length === 0 || !weeklyPlan || weeklyPlan.length === 0) return null;
 
       const filteredData = weeklyPlan.filter(
-          item => item.workCenterId === filterInputs.center && item.lineId === filterInputs.line
+          item => item.workCenterId === filterInputs.center && filterInputs.lines.includes(item.lineId)
       );
       
       if (filteredData.length === 0) return null;
-
+      
       const weekKeys = Array.from(new Set(filteredData.map(d => `${d.year}-W${d.week}`))).sort();
       
-      const data: Record<string, Record<string, number>> = {
-          'Saldo Inicial': {},
-          'Producción': {},
-          'Ventas': {},
-          'Traslados (Neto)': {},
-          'Saldo Final': {}
+      const aggregatedData: Record<string, Record<string, number>> = {
+          'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
       };
-      
+
       weekKeys.forEach(weekKey => {
-          const weekData = filteredData.find(d => `${d.year}-W${d.week}` === weekKey);
-          if (weekData) {
-              data['Saldo Inicial'][weekKey] = weekData.initialStock;
-              data['Producción'][weekKey] = weekData.production;
-              data['Ventas'][weekKey] = weekData.sales;
-              data['Traslados (Neto)'][weekKey] = weekData.netTransfers;
-              data['Saldo Final'][weekKey] = weekData.finalStock;
-          }
+        const stockKey = `${filterInputs.center}-${filterInputs.lines.join(',')}`;
+        const weekItems = filteredData.filter(d => `${d.year}-W${d.week}` === weekKey);
+        
+        aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
+        aggregatedData['Ventas'][weekKey] = weekItems.reduce((sum, item) => sum + item.sales, 0);
+        aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
       });
       
+      let lastFinalStock = 0;
+      const initialStocksForLines = filterInputs.lines.map(lineId => {
+          const firstWeekData = filteredData.find(d => d.lineId === lineId);
+          return firstWeekData ? firstWeekData.initialStock : 0;
+      });
+      lastFinalStock = initialStocksForLines.reduce((sum, stock) => sum + stock, 0);
+
+
+      weekKeys.forEach(weekKey => {
+          aggregatedData['Saldo Inicial'][weekKey] = lastFinalStock;
+          const finalStock = lastFinalStock 
+                             + (aggregatedData['Producción'][weekKey] || 0)
+                             + (aggregatedData['Traslados (Neto)'][weekKey] || 0)
+                             - (aggregatedData['Ventas'][weekKey] || 0);
+          aggregatedData['Saldo Final'][weekKey] = finalStock;
+          lastFinalStock = finalStock;
+      });
+
       const rowOrder = ['Saldo Inicial', 'Producción', 'Ventas', 'Traslados (Neto)', 'Saldo Final'];
-      const rows = rowOrder.map(label => ({ label, values: data[label] }));
+      const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
 
       return { weekKeys, rows };
   }, [filterInputs, weeklyPlan]);
 
   const availableLinesForFilter = useMemo(() => {
-      if (!filterInputs.center) return [];
-      return constraints.productionLines.filter(line => line.workCenterId === filterInputs.center);
-  }, [filterInputs.center, constraints.productionLines]);
+      if (!filterInputs.center || !filterInputs.processType) return [];
+      return constraints.productionLines.filter(line => line.workCenterId === filterInputs.center && line.processType === filterInputs.processType);
+  }, [filterInputs.center, filterInputs.processType, constraints.productionLines]);
+
 
   // --- Main Content Rendering Logic ---
   const renderDailyPlan = () => (
     <div className="space-y-4">
        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 items-end p-4 border rounded-lg bg-gray-50">
-          <FilterInput label="Mes" value={filterInputs.month} onChange={v => setFilterInputs(f => ({...f, month: v}))} placeholder="ej: Enero" />
-          <FilterInput label="Línea" value={filterInputs.line} onChange={v => setFilterInputs(f => ({...f, line: v}))} />
-          <FilterInput label="Centro" value={filterInputs.center} onChange={v => setFilterInputs(f => ({...f, center: v}))} />
-          <FilterInput label="Nombre Producto" value={filterInputs.product} onChange={v => setFilterInputs(f => ({...f, product: v}))} />
-          <FilterInput label="Producto (Cód)" value={filterInputs.productCode} onChange={v => setFilterInputs(f => ({...f, productCode: v}))} />
-          <Button onClick={handleApplyFilters} className="w-full h-9">Aplicar Filtros</Button>
+          <FilterInput label="Mes" value={appliedFilters.month} onChange={v => setAppliedFilters(f => ({...f, month: v}))} placeholder="ej: Enero" />
+          <FilterInput label="Línea" value={appliedFilters.line} onChange={v => setAppliedFilters(f => ({...f, line: v}))} />
+          <FilterInput label="Centro" value={appliedFilters.center} onChange={v => setAppliedFilters(f => ({...f, center: v}))} />
+          <FilterInput label="Nombre Producto" value={appliedFilters.product} onChange={v => setAppliedFilters(f => ({...f, product: v}))} />
+          <FilterInput label="Producto (Cód)" value={appliedFilters.productCode} onChange={v => setAppliedFilters(f => ({...f, productCode: v}))} />
+          <Button onClick={handleApplyDailyFilters} className="w-full h-9">Aplicar Filtros</Button>
        </div>
        <p className="text-xs text-gray-500">Esta es una vista de auditoría avanzada que muestra el detalle de cada día. Puede ser lenta de cargar.</p>
        <div className="overflow-auto max-h-[60vh] border rounded-lg">
@@ -241,25 +333,35 @@ export const ProductionPlanSection: React.FC = () => {
   
   const renderWeeklySummary = () => (
      <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 border rounded-lg bg-gray-50">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 border rounded-lg bg-gray-50 items-start">
           <div>
-            <label className="block text-xs font-medium text-gray-500">Centro de Trabajo</label>
-             <select value={filterInputs.center} onChange={e => setFilterInputs(f => ({...f, center: e.target.value, line: ''}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded">
-                <option value="">Seleccione un Centro</option>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Centro de Trabajo</label>
+             <select value={filterInputs.center} onChange={e => setFilterInputs({ ...filterInputs, center: e.target.value, processType: '', lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9">
+                <option value="">Seleccione Centro</option>
                 {constraints.workCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-           <div>
-            <label className="block text-xs font-medium text-gray-500">Línea de Producción</label>
-            <select value={filterInputs.line} onChange={e => setFilterInputs(f => ({...f, line: e.target.value}))} className="w-full text-sm p-2 mt-1 border border-gray-300 rounded" disabled={!filterInputs.center}>
-                <option value="">Seleccione una Línea</option>
-                {availableLinesForFilter.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de Proceso</label>
+             <select value={filterInputs.processType} onChange={e => setFilterInputs({ ...filterInputs, processType: e.target.value, lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9" disabled={!filterInputs.center}>
+                <option value="">Seleccione Proceso</option>
+                {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
+          </div>
+           <div>
+              <MultiSelect
+                label="Línea(s) de Producción"
+                options={availableLinesForFilter.map(l => ({ value: l.id, label: l.name }))}
+                selected={filterInputs.lines}
+                onChange={selectedLines => setFilterInputs({ ...filterInputs, lines: selectedLines })}
+                placeholder="Seleccione Línea(s)"
+                className={!filterInputs.processType ? 'opacity-50' : ''}
+              />
           </div>
       </div>
       
-       {!filterInputs.center || !filterInputs.line ? (
-        <div className="text-center py-10 text-gray-500">Por favor, seleccione un centro y una línea para ver el resumen de flujo semanal.</div>
+       {!filterInputs.center || filterInputs.lines.length === 0 ? (
+        <div className="text-center py-10 text-gray-500">Por favor, seleccione un centro, tipo de proceso y una o más líneas para ver el resumen.</div>
       ) : !weeklyFlow || weeklyFlow.weekKeys.length === 0 ? (
         <div className="text-center py-10 text-gray-500">No hay datos de planificación para la combinación de filtros seleccionada.</div>
       ) : (
