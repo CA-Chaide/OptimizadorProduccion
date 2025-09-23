@@ -128,7 +128,7 @@ const DailyPlanRow = React.memo(({ item, lineName }: { item: ProductionPlanItem;
         <td className="px-2 py-1 text-right">{Math.round(item.initialStockOnDay).toLocaleString()}</td>
         <td className="px-2 py-1 text-right text-green-600 font-bold">{item.isTransfer ? 0 : Math.round(item.quantityToProduce).toLocaleString()}</td>
         <td className="px-2 py-1 text-right text-blue-600">{item.isTransfer && item.transferDestinationCenterId === item.demandCenterId ? Math.round(item.quantityToProduce).toLocaleString() : 0}</td>
-        <td className="px-2 py-1 text-right text-orange-600">{item.isTransfer && item.transferSourceCenterId === item.demandCenterId ? Math.round(item.quantityToProduce) : 0}</td>
+        <td className="px-2 py-1 text-right text-orange-600">{item.isTransfer && item.transferSourceCenterId === item.demandCenterId ? Math.round(item.quantityToProduce).toLocaleString() : 0}</td>
         <td className="px-2 py-1 text-right text-red-600">{Math.round(item.demandOnDay).toLocaleString()}</td>
         <td className="px-2 py-1 text-right font-bold">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
         <td className="px-2 py-1">{lineName}</td>
@@ -236,6 +236,7 @@ export const ProductionPlanSection: React.FC = () => {
 
   
   const weeklyFlow = useMemo(() => {
+      const { weeklyPlan } = productionPlan || { weeklyPlan: [] };
       if (!filterInputs.center || filterInputs.lines.length === 0 || !weeklyPlan || weeklyPlan.length === 0) return null;
 
       const filteredData = weeklyPlan.filter(
@@ -281,7 +282,7 @@ export const ProductionPlanSection: React.FC = () => {
       const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
 
       return { weekKeys, rows };
-  }, [filterInputs, weeklyPlan]);
+  }, [filterInputs, productionPlan]);
 
   const availableLinesForFilter = useMemo(() => {
       if (!filterInputs.center || !filterInputs.processType) return [];
