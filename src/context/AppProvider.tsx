@@ -19,7 +19,7 @@ const initialState: AppState = {
     activeView: ActiveView.DATA_IMPORT,
     salesData: [],
     isLoading: false,
-    productionPlan: { dailyPlan: [], monthlyPlan: [], auditLog: [] },
+    productionPlan: { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [] },
     detailedProductionPlan: null, 
     planningProgress: null,
     constraints: {
@@ -75,8 +75,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { 
                 ...state, 
                 isLoading: false, 
-                productionPlan: action.payload.finalPlan,
-                detailedProductionPlan: action.payload.details,
+                productionPlan: action.payload,
                 planningProgress: null,
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
@@ -84,7 +83,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { 
                 ...state, 
                 isLoading: false, 
-                productionPlan: { dailyPlan: [], monthlyPlan: [], auditLog: [action.payload || 'Error desconocido'] },
+                productionPlan: { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [action.payload || 'Error desconocido'] },
                 detailedProductionPlan: null,
                 planningProgress: null,
             };
@@ -260,10 +259,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
             
             // Correctly await the entire planning process
-            const detailedPlan = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
+            const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
 
-            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: detailedPlan });
-            addNotification('success', 'Proceso de planificación completado. Revise los resultados paso a paso.');
+            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: planResult });
+            addNotification('success', 'Proceso de planificación completado. Revise los resultados.');
             return true;
 
         } catch (error) {
@@ -324,4 +323,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-
