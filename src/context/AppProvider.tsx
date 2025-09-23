@@ -83,7 +83,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { 
                 ...state, 
                 isLoading: false, 
-                productionPlan: { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [action.payload || 'Error desconocido'] },
+                productionPlan: { ...initialState.productionPlan, auditLog: [action.payload || 'Error desconocido'] },
                 detailedProductionPlan: null,
                 planningProgress: null,
             };
@@ -260,6 +260,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             
             // Correctly await the entire planning process
             const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
+
+            if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
+                 const errorLog = planResult.auditLog.find(log => log.startsWith('Error:')) || "Error desconocido en la planificación.";
+                 dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: errorLog });
+                 addNotification('error', `Error al generar el plan. Revise la bitácora.`);
+                 return false;
+            }
 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: planResult });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados.');
