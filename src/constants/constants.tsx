@@ -15,7 +15,7 @@ import {
     CalendarCheck,
     DatabaseZap,
 } from 'lucide-react';
-import { ProcessType, Holiday } from './types'; 
+import { ProcessType, Holiday, HolidayScope } from './types'; 
 
 export const APP_TITLE = "Optimizador de Producción";
 
@@ -65,11 +65,12 @@ export const PROCESS_TYPE_OPTIONS: Array<{ value: ProcessType, label: string }> 
     { value: 'Muebles', label: 'Muebles' },
 ];
 
-export const HOLIDAY_APPLIES_TO_OPTIONS: Array<{ value: Holiday['appliesTo'], label: string }> = [
-    { value: 'Produccion', label: 'Producción' },
-    { value: 'Distribucion', label: 'Distribución' },
-    { value: 'Ambos', label: 'Ambos' },
+export const HOLIDAY_APPLIES_TO_OPTIONS: Array<{ value: HolidayScope, label: string }> = [
+    { value: 'Distribucion', label: 'Ventas / Distribución' },
+    { value: 'Toda la Planta', label: 'Producción (Toda la Planta)' },
+    ...PROCESS_TYPE_OPTIONS.map(p => ({ value: p.value, label: `Producción (${p.label})`})),
 ];
+
 
 export const MAX_FILE_SIZE_MB = 10;
 export const APP_VERSION = '1.0.0-next';
