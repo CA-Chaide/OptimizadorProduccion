@@ -238,6 +238,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleGeneratePlan = useCallback(async (): Promise<boolean> => {
         console.log('[AppProvider] handleGeneratePlan invocado.');
+
+        // --- INICIO: LOG DE DIAGNÓSTICO ---
+        try {
+            const planningMonth = 9; // Septiembre
+            const demandCenter1000 = state.salesData
+                .filter(d => d.mes === planningMonth && String(d.centro).trim() === '1000')
+                .reduce((sum, d) => sum + d.unidadesProyectado, 0);
+
+            const demandCenter2000 = state.salesData
+                .filter(d => d.mes === planningMonth && String(d.centro).trim() === '2000')
+                .reduce((sum, d) => sum + d.unidadesProyectado, 0);
+
+            console.log('--- DIAGNÓSTICO DE DEMANDA TOTAL DE SEPTIEMBRE ---');
+            console.log(`Demanda Total para Centro 1000: ${demandCenter1000.toLocaleString()}`);
+            console.log(`Demanda Total para Centro 2000: ${demandCenter2000.toLocaleString()}`);
+            console.log('------------------------------------------------');
+
+        } catch (e) {
+            console.error('Error al calcular el log de diagnóstico:', e);
+        }
+        // --- FIN: LOG DE DIAGNÓSTICO ---
+
+
         if (!state.year) {
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
             return false;
