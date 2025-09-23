@@ -289,7 +289,31 @@ export const generateProductionPlan = async (
         }
     });
 
+    // --- NEW: Correctly calculate initial stock based on API data ---
+    const initialInventoryState = new Map<string, number>();
+    inventorySettings.forEach(inv => {
+        initialInventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock);
+    });
+    
+    // --- NEW: Correctly calculate demand and available hours from "today" ---
     const demandMap = new Map<string, { [monthKey: string]: number }>();
+    const workingDaysPerMonth = new Map<string, number>();
+
+    planningHorizon.forEach(({ year, month }) => {
+        const monthKey = `${year}-${month}`;
+        let workingDaysCount = 0;
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const startDay = (year === today.getFullYear() && month === today.getMonth() + 1) ? today.getDate() : 1;
+
+        for (let day = startDay; day <= daysInMonth; day++) {
+            const dayType = getDayTypeForProduction(new Date(year, month - 1, day), holidays);
+            if (dayType !== 'Sunday' && dayType !== 'NonProductiveHoliday') {
+                workingDaysCount++;
+            }
+        }
+        workingDaysPerMonth.set(monthKey, workingDaysCount);
+    });
+
     salesData.forEach(s => {
         const pairKey = `${normalizeMaterialCode(s.código)}---${String(s.centro).trim()}`;
         if (!demandMap.has(pairKey)) demandMap.set(pairKey, {});
@@ -299,55 +323,31 @@ export const generateProductionPlan = async (
 
     // --- Monthly Planning ---
     const productionNeedsMap = new Map<string, number[]>(); // Map<pairKey, needs_per_month_index>
-    const adjustedInitialStock = new Map<string, number>();
-
-    // Adjust stock and demand for the current month
-    const firstMonthOfPlanning = planningHorizon[0];
-    if (firstMonthOfPlanning.year === today.getFullYear() && firstMonthOfPlanning.month === today.getMonth() + 1) {
-        const daysInMonth = new Date(firstMonthOfPlanning.year, firstMonthOfPlanning.month, 0).getDate();
-        const workingDaysInMonth = Array.from({ length: daysInMonth }, (_, i) => new Date(firstMonthOfPlanning.year, firstMonthOfPlanning.month - 1, i + 1))
-            .filter(d => getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday').length;
-        const pastWorkingDays = Array.from({ length: today.getDate() -1 }, (_, i) => new Date(firstMonthOfPlanning.year, firstMonthOfPlanning.month - 1, i + 1))
-            .filter(d => getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday').length;
-        
-        demandMap.forEach((monthlyDemands, pairKey) => {
-            const [productId, centerId] = pairKey.split('---');
-            const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
-            if (invSetting) {
-                const demandThisMonth = monthlyDemands[`${firstMonthOfPlanning.year}-${firstMonthOfPlanning.month}`] || 0;
-                const dailyDemand = demandThisMonth / (workingDaysInMonth || 1);
-                const consumedDemand = dailyDemand * pastWorkingDays;
-                adjustedInitialStock.set(pairKey, invSetting.currentStock - consumedDemand);
-            }
-        });
-    }
-
+    
     demandMap.forEach((monthlyDemands, pairKey) => {
         const [productId, centerId] = pairKey.split('---');
         const invSetting = inventorySettings.find(is => is.itemId === productId && is.centerId === centerId);
         const needs = Array(horizonMonths).fill(0);
         
-        let stockAtStartOfMonth = adjustedInitialStock.get(pairKey) ?? invSetting?.currentStock ?? 0;
+        let stockAtStartOfMonth = initialInventoryState.get(pairKey) || 0;
 
         for (let i = 0; i < horizonMonths; i++) {
             const { year, month } = planningHorizon[i];
             const monthKey = `${year}-${month}`;
             const demandThisMonth = monthlyDemands[monthKey] || 0;
-            let productionNeeded = demandThisMonth + (invSetting?.minStock || 0) - stockAtStartOfMonth;
-
-            // For the first month of planning, only consider demand for remaining days
+            
+            let demandForPeriod = demandThisMonth;
             if (year === today.getFullYear() && month === today.getMonth() + 1) {
-                 const daysInMonth = new Date(year, month, 0).getDate();
-                 const workingDaysInMonth = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month - 1, i + 1)).filter(d => getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday').length;
-                 const remainingWorkingDays = Array.from({ length: daysInMonth - today.getDate() + 1 }, (_, i) => new Date(year, month - 1, today.getDate() + i)).filter(d => getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday').length;
-                 const remainingDemand = (demandThisMonth / (workingDaysInMonth || 1)) * remainingWorkingDays;
-                 productionNeeded = remainingDemand + (invSetting?.minStock || 0) - stockAtStartOfMonth;
+                const totalWorkingDays = Array.from({ length: new Date(year, month, 0).getDate() }, (_, d) => new Date(year, month - 1, d + 1))
+                                            .filter(d => getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday').length;
+                const remainingWorkingDays = workingDaysPerMonth.get(monthKey) || 0;
+                demandForPeriod = (demandThisMonth / (totalWorkingDays || 1)) * remainingWorkingDays;
             }
 
-            const maxAllowedByStorage = (invSetting?.maxStock === 0 || !invSetting?.maxStock) ? Infinity : invSetting.maxStock - (stockAtStartOfMonth - demandThisMonth);
-            const cappedProduction = Math.max(0, Math.min(productionNeeded, maxAllowedByStorage));
-            needs[i] = cappedProduction;
-            stockAtStartOfMonth += cappedProduction - demandThisMonth;
+            const productionNeeded = demandForPeriod + (invSetting?.minStock || 0) - stockAtStartOfMonth;
+
+            needs[i] = Math.max(0, productionNeeded);
+            stockAtStartOfMonth += needs[i] - demandForPeriod;
         }
         productionNeedsMap.set(pairKey, needs);
     });
@@ -416,7 +416,7 @@ export const generateProductionPlan = async (
                     productId: productId, demandCenterId: centerId,
                     lineName: productionLines.find(l=>l.id === ppi.productionLineId)?.name || '',
                     centerName: productionLines.find(l=>l.id === ppi.productionLineId)?.workCenterId || '',
-                    units: 0, totalHours: 0, laborCost: 0, originalNeedUnits: 0, advancedUnits: 0
+                    units: 0, totalHours: 0, laborCost: 0, originalNeedUnits: 0, advancedUnits: 0, urgencyScore: 0,
                 };
                 existing.units += unitsToMake;
                 existing.totalHours += hoursToConsume;
@@ -443,22 +443,19 @@ export const generateProductionPlan = async (
         assignmentsByMonth.get(key)!.push(a);
     });
 
-    const inventoryState = new Map<string, number>();
-    inventorySettings.forEach(inv => {
-        const initialStock = adjustedInitialStock.get(`${inv.itemId}---${inv.centerId}`) ?? inv.currentStock;
-        inventoryState.set(`${inv.itemId}---${inv.centerId}`, initialStock);
-    });
+    const inventoryState = new Map(initialInventoryState);
 
     const dailyDemandMap = new Map<string, number>();
     planningHorizon.forEach(({ year, month }) => {
+        const monthKey = `${year}-${month}`;
         const daysInMonth = new Date(year, month, 0).getDate();
         const workingDaysInMonth = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month - 1, i + 1))
             .filter(d => getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday').length;
         
         demandMap.forEach((monthlyDemands, pairKey) => {
-            const demandThisMonth = monthlyDemands[`${year}-${month}`] || 0;
+            const demandThisMonth = monthlyDemands[monthKey] || 0;
             if (demandThisMonth > 0) {
-                dailyDemandMap.set(pairKey, demandThisMonth / (workingDaysInMonth || 1));
+                dailyDemandMap.set(pairKey, (dailyDemandMap.get(pairKey) || 0) + (demandThisMonth / (workingDaysInMonth || 1)));
             }
         });
     });
@@ -527,7 +524,7 @@ export const generateProductionPlan = async (
                         productId: assignment.productId, productName: productNamesMap.get(assignment.productId) || assignment.productId,
                         quantityToProduce: unitsToProduce, demandOnDay: 0, initialStockOnDay: 0, finalStockOnDay: 0,
                         assignedLineId: lineId, producingCenterId: assignment.centerName, demandCenterId: assignment.demandCenterId,
-                        estimatedLaborCost: (assignment.laborCost / assignment.units) * unitsToProduce, hoursWorked: hoursConsumed,
+                        estimatedLaborCost: (assignment.laborCost / (assignment.units || 1)) * unitsToProduce, hoursWorked: hoursConsumed,
                         status: isTransfer ? 'Transferencia' : 'Planificado', notes: '', isTransfer: isTransfer,
                         transferSourceCenterId: isTransfer ? assignment.centerName : undefined,
                         transferDestinationCenterId: isTransfer ? assignment.demandCenterId : undefined,
@@ -545,11 +542,9 @@ export const generateProductionPlan = async (
             
             demandMap.forEach((_, pairKey) => {
                 const [productId, centerId] = pairKey.split('---');
-                const demandDay = new Date(year, month - 1, day);
-                const isWorkingDay = getDayTypeForProduction(demandDay, holidays) !== 'Sunday' && getDayTypeForProduction(demandDay, holidays) !== 'NonProductiveHoliday';
                 const dailyDemandAmount = dailyDemandMap.get(pairKey) || 0;
 
-                if(isWorkingDay && dailyDemandAmount > 0.1 && !dailyEventsForKardex.has(pairKey)) {
+                if(dailyDemandAmount > 0.1 && !dailyEventsForKardex.has(pairKey)) {
                      dailyEventsForKardex.set(pairKey, {
                         id: `${year}-${month}-${day}-${productId}-${centerId}-demandOnly`, year, month, day, week: 0, productId,
                         productName: productNamesMap.get(productId) || productId, quantityToProduce: 0, demandOnDay: 0, initialStockOnDay: 0, finalStockOnDay: 0,
@@ -652,7 +647,9 @@ export const generateProductionPlan = async (
         if (demandLine) {
             const key = `${year}-W${week}---${demandLine.workCenterId}---${demandLine.id}`;
              const weeklyItem = weeklyPlanMap.get(key)!;
-             weeklyItem.sales += item.demandOnDay;
+             if (weeklyItem) {
+                weeklyItem.sales += item.demandOnDay;
+             }
         }
 
         if (item.isTransfer) {
@@ -660,13 +657,17 @@ export const generateProductionPlan = async (
             if(sourceLine) {
                  const key = `${year}-W${week}---${sourceLine.workCenterId}---${sourceLine.id}`;
                  const weeklyItem = weeklyPlanMap.get(key)!;
-                 weeklyItem.netTransfers -= item.quantityToProduce;
+                 if (weeklyItem) {
+                    weeklyItem.netTransfers -= item.quantityToProduce;
+                 }
             }
             const destLine = productionLines.find(l => l.workCenterId === item.transferDestinationCenterId && getPpiOptionsForProduct(item.productId, item.transferDestinationCenterId!, constraints, apiData, ppiCache).some(p => p.productionLineId === l.id));
              if(destLine) {
                  const key = `${year}-W${week}---${destLine.workCenterId}---${destLine.id}`;
                  const weeklyItem = weeklyPlanMap.get(key)!;
-                 weeklyItem.netTransfers += item.quantityToProduce;
+                 if (weeklyItem) {
+                    weeklyItem.netTransfers += item.quantityToProduce;
+                 }
             }
         }
     });
@@ -747,3 +748,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
