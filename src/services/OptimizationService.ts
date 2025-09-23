@@ -289,31 +289,12 @@ export const generateProductionPlan = async (
         }
     });
 
-    // --- NEW: Correctly calculate initial stock based on API data ---
     const initialInventoryState = new Map<string, number>();
     inventorySettings.forEach(inv => {
         initialInventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock);
     });
     
-    // --- NEW: Correctly calculate demand and available hours from "today" ---
     const demandMap = new Map<string, { [monthKey: string]: number }>();
-    const workingDaysPerMonth = new Map<string, number>();
-
-    planningHorizon.forEach(({ year, month }) => {
-        const monthKey = `${year}-${month}`;
-        let workingDaysCount = 0;
-        const daysInMonth = new Date(year, month, 0).getDate();
-        const startDay = (year === today.getFullYear() && month === today.getMonth() + 1) ? today.getDate() : 1;
-
-        for (let day = startDay; day <= daysInMonth; day++) {
-            const dayType = getDayTypeForProduction(new Date(year, month - 1, day), holidays);
-            if (dayType !== 'Sunday' && dayType !== 'NonProductiveHoliday') {
-                workingDaysCount++;
-            }
-        }
-        workingDaysPerMonth.set(monthKey, workingDaysCount);
-    });
-
     salesData.forEach(s => {
         const pairKey = `${normalizeMaterialCode(s.código)}---${String(s.centro).trim()}`;
         if (!demandMap.has(pairKey)) demandMap.set(pairKey, {});
@@ -337,17 +318,29 @@ export const generateProductionPlan = async (
             const demandThisMonth = monthlyDemands[monthKey] || 0;
             
             let demandForPeriod = demandThisMonth;
+            
+            // For current month, only consider remaining demand
             if (year === today.getFullYear() && month === today.getMonth() + 1) {
-                const totalWorkingDays = Array.from({ length: new Date(year, month, 0).getDate() }, (_, d) => new Date(year, month - 1, d + 1))
-                                            .filter(d => getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday').length;
-                const remainingWorkingDays = workingDaysPerMonth.get(monthKey) || 0;
-                demandForPeriod = (demandThisMonth / (totalWorkingDays || 1)) * remainingWorkingDays;
+                const totalWorkingDaysInMonth = new Date(year, month, 0).getDate() - Math.floor(new Date(year, month, 0).getDate() / 7) * 2; // Approximation
+                const elapsedDays = today.getDate();
+                const remainingDays = totalWorkingDaysInMonth - elapsedDays;
+                
+                const dailyDemand = demandThisMonth / (totalWorkingDaysInMonth || 1);
+                demandForPeriod = dailyDemand * remainingDays;
+
+                // Adjust initial stock only for the first month's calculation
+                if (i === 0) {
+                     stockAtStartOfMonth = initialInventoryState.get(pairKey) || 0;
+                }
             }
+
 
             const productionNeeded = demandForPeriod + (invSetting?.minStock || 0) - stockAtStartOfMonth;
 
             needs[i] = Math.max(0, productionNeeded);
-            stockAtStartOfMonth += needs[i] - demandForPeriod;
+            // Simulate stock evolution for next month's calculation
+            const producedThisMonth = needs[i];
+            stockAtStartOfMonth = stockAtStartOfMonth + producedThisMonth - demandForPeriod;
         }
         productionNeedsMap.set(pairKey, needs);
     });
@@ -358,7 +351,12 @@ export const generateProductionPlan = async (
         lineMonthlyHours.set(line.id, planningHorizon.map(({ year, month }) => {
             const availability: LineHourAvailability = { regular: 0, extra: 0, holiday: 0 };
             const daysInMonth = new Date(year, month, 0).getDate();
-            const startDay = (year === today.getFullYear() && month === today.getMonth() + 1) ? today.getDate() : 1;
+            
+            let startDay = 1;
+            // For current month, only calculate capacity for remaining days
+            if (year === today.getFullYear() && month === today.getMonth() + 1) {
+                startDay = today.getDate();
+            }
 
             for (let day = startDay; day <= daysInMonth; day++) {
                 const dayType = getDayTypeForProduction(new Date(year, month - 1, day), holidays);
@@ -376,7 +374,6 @@ export const generateProductionPlan = async (
     // Monthly assignment logic
     const monthlyAssignmentsMap = new Map<string, MonthlyAssignment>();
     
-    // Smoothing (pre-production) logic
     for (let i = horizonMonths - 1; i >= 0; i--) {
         const { year, month } = planningHorizon[i];
         onProgress({ message: `Analizando capacidad mensual y suavizando carga...`, step: 'monthly', current: horizonMonths - i, total: horizonMonths });
@@ -446,16 +443,23 @@ export const generateProductionPlan = async (
     const inventoryState = new Map(initialInventoryState);
 
     const dailyDemandMap = new Map<string, number>();
-    planningHorizon.forEach(({ year, month }) => {
+     planningHorizon.forEach(({ year, month }) => {
         const monthKey = `${year}-${month}`;
+        
+        let workingDaysInMonth = 0;
         const daysInMonth = new Date(year, month, 0).getDate();
-        const workingDaysInMonth = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month - 1, i + 1))
-            .filter(d => getDayTypeForProduction(d, holidays) !== 'Sunday' && getDayTypeForProduction(d, holidays) !== 'NonProductiveHoliday').length;
+        for(let d = 1; d <= daysInMonth; d++) {
+            const dayType = getDayTypeForProduction(new Date(year, month - 1, d), holidays);
+            if (dayType === 'Weekday' || dayType === 'Saturday' || dayType === 'ProductiveHoliday') {
+                workingDaysInMonth++;
+            }
+        }
         
         demandMap.forEach((monthlyDemands, pairKey) => {
             const demandThisMonth = monthlyDemands[monthKey] || 0;
-            if (demandThisMonth > 0) {
-                dailyDemandMap.set(pairKey, (dailyDemandMap.get(pairKey) || 0) + (demandThisMonth / (workingDaysInMonth || 1)));
+            if (demandThisMonth > 0 && workingDaysInMonth > 0) {
+                 const currentDailyDemand = dailyDemandMap.get(pairKey) || 0;
+                 dailyDemandMap.set(pairKey, currentDailyDemand + (demandThisMonth / workingDaysInMonth));
             }
         });
     });
@@ -466,7 +470,11 @@ export const generateProductionPlan = async (
         assignmentsForMonth.forEach(a => remainingUnitsToProduce.set(a.id, a.units));
 
         const daysInMonth = new Date(year, month, 0).getDate();
-        const startDay = (year === today.getFullYear() && month === today.getMonth() + 1) ? today.getDate() : 1;
+        let startDay = 1;
+
+        if (year === today.getFullYear() && month === today.getMonth() + 1) {
+            startDay = today.getDate();
+        }
 
         for (let day = startDay; day <= daysInMonth; day++) {
             onProgress({ message: `Generando plan diario para ${MONTH_NAMES[month - 1]}...`, step: 'daily', current: day, total: daysInMonth });
@@ -540,17 +548,18 @@ export const generateProductionPlan = async (
                 dailyEventsForKardex.set(key, item);
             });
             
-            demandMap.forEach((_, pairKey) => {
-                const [productId, centerId] = pairKey.split('---');
-                const dailyDemandAmount = dailyDemandMap.get(pairKey) || 0;
-
-                if(dailyDemandAmount > 0.1 && !dailyEventsForKardex.has(pairKey)) {
-                     dailyEventsForKardex.set(pairKey, {
-                        id: `${year}-${month}-${day}-${productId}-${centerId}-demandOnly`, year, month, day, week: 0, productId,
-                        productName: productNamesMap.get(productId) || productId, quantityToProduce: 0, demandOnDay: 0, initialStockOnDay: 0, finalStockOnDay: 0,
-                        assignedLineId: '', producingCenterId: centerId, demandCenterId: centerId,
-                        estimatedLaborCost: 0, hoursWorked: 0, status: 'Demanda', notes: '', isTransfer: false,
-                    });
+            demandMap.forEach((monthlyDemands, pairKey) => {
+                const monthKey = `${year}-${month}`;
+                if (monthlyDemands[monthKey] > 0) {
+                    const [productId, centerId] = pairKey.split('---');
+                    if(!dailyEventsForKardex.has(pairKey)) {
+                         dailyEventsForKardex.set(pairKey, {
+                            id: `${year}-${month}-${day}-${productId}-${centerId}-demandOnly`, year, month, day, week: 0, productId,
+                            productName: productNamesMap.get(productId) || productId, quantityToProduce: 0, demandOnDay: 0, initialStockOnDay: 0, finalStockOnDay: 0,
+                            assignedLineId: '', producingCenterId: centerId, demandCenterId: centerId,
+                            estimatedLaborCost: 0, hoursWorked: 0, status: 'Demanda', notes: '', isTransfer: false,
+                        });
+                    }
                 }
             });
 
