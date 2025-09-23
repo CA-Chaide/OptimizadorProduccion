@@ -251,8 +251,15 @@ export const ProductionPlanSection: React.FC = () => {
           'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
       };
 
+      // Correctly calculate the initial stock for the very first week shown.
+      const firstWeekKey = weekKeys[0];
+      const selectedLineDetails = constraints.productionLines.filter(l => filterInputs.lines.includes(l.id));
+      const relevantProductIds = new Set(selectedLineDetails.flatMap(l => l.materialsHandled));
+      const initialStockForSelectedLines = constraints.inventorySettings
+          .filter(inv => relevantProductIds.has(inv.itemId) && inv.centerId === filterInputs.center)
+          .reduce((sum, inv) => sum + inv.currentStock, 0);
+
       weekKeys.forEach(weekKey => {
-        const stockKey = `${filterInputs.center}-${filterInputs.lines.join(',')}`;
         const weekItems = filteredData.filter(d => `${d.year}-W${d.week}` === weekKey);
         
         aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
@@ -260,14 +267,8 @@ export const ProductionPlanSection: React.FC = () => {
         aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
       });
       
-      let lastFinalStock = 0;
-      const initialStocksForLines = filterInputs.lines.map(lineId => {
-          const firstWeekData = filteredData.find(d => d.lineId === lineId);
-          return firstWeekData ? firstWeekData.initialStock : 0;
-      });
-      lastFinalStock = initialStocksForLines.reduce((sum, stock) => sum + stock, 0);
-
-
+      let lastFinalStock = initialStockForSelectedLines;
+      
       weekKeys.forEach(weekKey => {
           aggregatedData['Saldo Inicial'][weekKey] = lastFinalStock;
           const finalStock = lastFinalStock 
@@ -282,7 +283,7 @@ export const ProductionPlanSection: React.FC = () => {
       const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
 
       return { weekKeys, rows };
-  }, [filterInputs, productionPlan]);
+  }, [filterInputs, productionPlan, constraints]);
 
   const availableLinesForFilter = useMemo(() => {
       if (!filterInputs.center || !filterInputs.processType) return [];
@@ -461,7 +462,7 @@ export const ProductionPlanSection: React.FC = () => {
                 disabled={isLoading || !isDataSynced || salesData.length === 0}
                 title={!isDataSynced ? 'Debe sincronizar los datos de ensamble en la pestaña de restricciones primero' : (salesData.length === 0 ? 'Debe importar datos de ventas primero' : 'Generar o regenerar el plan de producción')}
             >
-                {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analizando...</> : (productionPlan.dailyPlan.length > 0 ? 'Regenerar Plan' : 'Iniciar Planificación')}
+                {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analizando...</> : (productionPlan.dailyPlan.length > 0 || productionPlan.weeklyPlan.length > 0 ? 'Regenerar Plan' : 'Iniciar Planificación')}
             </Button>
         </div>
       </div>
