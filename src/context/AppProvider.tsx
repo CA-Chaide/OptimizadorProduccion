@@ -175,7 +175,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             variant: type === 'error' ? 'destructive' : 'default',
             title: type.charAt(0).toUpperCase() + type.slice(1),
             description: description,
-            duration: 5000,
+            duration: type === 'error' ? 10000 : 5000,
         });
     }, [toast]);
 
@@ -258,7 +258,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
             
-            // Correctly await the entire planning process
             const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
