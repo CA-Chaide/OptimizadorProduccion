@@ -396,7 +396,9 @@ export const ProductionPlanSection: React.FC = () => {
   );
   
   const renderPlanResult = () => {
-      if (dailyPlan.length === 0 && auditLog.length === 0) {
+      const noPlanGenerated = weeklyPlan.length === 0 && dailyPlan.length === 0;
+
+      if (noPlanGenerated && auditLog.length === 0) {
           return (
             <div className="text-center py-10">
                 <h3 className="text-lg font-medium text-gray-900">Listo para Planificar</h3>
@@ -415,7 +417,7 @@ export const ProductionPlanSection: React.FC = () => {
           );
       }
       
-      if (dailyPlan.length === 0 && auditLog.length > 0) {
+      if (noPlanGenerated && auditLog.length > 0) {
           return (
               <div className="text-center py-10">
                   <h3 className="text-lg font-medium text-gray-900">El plan de producción está vacío.</h3>
