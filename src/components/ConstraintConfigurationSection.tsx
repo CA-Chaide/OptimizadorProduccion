@@ -161,6 +161,13 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   // --- Holidays Handlers ---
   const handleSaveHoliday = () => {
     if (!holidayForm.name.trim() || !holidayForm.date || !holidayForm.appliesTo) { addNotification('warning', 'Nombre, fecha y a qué aplica el feriado son requeridos.'); return; }
+    
+    // Si aplica a ventas (Distribucion), no se permite produccion
+    if (holidayForm.appliesTo === 'Distribucion' && holidayForm.isProductionAllowed) {
+        addNotification('warning', 'No se puede permitir producción en un feriado que aplica a Ventas/Distribución.');
+        return;
+    }
+
     if (editingHoliday) {
         onConstraintsUpdate({ ...constraints, holidays: constraints.holidays.map(h => h.id === editingHoliday.id ? { ...editingHoliday, ...holidayForm } : h) });
         addNotification('success', `Feriado '${holidayForm.name}' actualizado.`);

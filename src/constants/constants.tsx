@@ -15,7 +15,7 @@ import {
     CalendarCheck,
     DatabaseZap,
 } from 'lucide-react';
-import { ProcessType, Holiday, HolidayScope } from './types'; 
+import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
 export const APP_TITLE = "Optimizador de Producción";
 
@@ -91,3 +91,4 @@ const NAVIGATION_ITEMS = [
 
 export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element }> = 
   Object.fromEntries(NAVIGATION_ITEMS.map(item => [item.id, { title: item.label, icon: item.icon }])) as Record<ActiveView, { title: string; icon: JSX.Element }>;
+
