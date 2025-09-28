@@ -215,7 +215,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                       centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
                       dolaresProyectado: 0,
                       descripciónMaterial: item.Material,
-                      familia: item.Familia, marca: item.Marca, lineaProduccion: '',
+                      familia: item.Familia, marca: item.Marca, 
+                      lineaProduccion: item.LineaProduccion || '',
                     }));
                     allData = [...allData, ...mappedData];
                     console.log(`Total acumulado hasta ahora: ${allData.length}`);

@@ -4,6 +4,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -476,6 +477,7 @@ export interface PresupuestoItem {
   Material: string;
   Familia: string;
   Marca: string;
+  LineaProduccion: string;
 }
 
 export interface TiempoEnsambleItem {
