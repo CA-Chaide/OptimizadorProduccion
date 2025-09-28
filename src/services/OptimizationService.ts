@@ -1,5 +1,6 @@
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -208,8 +209,8 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V6 ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v6.'];
+    console.log('--- RUNNING STRATEGIC PLANNER V7 ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v7.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters } = constraints;
 
     if (salesData.length === 0) {
@@ -557,4 +558,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
