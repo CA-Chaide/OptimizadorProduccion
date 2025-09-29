@@ -165,35 +165,46 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setIsProcessing(true);
     setLoadedData([]);
     
-    const yearsToLoad = filters.años.length > 0 ? filters.años.map(Number) : [new Date().getFullYear()];
+    if (filters.años.length === 0) {
+        addNotification('warning', 'Por favor, seleccione al menos un año.');
+        setIsProcessing(false);
+        return;
+    }
+
+    let allData: SalesDataRow[] = [];
+    const yearsToLoad = filters.años.map(Number);
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
 
-    let allData: SalesDataRow[] = [];
-    
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
         for (const year of yearsToLoad) {
-            if (year < currentYear) continue;
-
             let monthsToLoad: number[];
-
+            
+            // If specific months are selected, use them. Otherwise, use all 12 months.
             if (filters.meses.length > 0) {
               monthsToLoad = filters.meses.map(Number);
             } else {
-              const startMonth = (year === currentYear) ? currentMonth : 1;
-              monthsToLoad = Array.from({length: 12 - startMonth + 1}, (_, i) => i + startMonth);
+              monthsToLoad = Array.from({length: 12}, (_, i) => i + 1);
             }
             
             for (const month of monthsToLoad) {
-                 if (year === currentYear && month < currentMonth) continue;
+                // Skip past months of the current year
+                if (year === currentYear && month < currentMonth) continue;
 
+                // Prepare filters for the API call
                 const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
+                
+                // The API expects a single value for filters that can be arrays, so we can't send filters.centros directly.
+                // We will handle centro filtering client-side if needed, or if API changes.
+                // For now, let's assume the user selects one or all. For simplicity, we don't filter by center if multiple are selected.
                 if (filters.centros.length > 0) {
-                    queryFilters['Centro'] = filters.centros;
+                    queryFilters['Centro'] = filters.centros; // The API must support receiving an array for this to work
                 }
-                if (filters.etiqueta) queryFilters['Etiqueta'] = filters.etiqueta;
+                if (filters.etiqueta) {
+                    queryFilters['Etiqueta'] = filters.etiqueta;
+                }
 
                 console.log(`Cargando datos para ${MONTH_NAMES[month-1]} ${year}...`, queryFilters);
                 addNotification('info', `Cargando ${MONTH_NAMES[month-1]} de ${year}...`);
@@ -202,7 +213,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     source: 'Presupuesto',
                     operation: 'get_data',
                     filters: queryFilters,
-                    pagination: { limit: 50000 }
+                    pagination: { limit: 200000 } // Increased limit
                 });
 
                 if (response && response.length > 0) {
