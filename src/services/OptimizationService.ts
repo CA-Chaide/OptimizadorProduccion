@@ -6,6 +6,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -33,15 +34,15 @@ const applyPredefinedValues = (
     
     const predefinedQuantities: { [centerId: string]: { [lineName: string]: { [workstationName: string]: number } } } = {
         '1000': {
-            'LINEA 1': { 'Armador': 12, 'Cerrador': 6 },
-            'LINEA 2': { 'Armador': 6, 'Cerrador': 8 },
-            'LINEA 3': { 'Armador': 1, 'Cerrador': 1 },
-            'LINEA 5': { 'Armador': 2 },
+            'LINEA 1': { 'Armado': 12, 'Cerrado': 6 },
+            'LINEA 2': { 'Armado': 6, 'Cerrado': 8 },
+            'LINEA 3': { 'Armado': 1, 'Cerrado': 1 },
+            'LINEA 5': { 'Armado': 2 },
         },
         '2000': {
-            'LINEA 1': { 'Armador': 9, 'Cerrador': 5 },
-            'LINEA 2': { 'Armador': 4, 'Cerrador': 4 },
-            'LINEA 5': { 'Armador': 3 },
+            'LINEA 1': { 'Armado': 9, 'Cerrado': 5 },
+            'LINEA 2': { 'Armado': 4, 'Cerrado': 4 },
+            'LINEA 5': { 'Armado': 3 },
         }
     };
     
@@ -51,17 +52,17 @@ const applyPredefinedValues = (
     for (const centerId in predefinedQuantities) {
         const centerLines = predefinedQuantities[centerId];
         for (const lineName in centerLines) {
-            const lineId = `pl---${centerId}---${lineName}`;
-            const line = linesMap.get(lineId);
+            const line = Array.from(linesMap.values()).find(l => l.workCenterId === centerId && l.name === lineName);
             if (!line) continue;
 
             const workstationSettings = centerLines[lineName];
             for (const workstationName in workstationSettings) {
                 const quantity = workstationSettings[workstationName];
-                const workstationId = `wd---${centerId}---${workstationName}`;
-                
+                const workstation = Array.from(workstationsMap.values()).find(w => w.name === workstationName);
+                if (!workstation) continue;
+
                 // Update workstation quantity in the line
-                const assignedWsIndex = line.assignedWorkstations.findIndex(as => as.definitionId === workstationId);
+                const assignedWsIndex = line.assignedWorkstations.findIndex(as => as.definitionId === workstation.id);
                 if (assignedWsIndex !== -1) {
                     line.assignedWorkstations[assignedWsIndex] = {
                         ...line.assignedWorkstations[assignedWsIndex],
@@ -149,14 +150,14 @@ export function processAndValidateAssemblyData(
     });
 
     // --- APPLY PREDEFINED VALUES TO THE DISCOVERED STRUCTURE ---
-    let { updatedLines: linesWithPredefined, updatedWorkstations: workstationsWithPredefined } = applyPredefinedValues(
+    let { updatedLines, updatedWorkstations } = applyPredefinedValues(
         Array.from(discoveredWorkCenters.values()),
         Array.from(discoveredLines.values()),
         Array.from(discoveredWorkstations.values())
     );
 
     // --- MERGE WITH USER EDITS FROM PREVIOUS STATE ---
-    const finalLines = linesWithPredefined.map(line => {
+    const finalLines = updatedLines.map(line => {
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         if (userEditedLine) {
             // Preserve user-edited process type
@@ -173,7 +174,7 @@ export function processAndValidateAssemblyData(
         return line;
     });
 
-    const finalWorkstations = workstationsWithPredefined.map(ws => {
+    const finalWorkstations = updatedWorkstations.map(ws => {
         const userEditedWs = currentConstraints.workstationDefinitions.find(w => w.id === ws.id);
         if (userEditedWs) {
             // Preserve user-edited employee counts
@@ -706,4 +707,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
