@@ -153,7 +153,7 @@ export const ProductionPlanSection: React.FC = () => {
 
   const isDataSynced = syncStatus?.isSynced || false;
 
-  const [activeTab, setActiveTab] = useState<'weekly' | 'daily'>('weekly');
+  const [activeTab, setActiveTab] = useState<'monthly' | 'weekly' | 'daily'>('monthly');
   
   const [filterInputs, setFilterInputs] = useState<{
     center: string;
@@ -234,6 +234,38 @@ export const ProductionPlanSection: React.FC = () => {
     });
   }, [dailyPlan, appliedFilters, constraints.productionLines]);
 
+  const monthlyFlow = useMemo(() => {
+    const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
+    if (!filterInputs.center || filterInputs.lines.length === 0 || !monthlyPlan || monthlyPlan.length === 0) return null;
+
+    const filteredData = monthlyPlan.filter(
+        item => item.producingCenterId === filterInputs.center && filterInputs.lines.includes(item.assignedLineId || '')
+    );
+      
+    if (filteredData.length === 0) return null;
+
+    const monthKeys = Array.from(new Set(filteredData.map(d => `${d.year}-${String(d.month).padStart(2,'0')}`))).sort();
+    
+    const aggregatedData: Record<string, Record<string, number>> = {
+        'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
+    };
+
+    monthKeys.forEach(monthKey => {
+      const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
+      
+      aggregatedData['Producción'][monthKey] = monthItems.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+      aggregatedData['Ventas'][monthKey] = monthItems.reduce((sum, item) => sum + item.totalDemand, 0);
+      aggregatedData['Traslados (Neto)'][monthKey] = 0; // Simplified for now
+      aggregatedData['Saldo Inicial'][monthKey] = monthItems.reduce((sum, item) => sum + item.initialStock, 0) / (monthItems.length || 1);
+      aggregatedData['Saldo Final'][monthKey] = monthItems.reduce((sum, item) => sum + item.finalStock, 0) / (monthItems.length || 1);
+    });
+
+    const rowOrder = ['Saldo Inicial', 'Producción', 'Ventas', 'Traslados (Neto)', 'Saldo Final'];
+    const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
+
+    return { monthKeys, rows };
+  }, [filterInputs, productionPlan, constraints]);
+
   
   const weeklyFlow = useMemo(() => {
       const { weeklyPlan } = productionPlan || { weeklyPlan: [] };
@@ -251,34 +283,15 @@ export const ProductionPlanSection: React.FC = () => {
           'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
       };
 
-      // Correctly calculate the initial stock for the very first week shown.
-      const firstWeekKey = weekKeys[0];
-      const selectedLineDetails = constraints.productionLines.filter(l => filterInputs.lines.includes(l.id));
-      const relevantProductIds = new Set(selectedLineDetails.flatMap(l => l.materialsHandled));
-      const initialStockForSelectedLines = constraints.inventorySettings
-          .filter(inv => relevantProductIds.has(inv.itemId) && inv.centerId === filterInputs.center)
-          .reduce((sum, inv) => sum + inv.currentStock, 0);
-
       weekKeys.forEach(weekKey => {
         const weekItems = filteredData.filter(d => `${d.year}-W${d.week}` === weekKey);
-        
         aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
         aggregatedData['Ventas'][weekKey] = weekItems.reduce((sum, item) => sum + item.sales, 0);
         aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
+        aggregatedData['Saldo Inicial'][weekKey] = weekItems.reduce((sum, item) => sum + item.initialStock, 0) / (weekItems.length || 1);
+        aggregatedData['Saldo Final'][weekKey] = weekItems.reduce((sum, item) => sum + item.finalStock, 0) / (weekItems.length || 1);
       });
       
-      let lastFinalStock = initialStockForSelectedLines;
-      
-      weekKeys.forEach(weekKey => {
-          aggregatedData['Saldo Inicial'][weekKey] = lastFinalStock;
-          const finalStock = lastFinalStock 
-                             + (aggregatedData['Producción'][weekKey] || 0)
-                             + (aggregatedData['Traslados (Neto)'][weekKey] || 0)
-                             - (aggregatedData['Ventas'][weekKey] || 0);
-          aggregatedData['Saldo Final'][weekKey] = finalStock;
-          lastFinalStock = finalStock;
-      });
-
       const rowOrder = ['Saldo Inicial', 'Producción', 'Ventas', 'Traslados (Neto)', 'Saldo Final'];
       const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
 
@@ -289,6 +302,15 @@ export const ProductionPlanSection: React.FC = () => {
       if (!filterInputs.center || !filterInputs.processType) return [];
       return constraints.productionLines.filter(line => line.workCenterId === filterInputs.center && line.processType === filterInputs.processType);
   }, [filterInputs.center, filterInputs.processType, constraints.productionLines]);
+
+  const renderContentForTab = (tab: 'monthly' | 'weekly' | 'daily') => {
+      switch (tab) {
+          case 'monthly': return renderMonthlySummary();
+          case 'weekly': return renderWeeklySummary();
+          case 'daily': return renderDailyPlan();
+          default: return null;
+      }
+  };
 
 
   // --- Main Content Rendering Logic ---
@@ -332,72 +354,100 @@ export const ProductionPlanSection: React.FC = () => {
        </div>
     </div>
   );
+
+  const renderSummaryView = (
+      flow: { monthKeys: string[], rows: { label: string, values: Record<string, number> } } | { weekKeys: string[], rows: { label: string, values: Record<string, number> } } | null,
+      type: 'monthly' | 'weekly'
+  ) => {
+    const keys = type === 'monthly' ? (flow as any)?.monthKeys : (flow as any)?.weekKeys;
+    const keyPrefix = type === 'monthly' ? '' : 'Sem';
+
+    if (!filterInputs.center || filterInputs.lines.length === 0) {
+      return <div className="text-center py-10 text-gray-500">Por favor, seleccione un centro, tipo de proceso y una o más líneas para ver el resumen.</div>;
+    }
+    if (!flow || !keys || keys.length === 0) {
+        return <div className="text-center py-10 text-gray-500">No hay datos de planificación para la combinación de filtros seleccionada.</div>;
+    }
+
+    return (
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-10">Métrica</th>
+                {keys.map((key: string) => {
+                    const [year, num] = key.split(type === 'monthly' ? '-' : '-W');
+                    const label = type === 'monthly' ? `${MONTH_NAMES[parseInt(num,10) -1].substring(0,3)} '${year.slice(-2)}` : `${keyPrefix} ${num} '${year.slice(-2)}`;
+                    return <th key={key} className="px-3 py-2 text-right font-semibold text-gray-600">{label}</th>;
+                })}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {flow.rows.map(row => (
+                <tr key={row.label} className="hover:bg-gray-50 group">
+                  <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
+                  {keys.map((key: string) => (
+                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''}`}>
+                      {Math.round(row.values[key] || 0).toLocaleString()}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+    );
+  };
   
+  const renderMonthlySummary = () => (
+     <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 border rounded-lg bg-gray-50 items-start">
+         <FilterControls />
+      </div>
+      {renderSummaryView(monthlyFlow, 'monthly')}
+    </div>
+  );
+
   const renderWeeklySummary = () => (
      <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 border rounded-lg bg-gray-50 items-start">
-          <div>
+         <FilterControls />
+      </div>
+      {renderSummaryView(weeklyFlow, 'weekly')}
+    </div>
+  );
+
+  const FilterControls = () => (
+      <>
+        <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Centro de Trabajo</label>
-             <select value={filterInputs.center} onChange={e => setFilterInputs({ ...filterInputs, center: e.target.value, processType: '', lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9">
+            <select value={filterInputs.center} onChange={e => setFilterInputs({ ...filterInputs, center: e.target.value, processType: '', lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9">
                 <option value="">Seleccione Centro</option>
                 {constraints.workCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-          <div>
+        </div>
+        <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de Proceso</label>
-             <select value={filterInputs.processType} onChange={e => setFilterInputs({ ...filterInputs, processType: e.target.value, lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9" disabled={!filterInputs.center}>
+            <select value={filterInputs.processType} onChange={e => setFilterInputs({ ...filterInputs, processType: e.target.value, lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9" disabled={!filterInputs.center}>
                 <option value="">Seleccione Proceso</option>
                 {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
-          </div>
-           <div>
-              <MultiSelect
+        </div>
+        <div>
+            <MultiSelect
                 label="Línea(s) de Producción"
                 options={availableLinesForFilter.map(l => ({ value: l.id, label: l.name }))}
                 selected={filterInputs.lines}
                 onChange={selectedLines => setFilterInputs({ ...filterInputs, lines: selectedLines })}
                 placeholder="Seleccione Línea(s)"
                 className={!filterInputs.processType ? 'opacity-50' : ''}
-              />
-          </div>
-      </div>
-      
-       {!filterInputs.center || filterInputs.lines.length === 0 ? (
-        <div className="text-center py-10 text-gray-500">Por favor, seleccione un centro, tipo de proceso y una o más líneas para ver el resumen.</div>
-      ) : !weeklyFlow || weeklyFlow.weekKeys.length === 0 ? (
-        <div className="text-center py-10 text-gray-500">No hay datos de planificación para la combinación de filtros seleccionada.</div>
-      ) : (
-       <div className="overflow-x-auto border rounded-lg">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-10">Métrica</th>
-              {weeklyFlow.weekKeys.map(weekKey => {
-                  const [year, weekNum] = weekKey.split('-W');
-                  return <th key={weekKey} className="px-3 py-2 text-right font-semibold text-gray-600">{`Sem ${weekNum} '${year.slice(-2)}`}</th>
-              })}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {weeklyFlow.rows.map(row => (
-              <tr key={row.label} className="hover:bg-gray-50 group">
-                <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
-                {weeklyFlow.weekKeys.map(weekKey => (
-                  <td key={`${row.label}-${weekKey}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''}`}>
-                    {Math.round(row.values[weekKey] || 0).toLocaleString()}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-       </div>
-      )}
-    </div>
+            />
+        </div>
+      </>
   );
   
   const renderPlanResult = () => {
-      const noPlanGenerated = weeklyPlan.length === 0 && dailyPlan.length === 0;
+      const noPlanGenerated = weeklyPlan.length === 0 && dailyPlan.length === 0 && monthlyPlan.length === 0;
 
       if (noPlanGenerated && auditLog.length === 0) {
           return (
@@ -437,6 +487,7 @@ export const ProductionPlanSection: React.FC = () => {
          <div>
             <div className="flex justify-between items-center border-b border-gray-200 pb-3 mb-4">
                 <nav className="flex space-x-2" aria-label="Tabs">
+                    <button onClick={() => setActiveTab('monthly')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'monthly' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen Mensual por Línea</button>
                     <button onClick={() => setActiveTab('weekly')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'weekly' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen Semanal por Línea</button>
                     <button onClick={() => setActiveTab('daily')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Auditoría Diaria (Avanzado)</button>
                 </nav>
@@ -444,7 +495,7 @@ export const ProductionPlanSection: React.FC = () => {
                   {activeTab === 'daily' && dailyPlan.length > 0 && <Button onClick={handleExportDaily} variant="outline" size="sm">Exportar Diario</Button>}
                 </div>
             </div>
-            {activeTab === 'weekly' ? renderWeeklySummary() : renderDailyPlan()}
+            {renderContentForTab(activeTab)}
          </div>
       );
   };
@@ -487,3 +538,4 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+

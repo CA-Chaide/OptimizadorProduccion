@@ -6,6 +6,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -259,9 +260,13 @@ export interface MonthlyProductionPlanItem {
     productId: string;
     productName: string;
     producingCenterId?: string;
+    assignedLineId?: string;
     totalQuantityToProduce: number;
     totalHoursWorked: number;
     totalEstimatedLaborCost: number;
+    totalDemand: number;
+    initialStock: number;
+    finalStock: number;
 }
 
 export interface WeeklyPlanItem {
@@ -497,3 +502,4 @@ export interface TiempoEnsambleItem {
 }
 
 import { ActiveView } from '@/constants/constants';
+

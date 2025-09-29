@@ -1,4 +1,5 @@
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -50,7 +51,7 @@ const applyPredefinedValues = (
             const workstationSettings = centerLines[lineName];
             for (const workstationName in workstationSettings) {
                 const quantity = workstationSettings[workstationName];
-                // Find workstation definition ID based on name and center. Crucially, workstation names are unique within a center.
+                // Find workstation definition ID based on name.
                 const workstation = Array.from(workstationsMap.values()).find(w => w.name === workstationName);
 
                 if (!workstation) continue;
@@ -58,7 +59,6 @@ const applyPredefinedValues = (
                 // Update workstation quantity in the line
                 const assignedWsIndex = line.assignedWorkstations.findIndex(as => as.definitionId === workstation.id);
                 if (assignedWsIndex !== -1) {
-                    // This is the line that actually applies the change.
                     line.assignedWorkstations[assignedWsIndex].quantity = quantity;
                 }
             }
@@ -110,7 +110,6 @@ export function processAndValidateAssemblyData(
             discoveredWorkCenters.set(centerId, { id: centerId, name: centerId, productionLineIds: [], isActive: true });
         }
         
-        // PuestoTrabajo names can be repeated across centers, so the ID must be unique.
         const workstationId = `wd---${workstationName}`;
         if (!discoveredWorkstations.has(workstationId)) {
             discoveredWorkstations.set(workstationId, {
@@ -146,33 +145,34 @@ export function processAndValidateAssemblyData(
     const discoveredWorkstationsArray = Array.from(discoveredWorkstations.values());
 
     // --- APPLY PREDEFINED VALUES TO THE DISCOVERED STRUCTURE ---
-    let { updatedLines, updatedWorkstations } = applyPredefinedValues(
+    const { updatedLines: linesWithPredefinedQuantities } = applyPredefinedValues(
         Array.from(discoveredWorkCenters.values()),
         discoveredLinesArray,
         discoveredWorkstationsArray
     );
 
     // --- MERGE WITH USER EDITS FROM PREVIOUS STATE ---
-    const finalLines = updatedLines.map(line => {
+    const finalLines = linesWithPredefinedQuantities.map(line => {
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         if (userEditedLine) {
             line.processType = userEditedLine.processType;
-            // For each assigned workstation in the newly discovered line structure
             line.assignedWorkstations.forEach(as => {
                 const userEditedAs = userEditedLine.assignedWorkstations.find(uas => uas.definitionId === as.definitionId);
-                // If the user has a different quantity for this workstation, keep the user's value
                 if (userEditedAs && userEditedAs.quantity !== as.quantity) {
-                    as.quantity = userEditedAs.quantity;
+                    // If user has a different quantity, keep the user's value, but only if it's not the default 1
+                     if (userEditedAs.quantity !== 1) {
+                        as.quantity = userEditedAs.quantity;
+                    }
                 }
             });
         }
         return line;
     });
 
-    const finalWorkstations = updatedWorkstations.map(ws => {
+    const finalWorkstations = discoveredWorkstationsArray.map(ws => {
         const userEditedWs = currentConstraints.workstationDefinitions.find(w => w.id === ws.id);
         if (userEditedWs) {
-            if(userEditedWs.employeesPerWorkstation !== ws.employeesPerWorkstation) {
+            if(userEditedWs.employeesPerWorkstation !== 1) {
                 ws.employeesPerWorkstation = userEditedWs.employeesPerWorkstation;
             }
             ws.machineCode = userEditedWs.machineCode;
@@ -277,15 +277,15 @@ const calculateEffectiveManufacturingTime = (productId: string, line: Production
         );
         if (apiRow && apiRow.Tiempo > 0) {
             const timeMinutes = apiRow.Tiempo;
-            const quantityOfPosts = assignedWorkstation.quantity;
+            const quantityOfPosts = assignedWorkstation.quantity > 0 ? assignedWorkstation.quantity : 1; // Avoid division by zero
             const effectiveTimeForThisPostType = timeMinutes / quantityOfPosts;
             workstationEffectiveTimes.push(effectiveTimeForThisPostType);
         }
     }
-    if (line.assignedWorkstations.length > 0 && workstationEffectiveTimes.length !== line.assignedWorkstations.length) return Infinity;
-    if (workstationEffectiveTimes.length === 0) return Infinity;
+    if (line.assignedWorkstations.length > 0 && workstationEffectiveTimes.length === 0) return Infinity; // If line has posts but no time found
+    if (workstationEffectiveTimes.length === 0) return Infinity; // If no valid times found
     const bottleneckTimeMinutes = Math.max(0, ...workstationEffectiveTimes);
-    return bottleneckTimeMinutes / 60;
+    return bottleneckTimeMinutes / 60; // Convert to hours
 };
 
 export const generateProductionPlan = async (
@@ -295,8 +295,8 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V10 (Cost-Optimized Hours) ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v10 con optimización de costos de horas.'];
+    console.log('--- RUNNING STRATEGIC PLANNER V11 (Simplified Demand) ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v11 con cálculo de demanda simplificado.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
@@ -332,94 +332,37 @@ export const generateProductionPlan = async (
     const startDate = new Date(firstSale.año, firstSale.mes-1, 1);
     const endDate = new Date(lastSale.año, lastSale.mes, 0);
     
-    // Prorate demand based on agreed logic
-    const weeklyDemandMap = new Map<string, number>(); // Key: `YYYY-WW---productId---centerId`
-    const monthSaleDays = new Map<string, number>(); // Key: 'YYYY-MM'
-
-    const uniqueMonths = new Set(salesData.map(s => `${s.año}-${s.mes}`));
-    uniqueMonths.forEach(monthKey => {
-        const [year, month] = monthKey.split('-').map(Number);
-        let salesDaysInMonth = 0;
-        const daysInMonth = new Date(year, month, 0).getDate();
-        for (let i = 1; i <= daysInMonth; i++) {
-            if (getDayType(new Date(year, month - 1, i), holidays, 'Distribucion')) {
-                salesDaysInMonth++;
-            }
-        }
-        monthSaleDays.set(monthKey, salesDaysInMonth > 0 ? salesDaysInMonth : 1);
+    // --- DEMAND CALCULATION REWRITE ---
+    const monthlyDemandMap = new Map<string, number>(); // Key: 'YYYY-MM---productId---centerId'
+    salesData.forEach(sale => {
+        const { año, mes, código, centro, unidadesProyectado } = sale;
+        const productId = normalizeMaterialCode(código);
+        const centerId = String(centro).trim();
+        const monthKey = `${año}-${String(mes).padStart(2, '0')}`;
+        const demandKey = `${monthKey}---${productId}---${centerId}`;
+        monthlyDemandMap.set(demandKey, (monthlyDemandMap.get(demandKey) || 0) + unidadesProyectado);
     });
-    
-    const rule1_weekDays = new Date();
-    const currentDayOfWeek = rule1_weekDays.getDay(); // 0=Sun, 1=Mon...
-    const remainingWeekdays = (currentDayOfWeek >= 1 && currentDayOfWeek <= 5) ? 5 - currentDayOfWeek + 1 : 0;
-    
-    const { year: currentWeekYear, week: currentWeekNum } = getWeekNumber(rule1_weekDays);
-    const currentWeekKey = `${currentWeekYear}-W${currentWeekNum}`;
-    let currentWeekSaleDays = 0;
-    for(let i=0; i < remainingWeekdays; i++) {
-        const d = new Date(rule1_weekDays.getTime());
-        d.setDate(d.getDate() + i);
-        if(getDayType(d, holidays, 'Distribucion')) {
-            currentWeekSaleDays++;
-        }
-    }
+    auditLog.push(`Cálculo de demanda mensual completado. Se generaron ${monthlyDemandMap.size} entradas de demanda.`);
 
-
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-        if (d < today) continue;
-        
-        const { year: weekYear, week } = getWeekNumber(d);
-        const weekKey = `${weekYear}-W${week}`;
-        
-        let totalSaleDaysInContext;
-        
-        if (weekKey === currentWeekKey) {
-            totalSaleDaysInContext = currentWeekSaleDays;
-        } else {
-            totalSaleDaysInContext = 5 - holidays.filter(h => {
-                const hDate = new Date(h.date + 'T00:00:00');
-                return getWeekNumber(hDate).week === week && h.appliesTo === 'Distribucion';
-            }).length;
-        }
-
-        if (getDayType(d, holidays, 'Distribucion')) {
-            const year = d.getFullYear();
-            const month = d.getMonth() + 1;
-            const monthKey = `${year}-${month}`;
-            const totalSaleDaysInMonth = monthSaleDays.get(monthKey) || 1;
-
-            const salesForMonth = salesData.filter(s => s.año === year && s.mes === month);
-            salesForMonth.forEach(sale => {
-                 const dailyRate = sale.unidadesProyectado / totalSaleDaysInMonth;
-                 const productId = normalizeMaterialCode(sale.código);
-                 const centerId = String(sale.centro).trim();
-                 const demandKey = `${weekYear}-W${week}---${productId}---${centerId}`;
-                 weeklyDemandMap.set(demandKey, (weeklyDemandMap.get(demandKey) || 0) + dailyRate);
-            });
-        }
-    }
-    auditLog.push(`Prorrateo de demanda completado. Se generaron ${weeklyDemandMap.size} entradas de demanda semanal.`);
-    
-
-    const planningWeeks = Array.from(new Set(Array.from(weeklyDemandMap.keys()).map(k => k.split('---')[0]))).sort()
-        .map(weekKey => {
-            const [yearStr, weekStr] = weekKey.split('-W');
-            return { year: parseInt(yearStr), week: parseInt(weekStr) };
+    const planningMonths = Array.from(new Set(Array.from(monthlyDemandMap.keys()).map(k => k.split('---')[0]))).sort()
+        .map(monthKey => {
+            const [yearStr, monthStr] = monthKey.split('-');
+            return { year: parseInt(yearStr), month: parseInt(monthStr) };
         });
 
-    const advancedNeed = new Map<string, number>(); 
+    const advancedNeed = new Map<string, number>(); // Key 'YYYY-MM---lineId---productId' -> units needed from previous month
     
-    // BACKWARD PASS
-    for (let i = planningWeeks.length - 1; i >= 0; i--) {
-        onProgress({ message: `Analizando capacidad futura...`, step: 'monthly', current: planningWeeks.length - i, total: planningWeeks.length });
-        const { year, week } = planningWeeks[i];
-        const weekKeyPart = `${year}-W${week}`;
+    // BACKWARD PASS - By Month
+    for (let i = planningMonths.length - 1; i >= 0; i--) {
+        onProgress({ message: `Analizando capacidad futura...`, step: 'monthly', current: planningMonths.length - i, total: planningMonths.length });
+        const { year, month } = planningMonths[i];
+        const monthKeyPart = `${year}-${String(month).padStart(2, '0')}`;
 
         for (const line of productionLines) {
             if (!line.isActive) continue;
             
-            const weeklyCapacity = getWeeklyCapacity(year, week, line.id, holidays, shiftParameters);
-            let totalCapacityHours = weeklyCapacity.regularHours + weeklyCapacity.extraHours + weeklyCapacity.saturdayHours;
+            const monthlyCapacity = getMonthlyCapacity(year, month, line.id, holidays, shiftParameters);
+            let totalCapacityHours = monthlyCapacity.regularHours + monthlyCapacity.extraHours + monthlyCapacity.saturdayHours;
             
             const productsOnLine = Array.from(new Set(line.materialsHandled));
             for (const productId of productsOnLine) {
@@ -429,16 +372,17 @@ export const generateProductionPlan = async (
                  if (provisionRule === 'F') {
                     if (line.workCenterId === '1000') {
                         for (const center of workCenters) {
-                            totalDemandForProduct += weeklyDemandMap.get(`${weekKeyPart}---${productId}---${center.id}`) || 0;
+                            totalDemandForProduct += monthlyDemandMap.get(`${monthKeyPart}---${productId}---${center.id}`) || 0;
                         }
                     } else continue;
-                 } else {
-                     totalDemandForProduct = weeklyDemandMap.get(`${weekKeyPart}---${productId}---${line.workCenterId}`) || 0;
+                 } else { // 'E' or 'X'
+                     totalDemandForProduct = monthlyDemandMap.get(`${monthKeyPart}---${productId}---${line.workCenterId}`) || 0;
                  }
                 
-                if (i < planningWeeks.length - 1) {
-                    const nextWeek = planningWeeks[i+1];
-                    totalDemandForProduct += advancedNeed.get(`${nextWeek.year}-W${nextWeek.week}---${line.id}---${productId}`) || 0;
+                if (i < planningMonths.length - 1) {
+                    const nextMonth = planningMonths[i+1];
+                    const nextMonthKeyPart = `${nextMonth.year}-${String(nextMonth.month).padStart(2, '0')}`;
+                    totalDemandForProduct += advancedNeed.get(`${nextMonthKeyPart}---${line.id}---${productId}`) || 0;
                 }
 
                 if (totalDemandForProduct > 0) {
@@ -448,8 +392,9 @@ export const generateProductionPlan = async (
                     if (hoursNeeded > totalCapacityHours) {
                         const deficitUnits = (hoursNeeded - totalCapacityHours) / timePerUnit;
                         if(i > 0) {
-                            const prevWeek = planningWeeks[i-1];
-                            const advNeedKey = `${prevWeek.year}-W${prevWeek.week}---${line.id}---${productId}`;
+                            const prevMonth = planningMonths[i-1];
+                            const prevMonthKeyPart = `${prevMonth.year}-${String(prevMonth.month).padStart(2, '0')}`;
+                            const advNeedKey = `${prevMonthKeyPart}---${line.id}---${productId}`;
                             advancedNeed.set(advNeedKey, (advancedNeed.get(advNeedKey) || 0) + deficitUnits);
                         }
                         totalCapacityHours = 0; 
@@ -463,26 +408,24 @@ export const generateProductionPlan = async (
     auditLog.push(`Fase 1 (Análisis Futuro) completada. Se calcularon ${advancedNeed.size} necesidades de adelanto.`);
 
     // FORWARD PASS
-    const weeklyPlan: WeeklyPlanItem[] = [];
+    const monthlyPlan: MonthlyProductionPlanItem[] = [];
     const inventoryState = new Map<string, number>(); 
     inventorySettings.forEach(inv => inventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock));
 
-    for (let i = 0; i < planningWeeks.length; i++) {
-        const { year, week } = planningWeeks[i];
-        onProgress({ message: `Planificando semana ${week}...`, step: 'daily', current: i + 1, total: planningWeeks.length });
-        const weekKeyPart = `${year}-W${week}`;
+    for (let i = 0; i < planningMonths.length; i++) {
+        const { year, month } = planningMonths[i];
+        onProgress({ message: `Planificando mes ${month}...`, step: 'daily', current: i + 1, total: planningMonths.length });
+        const monthKeyPart = `${year}-${String(month).padStart(2, '0')}`;
         
-        const weeklyLineCapacity = new Map<string, { regularHours: number, extraHours: number, saturdayHours: number, usedRegular: number, usedExtra: number, usedSaturday: number }>();
+        const monthlyLineCapacity = new Map<string, { regularHours: number, extraHours: number, saturdayHours: number, usedRegular: number, usedExtra: number, usedSaturday: number }>();
         productionLines.forEach(line => {
              if (!line.isActive) return;
-             const cap = getWeeklyCapacity(year, week, line.id, holidays, shiftParameters);
-             weeklyLineCapacity.set(line.id, { ...cap, usedRegular: 0, usedExtra: 0, usedSaturday: 0 });
+             const cap = getMonthlyCapacity(year, month, line.id, holidays, shiftParameters);
+             monthlyLineCapacity.set(line.id, { ...cap, usedRegular: 0, usedExtra: 0, usedSaturday: 0 });
         });
-
-        const weeklyAggregates = new Map<string, { production: number, sales: number, netTransfers: number }>();
-
+        
         const consumeCapacityAndGetCost = (lineId: string, hoursToConsume: number): { success: boolean; cost: number } => {
-            const capacity = weeklyLineCapacity.get(lineId);
+            const capacity = monthlyLineCapacity.get(lineId);
             if (!capacity) return { success: false, cost: 0 };
             
             let totalAvailable = (capacity.regularHours - capacity.usedRegular) + 
@@ -515,145 +458,110 @@ export const generateProductionPlan = async (
             return { success: true, cost: totalCost };
         };
         
-        const planProduction = (line: ProductionLine, productId: string, unitsToProduce: number) => {
+        const planProduction = (line: ProductionLine, productId: string, unitsToProduce: number): { produced: number, cost: number, hours: number } => {
             const timePerUnit = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
-            if (timePerUnit === Infinity) return 0;
+            if (timePerUnit === Infinity) return { produced: 0, cost: 0, hours: 0 };
             
-            const capacity = weeklyLineCapacity.get(line.id)!;
+            const capacity = monthlyLineCapacity.get(line.id)!;
             const totalAvailableHours = (capacity.regularHours - capacity.usedRegular) + (capacity.extraHours - capacity.usedExtra) + (capacity.saturdayHours - capacity.usedSaturday);
-            if (totalAvailableHours <= 0) return 0;
+            if (totalAvailableHours <= 0) return { produced: 0, cost: 0, hours: 0 };
 
             const producibleUnits = Math.min(unitsToProduce, Math.floor(totalAvailableHours / timePerUnit));
             const hoursToConsume = producibleUnits * timePerUnit;
             
             const { success, cost } = consumeCapacityAndGetCost(line.id, hoursToConsume);
             if (success) {
-                if (!weeklyAggregates.has(line.id)) weeklyAggregates.set(line.id, { production: 0, sales: 0, netTransfers: 0 });
-                weeklyAggregates.get(line.id)!.production += producibleUnits;
-                // We're not tracking cost per product, but we could add it here
-                return producibleUnits;
+                return { produced: producibleUnits, cost, hours: hoursToConsume };
             }
-            return 0;
+            return { produced: 0, cost: 0, hours: 0 };
         };
 
-        const applyProductionLogic = (centerId: string) => {
-             const centerLines = productionLines.filter(l => l.workCenterId === centerId && l.isActive);
-             const productLineMapping = new Map<string, string[]>();
-             
-             apiData.forEach(item => {
-                 if (String(item.Centro).trim() !== centerId) return;
-                 const productId = normalizeMaterialCode(item.CodMaterial);
-                 const lineName = String(item.Linea).trim();
-                 const line = centerLines.find(l => l.name === lineName);
-                 if (!line) return;
+        const processCenter = (centerId: string) => {
+            const centerLines = productionLines.filter(l => l.workCenterId === centerId && l.isActive);
+            for (const line of centerLines) {
+                 const productsOnLine = Array.from(new Set(line.materialsHandled));
+                 for (const productId of productsOnLine) {
+                    const invKey = `${productId}---${centerId}`;
+                    const safetyStock = inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
+                    
+                    const advanced = advancedNeed.get(`${monthKeyPart}---${line.id}---${productId}`) || 0;
+                    const demand = monthlyDemandMap.get(`${monthKeyPart}---${productId}---${centerId}`) || 0;
+                    
+                    const currentStock = inventoryState.get(invKey) || 0;
+                    const need = safetyStock + demand + advanced - currentStock;
 
-                 if (!productLineMapping.has(productId)) productLineMapping.set(productId, []);
-                 if (!productLineMapping.get(productId)!.includes(line.id)) {
-                     productLineMapping.get(productId)!.push(line.id);
-                 }
-             });
+                    if (need > 0) {
+                        const { produced, cost, hours } = planProduction(line, productId, need);
+                        if (produced > 0) {
+                             inventoryState.set(invKey, (inventoryState.get(invKey) || 0) + produced);
 
-             // Step 1: Exclusive products for all lines
-             for (const line of centerLines) {
-                 const exclusiveProducts = Array.from(productLineMapping.entries())
-                     .filter(([_, lineIds]) => lineIds.length === 1 && lineIds[0] === line.id)
-                     .map(([productId]) => productId);
-
-                 for (const productId of exclusiveProducts) {
-                     const invKey = `${productId}---${centerId}`;
-                     const safetyStock = inventorySettings.find(i => i.itemId === productId && i.centerId === centerId)?.minStock || 0;
-                     const demand = (weeklyDemandMap.get(`${weekKeyPart}---${productId}---${centerId}`) || 0) + (advancedNeed.get(`${weekKeyPart}---${line.id}---${productId}`) || 0);
-                     const currentStock = inventoryState.get(invKey) || 0;
-                     const need = safetyStock + demand - currentStock;
-                     if (need > 0) {
-                         const produced = planProduction(line, productId, need);
-                         inventoryState.set(invKey, (inventoryState.get(invKey) || 0) + produced);
-                     }
-                 }
-             }
-
-             // Step 2 & 3: Spillover logic for Center 1000, Line 1 -> Line 3
-             if (centerId === '1000') {
-                 const line1 = centerLines.find(l => l.name === "LINEA 1");
-                 const line3 = centerLines.find(l => l.name === "LINEA 3");
-
-                 if (line1 && line3) {
-                     const sharedProducts = Array.from(productLineMapping.entries())
-                         .filter(([_, lineIds]) => lineIds.includes(line1.id) && lineIds.includes(line3.id))
-                         .map(([productId]) => productId);
-
-                     for (const productId of sharedProducts) {
-                         const invKey = `${productId}---1000`;
-                         const safetyStock = inventorySettings.find(i => i.itemId === productId && i.centerId === '1000')?.minStock || 0;
-                         const demand = (weeklyDemandMap.get(`${weekKeyPart}---${productId}---1000`) || 0) + (advancedNeed.get(`${weekKeyPart}---${line1.id}---${productId}`) || 0);
-                         const currentStock = inventoryState.get(invKey) || 0;
-                         let remainingNeed = safetyStock + demand - currentStock;
-
-                         if (remainingNeed > 0) {
-                             const producedOnL1 = planProduction(line1, productId, remainingNeed);
-                             inventoryState.set(invKey, (inventoryState.get(invKey) || 0) + producedOnL1);
-                             remainingNeed -= producedOnL1;
-                             
-                             if (remainingNeed > 0) {
-                                 const producedOnL3 = planProduction(line3, productId, remainingNeed);
-                                 inventoryState.set(invKey, (inventoryState.get(invKey) || 0) + producedOnL3);
+                             const existingPlanIndex = monthlyPlan.findIndex(p => p.year === year && p.month === month && p.productId === productId && p.assignedLineId === line.id);
+                             if(existingPlanIndex > -1) {
+                                monthlyPlan[existingPlanIndex].totalQuantityToProduce += produced;
+                                monthlyPlan[existingPlanIndex].totalHoursWorked += hours;
+                                monthlyPlan[existingPlanIndex].totalEstimatedLaborCost += cost;
+                             } else {
+                                monthlyPlan.push({
+                                    id: `${monthKeyPart}---${line.id}---${productId}`, year, month, productId,
+                                    productName: productInfoMap.get(productId)?.name || productId,
+                                    producingCenterId: centerId,
+                                    assignedLineId: line.id,
+                                    totalQuantityToProduce: produced,
+                                    totalHoursWorked: hours,
+                                    totalEstimatedLaborCost: cost,
+                                    totalDemand: 0, // will be populated later
+                                    initialStock: 0,
+                                    finalStock: 0
+                                });
                              }
-                         }
-                     }
+                        }
+                    }
                  }
-             }
+            }
         };
 
-        workCenters.forEach(center => applyProductionLogic(center.id));
-
-        for(const [key, demandQty] of weeklyDemandMap.entries()) {
-            if (key.startsWith(weekKeyPart)) {
-                const [, productId, centerId] = key.split('---');
+        workCenters.forEach(center => processCenter(center.id));
+        
+        // Post-production: Fulfill demand from stock and populate monthly plan details
+        for(const [demandKey, demandQty] of monthlyDemandMap.entries()) {
+             if (demandKey.startsWith(monthKeyPart)) {
+                const [, productId, centerId] = demandKey.split('---');
                 const invKey = `${productId}---${centerId}`;
                 const stock = inventoryState.get(invKey) || 0;
                 const sold = Math.min(stock, demandQty);
                 inventoryState.set(invKey, stock - sold);
-
-                const linesInCenter = productionLines.filter(l => l.workCenterId === centerId && l.isActive);
-                 if (linesInCenter.length > 0) {
-                    const demandPerLine = sold / linesInCenter.length;
-                    linesInCenter.forEach(l => {
-                        if (!weeklyAggregates.has(l.id)) weeklyAggregates.set(l.id, { production: 0, sales: 0, netTransfers: 0 });
-                        weeklyAggregates.get(l.id)!.sales += demandPerLine;
-                    });
-                }
+                
+                // Find any monthly plan item for this product/month to update demand
+                 const planItem = monthlyPlan.find(p => p.year === year && p.month === month && p.productId === productId);
+                 if (planItem) {
+                     planItem.totalDemand += sold;
+                 }
             }
         }
         
-        for (const [lineId, agg] of weeklyAggregates.entries()) {
-            const line = productionLines.find(l => l.id === lineId)!;
-            const initialStockForLineProducts = line.materialsHandled.reduce((sum, pid) => sum + (inventoryState.get(`${pid}---${line.workCenterId}`) || 0), 0) / (line.materialsHandled.length || 1);
-            weeklyPlan.push({
-                id: `${weekKeyPart}---${line.workCenterId}---${line.id}`,
-                year, week, workCenterId: line.workCenterId, lineId: line.id,
-                initialStock: initialStockForLineProducts, production: agg.production,
-                sales: agg.sales, netTransfers: agg.netTransfers,
-                finalStock: initialStockForLineProducts + agg.production + agg.netTransfers - agg.sales,
-            });
-        }
+        // Finalize stock levels for the month
+        monthlyPlan.filter(p => p.year === year && p.month === month).forEach(p => {
+             const invKey = `${p.productId}---${p.producingCenterId}`;
+             const startStock = (inventoryState.get(invKey) || 0) - p.totalQuantityToProduce;
+             const endStock = inventoryState.get(invKey) || 0;
+             p.initialStock = startStock;
+             p.finalStock = endStock;
+        });
+
     }
 
     onProgress(null);
-    auditLog.push(`Fase 2 (Planificación) completada. Se generaron ${weeklyPlan.length} registros de plan semanal.`);
-    return { dailyPlan: [], monthlyPlan: [], weeklyPlan, auditLog };
+    auditLog.push(`Fase 2 (Planificación) completada. Se generaron ${monthlyPlan.length} registros de plan mensual.`);
+    return { dailyPlan: [], monthlyPlan, weeklyPlan: [], auditLog };
 };
 
 
-function getWeeklyCapacity(year: number, week: number, lineId: string, holidays: Holiday[], shiftParams: ShiftParameters): { regularHours: number, extraHours: number, saturdayHours: number } {
+function getMonthlyCapacity(year: number, month: number, lineId: string, holidays: Holiday[], shiftParams: ShiftParameters): { regularHours: number, extraHours: number, saturdayHours: number } {
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
-    const firstDayOfYear = new Date(year, 0, 1);
-    const daysOffset = (week - 1) * 7;
-    // Adjust to Monday of the week
-    const firstDayOfWeek = new Date(firstDayOfYear.setDate(firstDayOfYear.getDate() + daysOffset - (firstDayOfYear.getDay() + 6) % 7));
+    const daysInMonth = new Date(year, month, 0).getDate();
 
-    for (let d = 0; d < 7; d++) {
-        const checkDate = new Date(firstDayOfWeek.valueOf());
-        checkDate.setDate(checkDate.getDate() + d);
+    for (let day = 1; day <= daysInMonth; day++) {
+        const checkDate = new Date(year, month - 1, day);
         const dayOfWeek = checkDate.getDay(); // 0=Sun, 6=Sat
 
         let isProdHoliday = false;
@@ -721,6 +629,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
