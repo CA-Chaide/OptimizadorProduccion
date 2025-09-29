@@ -1,5 +1,4 @@
 
-
 import React, { useState, useCallback, useMemo, ChangeEvent, useEffect, useRef } from 'react';
 import { 
     AppConstraints, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, 
@@ -120,7 +119,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     const updatedLines = constraints.productionLines.map(pl => {
       if (pl.id === lineId) {
         const updatedWorkstations = pl.assignedWorkstations.map(as => 
-          as.definitionId === wdId ? { ...as, quantity: isNaN(numValue) || numValue < 1 ? 1 : numValue } : as
+          as.definitionId === wdId ? { ...as, quantity: isNaN(numValue) || numValue < 0 ? 0 : numValue } : as
         );
         return { ...pl, assignedWorkstations: updatedWorkstations };
       }
@@ -285,30 +284,31 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                             <div className="pl-4 mt-2 space-y-2">
                                                 {pl.assignedWorkstations.map(as => {
                                                     const wd = constraints.workstationDefinitions.find(w => w.id === as.definitionId);
+                                                    if (!wd) return null; // Defensive check
                                                     return (
                                                         <div key={as.definitionId} className="flex justify-between items-center text-sm p-2 bg-white rounded-md shadow-sm">
-                                                            <span className="text-gray-700">{wd?.name || 'Puesto desconocido'}</span>
+                                                            <span className="text-gray-700">{wd.name}</span>
                                                             <div className="flex items-center gap-4">
                                                                 <div className="flex items-center gap-2">
-                                                                    <label htmlFor={`emp-qty-${wd?.id}`} className="text-xs text-gray-600">Empl:</label>
+                                                                    <label htmlFor={`emp-qty-${wd.id}`} className="text-xs text-gray-600">Empl:</label>
                                                                     <input 
                                                                         type="number" 
-                                                                        id={`emp-qty-${wd?.id}`}
-                                                                        value={wd?.employeesPerWorkstation} 
-                                                                        onChange={e => handleEmployeesPerWorkstationChange(wd!.id, e.target.value)}
+                                                                        id={`emp-qty-${wd.id}`}
+                                                                        value={wd.employeesPerWorkstation} 
+                                                                        onChange={e => handleEmployeesPerWorkstationChange(wd.id, e.target.value)}
                                                                         className="w-16 px-2 py-1 border border-gray-300 rounded-md text-sm"
                                                                         min="1"
                                                                     />
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
-                                                                    <label htmlFor={`line-qty-${pl.id}-${wd?.id}`} className="text-xs text-gray-600">Cant:</label>
+                                                                    <label htmlFor={`line-qty-${pl.id}-${wd.id}`} className="text-xs text-gray-600">Cant:</label>
                                                                     <input 
                                                                         type="number"
-                                                                        id={`line-qty-${pl.id}-${wd?.id}`}
+                                                                        id={`line-qty-${pl.id}-${wd.id}`}
                                                                         value={as.quantity}
                                                                         onChange={e => handleWorkstationQuantityInLineChange(pl.id, as.definitionId, e.target.value)}
                                                                         className="w-16 px-2 py-1 border border-gray-300 rounded-md text-sm"
-                                                                        min="1"
+                                                                        min="0"
                                                                     />
                                                                 </div>
                                                             </div>

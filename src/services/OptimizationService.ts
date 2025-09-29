@@ -1,12 +1,4 @@
 
-
-
-
-
-
-
-
-
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -58,16 +50,16 @@ const applyPredefinedValues = (
             const workstationSettings = centerLines[lineName];
             for (const workstationName in workstationSettings) {
                 const quantity = workstationSettings[workstationName];
+                // Find workstation definition ID based on name and center. Crucially, workstation names are unique within a center.
                 const workstation = Array.from(workstationsMap.values()).find(w => w.name === workstationName);
+
                 if (!workstation) continue;
 
                 // Update workstation quantity in the line
                 const assignedWsIndex = line.assignedWorkstations.findIndex(as => as.definitionId === workstation.id);
                 if (assignedWsIndex !== -1) {
-                    line.assignedWorkstations[assignedWsIndex] = {
-                        ...line.assignedWorkstations[assignedWsIndex],
-                        quantity: quantity
-                    };
+                    // This is the line that actually applies the change.
+                    line.assignedWorkstations[assignedWsIndex].quantity = quantity;
                 }
             }
         }
@@ -118,11 +110,12 @@ export function processAndValidateAssemblyData(
             discoveredWorkCenters.set(centerId, { id: centerId, name: centerId, productionLineIds: [], isActive: true });
         }
         
-        const workstationId = `wd---${centerId}---${workstationName}`;
+        // PuestoTrabajo names can be repeated across centers, so the ID must be unique.
+        const workstationId = `wd---${workstationName}`;
         if (!discoveredWorkstations.has(workstationId)) {
             discoveredWorkstations.set(workstationId, {
                 id: workstationId, name: workstationName,
-                employeesPerWorkstation: 1, // Default to 1 initially
+                employeesPerWorkstation: 1, 
                 machineCode: null, isActive: true
             });
         }
@@ -140,7 +133,7 @@ export function processAndValidateAssemblyData(
         
         const line = discoveredLines.get(lineId)!;
         if (!line.assignedWorkstations.some(as => as.definitionId === workstationId)) {
-             line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 }); // Default to 1
+             line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 }); 
         }
         
         const center = discoveredWorkCenters.get(centerId)!;
@@ -149,23 +142,25 @@ export function processAndValidateAssemblyData(
         }
     });
 
+    const discoveredLinesArray = Array.from(discoveredLines.values());
+    const discoveredWorkstationsArray = Array.from(discoveredWorkstations.values());
+
     // --- APPLY PREDEFINED VALUES TO THE DISCOVERED STRUCTURE ---
     let { updatedLines, updatedWorkstations } = applyPredefinedValues(
         Array.from(discoveredWorkCenters.values()),
-        Array.from(discoveredLines.values()),
-        Array.from(discoveredWorkstations.values())
+        discoveredLinesArray,
+        discoveredWorkstationsArray
     );
 
     // --- MERGE WITH USER EDITS FROM PREVIOUS STATE ---
     const finalLines = updatedLines.map(line => {
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         if (userEditedLine) {
-            // Preserve user-edited process type
             line.processType = userEditedLine.processType;
-            // Preserve user-edited quantities if they differ from the new base (predefined)
+            // For each assigned workstation in the newly discovered line structure
             line.assignedWorkstations.forEach(as => {
                 const userEditedAs = userEditedLine.assignedWorkstations.find(uas => uas.definitionId === as.definitionId);
-                // If user value exists and differs from the predefined one, keep user value
+                // If the user has a different quantity for this workstation, keep the user's value
                 if (userEditedAs && userEditedAs.quantity !== as.quantity) {
                     as.quantity = userEditedAs.quantity;
                 }
@@ -177,11 +172,9 @@ export function processAndValidateAssemblyData(
     const finalWorkstations = updatedWorkstations.map(ws => {
         const userEditedWs = currentConstraints.workstationDefinitions.find(w => w.id === ws.id);
         if (userEditedWs) {
-            // Preserve user-edited employee counts
             if(userEditedWs.employeesPerWorkstation !== ws.employeesPerWorkstation) {
                 ws.employeesPerWorkstation = userEditedWs.employeesPerWorkstation;
             }
-            // Preserve user-edited machine assignment
             ws.machineCode = userEditedWs.machineCode;
         }
         return ws;
@@ -302,16 +295,16 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V9 (Cost Optimized) ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v9 con optimización de costos de horas.'];
-    const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors } = constraints;
+    console.log('--- RUNNING STRATEGIC PLANNER V10 (Cost-Optimized Hours) ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v10 con optimización de costos de horas.'];
+    const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
         auditLog.push("Error: No hay datos de ventas para planificar.");
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
-     if (!laborCostFactors) {
-        auditLog.push("Error: No se han definido los factores de costo laboral.");
+     if (!laborCostFactors || !globalBaseCostPerHour) {
+        auditLog.push("Error: No se han definido los factores de costo laboral o el costo base por hora.");
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
 
@@ -479,31 +472,47 @@ export const generateProductionPlan = async (
         onProgress({ message: `Planificando semana ${week}...`, step: 'daily', current: i + 1, total: planningWeeks.length });
         const weekKeyPart = `${year}-W${week}`;
         
-        const weeklyLineCapacity = new Map<string, { regularHours: number, extraHours: number, saturdayHours: number }>();
+        const weeklyLineCapacity = new Map<string, { regularHours: number, extraHours: number, saturdayHours: number, usedRegular: number, usedExtra: number, usedSaturday: number }>();
         productionLines.forEach(line => {
              if (!line.isActive) return;
-             weeklyLineCapacity.set(line.id, getWeeklyCapacity(year, week, line.id, holidays, shiftParameters));
+             const cap = getWeeklyCapacity(year, week, line.id, holidays, shiftParameters);
+             weeklyLineCapacity.set(line.id, { ...cap, usedRegular: 0, usedExtra: 0, usedSaturday: 0 });
         });
 
         const weeklyAggregates = new Map<string, { production: number, sales: number, netTransfers: number }>();
 
-        const consumeCapacity = (lineId: string, hoursToConsume: number): boolean => {
+        const consumeCapacityAndGetCost = (lineId: string, hoursToConsume: number): { success: boolean; cost: number } => {
             const capacity = weeklyLineCapacity.get(lineId);
-            if (!capacity) return false;
-            let totalAvailable = capacity.regularHours + capacity.extraHours + capacity.saturdayHours;
-            if (hoursToConsume > totalAvailable) return false;
+            if (!capacity) return { success: false, cost: 0 };
             
+            let totalAvailable = (capacity.regularHours - capacity.usedRegular) + 
+                                 (capacity.extraHours - capacity.usedExtra) + 
+                                 (capacity.saturdayHours - capacity.usedSaturday);
+
+            if (hoursToConsume > totalAvailable) return { success: false, cost: 0 };
+
             let remainingHours = hoursToConsume;
-            const regularToConsume = Math.min(remainingHours, capacity.regularHours);
-            capacity.regularHours -= regularToConsume;
+            let totalCost = 0;
+
+            const regularToConsume = Math.min(remainingHours, capacity.regularHours - capacity.usedRegular);
+            capacity.usedRegular += regularToConsume;
+            totalCost += regularToConsume * globalBaseCostPerHour;
             remainingHours -= regularToConsume;
-            const extraToConsume = Math.min(remainingHours, capacity.extraHours);
-            capacity.extraHours -= extraToConsume;
-            remainingHours -= extraToConsume;
-            const saturdayToConsume = Math.min(remainingHours, capacity.saturdayHours);
-            capacity.saturdayHours -= saturdayToConsume;
+
+            if (remainingHours > 0) {
+                const extraToConsume = Math.min(remainingHours, capacity.extraHours - capacity.usedExtra);
+                capacity.usedExtra += extraToConsume;
+                totalCost += extraToConsume * globalBaseCostPerHour * (1 + laborCostFactors.factorAdicionalDiurno / 100);
+                remainingHours -= extraToConsume;
+            }
+
+            if (remainingHours > 0) {
+                const saturdayToConsume = Math.min(remainingHours, capacity.saturdayHours - capacity.usedSaturday);
+                capacity.usedSaturday += saturdayToConsume;
+                totalCost += saturdayToConsume * globalBaseCostPerHour * (1 + laborCostFactors.factorFinSemanaFeriado / 100);
+            }
             
-            return true;
+            return { success: true, cost: totalCost };
         };
         
         const planProduction = (line: ProductionLine, productId: string, unitsToProduce: number) => {
@@ -511,15 +520,17 @@ export const generateProductionPlan = async (
             if (timePerUnit === Infinity) return 0;
             
             const capacity = weeklyLineCapacity.get(line.id)!;
-            const totalAvailableHours = capacity.regularHours + capacity.extraHours + capacity.saturdayHours;
+            const totalAvailableHours = (capacity.regularHours - capacity.usedRegular) + (capacity.extraHours - capacity.usedExtra) + (capacity.saturdayHours - capacity.usedSaturday);
             if (totalAvailableHours <= 0) return 0;
 
             const producibleUnits = Math.min(unitsToProduce, Math.floor(totalAvailableHours / timePerUnit));
             const hoursToConsume = producibleUnits * timePerUnit;
             
-            if (consumeCapacity(line.id, hoursToConsume)) {
+            const { success, cost } = consumeCapacityAndGetCost(line.id, hoursToConsume);
+            if (success) {
                 if (!weeklyAggregates.has(line.id)) weeklyAggregates.set(line.id, { production: 0, sales: 0, netTransfers: 0 });
                 weeklyAggregates.get(line.id)!.production += producibleUnits;
+                // We're not tracking cost per product, but we could add it here
                 return producibleUnits;
             }
             return 0;
@@ -532,10 +543,13 @@ export const generateProductionPlan = async (
              apiData.forEach(item => {
                  if (String(item.Centro).trim() !== centerId) return;
                  const productId = normalizeMaterialCode(item.CodMaterial);
-                 const lineId = `pl---${centerId}---${String(item.Linea).trim()}`;
+                 const lineName = String(item.Linea).trim();
+                 const line = centerLines.find(l => l.name === lineName);
+                 if (!line) return;
+
                  if (!productLineMapping.has(productId)) productLineMapping.set(productId, []);
-                 if (!productLineMapping.get(productId)!.includes(lineId)) {
-                     productLineMapping.get(productId)!.push(lineId);
+                 if (!productLineMapping.get(productId)!.includes(line.id)) {
+                     productLineMapping.get(productId)!.push(line.id);
                  }
              });
 
@@ -707,5 +721,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
