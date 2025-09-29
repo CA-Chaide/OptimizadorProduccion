@@ -3,6 +3,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -30,16 +31,16 @@ const applyPredefinedValues = (
     
     const predefinedQuantities: { [centerId: string]: { [lineName: string]: { [workstationName: string]: number } } } = {
         '1000': {
-            'LINEA 5': { 'Armador': 2 },
             'LINEA 1': { 'Armador': 12, 'Cerrador': 6 },
             'LINEA 2': { 'Armador': 6, 'Cerrador': 8 },
             'LINEA 3': { 'Armador': 1, 'Cerrador': 1 },
+            'LINEA 5': { 'Armador': 2 },
         },
         '2000': {
-            'LINEA 5': { 'Armador': 2 },
             'LINEA 1': { 'Armador': 9, 'Cerrador': 5 },
             'LINEA 2': { 'Armador': 4, 'Cerrador': 4 },
             'LINEA 4': { 'Armador': 3 },
+            'LINEA 5': { 'Armador': 3 },
         }
     };
     
@@ -156,27 +157,24 @@ export function processAndValidateAssemblyData(
     });
 
     // --- APPLY PREDEFINED VALUES ---
-    // Instead of applying them blindly, we check if the values are still the default '1'
     let { updatedLines, updatedWorkstations } = applyPredefinedValues(
         Array.from(discoveredWorkCenters.values()),
         Array.from(discoveredLines.values()),
         Array.from(discoveredWorkstations.values())
     );
 
-    // Now, we merge with any user-made changes that might exist on existingLines/existingWorkstations
+    // Merge with user-made changes. If a user has a value different from the default '1', keep it.
     const finalLines = updatedLines.map(predefinedLine => {
         const userEditedLine = existingLines.get(predefinedLine.id);
-        if (!userEditedLine) return predefinedLine; // It's a new line, use predefined.
+        if (!userEditedLine) return predefinedLine;
 
         const finalAssigned = predefinedLine.assignedWorkstations.map(predefinedAs => {
             const userEditedAs = userEditedLine.assignedWorkstations.find(as => as.definitionId === predefinedAs.definitionId);
-            // If user has a value different from 1, it means they edited it. Keep it.
-            // Otherwise, use the new predefined value.
             const userValue = userEditedAs?.quantity;
-            if (userValue !== undefined && userValue !== 1) {
+            if (userValue !== undefined && userValue !== 1) { // If user changed from default 1
                 return { ...predefinedAs, quantity: userValue };
             }
-            return predefinedAs;
+            return predefinedAs; // Otherwise, use the new predefined value
         });
 
         return { ...predefinedLine, assignedWorkstations: finalAssigned, processType: userEditedLine.processType };
