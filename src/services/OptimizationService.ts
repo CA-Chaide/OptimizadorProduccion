@@ -4,6 +4,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -39,7 +40,6 @@ const applyPredefinedValues = (
         '2000': {
             'LINEA 1': { 'Armador': 9, 'Cerrador': 5 },
             'LINEA 2': { 'Armador': 4, 'Cerrador': 4 },
-            'LINEA 4': { 'Armador': 3 },
             'LINEA 5': { 'Armador': 3 },
         }
     };
