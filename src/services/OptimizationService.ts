@@ -5,6 +5,7 @@
 
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -45,7 +46,7 @@ const applyPredefinedValues = (
     };
     
     let workstationsMap = new Map(workstationDefinitions.map(wd => [wd.id, {...wd}]));
-    let linesMap = new Map(productionLines.map(pl => [pl.id, {...pl, assignedWorkstations: [...pl.assignedWorkstations]}]));
+    let linesMap = new Map(productionLines.map(pl => [pl.id, {...pl, assignedWorkstations: pl.assignedWorkstations.map(as => ({...as}))}]));
 
     for (const centerId in predefinedQuantities) {
         const centerLines = predefinedQuantities[centerId];
@@ -107,10 +108,6 @@ export function processAndValidateAssemblyData(
     const discoveredLines = new Map<string, ProductionLine>();
     const discoveredWorkstations = new Map<string, WorkstationDefinition>();
 
-    // Use current values if they exist, to respect user edits.
-    const existingWorkstations = new Map(currentConstraints.workstationDefinitions.map(wd => [wd.id, wd]));
-    const existingLines = new Map(currentConstraints.productionLines.map(pl => [pl.id, pl]));
-
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
         const lineName = String(row.Linea).trim();
@@ -122,21 +119,18 @@ export function processAndValidateAssemblyData(
         
         const workstationId = `wd---${centerId}---${workstationName}`;
         if (!discoveredWorkstations.has(workstationId)) {
-            const existingWd = existingWorkstations.get(workstationId);
             discoveredWorkstations.set(workstationId, {
                 id: workstationId, name: workstationName,
-                // Prioritize user-edited value, then default to 1
-                employeesPerWorkstation: existingWd?.employeesPerWorkstation || 1,
-                machineCode: existingWd?.machineCode || null, isActive: true
+                employeesPerWorkstation: 1, // Default to 1 initially
+                machineCode: null, isActive: true
             });
         }
         
         const lineId = `pl---${centerId}---${lineName}`;
         if (!discoveredLines.has(lineId)) {
-            const existingLine = existingLines.get(lineId);
             discoveredLines.set(lineId, {
                 id: lineId, name: lineName, workCenterId: centerId,
-                processType: existingLine?.processType || 'Colchones',
+                processType: 'Colchones', // Default
                 assignedWorkstations: [],
                 capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
                 materialsHandled: [], isActive: true
@@ -145,9 +139,7 @@ export function processAndValidateAssemblyData(
         
         const line = discoveredLines.get(lineId)!;
         if (!line.assignedWorkstations.some(as => as.definitionId === workstationId)) {
-             const existingAssignment = existingLines.get(lineId)?.assignedWorkstations.find(as => as.definitionId === workstationId);
-             // Prioritize user-edited value, then default to 1
-             line.assignedWorkstations.push({ definitionId: workstationId, quantity: existingAssignment?.quantity || 1 });
+             line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 }); // Default to 1
         }
         
         const center = discoveredWorkCenters.get(centerId)!;
@@ -156,43 +148,47 @@ export function processAndValidateAssemblyData(
         }
     });
 
-    // --- APPLY PREDEFINED VALUES ---
-    let { updatedLines, updatedWorkstations } = applyPredefinedValues(
+    // --- APPLY PREDEFINED VALUES TO THE DISCOVERED STRUCTURE ---
+    let { updatedLines: linesWithPredefined, updatedWorkstations: workstationsWithPredefined } = applyPredefinedValues(
         Array.from(discoveredWorkCenters.values()),
         Array.from(discoveredLines.values()),
         Array.from(discoveredWorkstations.values())
     );
 
-    // Merge with user-made changes. If a user has a value different from the default '1', keep it.
-    const finalLines = updatedLines.map(predefinedLine => {
-        const userEditedLine = existingLines.get(predefinedLine.id);
-        if (!userEditedLine) return predefinedLine;
-
-        const finalAssigned = predefinedLine.assignedWorkstations.map(predefinedAs => {
-            const userEditedAs = userEditedLine.assignedWorkstations.find(as => as.definitionId === predefinedAs.definitionId);
-            const userValue = userEditedAs?.quantity;
-            if (userValue !== undefined && userValue !== 1) { // If user changed from default 1
-                return { ...predefinedAs, quantity: userValue };
-            }
-            return predefinedAs; // Otherwise, use the new predefined value
-        });
-
-        return { ...predefinedLine, assignedWorkstations: finalAssigned, processType: userEditedLine.processType };
-    });
-
-    const finalWorkstations = updatedWorkstations.map(predefinedWs => {
-        const userEditedWs = existingWorkstations.get(predefinedWs.id);
-        const userValue = userEditedWs?.employeesPerWorkstation;
-        if (userValue !== undefined && userValue !== 1) {
-            return { ...predefinedWs, employeesPerWorkstation: userValue };
+    // --- MERGE WITH USER EDITS FROM PREVIOUS STATE ---
+    const finalLines = linesWithPredefined.map(line => {
+        const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
+        if (userEditedLine) {
+            // Preserve user-edited process type
+            line.processType = userEditedLine.processType;
+            // Preserve user-edited quantities if they differ from the new base (predefined)
+            line.assignedWorkstations.forEach(as => {
+                const userEditedAs = userEditedLine.assignedWorkstations.find(uas => uas.definitionId === as.definitionId);
+                // If user value exists and differs from the predefined one, keep user value
+                if (userEditedAs && userEditedAs.quantity !== as.quantity) {
+                    as.quantity = userEditedAs.quantity;
+                }
+            });
         }
-        return predefinedWs;
+        return line;
     });
 
+    const finalWorkstations = workstationsWithPredefined.map(ws => {
+        const userEditedWs = currentConstraints.workstationDefinitions.find(w => w.id === ws.id);
+        if (userEditedWs) {
+            // Preserve user-edited employee counts
+            if(userEditedWs.employeesPerWorkstation !== ws.employeesPerWorkstation) {
+                ws.employeesPerWorkstation = userEditedWs.employeesPerWorkstation;
+            }
+            // Preserve user-edited machine assignment
+            ws.machineCode = userEditedWs.machineCode;
+        }
+        return ws;
+    });
 
     console.log('Work Centers Discovered:', Array.from(discoveredWorkCenters.values()));
-    console.log('Production Lines After Predefined Values:', finalLines);
-    console.log('Workstation Definitions After Predefined Values:', finalWorkstations);
+    console.log('Final Production Lines (after merge):', finalLines);
+    console.log('Final Workstation Definitions (after merge):', finalWorkstations);
     
     if(discoveredWorkCenters.size === 0 || discoveredLines.size === 0) {
         const structuralError = "Error Crítico: No se pudo descubrir ninguna estructura de producción (Centros o Líneas) a partir de los datos. Revise la fuente de datos 'TiemposEnsamblado'.";
@@ -710,3 +706,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
