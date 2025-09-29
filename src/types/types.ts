@@ -7,6 +7,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -260,6 +261,7 @@ export interface MonthlyProductionPlanItem {
     productId: string;
     productName: string;
     producingCenterId?: string;
+    demandCenterId?: string;
     assignedLineId?: string;
     totalQuantityToProduce: number;
     totalHoursWorked: number;
@@ -267,6 +269,9 @@ export interface MonthlyProductionPlanItem {
     totalDemand: number;
     initialStock: number;
     finalStock: number;
+    isTransfer?: boolean;
+    transferSourceCenterId?: string;
+    transferDestinationCenterId?: string;
 }
 
 export interface WeeklyPlanItem {

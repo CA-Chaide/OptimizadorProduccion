@@ -156,10 +156,10 @@ export const ProductionPlanSection: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'monthly' | 'weekly' | 'daily'>('monthly');
   
   const [filterInputs, setFilterInputs] = useState<{
-    center: string;
+    centers: string[];
     processType: string;
     lines: string[];
-  }>({ center: '', processType: '', lines: [] });
+  }>({ centers: [], processType: '', lines: [] });
 
   const [appliedFilters, setAppliedFilters] = useState<{
     product: string;
@@ -234,74 +234,100 @@ export const ProductionPlanSection: React.FC = () => {
     });
   }, [dailyPlan, appliedFilters, constraints.productionLines]);
 
-  const monthlyFlow = useMemo(() => {
+  const monthlyFlowByCenter = useMemo(() => {
     const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
-    if (!filterInputs.center || filterInputs.lines.length === 0 || !monthlyPlan || monthlyPlan.length === 0) return null;
+    if (filterInputs.centers.length === 0 || !monthlyPlan || monthlyPlan.length === 0) return null;
 
-    const filteredData = monthlyPlan.filter(
-        item => item.producingCenterId === filterInputs.center && filterInputs.lines.includes(item.assignedLineId || '')
-    );
-      
-    if (filteredData.length === 0) return null;
+    const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
 
-    const monthKeys = Array.from(new Set(filteredData.map(d => `${d.year}-${String(d.month).padStart(2,'0')}`))).sort();
+    for(const centerId of filterInputs.centers) {
+        const filteredData = monthlyPlan.filter(
+            item => (item.producingCenterId === centerId || item.demandCenterId === centerId) && 
+                   (filterInputs.lines.length === 0 || filterInputs.lines.includes(item.assignedLineId || ''))
+        );
+        if (filteredData.length === 0) continue;
+
+        const monthKeys = Array.from(new Set(filteredData.map(d => `${d.year}-${String(d.month).padStart(2,'0')}`))).sort();
+        const aggregatedData: Record<string, Record<string, number>> = {
+            'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
+        };
+
+        monthKeys.forEach(monthKey => {
+            const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
+            
+            const production = monthItems
+                .filter(item => item.producingCenterId === centerId)
+                .reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+
+            const sales = monthItems
+                .filter(item => item.demandCenterId === centerId)
+                .reduce((sum, item) => sum + item.totalDemand, 0);
+            
+            const netTransfers = monthItems.reduce((sum, item) => {
+                if(item.isTransfer) {
+                    if (item.transferDestinationCenterId === centerId) return sum + item.totalQuantityToProduce;
+                    if (item.transferSourceCenterId === centerId) return sum - item.totalQuantityToProduce;
+                }
+                return sum;
+            }, 0);
+            
+            const initialStock = monthItems
+              .filter(item => item.producingCenterId === centerId || item.demandCenterId === centerId)
+              .reduce((sum, item) => sum + item.initialStock, 0);
+
+            aggregatedData['Producción'][monthKey] = production;
+            aggregatedData['Ventas'][monthKey] = sales;
+            aggregatedData['Traslados (Neto)'][monthKey] = netTransfers;
+            aggregatedData['Saldo Inicial'][monthKey] = initialStock;
+            aggregatedData['Saldo Final'][monthKey] = initialStock + production + netTransfers - sales;
+        });
+
+        const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Saldo Final'];
+        const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
+        result[centerId] = { monthKeys, rows };
+    }
     
-    const aggregatedData: Record<string, Record<string, number>> = {
-        'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
-    };
-
-    monthKeys.forEach(monthKey => {
-      const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
-      
-      aggregatedData['Producción'][monthKey] = monthItems.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
-      aggregatedData['Ventas'][monthKey] = monthItems.reduce((sum, item) => sum + item.totalDemand, 0);
-      aggregatedData['Traslados (Neto)'][monthKey] = 0; // Simplified for now
-      aggregatedData['Saldo Inicial'][monthKey] = monthItems.reduce((sum, item) => sum + item.initialStock, 0) / (monthItems.length || 1);
-      aggregatedData['Saldo Final'][monthKey] = monthItems.reduce((sum, item) => sum + item.finalStock, 0) / (monthItems.length || 1);
-    });
-
-    const rowOrder = ['Saldo Inicial', 'Producción', 'Ventas', 'Traslados (Neto)', 'Saldo Final'];
-    const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
-
-    return { monthKeys, rows };
+    return result;
   }, [filterInputs, productionPlan, constraints]);
-
   
   const weeklyFlow = useMemo(() => {
       const { weeklyPlan } = productionPlan || { weeklyPlan: [] };
-      if (!filterInputs.center || filterInputs.lines.length === 0 || !weeklyPlan || weeklyPlan.length === 0) return null;
+      if (filterInputs.centers.length === 0 || !weeklyPlan || weeklyPlan.length === 0) return null;
 
-      const filteredData = weeklyPlan.filter(
-          item => item.workCenterId === filterInputs.center && filterInputs.lines.includes(item.lineId)
-      );
+      const result: Record<string, { weekKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
       
-      if (filteredData.length === 0) return null;
-      
-      const weekKeys = Array.from(new Set(filteredData.map(d => `${d.year}-W${d.week}`))).sort();
-      
-      const aggregatedData: Record<string, Record<string, number>> = {
-          'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
-      };
+      for(const centerId of filterInputs.centers) {
+          const filteredData = weeklyPlan.filter(
+              item => (item.workCenterId === centerId) && 
+                     (filterInputs.lines.length === 0 || filterInputs.lines.includes(item.lineId))
+          );
+          if (filteredData.length === 0) continue;
 
-      weekKeys.forEach(weekKey => {
-        const weekItems = filteredData.filter(d => `${d.year}-W${d.week}` === weekKey);
-        aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
-        aggregatedData['Ventas'][weekKey] = weekItems.reduce((sum, item) => sum + item.sales, 0);
-        aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
-        aggregatedData['Saldo Inicial'][weekKey] = weekItems.reduce((sum, item) => sum + item.initialStock, 0) / (weekItems.length || 1);
-        aggregatedData['Saldo Final'][weekKey] = weekItems.reduce((sum, item) => sum + item.finalStock, 0) / (weekItems.length || 1);
-      });
-      
-      const rowOrder = ['Saldo Inicial', 'Producción', 'Ventas', 'Traslados (Neto)', 'Saldo Final'];
-      const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
+          const weekKeys = Array.from(new Set(filteredData.map(d => `${d.year}-W${d.week}`))).sort();
+          const aggregatedData: Record<string, Record<string, number>> = {
+              'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
+          };
 
-      return { weekKeys, rows };
+          weekKeys.forEach(weekKey => {
+            const weekItems = filteredData.filter(d => `${d.year}-W${d.week}` === weekKey);
+            aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
+            aggregatedData['Ventas'][weekKey] = weekItems.reduce((sum, item) => sum + item.sales, 0);
+            aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
+            aggregatedData['Saldo Inicial'][weekKey] = weekItems.reduce((sum, item) => sum + item.initialStock, 0) / (weekItems.length || 1);
+            aggregatedData['Saldo Final'][weekKey] = weekItems.reduce((sum, item) => sum + item.finalStock, 0) / (weekItems.length || 1);
+          });
+          
+          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Saldo Final'];
+          const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
+          result[centerId] = { weekKeys, rows };
+      }
+      return result;
   }, [filterInputs, productionPlan, constraints]);
 
   const availableLinesForFilter = useMemo(() => {
-      if (!filterInputs.center || !filterInputs.processType) return [];
-      return constraints.productionLines.filter(line => line.workCenterId === filterInputs.center && line.processType === filterInputs.processType);
-  }, [filterInputs.center, filterInputs.processType, constraints.productionLines]);
+      if (filterInputs.centers.length === 0 || !filterInputs.processType) return [];
+      return constraints.productionLines.filter(line => filterInputs.centers.includes(line.workCenterId) && line.processType === filterInputs.processType);
+  }, [filterInputs.centers, filterInputs.processType, constraints.productionLines]);
 
   const renderContentForTab = (tab: 'monthly' | 'weekly' | 'daily') => {
       switch (tab) {
@@ -356,45 +382,57 @@ export const ProductionPlanSection: React.FC = () => {
   );
 
   const renderSummaryView = (
-      flow: { monthKeys: string[], rows: { label: string, values: Record<string, number> } } | { weekKeys: string[], rows: { label: string, values: Record<string, number> } } | null,
+      flowByCenter: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> | Record<string, { weekKeys: string[], rows: { label: string, values: Record<string, number> }[] }> | null,
       type: 'monthly' | 'weekly'
   ) => {
-    const keys = type === 'monthly' ? (flow as any)?.monthKeys : (flow as any)?.weekKeys;
-    const keyPrefix = type === 'monthly' ? '' : 'Sem';
-
-    if (!filterInputs.center || filterInputs.lines.length === 0) {
-      return <div className="text-center py-10 text-gray-500">Por favor, seleccione un centro, tipo de proceso y una o más líneas para ver el resumen.</div>;
+    if (filterInputs.centers.length === 0) {
+      return <div className="text-center py-10 text-gray-500">Por favor, seleccione uno o más centros para ver el resumen.</div>;
     }
-    if (!flow || !keys || keys.length === 0) {
+    if (!flowByCenter || Object.keys(flowByCenter).length === 0) {
         return <div className="text-center py-10 text-gray-500">No hay datos de planificación para la combinación de filtros seleccionada.</div>;
     }
-
+    
     return (
-        <div className="overflow-x-auto border rounded-lg">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-10">Métrica</th>
-                {keys.map((key: string) => {
-                    const [year, num] = key.split(type === 'monthly' ? '-' : '-W');
-                    const label = type === 'monthly' ? `${MONTH_NAMES[parseInt(num,10) -1].substring(0,3)} '${year.slice(-2)}` : `${keyPrefix} ${num} '${year.slice(-2)}`;
-                    return <th key={key} className="px-3 py-2 text-right font-semibold text-gray-600">{label}</th>;
-                })}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {flow.rows.map(row => (
-                <tr key={row.label} className="hover:bg-gray-50 group">
-                  <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
-                  {keys.map((key: string) => (
-                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''}`}>
-                      {Math.round(row.values[key] || 0).toLocaleString()}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-6">
+            {filterInputs.centers.map(centerId => {
+                const flow = (flowByCenter as any)[centerId];
+                if (!flow) return null;
+
+                const keys = type === 'monthly' ? flow.monthKeys : flow.weekKeys;
+                const keyPrefix = type === 'monthly' ? '' : 'Sem';
+
+                return (
+                    <div key={centerId}>
+                        <h4 className="text-lg font-semibold text-gray-800 mb-2">Resumen para Centro: {constraints.workCenters.find(c => c.id === centerId)?.name || centerId}</h4>
+                        <div className="overflow-x-auto border rounded-lg">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-gray-100">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-10">Métrica</th>
+                                {keys.map((key: string) => {
+                                    const [year, num] = key.split(type === 'monthly' ? '-' : '-W');
+                                    const label = type === 'monthly' ? `${MONTH_NAMES[parseInt(num,10) -1].substring(0,3)} '${year.slice(-2)}` : `${keyPrefix} ${num} '${year.slice(-2)}`;
+                                    return <th key={key} className="px-3 py-2 text-right font-semibold text-gray-600">{label}</th>;
+                                })}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {flow.rows.map((row: any) => (
+                                <tr key={row.label} className="hover:bg-gray-50 group">
+                                  <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
+                                  {keys.map((key: string) => (
+                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-red-600' : ''}`}>
+                                      {Math.round(row.values[key] || 0).toLocaleString()}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
   };
@@ -404,7 +442,7 @@ export const ProductionPlanSection: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 border rounded-lg bg-gray-50 items-start">
          <FilterControls />
       </div>
-      {renderSummaryView(monthlyFlow, 'monthly')}
+      {renderSummaryView(monthlyFlowByCenter, 'monthly')}
     </div>
   );
 
@@ -420,15 +458,17 @@ export const ProductionPlanSection: React.FC = () => {
   const FilterControls = () => (
       <>
         <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Centro de Trabajo</label>
-            <select value={filterInputs.center} onChange={e => setFilterInputs({ ...filterInputs, center: e.target.value, processType: '', lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9">
-                <option value="">Seleccione Centro</option>
-                {constraints.workCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <MultiSelect
+                label="Centro(s) de Trabajo"
+                options={constraints.workCenters.map(c => ({ value: c.id, label: c.name }))}
+                selected={filterInputs.centers}
+                onChange={selectedCenters => setFilterInputs({ ...filterInputs, centers: selectedCenters, processType: '', lines: [] })}
+                placeholder="Seleccione Centro(s)"
+            />
         </div>
         <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de Proceso</label>
-            <select value={filterInputs.processType} onChange={e => setFilterInputs({ ...filterInputs, processType: e.target.value, lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9" disabled={!filterInputs.center}>
+            <select value={filterInputs.processType} onChange={e => setFilterInputs({ ...filterInputs, processType: e.target.value, lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9" disabled={filterInputs.centers.length === 0}>
                 <option value="">Seleccione Proceso</option>
                 {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
