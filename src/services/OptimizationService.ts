@@ -247,27 +247,31 @@ const getWeekNumber = (d: Date): { year: number; week: number } => {
 };
 
 const calculateEffectiveManufacturingTime = (productId: string, line: ProductionLine, apiData: TiempoEnsambleItem[], workstationDefs: WorkstationDefinition[]): number => {
-    const workstationEffectiveTimes: number[] = [];
+    const workstationTimes: number[] = [];
+    
     for (const assignedWorkstation of line.assignedWorkstations) {
         const workstationDef = workstationDefs.find(wd => wd.id === assignedWorkstation.definitionId);
         if (!workstationDef) continue;
+
         const apiRow = apiData.find(d => 
             normalizeMaterialCode(d.CodMaterial) === productId &&
             String(d.Centro).trim() === line.workCenterId &&
             String(d.Linea).trim() === line.name &&
             String(d.PuestoTrabajo).trim() === workstationDef.name
         );
+        
         if (apiRow && apiRow.Tiempo > 0) {
-            const timeMinutes = apiRow.Tiempo;
-            const quantityOfPosts = assignedWorkstation.quantity > 0 ? assignedWorkstation.quantity : 1; 
-            const effectiveTimeForThisPostType = timeMinutes / quantityOfPosts;
-            workstationEffectiveTimes.push(effectiveTimeForThisPostType);
+            // This time is per individual post. The total time for this type of post is divided by the number of posts.
+            const timePerPost = apiRow.Tiempo / (assignedWorkstation.quantity > 0 ? assignedWorkstation.quantity : 1);
+            workstationTimes.push(timePerPost);
         }
     }
-    if (line.assignedWorkstations.length > 0 && workstationEffectiveTimes.length === 0) return Infinity; 
-    if (workstationEffectiveTimes.length === 0) return Infinity; 
-    const bottleneckTimeMinutes = Math.max(0, ...workstationEffectiveTimes);
-    return bottleneckTimeMinutes / 60; 
+    
+    if (workstationTimes.length === 0) return Infinity; // Cannot be produced on this line
+
+    // The bottleneck is the slowest step (highest time)
+    const bottleneckTimeMinutes = Math.max(0, ...workstationTimes);
+    return bottleneckTimeMinutes / 60; // Convert to hours
 };
 
 export const generateProductionPlan = async (
@@ -277,8 +281,8 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V18 ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v18.'];
+    console.log('--- RUNNING STRATEGIC PLANNER V19 ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v19.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
@@ -305,7 +309,7 @@ export const generateProductionPlan = async (
     });
     auditLog.push(`Se cargaron ${productInfoMap.size} productos únicos desde los datos maestros y de ventas.`);
     
-    // Step 1: Aggregate pure sales demand (dispatch needs)
+    // Step 1: Aggregate sales demand by dispatch center
     const monthlyDemandMap = new Map<string, number>(); // Key: 'YYYY-MM---productId---demandCenterId', Value: units
     salesData.forEach(sale => {
         const { año, mes, código, centro, unidadesProyectado } = sale;
@@ -315,7 +319,7 @@ export const generateProductionPlan = async (
         const demandKey = `${monthKey}---${productId}---${centerId}`;
         monthlyDemandMap.set(demandKey, (monthlyDemandMap.get(demandKey) || 0) + unidadesProyectado);
     });
-    auditLog.push(`Paso 1: Demanda de despacho (ventas) agregada. ${monthlyDemandMap.size} entradas únicas.`);
+    auditLog.push(`Paso 1: Demanda de despacho (ventas) agregada. ${monthlyDemandMap.size} entradas.`);
 
     // Step 2: Derive production needs and transfers
     const monthlyProductionNeeds = new Map<string, number>(); // Key: 'YYYY-MM---productId---producingCenterId', Value: units
@@ -335,9 +339,9 @@ export const generateProductionPlan = async (
         const needKey = `${monthKeyPart}---${productId}---${producingCenterId}`;
         monthlyProductionNeeds.set(needKey, (monthlyProductionNeeds.get(needKey) || 0) + demandQty);
     }
-    auditLog.push(`Paso 2: Necesidades de producción y traslados derivados. ${monthlyProductionNeeds.size} necesidades de prod, ${monthlyTransfers.size} traslados.`);
+    auditLog.push(`Paso 2: Necesidades de producción y traslados derivados. ${monthlyProductionNeeds.size} necesidades, ${monthlyTransfers.size} traslados.`);
 
-    // Step 3: Monthly Planning
+    // Step 3: Monthly Planning & Capacity Check
     const planningMonths = Array.from(new Set(Array.from(monthlyDemandMap.keys()).map(k => k.split('---')[0]))).sort()
         .map(monthKey => {
             const [yearStr, monthStr] = monthKey.split('-');
@@ -345,17 +349,69 @@ export const generateProductionPlan = async (
         });
 
     const monthlyPlan: MonthlyProductionPlanItem[] = [];
-    let inventoryState = new Map<string, number>(); // Key: 'productId---centerId'
+    let inventoryState = new Map<string, number>(); // Key: 'productId---centerId' -> stock
     inventorySettings.forEach(inv => inventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock));
+    
+    let productionBacklog = new Map<string, number>(); // Key: 'productId---producingCenterId' -> units
 
     for (let i = 0; i < planningMonths.length; i++) {
         const { year, month } = planningMonths[i];
         onProgress({ message: `Planificando mes ${month}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         const monthKeyPart = `${year}-${String(month).padStart(2, '0')}`;
         
+        // Calculate total hours required for this month's needs + backlog
+        let totalHoursRequiredByCenter = new Map<string, number>(); // centerId -> hours
+        
+        // Add backlog to this month's needs
+        const needsThisMonth = new Map<string, number>();
+        for(const [key, qty] of monthlyProductionNeeds.entries()) if(key.startsWith(monthKeyPart)) needsThisMonth.set(key.split('---').slice(1).join('---'), qty);
+        for(const [key, qty] of productionBacklog.entries()) needsThisMonth.set(key, (needsThisMonth.get(key) || 0) + qty);
+        
+        productionBacklog.clear(); // Clear backlog as we are now processing it
+        
+        const monthlyCapacityByLine = new Map<string, number>();
+        productionLines.forEach(line => {
+            const { regularHours, extraHours, saturdayHours } = getMonthlyCapacity(year, month, line.id, holidays, shiftParameters);
+            monthlyCapacityByLine.set(line.id, regularHours + extraHours + saturdayHours);
+        });
+
+        // This is a simplified assignment. A real scenario would use a more complex algorithm.
+        // Assign needs to lines and check capacity
+        const productionThisMonth = new Map<string, number>();
+        const hoursUsedByLine = new Map<string, number>();
+
+        for (const [prodCenterKey, qty] of needsThisMonth.entries()) {
+            const [productId, centerId] = prodCenterKey.split('---');
+            const linesInCenter = productionLines.filter(l => l.workCenterId === centerId);
+            
+            let quantityToProduce = qty;
+            const relevantLine = linesInCenter.find(l => l.materialsHandled.includes(productId)); // Simple logic, find first line
+
+            if (relevantLine) {
+                const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
+                const availableHours = (monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0);
+                const maxUnitsInAvailableTime = timePerUnit > 0 ? Math.floor(availableHours / timePerUnit) : Infinity;
+
+                let actualProduction = Math.min(quantityToProduce, maxUnitsInAvailableTime);
+                const hoursForProduction = actualProduction * timePerUnit;
+                
+                productionThisMonth.set(prodCenterKey, (productionThisMonth.get(prodCenterKey) || 0) + actualProduction);
+                hoursUsedByLine.set(relevantLine.id, (hoursUsedByLine.get(relevantLine.id) || 0) + hoursForProduction);
+
+                if (actualProduction < quantityToProduce) {
+                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + (quantityToProduce - actualProduction));
+                }
+            } else {
+                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + quantityToProduce);
+            }
+        }
+        auditLog.push(`Mes ${month}/${year}: Producción planificada, ${productionBacklog.size} items en backlog.`);
+
+
+        // Calculate final state for the month
         const allProductCenterPairsThisMonth = new Set<string>();
         for (const key of monthlyDemandMap.keys()) if (key.startsWith(monthKeyPart)) allProductCenterPairsThisMonth.add(key.split('---').slice(1).join('---'));
-        for (const key of monthlyProductionNeeds.keys()) if (key.startsWith(monthKeyPart)) allProductCenterPairsThisMonth.add(key.split('---').slice(1,3).join('---'));
+        for (const [key,] of productionThisMonth.entries()) allProductCenterPairsThisMonth.add(key);
         for (const key of monthlyTransfers.keys()) {
             if (key.startsWith(monthKeyPart)) {
                 const [, productId, from, to] = key.split('---');
@@ -363,27 +419,13 @@ export const generateProductionPlan = async (
                 allProductCenterPairsThisMonth.add(`${productId}---${to}`);
             }
         }
-        
+
         const previousMonthState = new Map(inventoryState);
-        const productionThisMonth = new Map<string, number>();
 
-        for (const [prodNeedKey, totalDemandForProd] of monthlyProductionNeeds.entries()) {
-            if (!prodNeedKey.startsWith(monthKeyPart)) continue;
-            const [, productId, producingCenterId] = prodNeedKey.split('---');
-            const itemKey = `${productId}---${producingCenterId}`;
-            const initialStock = previousMonthState.get(itemKey) || 0;
-            const safetyStock = inventorySettings.find(inv => inv.itemId === productId && inv.centerId === producingCenterId)?.minStock || 0;
-            
-            const productionNeeded = Math.max(0, totalDemandForProd + safetyStock - initialStock);
-            if (productionNeeded > 0) {
-                productionThisMonth.set(itemKey, (productionThisMonth.get(itemKey) || 0) + productionNeeded);
-            }
-        }
-
-        // Calculate and build the monthly plan items
         for (const pairKey of allProductCenterPairsThisMonth) {
             const [productId, centerId] = pairKey.split('---');
-            const initialStock = previousMonthState.get(pairKey) || 0;
+            const initialStock = previousMonthState.get(pairKey) || inventorySettings.find(inv=>inv.itemId === productId && inv.centerId === centerId)?.currentStock || 0;
+
             const production = productionThisMonth.get(pairKey) || 0;
             const salesDemand = monthlyDemandMap.get(`${monthKeyPart}---${pairKey}`) || 0;
             

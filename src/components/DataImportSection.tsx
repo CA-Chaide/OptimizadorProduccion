@@ -161,7 +161,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     loadFilterOptions();
   }, [addNotification]);
   
- const handleLoadData = async () => {
+  const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
     
@@ -179,61 +179,63 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
+        // Define loops for iteration
+        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
+        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
+
+        // Array to hold all promises
+        const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
+
         for (const year of yearsToLoad) {
-            let monthsToLoad: number[];
-            
-            // If specific months are selected, use them. Otherwise, use all 12 months.
-            if (filters.meses.length > 0) {
-              monthsToLoad = filters.meses.map(Number);
-            } else {
-              monthsToLoad = Array.from({length: 12}, (_, i) => i + 1);
-            }
-            
             for (const month of monthsToLoad) {
-                // Skip past months of the current year
-                if (year === currentYear && month < currentMonth) continue;
-
-                // Prepare filters for the API call
-                const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
+                // Skip past months of the current year if all months are being loaded
+                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
+                    continue;
+                }
                 
-                // The API expects a single value for filters that can be arrays, so we can't send filters.centros directly.
-                // We will handle centro filtering client-side if needed, or if API changes.
-                // For now, let's assume the user selects one or all. For simplicity, we don't filter by center if multiple are selected.
-                if (filters.centros.length > 0) {
-                    queryFilters['Centro'] = filters.centros; // The API must support receiving an array for this to work
-                }
-                if (filters.etiqueta) {
-                    queryFilters['Etiqueta'] = filters.etiqueta;
-                }
-
-                console.log(`Cargando datos para ${MONTH_NAMES[month-1]} ${year}...`, queryFilters);
-                addNotification('info', `Cargando ${MONTH_NAMES[month-1]} de ${year}...`);
-
-                const response: PresupuestoItem[] = await queryApi({
-                    source: 'Presupuesto',
-                    operation: 'get_data',
-                    filters: queryFilters,
-                    pagination: { limit: 200000 } // Increased limit
-                });
-
-                if (response && response.length > 0) {
-                    console.log(`Mes ${month}/${year} cargado con ${response.length} registros.`);
-                    const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                      id: `row-${item.Año}-${item.Mes}-${index}`,
-                      año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                      etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                      código: normalizeMaterialCode(item.CodMaterial),
-                      centro: String(item.Centro).trim(), unidadesProyectado: item.UnidadesProyectado,
-                      dolaresProyectado: 0,
-                      descripciónMaterial: item.Material,
-                      familia: item.Familia, marca: item.Marca, 
-                      lineaProduccion: item.LineaProduccion || '',
-                    }));
-                    allData = [...allData, ...mappedData];
-                    console.log(`Total acumulado hasta ahora: ${allData.length}`);
+                for (const centro of centrosToLoad) {
+                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
+                    if (filters.etiqueta) {
+                        queryFilters['Etiqueta'] = filters.etiqueta;
+                    }
+                    
+                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
+                    
+                    const promise = queryApi({
+                        source: 'Presupuesto',
+                        operation: 'get_data',
+                        filters: queryFilters,
+                        pagination: { limit: 200000 }
+                    });
+                    apiCallPromises.push(promise);
                 }
             }
         }
+        
+        addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
+
+        const responses = await Promise.all(apiCallPromises);
+
+        addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
+
+        responses.forEach(response => {
+            if (response && response.length > 0) {
+                 const mappedData: SalesDataRow[] = response.map((item, index) => ({
+                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                    código: normalizeMaterialCode(item.CodMaterial),
+                    centro: String(item.Centro).trim(), 
+                    unidadesProyectado: item.UnidadesProyectado,
+                    dolaresProyectado: 0,
+                    descripciónMaterial: item.Material,
+                    familia: item.Familia, marca: item.Marca, 
+                    lineaProduccion: item.LineaProduccion || '',
+                }));
+                allData = [...allData, ...mappedData];
+            }
+        });
+
 
         if (allData.length > 0) {
             setLoadedData(allData);
@@ -249,7 +251,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         setIsProcessing(false);
     }
   };
-  
+
   const { aggregatedData, centers } = useMemo(() => {
     const data: AggregatedData = {};
     const centerSet = new Set<string>();
@@ -288,7 +290,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para definir el alcance de los datos. Si no selecciona meses, se cargarán todos los meses de los años seleccionados.
+        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
       </p>
 
       {/* --- Filtros --- */}
