@@ -235,39 +235,57 @@ export const ProductionPlanSection: React.FC = () => {
   }, [dailyPlan, appliedFilters, constraints.productionLines]);
 
   const getFilteredLineIds = useMemo(() => {
-      let relevantLineIds = new Set<string>();
+    if (filterInputs.centers.length === 0 && !filterInputs.processType && filterInputs.lines.length === 0) {
+        return new Set<string>(); // Return empty set if no filters are active, to signal "show all"
+    }
 
-      // Start with all lines if no process type is selected
-      if (!filterInputs.processType) {
-          relevantLineIds = new Set(constraints.productionLines.map(l => l.id));
-      } else {
-          // Filter by process type
-          constraints.productionLines.forEach(line => {
-              if (line.processType === filterInputs.processType) {
-                  relevantLineIds.add(line.id);
-              }
-          });
-      }
+    let relevantLineIds: Set<string> | null = null; // Use null to signify "all lines from selected centers"
 
-      // If specific lines are selected, intersect with the current set
-      if (filterInputs.lines.length > 0) {
-          const selectedLineIds = new Set(filterInputs.lines);
-          relevantLineIds = new Set([...relevantLineIds].filter(id => selectedLineIds.has(id)));
-      }
+    if (filterInputs.centers.length > 0) {
+        relevantLineIds = new Set(
+            constraints.productionLines
+                .filter(line => filterInputs.centers.includes(line.workCenterId))
+                .map(line => line.id)
+        );
+    }
+    
+    if (filterInputs.processType) {
+        const linesForProcess = new Set(
+            constraints.productionLines
+                .filter(line => line.processType === filterInputs.processType)
+                .map(line => line.id)
+        );
 
-      return relevantLineIds;
-  }, [filterInputs.processType, filterInputs.lines, constraints.productionLines]);
+        if (relevantLineIds) {
+            relevantLineIds = new Set([...relevantLineIds].filter(id => linesForProcess.has(id)));
+        } else {
+            relevantLineIds = linesForProcess;
+        }
+    }
+  
+    if (filterInputs.lines.length > 0) {
+        const selectedLineIds = new Set(filterInputs.lines);
+        if (relevantLineIds) {
+            relevantLineIds = new Set([...relevantLineIds].filter(id => selectedLineIds.has(id)));
+        } else {
+            relevantLineIds = selectedLineIds;
+        }
+    }
+
+    return relevantLineIds ?? new Set<string>();
+}, [filterInputs.centers, filterInputs.processType, filterInputs.lines, constraints.productionLines]);
 
   const monthlyFlowByCenter = useMemo(() => {
     const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
     if (filterInputs.centers.length === 0 || !monthlyPlan || monthlyPlan.length === 0) return null;
 
     const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
+    const filteredLineIds = getFilteredLineIds;
 
     for(const centerId of filterInputs.centers) {
         const filteredData = monthlyPlan.filter(item => 
           (item.centerId === centerId) && 
-          (getFilteredLineIds.size === 0 || !item.assignedLineId || getFilteredLineIds.has(item.assignedLineId))
+          (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId))
         );
         if (filteredData.length === 0) continue;
 
@@ -281,7 +299,9 @@ export const ProductionPlanSection: React.FC = () => {
           
           const uniqueProductStocks = new Map<string, number>();
           monthItems.forEach(item => {
-              uniqueProductStocks.set(item.productId, item.initialStock);
+              if(!uniqueProductStocks.has(item.productId)) {
+                 uniqueProductStocks.set(item.productId, item.initialStock);
+              }
           });
           const initialStock = Array.from(uniqueProductStocks.values()).reduce((sum, stock) => sum + stock, 0);
 
@@ -309,11 +329,12 @@ export const ProductionPlanSection: React.FC = () => {
       if (filterInputs.centers.length === 0 || !weeklyPlan || weeklyPlan.length === 0) return null;
 
       const result: Record<string, { weekKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
+      const filteredLineIds = getFilteredLineIds;
       
       for(const centerId of filterInputs.centers) {
           const filteredData = weeklyPlan.filter(item => 
             (item.workCenterId === centerId) &&
-            (getFilteredLineIds.size === 0 || getFilteredLineIds.has(item.lineId))
+            (filteredLineIds.size === 0 || filteredLineIds.has(item.lineId))
           );
           if (filteredData.length === 0) continue;
 
@@ -329,7 +350,11 @@ export const ProductionPlanSection: React.FC = () => {
             aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
             
             const uniqueProductStocks = new Map<string, number>();
-            weekItems.forEach(item => uniqueProductStocks.set(item.productId, item.initialStock));
+            weekItems.forEach(item => {
+                if(!uniqueProductStocks.has(item.productId)) {
+                    uniqueProductStocks.set(item.productId, item.initialStock);
+                }
+            });
             aggregatedData['Saldo Inicial'][weekKey] = Array.from(uniqueProductStocks.values()).reduce((sum, stock) => sum + stock, 0);
             
             aggregatedData['Saldo Final'][weekKey] = aggregatedData['Saldo Inicial'][weekKey] + aggregatedData['Producción'][weekKey] + aggregatedData['Traslados (Neto)'][weekKey] - aggregatedData['Ventas'][weekKey];
@@ -343,7 +368,7 @@ export const ProductionPlanSection: React.FC = () => {
   }, [filterInputs.centers, productionPlan, getFilteredLineIds]);
 
   const availableLinesForFilter = useMemo(() => {
-      if (filterInputs.centers.length === 0) return [];
+      if (filterInputs.centers.length === 0) return constraints.productionLines;
       let lines = constraints.productionLines.filter(line => filterInputs.centers.includes(line.workCenterId));
       if (filterInputs.processType) {
         lines = lines.filter(line => line.processType === filterInputs.processType);
@@ -443,7 +468,7 @@ export const ProductionPlanSection: React.FC = () => {
                                 <tr key={row.label} className="hover:bg-gray-50 group">
                                   <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
                                   {keys.map((key: string) => (
-                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-red-600' : ''}`}>
+                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-red-600' : 'text-blue-600'}`}>
                                       {Math.round(row.values[key] || 0).toLocaleString()}
                                     </td>
                                   ))}
@@ -502,7 +527,7 @@ export const ProductionPlanSection: React.FC = () => {
                 selected={filterInputs.lines}
                 onChange={selectedLines => setFilterInputs({ ...filterInputs, lines: selectedLines })}
                 placeholder="Todas las Líneas"
-                className={!filterInputs.processType && filterInputs.centers.length === 0 ? 'opacity-50' : ''}
+                className={availableLinesForFilter.length === 0 ? 'opacity-50' : ''}
             />
         </div>
       </>
@@ -600,6 +625,3 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
-
-
-    
