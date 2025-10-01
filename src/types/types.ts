@@ -8,6 +8,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -133,7 +134,7 @@ export interface ProductProcessInfo {
   productionLineId: string; 
   workstationTimes: Array<{ workstationDefinitionId: string; timeHours: number }>; 
   totalManufacturingTimeHours: number; 
-  aprovisionamientoEspecial?: 'E' | 'X' | 'F'; 
+  aprovisionamientoEspecial?: 'E' | 'X' | 'F'; _
 }
 
 export interface ProductionLine {
@@ -269,6 +270,8 @@ export interface MonthlyProductionPlanItem {
     totalDemand: number;
     initialStock: number;
     finalStock: number;
+    centerId?: string; // The center this specific row of data pertains to
+    netTransfers?: number; // Net effect of transfers on this center's inventory
     isTransfer?: boolean;
     transferSourceCenterId?: string;
     transferDestinationCenterId?: string;
@@ -507,4 +510,3 @@ export interface TiempoEnsambleItem {
 }
 
 import { ActiveView } from '@/constants/constants';
-
