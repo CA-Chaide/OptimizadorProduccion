@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
-    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType 
+    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem 
 } from '@/types/types';
 import { PlanIcon, DataImportIcon, MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/OptimizationService';
@@ -234,6 +234,30 @@ export const ProductionPlanSection: React.FC = () => {
     });
   }, [dailyPlan, appliedFilters, constraints.productionLines]);
 
+  const getFilteredLineIds = useMemo(() => {
+      let relevantLineIds = new Set<string>();
+
+      // Start with all lines if no process type is selected
+      if (!filterInputs.processType) {
+          relevantLineIds = new Set(constraints.productionLines.map(l => l.id));
+      } else {
+          // Filter by process type
+          constraints.productionLines.forEach(line => {
+              if (line.processType === filterInputs.processType) {
+                  relevantLineIds.add(line.id);
+              }
+          });
+      }
+
+      // If specific lines are selected, intersect with the current set
+      if (filterInputs.lines.length > 0) {
+          const selectedLineIds = new Set(filterInputs.lines);
+          relevantLineIds = new Set([...relevantLineIds].filter(id => selectedLineIds.has(id)));
+      }
+
+      return relevantLineIds;
+  }, [filterInputs.processType, filterInputs.lines, constraints.productionLines]);
+
   const monthlyFlowByCenter = useMemo(() => {
     const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
     if (filterInputs.centers.length === 0 || !monthlyPlan || monthlyPlan.length === 0) return null;
@@ -241,9 +265,9 @@ export const ProductionPlanSection: React.FC = () => {
     const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
 
     for(const centerId of filterInputs.centers) {
-        const filteredData = monthlyPlan.filter(
-            item => (item.producingCenterId === centerId || item.demandCenterId === centerId) && 
-                   (filterInputs.lines.length === 0 || filterInputs.lines.includes(item.assignedLineId || ''))
+        const filteredData = monthlyPlan.filter(item => 
+          (item.centerId === centerId) && 
+          (getFilteredLineIds.size === 0 || !item.assignedLineId || getFilteredLineIds.has(item.assignedLineId))
         );
         if (filteredData.length === 0) continue;
 
@@ -252,35 +276,25 @@ export const ProductionPlanSection: React.FC = () => {
             'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
         };
 
-        monthKeys.forEach(monthKey => {
-            const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
-            
-            const production = monthItems
-                .filter(item => item.producingCenterId === centerId)
-                .reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+        for (const monthKey of monthKeys) {
+          const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
+          
+          const uniqueProductStocks = new Map<string, number>();
+          monthItems.forEach(item => {
+              uniqueProductStocks.set(item.productId, item.initialStock);
+          });
+          const initialStock = Array.from(uniqueProductStocks.values()).reduce((sum, stock) => sum + stock, 0);
 
-            const sales = monthItems
-                .filter(item => item.demandCenterId === centerId)
-                .reduce((sum, item) => sum + item.totalDemand, 0);
-            
-            const netTransfers = monthItems.reduce((sum, item) => {
-                if(item.isTransfer) {
-                    if (item.transferDestinationCenterId === centerId) return sum + item.totalQuantityToProduce;
-                    if (item.transferSourceCenterId === centerId) return sum - item.totalQuantityToProduce;
-                }
-                return sum;
-            }, 0);
-            
-            const initialStock = monthItems
-              .filter(item => item.producingCenterId === centerId || item.demandCenterId === centerId)
-              .reduce((sum, item) => sum + item.initialStock, 0);
-
-            aggregatedData['Producción'][monthKey] = production;
-            aggregatedData['Ventas'][monthKey] = sales;
-            aggregatedData['Traslados (Neto)'][monthKey] = netTransfers;
-            aggregatedData['Saldo Inicial'][monthKey] = initialStock;
-            aggregatedData['Saldo Final'][monthKey] = initialStock + production + netTransfers - sales;
-        });
+          const production = monthItems.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+          const sales = monthItems.reduce((sum, item) => sum + item.totalDemand, 0);
+          const netTransfers = monthItems.reduce((sum, item) => sum + (item.netTransfers || 0), 0);
+          
+          aggregatedData['Producción'][monthKey] = production;
+          aggregatedData['Ventas'][monthKey] = sales;
+          aggregatedData['Traslados (Neto)'][monthKey] = netTransfers;
+          aggregatedData['Saldo Inicial'][monthKey] = initialStock;
+          aggregatedData['Saldo Final'][monthKey] = initialStock + production + netTransfers - sales;
+        }
 
         const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Saldo Final'];
         const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
@@ -288,7 +302,7 @@ export const ProductionPlanSection: React.FC = () => {
     }
     
     return result;
-  }, [filterInputs, productionPlan, constraints]);
+  }, [filterInputs.centers, productionPlan, getFilteredLineIds]);
   
   const weeklyFlow = useMemo(() => {
       const { weeklyPlan } = productionPlan || { weeklyPlan: [] };
@@ -297,24 +311,28 @@ export const ProductionPlanSection: React.FC = () => {
       const result: Record<string, { weekKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
       
       for(const centerId of filterInputs.centers) {
-          const filteredData = weeklyPlan.filter(
-              item => (item.workCenterId === centerId) && 
-                     (filterInputs.lines.length === 0 || filterInputs.lines.includes(item.lineId))
+          const filteredData = weeklyPlan.filter(item => 
+            (item.workCenterId === centerId) &&
+            (getFilteredLineIds.size === 0 || getFilteredLineIds.has(item.lineId))
           );
           if (filteredData.length === 0) continue;
 
-          const weekKeys = Array.from(new Set(filteredData.map(d => `${d.year}-W${d.week}`))).sort();
+          const weekKeys = Array.from(new Set(filteredData.map(d => `${d.year}-W${String(d.week).padStart(2,'0')}`))).sort();
           const aggregatedData: Record<string, Record<string, number>> = {
               'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
           };
 
           weekKeys.forEach(weekKey => {
-            const weekItems = filteredData.filter(d => `${d.year}-W${d.week}` === weekKey);
+            const weekItems = filteredData.filter(d => `${d.year}-W${String(d.week).padStart(2,'0')}` === weekKey);
             aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
             aggregatedData['Ventas'][weekKey] = weekItems.reduce((sum, item) => sum + item.sales, 0);
             aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
-            aggregatedData['Saldo Inicial'][weekKey] = weekItems.reduce((sum, item) => sum + item.initialStock, 0) / (weekItems.length || 1);
-            aggregatedData['Saldo Final'][weekKey] = weekItems.reduce((sum, item) => sum + item.finalStock, 0) / (weekItems.length || 1);
+            
+            const uniqueProductStocks = new Map<string, number>();
+            weekItems.forEach(item => uniqueProductStocks.set(item.productId, item.initialStock));
+            aggregatedData['Saldo Inicial'][weekKey] = Array.from(uniqueProductStocks.values()).reduce((sum, stock) => sum + stock, 0);
+            
+            aggregatedData['Saldo Final'][weekKey] = aggregatedData['Saldo Inicial'][weekKey] + aggregatedData['Producción'][weekKey] + aggregatedData['Traslados (Neto)'][weekKey] - aggregatedData['Ventas'][weekKey];
           });
           
           const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Saldo Final'];
@@ -322,11 +340,15 @@ export const ProductionPlanSection: React.FC = () => {
           result[centerId] = { weekKeys, rows };
       }
       return result;
-  }, [filterInputs, productionPlan, constraints]);
+  }, [filterInputs.centers, productionPlan, getFilteredLineIds]);
 
   const availableLinesForFilter = useMemo(() => {
-      if (filterInputs.centers.length === 0 || !filterInputs.processType) return [];
-      return constraints.productionLines.filter(line => filterInputs.centers.includes(line.workCenterId) && line.processType === filterInputs.processType);
+      if (filterInputs.centers.length === 0) return [];
+      let lines = constraints.productionLines.filter(line => filterInputs.centers.includes(line.workCenterId));
+      if (filterInputs.processType) {
+        lines = lines.filter(line => line.processType === filterInputs.processType);
+      }
+      return lines;
   }, [filterInputs.centers, filterInputs.processType, constraints.productionLines]);
 
   const renderContentForTab = (tab: 'monthly' | 'weekly' | 'daily') => {
@@ -382,7 +404,7 @@ export const ProductionPlanSection: React.FC = () => {
   );
 
   const renderSummaryView = (
-      flowByCenter: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> | Record<string, { weekKeys: string[], rows: { label: string, values: Record<string, number> }[] }> | null,
+      flowByCenter: Record<string, { monthKeys?: string[], weekKeys?: string[], rows: { label: string, values: Record<string, number> }[] }> | null,
       type: 'monthly' | 'weekly'
   ) => {
     if (filterInputs.centers.length === 0) {
@@ -399,7 +421,7 @@ export const ProductionPlanSection: React.FC = () => {
                 if (!flow) return null;
 
                 const keys = type === 'monthly' ? flow.monthKeys : flow.weekKeys;
-                const keyPrefix = type === 'monthly' ? '' : 'Sem';
+                const keyPrefix = type === 'monthly' ? '' : 'S';
 
                 return (
                     <div key={centerId}>
@@ -411,7 +433,7 @@ export const ProductionPlanSection: React.FC = () => {
                                 <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-10">Métrica</th>
                                 {keys.map((key: string) => {
                                     const [year, num] = key.split(type === 'monthly' ? '-' : '-W');
-                                    const label = type === 'monthly' ? `${MONTH_NAMES[parseInt(num,10) -1].substring(0,3)} '${year.slice(-2)}` : `${keyPrefix} ${num} '${year.slice(-2)}`;
+                                    const label = type === 'monthly' ? `${MONTH_NAMES[parseInt(num,10) -1].substring(0,3)} '${year.slice(-2)}` : `${keyPrefix}${num}`;
                                     return <th key={key} className="px-3 py-2 text-right font-semibold text-gray-600">{label}</th>;
                                 })}
                               </tr>
@@ -469,7 +491,7 @@ export const ProductionPlanSection: React.FC = () => {
         <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de Proceso</label>
             <select value={filterInputs.processType} onChange={e => setFilterInputs({ ...filterInputs, processType: e.target.value, lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9" disabled={filterInputs.centers.length === 0}>
-                <option value="">Seleccione Proceso</option>
+                <option value="">Todos</option>
                 {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
         </div>
@@ -479,8 +501,8 @@ export const ProductionPlanSection: React.FC = () => {
                 options={availableLinesForFilter.map(l => ({ value: l.id, label: l.name }))}
                 selected={filterInputs.lines}
                 onChange={selectedLines => setFilterInputs({ ...filterInputs, lines: selectedLines })}
-                placeholder="Seleccione Línea(s)"
-                className={!filterInputs.processType ? 'opacity-50' : ''}
+                placeholder="Todas las Líneas"
+                className={!filterInputs.processType && filterInputs.centers.length === 0 ? 'opacity-50' : ''}
             />
         </div>
       </>
@@ -579,3 +601,5 @@ export const ProductionPlanSection: React.FC = () => {
   );
 };
 
+
+    
