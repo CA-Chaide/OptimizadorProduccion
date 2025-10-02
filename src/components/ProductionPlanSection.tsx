@@ -9,7 +9,7 @@ import { PlanIcon, DataImportIcon, MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/c
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
-import { Loader2, Check, ChevronsUpDown } from 'lucide-react';
+import { Loader2, Check, ChevronsUpDown, Download } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
@@ -175,6 +175,12 @@ export const ProductionPlanSection: React.FC = () => {
   const handleExportDaily = () => {
     if (filteredDailyPlan.length > 0) {
       exportDailyPlanToExcel(filteredDailyPlan, constraints);
+    }
+  };
+
+  const handleExportMonthly = () => {
+    if (monthlyPlan.length > 0) {
+      exportMonthlyPlanToExcel(monthlyPlan);
     }
   };
 
@@ -579,7 +585,10 @@ export const ProductionPlanSection: React.FC = () => {
                     <button onClick={() => setActiveTab('daily')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Auditoría Diaria (Avanzado)</button>
                 </nav>
                  <div>
-                  {activeTab === 'daily' && dailyPlan.length > 0 && <Button onClick={handleExportDaily} variant="outline" size="sm">Exportar Diario</Button>}
+                    {activeTab === 'monthly' && monthlyPlan.length > 0 && 
+                        <Button onClick={handleExportMonthly} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Exportar Mensual</Button>}
+                    {activeTab === 'daily' && dailyPlan.length > 0 && 
+                        <Button onClick={handleExportDaily} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Exportar Diario</Button>}
                 </div>
             </div>
             {renderContentForTab(activeTab)}
