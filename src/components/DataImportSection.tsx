@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
@@ -79,7 +80,7 @@ const MultiSelect: React.FC<{
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
-                    handleSelect(currentValue);
+                    handleSelect(option.value);
                   }}
                 >
                   <Check
@@ -265,22 +266,45 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
 
     try {
-        const salesApiFilters: { [key: string]: any } = { 'Centro': '2000' };
+        const yearsToLoad = filters.años.map(Number);
+        
+        const salesDataPromises: Promise<PresupuestoItem[]>[] = [];
 
-        if(filters.años.length > 0) {
-            salesApiFilters['Año'] = { in: filters.años.map(Number) };
-        }
-        if(filters.meses.length > 0) {
-            salesApiFilters['Mes'] = { in: filters.meses.map(Number) };
-        }
-        if(filters.etiqueta) {
-            salesApiFilters['Etiqueta'] = filters.etiqueta;
+        for (const year of yearsToLoad) {
+             const salesApiFilters: { [key: string]: any } = { 'Centro': '2000', 'Año': year };
+            
+             if (filters.meses.length > 0) {
+                 // The API only supports one month at a time, so if multiple months are selected,
+                 // we cannot filter by month on the API side. We'll filter on the client.
+                 // This is a limitation of the backend API.
+                 console.warn("Análisis de traslados: Múltiples meses seleccionados, se traerá todo el año y se filtrará en el cliente.");
+             }
+
+             if (filters.etiqueta) {
+                salesApiFilters['Etiqueta'] = filters.etiqueta;
+             }
+
+             salesDataPromises.push(
+                queryApi({ 
+                    source: 'Presupuesto', 
+                    operation: 'get_data', 
+                    filters: salesApiFilters, 
+                    pagination: { limit: 200000 } 
+                })
+             );
         }
 
-        const [assemblyData, salesData] = await Promise.all([
+        const [assemblyData, ...salesDataResponses] = await Promise.all([
             queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
-            queryApi({ source: 'Presupuesto', operation: 'get_data', filters: salesApiFilters, pagination: { limit: 200000 } }) as Promise<PresupuestoItem[]>
+            ...salesDataPromises
         ]);
+        
+        let salesData: PresupuestoItem[] = salesDataResponses.flat();
+
+        if (filters.meses.length > 0) {
+            const selectedMonths = new Set(filters.meses.map(Number));
+            salesData = salesData.filter(sale => selectedMonths.has(sale.Mes));
+        }
 
         const centralizedMaterials = new Set(
             assemblyData
