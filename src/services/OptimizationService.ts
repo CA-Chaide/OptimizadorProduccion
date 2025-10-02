@@ -281,8 +281,8 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V19 ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v19.'];
+    console.log('--- RUNNING STRATEGIC PLANNER V20 ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v20.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
@@ -294,6 +294,17 @@ export const generateProductionPlan = async (
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
 
+    // Step 0: Identify plannable materials
+    const plannableMaterialCodes = new Set(apiData.map(item => normalizeMaterialCode(item.CodMaterial)));
+    auditLog.push(`Se identificaron ${plannableMaterialCodes.size} materiales con tiempos de ensamble definidos.`);
+
+    // Filter sales data to only include plannable materials
+    const filteredSalesData = salesData.filter(sale => plannableMaterialCodes.has(normalizeMaterialCode(sale.código)));
+    const ignoredSalesCount = salesData.length - filteredSalesData.length;
+    if (ignoredSalesCount > 0) {
+        auditLog.push(`ADVERTENCIA: Se ignoraron ${ignoredSalesCount} registros de ventas para materiales sin tiempos de ensamble definidos.`);
+    }
+
     const productInfoMap = new Map<string, { name: string; provisionRule: 'E' | 'X' | 'F' }>();
     apiData.forEach(item => {
         const productId = normalizeMaterialCode(item.CodMaterial);
@@ -301,17 +312,18 @@ export const generateProductionPlan = async (
             productInfoMap.set(productId, { name: item.Material, provisionRule: item.ClaseAprovisionamiento || 'E' });
         }
     });
-    salesData.forEach(item => {
+    // Use filtered sales data to complete product info
+    filteredSalesData.forEach(item => {
         const productId = normalizeMaterialCode(item.código);
         if (!productInfoMap.has(productId)) {
            productInfoMap.set(productId, { name: item.descripciónMaterial || item.etiqueta, provisionRule: 'E' });
         }
     });
-    auditLog.push(`Se cargaron ${productInfoMap.size} productos únicos desde los datos maestros y de ventas.`);
+    auditLog.push(`Se cargaron ${productInfoMap.size} productos únicos desde los datos maestros y de ventas filtradas.`);
     
-    // Step 1: Aggregate sales demand by dispatch center
+    // Step 1: Aggregate sales demand by dispatch center from FILTERED data
     const monthlyDemandMap = new Map<string, number>(); // Key: 'YYYY-MM---productId---demandCenterId', Value: units
-    salesData.forEach(sale => {
+    filteredSalesData.forEach(sale => {
         const { año, mes, código, centro, unidadesProyectado } = sale;
         const productId = normalizeMaterialCode(código);
         const centerId = String(centro).trim();
@@ -319,7 +331,8 @@ export const generateProductionPlan = async (
         const demandKey = `${monthKey}---${productId}---${centerId}`;
         monthlyDemandMap.set(demandKey, (monthlyDemandMap.get(demandKey) || 0) + unidadesProyectado);
     });
-    auditLog.push(`Paso 1: Demanda de despacho (ventas) agregada. ${monthlyDemandMap.size} entradas.`);
+    auditLog.push(`Paso 1: Demanda de despacho (ventas) agregada para materiales planificables. ${monthlyDemandMap.size} entradas.`);
+
 
     // Step 2: Derive production needs and transfers
     const monthlyProductionNeeds = new Map<string, number>(); // Key: 'YYYY-MM---productId---producingCenterId', Value: units
