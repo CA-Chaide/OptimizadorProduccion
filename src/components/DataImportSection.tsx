@@ -279,10 +279,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const salesDataPromises: Promise<PresupuestoItem[]>[] = [];
 
-        // Fetch all sales data for the selected years/months without filtering by center initially
+        // Fetch all sales data for the selected years without filtering by center initially
         for (const year of yearsToLoad) {
             const salesApiFilters: { [key: string]: any } = { 'Año': year };
-            if (filters.etiqueta) {
+             if (filters.etiqueta) {
                 salesApiFilters['Etiqueta'] = filters.etiqueta;
             }
             salesDataPromises.push(
@@ -290,7 +290,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     source: 'Presupuesto',
                     operation: 'get_data',
                     filters: salesApiFilters,
-                    pagination: { limit: 500000 } // Increased limit
+                    pagination: { limit: 500000 }
                 })
             );
         }
@@ -302,20 +302,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
 
-        // Filter by month if specified
         if (filters.meses.length > 0) {
             const selectedMonths = new Set(filters.meses.map(Number));
             allSalesData = allSalesData.filter(sale => selectedMonths.has(sale.Mes));
         }
 
-        // Identify materials that are centrally produced (rule 'F')
         const centralizedMaterials = new Set(
             assemblyData
                 .filter(item => item.ClaseAprovisionamiento === 'F')
                 .map(item => normalizeMaterialCode(item.CodMaterial))
         );
 
-        // Filter for sales of centralized materials that occurred in a non-production center (i.e., not center '1000')
         const salesRequiringTransfer = allSalesData.filter(sale => 
             centralizedMaterials.has(normalizeMaterialCode(sale.CodMaterial)) && String(sale.Centro).trim() !== '1000'
         );
@@ -342,14 +339,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }
         });
 
-        // Calculate subtotals and sort materials within each group
         Object.keys(groupedData).forEach(etiqueta => {
             const group = groupedData[etiqueta];
             group.subtotal = group.materials.reduce((sum, material) => sum + material.units, 0);
             group.materials.sort((a, b) => b.units - a.units);
         });
 
-        // Sort groups by subtotal
         const sortedGroupedData = Object.entries(groupedData)
             .sort(([, a], [, b]) => b.subtotal - a.subtotal)
             .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {});
