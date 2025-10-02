@@ -279,8 +279,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const salesDataPromises: Promise<PresupuestoItem[]>[] = [];
 
+        // Fetch all sales data for the selected years/months without filtering by center initially
         for (const year of yearsToLoad) {
-            const salesApiFilters: { [key: string]: any } = { 'Centro': '2000', 'Año': year };
+            const salesApiFilters: { [key: string]: any } = { 'Año': year };
             if (filters.etiqueta) {
                 salesApiFilters['Etiqueta'] = filters.etiqueta;
             }
@@ -289,7 +290,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     source: 'Presupuesto',
                     operation: 'get_data',
                     filters: salesApiFilters,
-                    pagination: { limit: 200000 }
+                    pagination: { limit: 500000 } // Increased limit
                 })
             );
         }
@@ -299,24 +300,29 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             ...salesDataPromises
         ]);
         
-        let salesData: PresupuestoItem[] = salesDataResponses.flat();
+        let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
 
+        // Filter by month if specified
         if (filters.meses.length > 0) {
             const selectedMonths = new Set(filters.meses.map(Number));
-            salesData = salesData.filter(sale => selectedMonths.has(sale.Mes));
+            allSalesData = allSalesData.filter(sale => selectedMonths.has(sale.Mes));
         }
 
+        // Identify materials that are centrally produced (rule 'F')
         const centralizedMaterials = new Set(
             assemblyData
                 .filter(item => item.ClaseAprovisionamiento === 'F')
                 .map(item => normalizeMaterialCode(item.CodMaterial))
         );
 
-        const salesInCenter2000 = salesData.filter(sale => centralizedMaterials.has(normalizeMaterialCode(sale.CodMaterial)));
+        // Filter for sales of centralized materials that occurred in a non-production center (i.e., not center '1000')
+        const salesRequiringTransfer = allSalesData.filter(sale => 
+            centralizedMaterials.has(normalizeMaterialCode(sale.CodMaterial)) && String(sale.Centro).trim() !== '1000'
+        );
 
         const groupedData: GroupedTransferAnalysisData = {};
 
-        salesInCenter2000.forEach(sale => {
+        salesRequiringTransfer.forEach(sale => {
             const etiqueta = sale.Etiqueta || 'Sin Etiqueta';
             const code = normalizeMaterialCode(sale.CodMaterial);
             
@@ -349,7 +355,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {});
 
         setTransferAnalysisData(sortedGroupedData);
-        addNotification('success', `Análisis completado. Se encontraron ${Object.keys(sortedGroupedData).length} grupos de etiquetas.`);
+        if (Object.keys(sortedGroupedData).length > 0) {
+            addNotification('success', `Análisis completado. Se encontraron ${salesRequiringTransfer.length} registros de venta que requieren traslado.`);
+        } else {
+            addNotification('warning', `No se encontraron necesidades de traslado para los filtros seleccionados.`);
+        }
 
     } catch (error) {
         addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
@@ -490,16 +500,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
         <p className="text-sm text-gray-600">
-            Esta herramienta muestra todos los materiales vendidos en el centro 2000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado. El análisis respeta los filtros de fecha.
+            Esta herramienta muestra todos los materiales vendidos en centros diferentes al 1000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado. El análisis respeta los filtros de fecha.
         </p>
         <div>
             <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analizando...' : 'Analizar Traslados Centro 2000'}
+            {isAnalyzing ? 'Analizando...' : 'Analizar Traslados'}
             </Button>
         </div>
         {Object.keys(transferAnalysisData).length > 0 && (
             <div>
-                <h4 className="font-semibold mb-2">Materiales a Trasladar (Ventas en Centro 2000 / Fabricación en Centro 1000)</h4>
+                <h4 className="font-semibold mb-2">Materiales a Trasladar (Ventas fuera de C1000 / Fabricación en C1000)</h4>
                 <div className="border rounded-md max-h-[60vh] overflow-y-auto">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0">
