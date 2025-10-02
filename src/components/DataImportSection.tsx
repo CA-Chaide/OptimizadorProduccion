@@ -1,5 +1,4 @@
 
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
@@ -258,10 +257,29 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setIsAnalyzing(true);
     setTransferAnalysisData([]);
     addNotification('info', 'Analizando datos para traslados...');
+
+    if (filters.años.length === 0) {
+        addNotification('warning', 'Por favor, seleccione al menos un año para el análisis.');
+        setIsAnalyzing(false);
+        return;
+    }
+
     try {
+        const salesApiFilters: { [key: string]: any } = { 'Centro': '2000' };
+
+        if(filters.años.length > 0) {
+            salesApiFilters['Año'] = { in: filters.años.map(Number) };
+        }
+        if(filters.meses.length > 0) {
+            salesApiFilters['Mes'] = { in: filters.meses.map(Number) };
+        }
+        if(filters.etiqueta) {
+            salesApiFilters['Etiqueta'] = filters.etiqueta;
+        }
+
         const [assemblyData, salesData] = await Promise.all([
             queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
-            queryApi({ source: 'Presupuesto', operation: 'get_data', filters: { Centro: '2000' }, pagination: { limit: 200000 } }) as Promise<PresupuestoItem[]>
+            queryApi({ source: 'Presupuesto', operation: 'get_data', filters: salesApiFilters, pagination: { limit: 200000 } }) as Promise<PresupuestoItem[]>
         ]);
 
         const centralizedMaterials = new Set(
@@ -424,7 +442,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
         <p className="text-sm text-gray-600">
-            Esta herramienta muestra todos los materiales vendidos en el centro 2000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado.
+            Esta herramienta muestra todos los materiales vendidos en el centro 2000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado. El análisis respeta los filtros de fecha.
         </p>
         <div>
             <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing}>
@@ -466,4 +484,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     </div>
   );
-};
+
+    
