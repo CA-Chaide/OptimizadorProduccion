@@ -284,11 +284,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     pagination: { limit: 500000 }
                 })
             );
-
-            const [assemblyData, ...salesDataResponses] = await Promise.all([
+            
+            const allApiPromises = [
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
-                ...salesDataResponses
-            ]);
+                ...salesApiCallPromises
+            ];
+
+            const [assemblyData, ...salesDataResponses] = await Promise.all(allApiPromises);
             
             let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
 
