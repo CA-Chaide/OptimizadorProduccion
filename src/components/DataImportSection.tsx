@@ -1,7 +1,7 @@
 
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
+import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -134,6 +134,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [transferAnalysisData, setTransferAnalysisData] = useState<{ code: string; units: number }[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -249,6 +251,45 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
     } finally {
         setIsProcessing(false);
+    }
+  };
+
+  const handleAnalyzeTransfers = async () => {
+    setIsAnalyzing(true);
+    setTransferAnalysisData([]);
+    addNotification('info', 'Analizando datos para traslados...');
+    try {
+        const [assemblyData, salesData] = await Promise.all([
+            queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
+            queryApi({ source: 'Presupuesto', operation: 'get_data', filters: { Centro: '2000' }, pagination: { limit: 200000 } }) as Promise<PresupuestoItem[]>
+        ]);
+
+        const centralizedMaterials = new Set(
+            assemblyData
+                .filter(item => item.ClaseAprovisionamiento === 'F')
+                .map(item => normalizeMaterialCode(item.CodMaterial))
+        );
+
+        const salesInCenter2000 = salesData.filter(sale => centralizedMaterials.has(normalizeMaterialCode(sale.CodMaterial)));
+
+        const aggregatedUnits: { [code: string]: number } = {};
+        salesInCenter2000.forEach(sale => {
+            const code = normalizeMaterialCode(sale.CodMaterial);
+            aggregatedUnits[code] = (aggregatedUnits[code] || 0) + sale.UnidadesProyectado;
+        });
+
+        const sortedData = Object.entries(aggregatedUnits)
+            .map(([code, units]) => ({ code, units }))
+            .sort((a, b) => b.units - a.units)
+            .slice(0, 10);
+
+        setTransferAnalysisData(sortedData);
+        addNotification('success', `Análisis completado. Se encontraron ${sortedData.length} materiales para mostrar.`);
+
+    } catch (error) {
+        addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
+    } finally {
+        setIsAnalyzing(false);
     }
   };
 
@@ -374,6 +415,45 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </div>
         </div>
       )}
+
+      {/* --- Sección de Análisis de Traslados --- */}
+      <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
+        <p className="text-sm text-gray-600">
+            Esta herramienta muestra el top 10 de materiales vendidos en el centro 2000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado.
+        </p>
+        <div>
+            <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing}>
+            {isAnalyzing ? 'Analizando...' : 'Analizar Traslados Centro 2000'}
+            </Button>
+        </div>
+        {transferAnalysisData.length > 0 && (
+            <div>
+                <h4 className="font-semibold mb-2">Top 10 Materiales de Traslado (Centro 2000)</h4>
+                <div className="border rounded-md">
+                    <table className="min-w-full text-sm divide-y divide-gray-200">
+                        <thead className="bg-gray-100">
+                            <tr>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Código Material</th>
+                                <th className="px-4 py-2 text-right font-semibold text-gray-600">Unidades Totales a Trasladar</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {transferAnalysisData.map(item => (
+                                <tr key={item.code}>
+                                    <td className="px-4 py-2 font-mono">{item.code}</td>
+                                    <td className="px-4 py-2 text-right font-bold">{item.units.toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        )}
+      </div>
+
     </div>
   );
 };
+
+    
