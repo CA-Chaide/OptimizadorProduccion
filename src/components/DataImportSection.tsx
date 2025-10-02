@@ -280,8 +280,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         const sortedData = Object.entries(aggregatedUnits)
             .map(([code, units]) => ({ code, units }))
-            .sort((a, b) => b.units - a.units)
-            .slice(0, 10);
+            .sort((a, b) => b.units - a.units);
 
         setTransferAnalysisData(sortedData);
         addNotification('success', `Análisis completado. Se encontraron ${sortedData.length} materiales para mostrar.`);
@@ -322,6 +321,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     });
     return { ...totals, grandTotal };
   }, [aggregatedData]);
+
+  const transferTotalUnits = useMemo(() => {
+    return transferAnalysisData.reduce((sum, item) => sum + item.units, 0);
+  }, [transferAnalysisData]);
+
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -420,7 +424,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
         <p className="text-sm text-gray-600">
-            Esta herramienta muestra el top 10 de materiales vendidos en el centro 2000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado.
+            Esta herramienta muestra todos los materiales vendidos en el centro 2000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado.
         </p>
         <div>
             <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing}>
@@ -429,10 +433,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         </div>
         {transferAnalysisData.length > 0 && (
             <div>
-                <h4 className="font-semibold mb-2">Top 10 Materiales de Traslado (Centro 2000)</h4>
-                <div className="border rounded-md">
+                <h4 className="font-semibold mb-2">Materiales a Trasladar (Ventas en Centro 2000 / Fabricación en Centro 1000)</h4>
+                <div className="border rounded-md max-h-[60vh] overflow-y-auto">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
-                        <thead className="bg-gray-100">
+                        <thead className="bg-gray-100 sticky top-0">
                             <tr>
                                 <th className="px-4 py-2 text-left font-semibold text-gray-600">Código Material</th>
                                 <th className="px-4 py-2 text-right font-semibold text-gray-600">Unidades Totales a Trasladar</th>
@@ -446,6 +450,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                 </tr>
                             ))}
                         </tbody>
+                        <tfoot className="bg-gray-200 sticky bottom-0">
+                           <tr>
+                                <th className="px-4 py-2 text-left font-bold text-gray-700 uppercase">TOTAL</th>
+                                <th className="px-4 py-2 text-right font-bold text-indigo-700 uppercase">
+                                    {transferTotalUnits.toLocaleString()}
+                                </th>
+                           </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>
@@ -455,5 +467,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
-
-    
