@@ -263,105 +263,108 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   };
 
-  const handleAnalyzeTransfers = async () => {
-    setIsAnalyzing(true);
-    setTransferAnalysisData({});
-    addNotification('info', 'Analizando datos para traslados...');
+    const handleAnalyzeTransfers = async () => {
+        setIsAnalyzing(true);
+        setTransferAnalysisData({});
+        addNotification('info', 'Analizando datos para traslados...');
 
-    if (filters.años.length === 0) {
-        addNotification('warning', 'Por favor, seleccione al menos un año para el análisis.');
-        setIsAnalyzing(false);
-        return;
-    }
+        if (filters.años.length === 0) {
+            addNotification('warning', 'Por favor, seleccione al menos un año para el análisis.');
+            setIsAnalyzing(false);
+            return;
+        }
 
-    try {
-        const yearsToLoad = filters.años.map(Number);
-        
-        const salesDataPromises: Promise<PresupuestoItem[]>[] = [];
-
-        // Fetch all sales data for the selected years without filtering by center initially
-        for (const year of yearsToLoad) {
-            const salesApiFilters: { [key: string]: any } = { 'Año': year };
-             if (filters.etiqueta) {
+        try {
+            const yearsToLoad = filters.años.map(Number);
+            const salesApiFilters: { [key: string]: any } = { 'Año': { in: yearsToLoad } };
+            if (filters.etiqueta) {
                 salesApiFilters['Etiqueta'] = filters.etiqueta;
             }
-            salesDataPromises.push(
+            if (filters.meses.length > 0) {
+              salesApiFilters['Mes'] = { in: filters.meses.map(Number) };
+            }
+
+            const salesDataPromises: Promise<PresupuestoItem[]>[] = yearsToLoad.map(year => 
                 queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
-                    filters: salesApiFilters,
+                    filters: { 'Año': year },
                     pagination: { limit: 500000 }
                 })
             );
-        }
 
-        const [assemblyData, ...salesDataResponses] = await Promise.all([
-            queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
-            ...salesDataPromises
-        ]);
-        
-        let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
-
-        if (filters.meses.length > 0) {
-            const selectedMonths = new Set(filters.meses.map(Number));
-            allSalesData = allSalesData.filter(sale => selectedMonths.has(sale.Mes));
-        }
-
-        const centralizedMaterials = new Set(
-            assemblyData
-                .filter(item => item.ClaseAprovisionamiento === 'F')
-                .map(item => normalizeMaterialCode(item.CodMaterial))
-        );
-
-        const salesRequiringTransfer = allSalesData.filter(sale => 
-            centralizedMaterials.has(normalizeMaterialCode(sale.CodMaterial)) && String(sale.Centro).trim() !== '1000'
-        );
-
-        const groupedData: GroupedTransferAnalysisData = {};
-
-        salesRequiringTransfer.forEach(sale => {
-            const etiqueta = sale.Etiqueta || 'Sin Etiqueta';
-            const code = normalizeMaterialCode(sale.CodMaterial);
+            const [assemblyData, ...salesDataResponses] = await Promise.all([
+                queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
+                ...salesDataPromises
+            ]);
             
-            if (!groupedData[etiqueta]) {
-                groupedData[etiqueta] = { subtotal: 0, materials: [] };
+            let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
+
+            if (filters.meses.length > 0) {
+                const selectedMonths = new Set(filters.meses.map(Number));
+                allSalesData = allSalesData.filter(sale => selectedMonths.has(sale.Mes));
+            }
+            if (filters.etiqueta) {
+                allSalesData = allSalesData.filter(sale => sale.Etiqueta === filters.etiqueta);
             }
             
-            const existingMaterial = groupedData[etiqueta].materials.find(m => m.code === code);
-            if (existingMaterial) {
-                existingMaterial.units += sale.UnidadesProyectado;
+            const materialsToTransfer = new Set(
+                assemblyData
+                    .filter(item => item.ClaseAprovisionamiento === 'F' && String(item.Centro).trim() !== '1000')
+                    .map(item => normalizeMaterialCode(item.CodMaterial))
+            );
+
+            const salesRequiringTransfer = allSalesData.filter(sale => 
+                materialsToTransfer.has(normalizeMaterialCode(sale.CodMaterial)) &&
+                String(sale.Centro).trim() !== '1000'
+            );
+
+            const groupedData: GroupedTransferAnalysisData = {};
+
+            salesRequiringTransfer.forEach(sale => {
+                const etiqueta = sale.Etiqueta || 'Sin Etiqueta';
+                const code = normalizeMaterialCode(sale.CodMaterial);
+                
+                if (!groupedData[etiqueta]) {
+                    groupedData[etiqueta] = { subtotal: 0, materials: [] };
+                }
+                
+                const existingMaterial = groupedData[etiqueta].materials.find(m => m.code === code);
+                if (existingMaterial) {
+                    existingMaterial.units += sale.UnidadesProyectado;
+                } else {
+                    groupedData[etiqueta].materials.push({
+                        code,
+                        description: sale.Material,
+                        units: sale.UnidadesProyectado,
+                    });
+                }
+            });
+
+            Object.keys(groupedData).forEach(etiqueta => {
+                const group = groupedData[etiqueta];
+                group.subtotal = group.materials.reduce((sum, material) => sum + material.units, 0);
+                group.materials.sort((a, b) => b.units - a.units);
+            });
+
+            const sortedGroupedData = Object.entries(groupedData)
+                .sort(([, a], [, b]) => b.subtotal - a.subtotal)
+                .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {});
+
+            setTransferAnalysisData(sortedGroupedData);
+            if (Object.keys(sortedGroupedData).length > 0) {
+                addNotification('success', `Análisis completado. Se encontraron ${salesRequiringTransfer.length} registros de venta que requieren traslado.`);
             } else {
-                groupedData[etiqueta].materials.push({
-                    code,
-                    description: sale.Material,
-                    units: sale.UnidadesProyectado,
-                });
+                addNotification('warning', `No se encontraron necesidades de traslado para los filtros seleccionados.`);
             }
-        });
 
-        Object.keys(groupedData).forEach(etiqueta => {
-            const group = groupedData[etiqueta];
-            group.subtotal = group.materials.reduce((sum, material) => sum + material.units, 0);
-            group.materials.sort((a, b) => b.units - a.units);
-        });
-
-        const sortedGroupedData = Object.entries(groupedData)
-            .sort(([, a], [, b]) => b.subtotal - a.subtotal)
-            .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {});
-
-        setTransferAnalysisData(sortedGroupedData);
-        if (Object.keys(sortedGroupedData).length > 0) {
-            addNotification('success', `Análisis completado. Se encontraron ${salesRequiringTransfer.length} registros de venta que requieren traslado.`);
-        } else {
-            addNotification('warning', `No se encontraron necesidades de traslado para los filtros seleccionados.`);
+        } catch (error) {
+            addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
+        } finally {
+            setIsAnalyzing(false);
         }
+    };
 
-    } catch (error) {
-        addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
-    } finally {
-        setIsAnalyzing(false);
-    }
-  };
 
   const { aggregatedData, centers } = useMemo(() => {
     const data: AggregatedData = {};
@@ -549,3 +552,4 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   );
 
     
+
