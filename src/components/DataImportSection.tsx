@@ -18,8 +18,6 @@ interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
 }
 
-type GroupByOption = 'sector' | 'etiqueta' | 'material';
-
 interface AggregatedData {
   [key: string]: {
     totalUnits: number;
@@ -27,6 +25,20 @@ interface AggregatedData {
     dataRows: SalesDataRow[];
   };
 }
+
+interface TransferMaterial {
+    code: string;
+    description: string;
+    units: number;
+}
+
+interface TransferAnalysisGroup {
+    subtotal: number;
+    materials: TransferMaterial[];
+}
+
+type GroupedTransferAnalysisData = Record<string, TransferAnalysisGroup>;
+
 
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
@@ -134,7 +146,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [transferAnalysisData, setTransferAnalysisData] = useState<{ code: string; units: number }[]>([]);
+  const [transferAnalysisData, setTransferAnalysisData] = useState<GroupedTransferAnalysisData>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
@@ -181,16 +193,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        // Define loops for iteration
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-        // Array to hold all promises
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                // Skip past months of the current year if all months are being loaded
                 if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
                     continue;
                 }
@@ -256,7 +265,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const handleAnalyzeTransfers = async () => {
     setIsAnalyzing(true);
-    setTransferAnalysisData([]);
+    setTransferAnalysisData({});
     addNotification('info', 'Analizando datos para traslados...');
 
     if (filters.años.length === 0) {
@@ -271,27 +280,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         const salesDataPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
-             const salesApiFilters: { [key: string]: any } = { 'Centro': '2000', 'Año': year };
-            
-             if (filters.meses.length > 0) {
-                 // The API only supports one month at a time, so if multiple months are selected,
-                 // we cannot filter by month on the API side. We'll filter on the client.
-                 // This is a limitation of the backend API.
-                 console.warn("Análisis de traslados: Múltiples meses seleccionados, se traerá todo el año y se filtrará en el cliente.");
-             }
-
-             if (filters.etiqueta) {
+            const salesApiFilters: { [key: string]: any } = { 'Centro': '2000', 'Año': year };
+            if (filters.etiqueta) {
                 salesApiFilters['Etiqueta'] = filters.etiqueta;
-             }
-
-             salesDataPromises.push(
-                queryApi({ 
-                    source: 'Presupuesto', 
-                    operation: 'get_data', 
-                    filters: salesApiFilters, 
-                    pagination: { limit: 200000 } 
+            }
+            salesDataPromises.push(
+                queryApi({
+                    source: 'Presupuesto',
+                    operation: 'get_data',
+                    filters: salesApiFilters,
+                    pagination: { limit: 200000 }
                 })
-             );
+            );
         }
 
         const [assemblyData, ...salesDataResponses] = await Promise.all([
@@ -314,18 +314,42 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         const salesInCenter2000 = salesData.filter(sale => centralizedMaterials.has(normalizeMaterialCode(sale.CodMaterial)));
 
-        const aggregatedUnits: { [code: string]: number } = {};
+        const groupedData: GroupedTransferAnalysisData = {};
+
         salesInCenter2000.forEach(sale => {
+            const etiqueta = sale.Etiqueta || 'Sin Etiqueta';
             const code = normalizeMaterialCode(sale.CodMaterial);
-            aggregatedUnits[code] = (aggregatedUnits[code] || 0) + sale.UnidadesProyectado;
+            
+            if (!groupedData[etiqueta]) {
+                groupedData[etiqueta] = { subtotal: 0, materials: [] };
+            }
+            
+            const existingMaterial = groupedData[etiqueta].materials.find(m => m.code === code);
+            if (existingMaterial) {
+                existingMaterial.units += sale.UnidadesProyectado;
+            } else {
+                groupedData[etiqueta].materials.push({
+                    code,
+                    description: sale.Material,
+                    units: sale.UnidadesProyectado,
+                });
+            }
         });
 
-        const sortedData = Object.entries(aggregatedUnits)
-            .map(([code, units]) => ({ code, units }))
-            .sort((a, b) => b.units - a.units);
+        // Calculate subtotals and sort materials within each group
+        Object.keys(groupedData).forEach(etiqueta => {
+            const group = groupedData[etiqueta];
+            group.subtotal = group.materials.reduce((sum, material) => sum + material.units, 0);
+            group.materials.sort((a, b) => b.units - a.units);
+        });
 
-        setTransferAnalysisData(sortedData);
-        addNotification('success', `Análisis completado. Se encontraron ${sortedData.length} materiales para mostrar.`);
+        // Sort groups by subtotal
+        const sortedGroupedData = Object.entries(groupedData)
+            .sort(([, a], [, b]) => b.subtotal - a.subtotal)
+            .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {});
+
+        setTransferAnalysisData(sortedGroupedData);
+        addNotification('success', `Análisis completado. Se encontraron ${Object.keys(sortedGroupedData).length} grupos de etiquetas.`);
 
     } catch (error) {
         addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
@@ -365,7 +389,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   }, [aggregatedData]);
 
   const transferTotalUnits = useMemo(() => {
-    return transferAnalysisData.reduce((sum, item) => sum + item.units, 0);
+    return Object.values(transferAnalysisData).reduce((sum, group) => sum + group.subtotal, 0);
   }, [transferAnalysisData]);
 
 
@@ -473,28 +497,38 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             {isAnalyzing ? 'Analizando...' : 'Analizar Traslados Centro 2000'}
             </Button>
         </div>
-        {transferAnalysisData.length > 0 && (
+        {Object.keys(transferAnalysisData).length > 0 && (
             <div>
                 <h4 className="font-semibold mb-2">Materiales a Trasladar (Ventas en Centro 2000 / Fabricación en Centro 1000)</h4>
                 <div className="border rounded-md max-h-[60vh] overflow-y-auto">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0">
                             <tr>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Código Material</th>
-                                <th className="px-4 py-2 text-right font-semibold text-gray-600">Unidades Totales a Trasladar</th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Código Material / Etiqueta</th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Descripción</th>
+                                <th className="px-4 py-2 text-right font-semibold text-gray-600">Unidades a Trasladar</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {transferAnalysisData.map(item => (
-                                <tr key={item.code}>
-                                    <td className="px-4 py-2 font-mono">{item.code}</td>
-                                    <td className="px-4 py-2 text-right font-bold">{item.units.toLocaleString()}</td>
-                                </tr>
+                            {Object.entries(transferAnalysisData).map(([etiqueta, group]) => (
+                                <React.Fragment key={etiqueta}>
+                                    <tr className="bg-gray-100">
+                                        <td className="px-4 py-2 font-bold text-gray-800" colSpan={2}>{etiqueta}</td>
+                                        <td className="px-4 py-2 text-right font-bold text-gray-800">{group.subtotal.toLocaleString()}</td>
+                                    </tr>
+                                    {group.materials.map(item => (
+                                        <tr key={item.code}>
+                                            <td className="pl-8 pr-4 py-2 font-mono">{item.code}</td>
+                                            <td className="px-4 py-2 text-gray-600">{item.description}</td>
+                                            <td className="px-4 py-2 text-right font-semibold">{item.units.toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                </React.Fragment>
                             ))}
                         </tbody>
                         <tfoot className="bg-gray-200 sticky bottom-0">
                            <tr>
-                                <th className="px-4 py-2 text-left font-bold text-gray-700 uppercase">TOTAL</th>
+                                <th className="px-4 py-2 text-left font-bold text-gray-700 uppercase" colSpan={2}>TOTAL GENERAL</th>
                                 <th className="px-4 py-2 text-right font-bold text-indigo-700 uppercase">
                                     {transferTotalUnits.toLocaleString()}
                                 </th>
