@@ -281,8 +281,8 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V25 (Corrected Demand Consolidation) ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v25.'];
+    console.log('--- RUNNING STRATEGIC PLANNER V26 (Unified Demand) ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v26.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
@@ -318,11 +318,11 @@ export const generateProductionPlan = async (
     });
     auditLog.push(`Se cargaron ${productInfoMap.size} productos únicos desde los datos maestros y de ventas filtradas.`);
     
-    // ================== START OF REFACTORED LOGIC V25 ==================
-    // Step 1: Consolidate all demand and transfers into a single structure
+    // ================== START OF REFACTORED LOGIC V26 ==================
+    // Step 1: Consolidate all demand into a single structure
     const monthlyProductionNeeds = new Map<string, number>(); // Key: 'YYYY-MM---productId---producingCenterId', Value: units
-    const monthlyTransfers = new Map<string, number>(); // Key: 'YYYY-MM---productId---from---to', Value: qty
-    const monthlySalesDemand = new Map<string, number>(); // Key: 'YYYY-MM---productId---demandCenterId', Value: units
+    const monthlySalesDemandByCenter = new Map<string, number>(); // Key: 'YYYY-MM---productId---demandCenterId', Value: units
+    const transferNeeds = new Map<string, number>(); // Key: 'YYYY-MM---productId---from---to', Value: qty
 
     filteredSalesData.forEach(sale => {
         const { año, mes, código, centro, unidadesProyectado } = sale;
@@ -331,27 +331,21 @@ export const generateProductionPlan = async (
         const monthKey = `${año}-${String(mes).padStart(2, '0')}`;
         const provisionRule = productInfoMap.get(productId)?.provisionRule || 'E';
 
-        // Store original sales demand
         const salesDemandKey = `${monthKey}---${productId}---${demandCenterId}`;
-        monthlySalesDemand.set(salesDemandKey, (monthlySalesDemand.get(salesDemandKey) || 0) + unidadesProyectado);
+        monthlySalesDemandByCenter.set(salesDemandKey, (monthlySalesDemandByCenter.get(salesDemandKey) || 0) + unidadesProyectado);
 
-        // Determine production location and create production need & transfers if needed
         let producingCenterId = demandCenterId; 
         if (provisionRule === 'F' && demandCenterId !== '1000') {
             producingCenterId = '1000';
             const transferKey = `${monthKey}---${productId}---1000---${demandCenterId}`;
-            monthlyTransfers.set(transferKey, (monthlyTransfers.get(transferKey) || 0) + unidadesProyectado);
-        } else if (provisionRule === 'X') {
-           // For now, flexible is treated as local. Can be expanded.
-           producingCenterId = demandCenterId;
+            transferNeeds.set(transferKey, (transferNeeds.get(transferKey) || 0) + unidadesProyectado);
         }
         
-        // Aggregate production needs in the correct production center
         const needKey = `${monthKey}---${productId}---${producingCenterId}`;
         monthlyProductionNeeds.set(needKey, (monthlyProductionNeeds.get(needKey) || 0) + unidadesProyectado);
     });
 
-    auditLog.push(`Paso 1 (V25): Necesidades de producción y traslados consolidados. ${monthlyProductionNeeds.size} necesidades de producción, ${monthlyTransfers.size} rutas de traslado.`);
+    auditLog.push(`Paso 1 (V26): Necesidades de producción consolidadas. ${monthlyProductionNeeds.size} necesidades de producción, ${transferNeeds.size} rutas de traslado identificadas.`);
 
     // Step 2: Monthly Planning & Capacity Check
     const planningMonths = Array.from(new Set(Array.from(monthlyProductionNeeds.keys()).map(k => k.split('---')[0]))).sort()
@@ -432,11 +426,14 @@ export const generateProductionPlan = async (
         }
         auditLog.push(`Mes ${month}/${year}: Producción planificada. ${productionBacklog.size} items en backlog. ${productionPlanThisMonth.size} productos fabricados.`);
         
-        // Corrected Accounting Logic
+        // --- Corrected Accounting Logic ---
         const allProductCenterPairsThisMonth = new Set<string>();
-        for (const key of monthlySalesDemand.keys()) if (key.startsWith(monthKeyPart)) allProductCenterPairsThisMonth.add(key.split('---').slice(1).join('---'));
+        // Add all pairs that have sales
+        for (const key of monthlySalesDemandByCenter.keys()) if (key.startsWith(monthKeyPart)) allProductCenterPairsThisMonth.add(key.split('---').slice(1).join('---'));
+        // Add all pairs that have production
         for (const [key,] of productionPlanThisMonth.entries()) allProductCenterPairsThisMonth.add(key);
-        for (const key of monthlyTransfers.keys()) {
+        // Add all pairs involved in transfers
+        for (const key of transferNeeds.keys()) {
             if (key.startsWith(monthKeyPart)) {
                 const [, productId, from, to] = key.split('---');
                 allProductCenterPairsThisMonth.add(`${productId}---${from}`);
@@ -450,28 +447,23 @@ export const generateProductionPlan = async (
 
             const initialStock = previousMonthState.get(pairKey) || inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.currentStock || 0;
             const production = productionPlanThisMonth.get(pairKey)?.quantity || 0;
-            const salesDemand = monthlySalesDemand.get(`${monthKeyPart}---${productId}---${centerId}`) || 0;
+            const salesDemand = monthlySalesDemandByCenter.get(`${monthKeyPart}---${productId}---${centerId}`) || 0;
 
-            // Transfers are based on what was ACTUALLY produced for transfer, not theoretical demand.
-            // This is a simplification; a more complex model would allocate produced units.
-            // For now, we assume if production was made for a transfer, the transfer happens.
-            const plannedTransfersOut = Array.from(monthlyTransfers.entries())
+            const transfersOut = Array.from(transferNeeds.entries())
                 .filter(([key,]) => key.startsWith(monthKeyPart) && key.split('---')[1] === productId && key.split('---')[2] === centerId)
-                 .reduce((sum, [, qty]) => {
-                     // Check if the production for this transfer was fulfilled
-                     const prodKey = `${productId}---${centerId}`;
-                     const producedQty = productionPlanThisMonth.get(prodKey)?.quantity || 0;
-                     // Only count the transfer if it was (at least partially) produced. This is still a simplification.
-                     // A better model would track allocated production. For now, assume it's transferable if produced.
-                     return sum + qty; // This should be refined to only transfer what's available
-                 }, 0);
-
-            const plannedTransfersIn = Array.from(monthlyTransfers.entries())
-                .filter(([key,]) => key.startsWith(monthKeyPart) && key.split('---')[1] === productId && key.split('---')[3] === centerId)
                 .reduce((sum, [, qty]) => sum + qty, 0);
 
-            // The final inventory is based on what was ACTUALLY produced and transferred.
-            const finalStock = initialStock + production - salesDemand + (plannedTransfersIn - plannedTransfersOut);
+            const transfersIn = Array.from(transferNeeds.entries())
+                .filter(([key,]) => key.startsWith(monthKeyPart) && key.split('---')[1] === productId && key.split('---')[3] === centerId)
+                .reduce((sum, [, qty]) => sum + qty, 0);
+            
+            // Assume transfers are fulfilled if production was possible. This is a simplification.
+            const actualTransfersOut = production > salesDemand ? Math.min(transfersOut, production - salesDemand) : 0;
+            // For now, assume transfersIn are always available from the source
+            const actualTransfersIn = transfersIn;
+
+            const netTransfers = actualTransfersIn - actualTransfersOut;
+            const finalStock = initialStock + production - salesDemand + netTransfers;
             inventoryState.set(pairKey, finalStock);
             
             const planItem: MonthlyProductionPlanItem = {
@@ -480,7 +472,7 @@ export const generateProductionPlan = async (
                 productName: productInfoMap.get(productId)?.name || productId,
                 totalQuantityToProduce: production,
                 totalDemand: salesDemand,
-                netTransfers: plannedTransfersIn - plannedTransfersOut,
+                netTransfers: netTransfers,
                 initialStock: initialStock,
                 finalStock: finalStock,
                 totalHoursWorked: 0, 
@@ -491,7 +483,7 @@ export const generateProductionPlan = async (
         }
     }
 
-    auditLog.push(`Paso 2 (V25): Plan mensual de inventario completado.`);
+    auditLog.push(`Paso 2 (V26): Plan mensual de inventario completado.`);
     onProgress(null);
     
     // Step 3: Generate Weekly Plan from Monthly
