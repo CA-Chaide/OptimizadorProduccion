@@ -1,5 +1,4 @@
 
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
@@ -39,6 +38,12 @@ interface TransferAnalysisGroup {
 
 type GroupedTransferAnalysisData = Record<string, TransferAnalysisGroup>;
 
+interface ProvisioningInfo {
+    code: string;
+    description: string;
+    center: string;
+    provisioningClass: string;
+}
 
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
@@ -149,6 +154,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [transferAnalysisData, setTransferAnalysisData] = useState<GroupedTransferAnalysisData>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
+  const [provisioningAnalysisData, setProvisioningAnalysisData] = useState<ProvisioningInfo[]>([]);
+  const [isProvisioningAnalyzing, setIsProvisioningAnalyzing] = useState(false);
+
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
   };
@@ -168,6 +176,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
         };
         setFilterOptions(newFilterOptions);
+        if (newFilterOptions.etiquetas.length > 0 && !filters.etiqueta) {
+            handleFilterChange('etiqueta', newFilterOptions.etiquetas[0].value);
+        }
       } catch (error) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
       }
@@ -276,14 +287,19 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         try {
             const yearsToLoad = filters.años.map(Number);
-            const salesApiCallPromises: Promise<PresupuestoItem[]>[] = yearsToLoad.map(year =>
-                queryApi({
-                    source: 'Presupuesto',
-                    operation: 'get_data',
-                    filters: { 'Año': year },
-                    pagination: { limit: 500000 }
-                })
-            );
+            const salesApiCallPromises: Promise<PresupuestoItem[]>[] = [];
+
+            for (const year of yearsToLoad) {
+                const queryFilters: { [key: string]: any } = { 'Año': year };
+                salesApiCallPromises.push(
+                    queryApi({
+                        source: 'Presupuesto',
+                        operation: 'get_data',
+                        filters: queryFilters,
+                        pagination: { limit: 500000 }
+                    })
+                );
+            }
             
             const allApiPromises = [
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
@@ -356,6 +372,71 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
         } finally {
             setIsAnalyzing(false);
+        }
+    };
+    
+    const handleAnalyzeProvisioning = async () => {
+        setIsProvisioningAnalyzing(true);
+        setProvisioningAnalysisData([]);
+        addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta}...`);
+
+        if (!filters.etiqueta) {
+            addNotification('warning', 'Por favor, seleccione una etiqueta para el análisis.');
+            setIsProvisioningAnalyzing(false);
+            return;
+        }
+
+        try {
+            const [assemblyData, salesData] = await Promise.all([
+                queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
+                queryApi({ source: 'Presupuesto', operation: 'get_data', filters: { 'Etiqueta': filters.etiqueta }, pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
+            ]);
+
+            const relevantMaterialCodes = new Set(salesData.map(sale => normalizeMaterialCode(sale.CodMaterial)));
+            
+            const provisioningInfo = assemblyData
+                .filter(item => relevantMaterialCodes.has(normalizeMaterialCode(item.CodMaterial)))
+                .map(item => ({
+                    code: normalizeMaterialCode(item.CodMaterial),
+                    description: item.CodMaterial, // Placeholder, will be replaced later
+                    center: String(item.Centro).trim(),
+                    provisioningClass: item.ClaseAprovisionamiento || 'N/D'
+                }));
+
+            // Create a map to get material descriptions efficiently
+            const materialDescriptionMap = new Map<string, string>();
+            salesData.forEach(sale => {
+                if (!materialDescriptionMap.has(normalizeMaterialCode(sale.CodMaterial))) {
+                    materialDescriptionMap.set(normalizeMaterialCode(sale.CodMaterial), sale.Material);
+                }
+            });
+
+            // Add descriptions to the final data
+            const finalData = provisioningInfo.map(item => ({
+                ...item,
+                description: materialDescriptionMap.get(item.code) || 'Descripción no encontrada'
+            }));
+
+            // Sort for consistent display
+            finalData.sort((a, b) => {
+                if (a.code < b.code) return -1;
+                if (a.code > b.code) return 1;
+                if (a.center < b.center) return -1;
+                if (a.center > b.center) return 1;
+                return 0;
+            });
+            
+            setProvisioningAnalysisData(finalData);
+            if (finalData.length > 0) {
+                addNotification('success', `Análisis completado. Se encontraron ${finalData.length} reglas de aprovisionamiento para la etiqueta.`);
+            } else {
+                addNotification('warning', `No se encontraron reglas de aprovisionamiento para la etiqueta seleccionada.`);
+            }
+
+        } catch (error) {
+            addNotification('error', `Error durante el análisis de aprovisionamiento: ${(error as Error).message}`);
+        } finally {
+            setIsProvisioningAnalyzing(false);
         }
     };
 
@@ -492,7 +573,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
         <p className="text-sm text-gray-600">
-            Esta herramienta muestra todos los materiales vendidos en centros diferentes al 1000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado. El análisis respeta los filtros de fecha.
+            Esta herramienta muestra todos los materiales vendidos en centros diferentes al 1000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado. El análisis respeta los filtros de fecha y etiqueta.
         </p>
         <div>
             <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing}>
@@ -542,7 +623,46 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         )}
       </div>
 
+       {/* --- Sección de Análisis de Aprovisionamiento --- */}
+      <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-700">Análisis de Aprovisionamiento por Etiqueta</h3>
+        <p className="text-sm text-gray-600">
+            Esta herramienta consulta las reglas de negocio para todos los materiales de la etiqueta seleccionada en el filtro principal. Muestra la "Clase de Aprovisionamiento" ('E', 'F', 'X') definida para cada código en cada centro.
+        </p>
+        <div>
+            <Button onClick={handleAnalyzeProvisioning} disabled={isProvisioningAnalyzing || !filters.etiqueta}>
+            {isProvisioningAnalyzing ? 'Analizando...' : `Analizar Aprovisionamiento para "${filters.etiqueta}"`}
+            </Button>
+        </div>
+        {provisioningAnalysisData.length > 0 && (
+            <div>
+                <h4 className="font-semibold mb-2">Reglas de Aprovisionamiento para la Etiqueta: <span className="text-indigo-600">{filters.etiqueta}</span></h4>
+                <div className="border rounded-md max-h-[60vh] overflow-y-auto">
+                    <table className="min-w-full text-sm divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0">
+                            <tr>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Código Material</th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Descripción</th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Centro</th>
+                                <th className="px-4 py-2 text-center font-semibold text-gray-600">Clase Aprovisionamiento</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {provisioningAnalysisData.map((item, index) => (
+                                <tr key={`${item.code}-${item.center}-${index}`}>
+                                    <td className="px-4 py-2 font-mono">{item.code}</td>
+                                    <td className="px-4 py-2 text-gray-600">{item.description}</td>
+                                    <td className="px-4 py-2 text-gray-800">{item.center}</td>
+                                    <td className="px-4 py-2 text-center font-bold">{item.provisioningClass}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        )}
+      </div>
+
     </div>
   );
-
-    
+}
