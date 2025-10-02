@@ -276,15 +276,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         try {
             const yearsToLoad = filters.años.map(Number);
-            const salesApiFilters: { [key: string]: any } = { 'Año': { in: yearsToLoad } };
-            if (filters.etiqueta) {
-                salesApiFilters['Etiqueta'] = filters.etiqueta;
-            }
-            if (filters.meses.length > 0) {
-              salesApiFilters['Mes'] = { in: filters.meses.map(Number) };
-            }
-
-            const salesDataPromises: Promise<PresupuestoItem[]>[] = yearsToLoad.map(year => 
+            const salesApiCallPromises: Promise<PresupuestoItem[]>[] = yearsToLoad.map(year =>
                 queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
@@ -295,7 +287,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
             const [assemblyData, ...salesDataResponses] = await Promise.all([
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
-                ...salesDataPromises
+                ...salesDataResponses
             ]);
             
             let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
@@ -310,7 +302,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             
             const materialsToTransfer = new Set(
                 assemblyData
-                    .filter(item => item.ClaseAprovisionamiento === 'F' && String(item.Centro).trim() !== '1000')
+                    .filter(item => item.ClaseAprovisionamiento === 'F')
                     .map(item => normalizeMaterialCode(item.CodMaterial))
             );
 
@@ -552,4 +544,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   );
 
     
-
