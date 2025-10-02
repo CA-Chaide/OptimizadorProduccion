@@ -281,8 +281,8 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V20 ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v20.'];
+    console.log('--- RUNNING STRATEGIC PLANNER V21 (Transfer Fix) ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v21.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
@@ -294,11 +294,9 @@ export const generateProductionPlan = async (
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
 
-    // Step 0: Identify plannable materials
     const plannableMaterialCodes = new Set(apiData.map(item => normalizeMaterialCode(item.CodMaterial)));
     auditLog.push(`Se identificaron ${plannableMaterialCodes.size} materiales con tiempos de ensamble definidos.`);
 
-    // Filter sales data to only include plannable materials
     const filteredSalesData = salesData.filter(sale => plannableMaterialCodes.has(normalizeMaterialCode(sale.código)));
     const ignoredSalesCount = salesData.length - filteredSalesData.length;
     if (ignoredSalesCount > 0) {
@@ -312,7 +310,6 @@ export const generateProductionPlan = async (
             productInfoMap.set(productId, { name: item.Material, provisionRule: item.ClaseAprovisionamiento || 'E' });
         }
     });
-    // Use filtered sales data to complete product info
     filteredSalesData.forEach(item => {
         const productId = normalizeMaterialCode(item.código);
         if (!productInfoMap.has(productId)) {
@@ -333,8 +330,8 @@ export const generateProductionPlan = async (
     });
     auditLog.push(`Paso 1: Demanda de despacho (ventas) agregada para materiales planificables. ${monthlyDemandMap.size} entradas.`);
 
-
-    // Step 2: Derive production needs and transfers
+    // ================== START OF CORRECTED LOGIC ==================
+    // Step 2: Correctly derive production needs and transfers
     const monthlyProductionNeeds = new Map<string, number>(); // Key: 'YYYY-MM---productId---producingCenterId', Value: units
     const monthlyTransfers = new Map<string, number>(); // Key: 'YYYY-MM---productId---from---to', Value: qty
 
@@ -342,17 +339,21 @@ export const generateProductionPlan = async (
         const [monthKeyPart, productId, demandCenterId] = demandKey.split('---');
         const provisionRule = productInfoMap.get(productId)?.provisionRule || 'E';
         
-        let producingCenterId = demandCenterId;
+        let producingCenterId = demandCenterId; // Default to local production
+        
+        // If provision rule is 'F' (Centralized) and demand is not in the central warehouse (1000)
         if (provisionRule === 'F' && demandCenterId !== '1000') {
-            producingCenterId = '1000';
+            producingCenterId = '1000'; // Production is moved to the central warehouse
             const transferKey = `${monthKeyPart}---${productId}---1000---${demandCenterId}`;
             monthlyTransfers.set(transferKey, (monthlyTransfers.get(transferKey) || 0) + demandQty);
         }
         
+        // Add the demand to the correct production center's needs
         const needKey = `${monthKeyPart}---${productId}---${producingCenterId}`;
         monthlyProductionNeeds.set(needKey, (monthlyProductionNeeds.get(needKey) || 0) + demandQty);
     }
-    auditLog.push(`Paso 2: Necesidades de producción y traslados derivados. ${monthlyProductionNeeds.size} necesidades, ${monthlyTransfers.size} traslados.`);
+    auditLog.push(`Paso 2 (Corregido): Necesidades de producción y traslados derivados. ${monthlyProductionNeeds.size} necesidades, ${monthlyTransfers.size} traslados.`);
+    // =================== END OF CORRECTED LOGIC ===================
 
     // Step 3: Monthly Planning & Capacity Check
     const planningMonths = Array.from(new Set(Array.from(monthlyDemandMap.keys()).map(k => k.split('---')[0]))).sort()
@@ -372,10 +373,6 @@ export const generateProductionPlan = async (
         onProgress({ message: `Planificando mes ${month}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         const monthKeyPart = `${year}-${String(month).padStart(2, '0')}`;
         
-        // Calculate total hours required for this month's needs + backlog
-        let totalHoursRequiredByCenter = new Map<string, number>(); // centerId -> hours
-        
-        // Add backlog to this month's needs
         const needsThisMonth = new Map<string, number>();
         for(const [key, qty] of monthlyProductionNeeds.entries()) if(key.startsWith(monthKeyPart)) needsThisMonth.set(key.split('---').slice(1).join('---'), qty);
         for(const [key, qty] of productionBacklog.entries()) needsThisMonth.set(key, (needsThisMonth.get(key) || 0) + qty);
@@ -388,8 +385,6 @@ export const generateProductionPlan = async (
             monthlyCapacityByLine.set(line.id, regularHours + extraHours + saturdayHours);
         });
 
-        // This is a simplified assignment. A real scenario would use a more complex algorithm.
-        // Assign needs to lines and check capacity
         const productionThisMonth = new Map<string, number>();
         const hoursUsedByLine = new Map<string, number>();
 
@@ -398,7 +393,7 @@ export const generateProductionPlan = async (
             const linesInCenter = productionLines.filter(l => l.workCenterId === centerId);
             
             let quantityToProduce = qty;
-            const relevantLine = linesInCenter.find(l => l.materialsHandled.includes(productId)); // Simple logic, find first line
+            const relevantLine = linesInCenter.find(l => l.materialsHandled.includes(productId));
 
             if (relevantLine) {
                 const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
@@ -420,8 +415,6 @@ export const generateProductionPlan = async (
         }
         auditLog.push(`Mes ${month}/${year}: Producción planificada, ${productionBacklog.size} items en backlog.`);
 
-
-        // Calculate final state for the month
         const allProductCenterPairsThisMonth = new Set<string>();
         for (const key of monthlyDemandMap.keys()) if (key.startsWith(monthKeyPart)) allProductCenterPairsThisMonth.add(key.split('---').slice(1).join('---'));
         for (const [key,] of productionThisMonth.entries()) allProductCenterPairsThisMonth.add(key);
@@ -439,8 +432,8 @@ export const generateProductionPlan = async (
             const [productId, centerId] = pairKey.split('---');
             const initialStock = previousMonthState.get(pairKey) || inventorySettings.find(inv=>inv.itemId === productId && inv.centerId === centerId)?.currentStock || 0;
 
-            const production = productionThisMonth.get(pairKey) || 0;
-            const salesDemand = monthlyDemandMap.get(`${monthKeyPart}---${pairKey}`) || 0;
+            const production = productionThisMonth.get(`${productId}---${centerId}`) || 0;
+            const salesDemand = monthlyDemandMap.get(`${monthKeyPart}---${productId}---${centerId}`) || 0;
             
             const transfersOut = Array.from(monthlyTransfers.entries())
                 .filter(([key,]) => key.startsWith(monthKeyPart) && key.split('---')[1] === productId && key.split('---')[2] === centerId)
@@ -463,7 +456,7 @@ export const generateProductionPlan = async (
                 initialStock: initialStock,
                 finalStock: finalStock,
                 totalHoursWorked: 0, 
-                totalEstimatedLaborCost: 0, 
+                totalEstimatedLaborCost: 0,
             };
             monthlyPlan.push(planItem);
         }
@@ -602,3 +595,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
