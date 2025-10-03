@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
@@ -156,6 +157,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   
   const [provisioningAnalysisData, setProvisioningAnalysisData] = useState<ProvisioningInfo[]>([]);
   const [isProvisioningAnalyzing, setIsProvisioningAnalyzing] = useState(false);
+  
+  const [provisioningFilters, setProvisioningFilters] = useState({
+    code: '',
+    description: '',
+    center: '',
+    provisioningClass: '',
+  });
 
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -290,24 +298,21 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const salesApiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
             for (const year of yearsToLoad) {
-                const queryFilters: { [key: string]: any } = { 'Año': year };
-                salesApiCallPromises.push(
-                    queryApi({
-                        source: 'Presupuesto',
-                        operation: 'get_data',
-                        filters: queryFilters,
-                        pagination: { limit: 500000 }
-                    })
-                );
+                const salesApiFilters: { [key: string]: any } = { 'Año': year };
+                salesApiCallPromises.push(queryApi({
+                    source: 'Presupuesto',
+                    operation: 'get_data',
+                    filters: salesApiFilters,
+                    pagination: { limit: 500000 }
+                }));
             }
             
-            const allApiPromises = [
-                queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
+            const allApiPromises: Promise<any>[] = [
+                queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }),
                 ...salesApiCallPromises
             ];
 
             const [assemblyData, ...salesDataResponses] = await Promise.all(allApiPromises);
-            
             let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
 
             if (filters.meses.length > 0) {
@@ -319,7 +324,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }
             
             const materialsToTransfer = new Set(
-                assemblyData
+                (assemblyData as TiempoEnsambleItem[])
                     .filter(item => item.ClaseAprovisionamiento === 'F')
                     .map(item => normalizeMaterialCode(item.CodMaterial))
             );
@@ -439,6 +444,21 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             setIsProvisioningAnalyzing(false);
         }
     };
+    
+    const handleProvisioningFilterChange = (field: keyof typeof provisioningFilters, value: string) => {
+        setProvisioningFilters(prev => ({...prev, [field]: value}));
+    };
+
+    const filteredProvisioningData = useMemo(() => {
+        return provisioningAnalysisData.filter(item => {
+            return (
+                item.code.toLowerCase().includes(provisioningFilters.code.toLowerCase()) &&
+                item.description.toLowerCase().includes(provisioningFilters.description.toLowerCase()) &&
+                item.center.toLowerCase().includes(provisioningFilters.center.toLowerCase()) &&
+                item.provisioningClass.toLowerCase().includes(provisioningFilters.provisioningClass.toLowerCase())
+            );
+        });
+    }, [provisioningAnalysisData, provisioningFilters]);
 
 
   const { aggregatedData, centers } = useMemo(() => {
@@ -641,14 +661,26 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     <table className="min-w-full text-sm divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0">
                             <tr>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Código Material</th>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Descripción</th>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-600">Centro</th>
-                                <th className="px-4 py-2 text-center font-semibold text-gray-600">Clase Aprovisionamiento</th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">
+                                    Código Material
+                                    <input type="text" placeholder="Filtrar..." className="w-full mt-1 p-1 text-xs border rounded" value={provisioningFilters.code} onChange={(e) => handleProvisioningFilterChange('code', e.target.value)} />
+                                </th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">
+                                    Descripción
+                                    <input type="text" placeholder="Filtrar..." className="w-full mt-1 p-1 text-xs border rounded" value={provisioningFilters.description} onChange={(e) => handleProvisioningFilterChange('description', e.target.value)} />
+                                </th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-600">
+                                    Centro
+                                    <input type="text" placeholder="Filtrar..." className="w-full mt-1 p-1 text-xs border rounded" value={provisioningFilters.center} onChange={(e) => handleProvisioningFilterChange('center', e.target.value)} />
+                                </th>
+                                <th className="px-4 py-2 text-center font-semibold text-gray-600">
+                                    Clase Aprov.
+                                    <input type="text" placeholder="Filtrar..." className="w-full mt-1 p-1 text-xs border rounded" value={provisioningFilters.provisioningClass} onChange={(e) => handleProvisioningFilterChange('provisioningClass', e.target.value)} />
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {provisioningAnalysisData.map((item, index) => (
+                            {filteredProvisioningData.map((item, index) => (
                                 <tr key={`${item.code}-${item.center}-${index}`}>
                                     <td className="px-4 py-2 font-mono">{item.code}</td>
                                     <td className="px-4 py-2 text-gray-600">{item.description}</td>
