@@ -1,6 +1,6 @@
 
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
@@ -58,7 +58,7 @@ const MultiSelect: React.FC<{
   onChange: (selected: string[]) => void;
   className?: string;
 }> = ({ label, options, selected, onChange, className }) => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = React.useState(false);
 
   const handleSelect = (value: string) => {
     const newSelected = selected.includes(value)
@@ -132,13 +132,13 @@ const MultiSelect: React.FC<{
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const { addNotification, isLoading: isAppLoading } = useAppContext();
   
-  const [filterOptions, setFilterOptions] = useState({
+  const [filterOptions, setFilterOptions] = React.useState({
       años: [] as {value: string, label: string}[],
       centros: [] as {value: string, label: string}[],
       etiquetas: [] as {value: string, label: string}[],
   });
 
-  const [filters, setFilters] = useState<{
+  const [filters, setFilters] = React.useState<{
       años: string[];
       meses: string[];
       centros: string[];
@@ -150,15 +150,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       etiqueta: '',
   });
 
-  const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [transferAnalysisData, setTransferAnalysisData] = useState<GroupedTransferAnalysisData>({});
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [loadedData, setLoadedData] = React.useState<SalesDataRow[]>([]);
+  const [isProcessing, setIsProcessing] = React.useState<boolean>(false);
+  const [transferAnalysisData, setTransferAnalysisData] = React.useState<GroupedTransferAnalysisData>({});
+  const [isAnalyzing, setIsAnalyzing] = React.useState(false);
   
-  const [provisioningAnalysisData, setProvisioningAnalysisData] = useState<ProvisioningInfo[]>([]);
-  const [isProvisioningAnalyzing, setIsProvisioningAnalyzing] = useState(false);
+  const [provisioningAnalysisData, setProvisioningAnalysisData] = React.useState<ProvisioningInfo[]>([]);
+  const [isProvisioningAnalyzing, setIsProvisioningAnalyzing] = React.useState(false);
   
-  const [provisioningFilters, setProvisioningFilters] = useState({
+  const [provisioningFilters, setProvisioningFilters] = React.useState({
     code: '',
     description: '',
     center: '',
@@ -169,7 +169,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     const loadFilterOptions = async () => {
       try {
         const [añosData, centrosData, etiquetasData] = await Promise.all([
@@ -184,8 +184,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
         };
         setFilterOptions(newFilterOptions);
-        if (newFilterOptions.etiquetas.length > 0 && !filters.etiqueta) {
-            handleFilterChange('etiqueta', newFilterOptions.etiquetas[0].value);
+        // Set default to "Todas" if not already set
+        if (!filters.etiqueta) {
+             handleFilterChange('etiqueta', '');
         }
       } catch (error) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
@@ -298,8 +299,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const salesApiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
             for (const year of yearsToLoad) {
-                const salesApiFilters: { [key: string]: any } = { 'Año': year };
-                salesApiCallPromises.push(queryApi({
+                 const salesApiFilters: { [key: string]: any } = { 'Año': year };
+                 salesApiCallPromises.push(queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
                     filters: salesApiFilters,
@@ -307,14 +308,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }));
             }
             
-            const allApiPromises: Promise<any>[] = [
+            addNotification('info', `Realizando ${1 + salesApiCallPromises.length} consultas a la API (Tiempos y Ventas)...`);
+
+            const [assemblyData, ...salesDataResponses] = await Promise.all([
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }),
                 ...salesApiCallPromises
-            ];
-
-            const [assemblyData, ...salesDataResponses] = await Promise.all(allApiPromises);
+            ]);
             let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
-
+            
             if (filters.meses.length > 0) {
                 const selectedMonths = new Set(filters.meses.map(Number));
                 allSalesData = allSalesData.filter(sale => selectedMonths.has(sale.Mes));
@@ -383,18 +384,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const handleAnalyzeProvisioning = async () => {
         setIsProvisioningAnalyzing(true);
         setProvisioningAnalysisData([]);
-        addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta}...`);
-
-        if (!filters.etiqueta) {
-            addNotification('warning', 'Por favor, seleccione una etiqueta para el análisis.');
-            setIsProvisioningAnalyzing(false);
-            return;
-        }
+        addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta || 'Todas'}...`);
 
         try {
             const [assemblyData, salesData] = await Promise.all([
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
-                queryApi({ source: 'Presupuesto', operation: 'get_data', filters: { 'Etiqueta': filters.etiqueta }, pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
+                queryApi({ source: 'Presupuesto', operation: 'get_data', filters: filters.etiqueta ? { 'Etiqueta': filters.etiqueta } : {}, pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
             ]);
 
             const relevantMaterialCodes = new Set(salesData.map(sale => normalizeMaterialCode(sale.CodMaterial)));
@@ -449,7 +444,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         setProvisioningFilters(prev => ({...prev, [field]: value}));
     };
 
-    const filteredProvisioningData = useMemo(() => {
+    const filteredProvisioningData = React.useMemo(() => {
         return provisioningAnalysisData.filter(item => {
             return (
                 item.code.toLowerCase().includes(provisioningFilters.code.toLowerCase()) &&
@@ -461,7 +456,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }, [provisioningAnalysisData, provisioningFilters]);
 
 
-  const { aggregatedData, centers } = useMemo(() => {
+  const { aggregatedData, centers } = React.useMemo(() => {
     const data: AggregatedData = {};
     const centerSet = new Set<string>();
 
@@ -479,7 +474,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     return { aggregatedData: data, centers: Array.from(centerSet).sort() };
   }, [loadedData]);
 
-  const footerTotals = useMemo(() => {
+  const footerTotals = React.useMemo(() => {
     const totals: { [centerName: string]: number } = {};
     let grandTotal = 0;
     Object.values(aggregatedData).forEach(group => {
@@ -491,7 +486,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     return { ...totals, grandTotal };
   }, [aggregatedData]);
 
-  const transferTotalUnits = useMemo(() => {
+  const transferTotalUnits = React.useMemo(() => {
     return Object.values(transferAnalysisData).reduce((sum, group) => sum + group.subtotal, 0);
   }, [transferAnalysisData]);
 
@@ -650,13 +645,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             Esta herramienta consulta las reglas de negocio para todos los materiales de la etiqueta seleccionada en el filtro principal. Muestra la "Clase de Aprovisionamiento" ('E', 'F', 'X') definida para cada código en cada centro.
         </p>
         <div>
-            <Button onClick={handleAnalyzeProvisioning} disabled={isProvisioningAnalyzing || !filters.etiqueta}>
-            {isProvisioningAnalyzing ? 'Analizando...' : `Analizar Aprovisionamiento para "${filters.etiqueta}"`}
+            <Button onClick={handleAnalyzeProvisioning} disabled={isProvisioningAnalyzing}>
+            {isProvisioningAnalyzing ? 'Analizando...' : `Analizar Aprovisionamiento para "${filters.etiqueta || 'Todas'}"`}
             </Button>
         </div>
         {provisioningAnalysisData.length > 0 && (
             <div>
-                <h4 className="font-semibold mb-2">Reglas de Aprovisionamiento para la Etiqueta: <span className="text-indigo-600">{filters.etiqueta}</span></h4>
+                <h4 className="font-semibold mb-2">Reglas de Aprovisionamiento para la Etiqueta: <span className="text-indigo-600">{filters.etiqueta || 'Todas'}</span></h4>
                 <div className="border rounded-md max-h-[60vh] overflow-y-auto">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0">
