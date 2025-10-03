@@ -296,15 +296,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const yearsToLoad = filters.años.map(Number);
             const salesApiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
-            const salesApiFilters: { [key: string]: any } = { 'Año': { in: yearsToLoad } };
-            
-            salesApiCallPromises.push(queryApi({
-                source: 'Presupuesto',
-                operation: 'get_data',
-                filters: salesApiFilters,
-                pagination: { limit: 500000 }
-            }));
-            
+            // Create a promise for each year selected
+            for (const year of yearsToLoad) {
+                const salesApiFilter: { [key: string]: any } = { 'Año': year };
+                salesApiCallPromises.push(queryApi({
+                    source: 'Presupuesto',
+                    operation: 'get_data',
+                    filters: salesApiFilter,
+                    pagination: { limit: 500000 }
+                }));
+            }
             
             addNotification('info', `Realizando ${1 + salesApiCallPromises.length} consultas a la API (Tiempos y Ventas)...`);
 
@@ -312,6 +313,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }),
                 ...salesApiCallPromises
             ]);
+            
             let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
             
             if (filters.meses.length > 0) {
