@@ -1,6 +1,6 @@
 
 
-import React from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
@@ -58,7 +58,7 @@ const MultiSelect: React.FC<{
   onChange: (selected: string[]) => void;
   className?: string;
 }> = ({ label, options, selected, onChange, className }) => {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useState(false);
 
   const handleSelect = (value: string) => {
     const newSelected = selected.includes(value)
@@ -132,13 +132,13 @@ const MultiSelect: React.FC<{
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const { addNotification, isLoading: isAppLoading } = useAppContext();
   
-  const [filterOptions, setFilterOptions] = React.useState({
+  const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: string, label: string}[],
       centros: [] as {value: string, label: string}[],
       etiquetas: [] as {value: string, label: string}[],
   });
 
-  const [filters, setFilters] = React.useState<{
+  const [filters, setFilters] = useState<{
       años: string[];
       meses: string[];
       centros: string[];
@@ -150,15 +150,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       etiqueta: '',
   });
 
-  const [loadedData, setLoadedData] = React.useState<SalesDataRow[]>([]);
-  const [isProcessing, setIsProcessing] = React.useState<boolean>(false);
-  const [transferAnalysisData, setTransferAnalysisData] = React.useState<GroupedTransferAnalysisData>({});
-  const [isAnalyzing, setIsAnalyzing] = React.useState(false);
+  const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [transferAnalysisData, setTransferAnalysisData] = useState<GroupedTransferAnalysisData>({});
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  const [provisioningAnalysisData, setProvisioningAnalysisData] = React.useState<ProvisioningInfo[]>([]);
-  const [isProvisioningAnalyzing, setIsProvisioningAnalyzing] = React.useState(false);
+  const [provisioningAnalysisData, setProvisioningAnalysisData] = useState<ProvisioningInfo[]>([]);
+  const [isProvisioningAnalyzing, setIsProvisioningAnalyzing] = useState(false);
   
-  const [provisioningFilters, setProvisioningFilters] = React.useState({
+  const [provisioningFilters, setProvisioningFilters] = useState({
     code: '',
     description: '',
     center: '',
@@ -169,7 +169,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     const loadFilterOptions = async () => {
       try {
         const [añosData, centrosData, etiquetasData] = await Promise.all([
@@ -184,10 +184,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
         };
         setFilterOptions(newFilterOptions);
-        // Set default to "Todas" if not already set
-        if (!filters.etiqueta) {
-             handleFilterChange('etiqueta', '');
-        }
+        
+        handleFilterChange('etiqueta', '');
       } catch (error) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
       }
@@ -298,15 +296,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const yearsToLoad = filters.años.map(Number);
             const salesApiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
-            for (const year of yearsToLoad) {
-                 const salesApiFilters: { [key: string]: any } = { 'Año': year };
-                 salesApiCallPromises.push(queryApi({
-                    source: 'Presupuesto',
-                    operation: 'get_data',
-                    filters: salesApiFilters,
-                    pagination: { limit: 500000 }
-                }));
-            }
+            const salesApiFilters: { [key: string]: any } = { 'Año': { in: yearsToLoad } };
+            
+            salesApiCallPromises.push(queryApi({
+                source: 'Presupuesto',
+                operation: 'get_data',
+                filters: salesApiFilters,
+                pagination: { limit: 500000 }
+            }));
+            
             
             addNotification('info', `Realizando ${1 + salesApiCallPromises.length} consultas a la API (Tiempos y Ventas)...`);
 
@@ -412,13 +410,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             });
 
             // Add descriptions to the final data
-            const finalData = provisioningInfo.map(item => ({
+            const describedData = provisioningInfo.map(item => ({
                 ...item,
                 description: materialDescriptionMap.get(item.code) || 'Descripción no encontrada'
             }));
 
+            // Deduplicate the data
+            const uniqueData: ProvisioningInfo[] = [];
+            const seen = new Set<string>(); // Keep track of 'code-center' pairs
+            for (const item of describedData) {
+                const key = `${item.code}-${item.center}`;
+                if (!seen.has(key)) {
+                    uniqueData.push(item);
+                    seen.add(key);
+                }
+            }
+
+
             // Sort for consistent display
-            finalData.sort((a, b) => {
+            uniqueData.sort((a, b) => {
                 if (a.code < b.code) return -1;
                 if (a.code > b.code) return 1;
                 if (a.center < b.center) return -1;
@@ -426,9 +436,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 return 0;
             });
             
-            setProvisioningAnalysisData(finalData);
-            if (finalData.length > 0) {
-                addNotification('success', `Análisis completado. Se encontraron ${finalData.length} reglas de aprovisionamiento para la etiqueta.`);
+            setProvisioningAnalysisData(uniqueData);
+            if (uniqueData.length > 0) {
+                addNotification('success', `Análisis completado. Se encontraron ${uniqueData.length} reglas de aprovisionamiento únicas para la etiqueta.`);
             } else {
                 addNotification('warning', `No se encontraron reglas de aprovisionamiento para la etiqueta seleccionada.`);
             }
@@ -444,7 +454,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         setProvisioningFilters(prev => ({...prev, [field]: value}));
     };
 
-    const filteredProvisioningData = React.useMemo(() => {
+    const filteredProvisioningData = useMemo(() => {
         return provisioningAnalysisData.filter(item => {
             return (
                 item.code.toLowerCase().includes(provisioningFilters.code.toLowerCase()) &&
@@ -456,7 +466,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }, [provisioningAnalysisData, provisioningFilters]);
 
 
-  const { aggregatedData, centers } = React.useMemo(() => {
+  const { aggregatedData, centers } = useMemo(() => {
     const data: AggregatedData = {};
     const centerSet = new Set<string>();
 
@@ -474,7 +484,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     return { aggregatedData: data, centers: Array.from(centerSet).sort() };
   }, [loadedData]);
 
-  const footerTotals = React.useMemo(() => {
+  const footerTotals = useMemo(() => {
     const totals: { [centerName: string]: number } = {};
     let grandTotal = 0;
     Object.values(aggregatedData).forEach(group => {
@@ -486,7 +496,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     return { ...totals, grandTotal };
   }, [aggregatedData]);
 
-  const transferTotalUnits = React.useMemo(() => {
+  const transferTotalUnits = useMemo(() => {
     return Object.values(transferAnalysisData).reduce((sum, group) => sum + group.subtotal, 0);
   }, [transferAnalysisData]);
 
@@ -692,4 +702,4 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     </div>
   );
-}
+};
