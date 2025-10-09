@@ -208,52 +208,71 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         return;
     }
 
+    let allData: SalesDataRow[] = [];
+    const yearsToLoad = filters.años.map(Number);
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
     try {
-        addNotification('info', `Iniciando carga de datos para años: ${filters.años.join(', ')}.`);
+        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        const queryFilters: { [key: string]: any } = {};
+        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
+        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-        // For multi-select filters, we can use an IN clause if the API supports it.
-        // Assuming API expects a list for IN clauses.
-        if (filters.años.length > 0) queryFilters['Año'] = filters.años.map(Number);
-        if (filters.meses.length > 0) queryFilters['Mes'] = filters.meses.map(Number);
-        if (filters.centros.length > 0) queryFilters['Centro'] = filters.centros;
-        if (filters.sectores.length > 0) queryFilters['Sector'] = filters.sectores;
+        const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
-        // For single-select string filters
-        if (filters.etiqueta) {
-            queryFilters['Etiqueta'] = filters.etiqueta;
+        for (const year of yearsToLoad) {
+            for (const month of monthsToLoad) {
+                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
+                    continue;
+                }
+                
+                for (const centro of centrosToLoad) {
+                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
+                    if (filters.etiqueta) {
+                        queryFilters['Etiqueta'] = filters.etiqueta;
+                    }
+                    if(filters.sectores.length > 0) {
+                        queryFilters['Sector'] = filters.sectores; // API must support array for IN clause
+                    }
+                    
+                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
+                    
+                    const promise = queryApi({
+                        source: 'Presupuesto',
+                        operation: 'get_data',
+                        filters: queryFilters,
+                        pagination: { limit: 200000 }
+                    });
+                    apiCallPromises.push(promise);
+                }
+            }
         }
+        
+        addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
 
-        const promise = queryApi({
-            source: 'Presupuesto',
-            operation: 'get_data',
-            filters: queryFilters,
-            pagination: { limit: 500000 } // High limit to fetch all data based on filters
+        const responses = await Promise.all(apiCallPromises);
+
+        addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
+
+        responses.forEach(response => {
+            if (response && response.length > 0) {
+                 const mappedData: SalesDataRow[] = response.map((item, index) => ({
+                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                    código: normalizeMaterialCode(item.CodMaterial),
+                    centro: String(item.Centro).trim(), 
+                    unidadesProyectado: item.UnidadesProyectado,
+                    dolaresProyectado: 0,
+                    descripciónMaterial: item.Material,
+                    familia: item.Familia, marca: item.Marca, 
+                    lineaProduccion: item.LineaProduccion || '',
+                }));
+                allData = [...allData, ...mappedData];
+            }
         });
-        
-        addNotification('info', `Realizando consulta a la API con los filtros seleccionados...`);
 
-        const response: PresupuestoItem[] = await promise;
-
-        addNotification('info', 'Consulta a la API completada. Procesando resultados...');
-
-        let allData: SalesDataRow[] = [];
-        if (response && response.length > 0) {
-             const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.Sector}-${index}`,
-                año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                código: normalizeMaterialCode(item.CodMaterial),
-                centro: String(item.Centro).trim(), 
-                unidadesProyectado: item.UnidadesProyectado,
-                dolaresProyectado: 0,
-                descripciónMaterial: item.Material,
-                familia: item.Familia, marca: item.Marca, 
-                lineaProduccion: item.LineaProduccion || '',
-            }));
-            allData = mappedData;
-        }
 
         if (allData.length > 0) {
             setLoadedData(allData);
@@ -370,13 +389,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         setIsProvisioningAnalyzing(true);
         setProvisioningAnalysisData([]);
         addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta || 'Todas'}...`);
-
+    
         try {
             const [assemblyData, budgetData] = await Promise.all([
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
                 queryApi({ source: 'Presupuesto', operation: 'get_data', pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
             ]);
-
+    
             const materialToLabelMap = new Map<string, string>();
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
@@ -384,7 +403,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     materialToLabelMap.set(code, item.Etiqueta);
                 }
             });
-
+    
             const materialToDescriptionMap = new Map<string, string>();
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
@@ -392,7 +411,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     materialToDescriptionMap.set(code, item.Material);
                 }
             });
-
+    
             const relevantAssemblyData = assemblyData.filter(item => {
                 if (!filters.etiqueta) return true; // Include all if "Todas"
                 const code = normalizeMaterialCode(item.CodMaterial);
@@ -405,7 +424,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 center: String(item.Centro).trim(),
                 provisioningClass: item.ClaseAprovisionamiento || 'N/D'
             }));
-
+    
             const uniqueData: ProvisioningInfo[] = [];
             const seen = new Set<string>(); // Keep track of 'code-center' pairs
             for (const item of provisioningInfo) {
@@ -430,7 +449,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             } else {
                 addNotification('warning', `No se encontraron reglas de aprovisionamiento para la etiqueta seleccionada.`);
             }
-
+    
         } catch (error) {
             addNotification('error', `Error durante el análisis de aprovisionamiento: ${(error as Error).message}`);
         } finally {
