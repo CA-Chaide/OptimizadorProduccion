@@ -136,6 +136,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       años: [] as {value: string, label: string}[],
       centros: [] as {value: string, label: string}[],
       etiquetas: [] as {value: string, label: string}[],
+      sectores: [] as {value: string, label: string}[],
   });
 
   const [filters, setFilters] = useState<{
@@ -143,11 +144,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       meses: string[];
       centros: string[];
       etiqueta: string;
+      sectores: string[];
   }>({
       años: [new Date().getFullYear().toString()],
       meses: [],
       centros: [],
       etiqueta: '',
+      sectores: [],
   });
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
@@ -172,16 +175,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   useEffect(() => {
     const loadFilterOptions = async () => {
       try {
-        const [añosData, centrosData, etiquetasData] = await Promise.all([
+        const [añosData, centrosData, etiquetasData, sectoresData] = await Promise.all([
             queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' }),
             queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' }),
-            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' })
+            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' }),
+            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Sector' })
         ]);
 
         const newFilterOptions = {
           años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
           centros: centrosData.map((item: any) => ({ value: item['Centro'], label: item['Centro'] })),
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
+          sectores: sectoresData.map((item: any) => ({ value: item['Sector'], label: item['Sector'] })),
         };
         setFilterOptions(newFilterOptions);
         
@@ -213,6 +218,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
+        const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores : filterOptions.sectores.map(s => s.value);
 
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
@@ -223,20 +229,22 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }
                 
                 for (const centro of centrosToLoad) {
-                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
-                    if (filters.etiqueta) {
-                        queryFilters['Etiqueta'] = filters.etiqueta;
+                    for (const sector of sectoresToLoad) {
+                        const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro, 'Sector': sector };
+                        if (filters.etiqueta) {
+                            queryFilters['Etiqueta'] = filters.etiqueta;
+                        }
+                        
+                        console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro} - Sector: ${sector}`);
+                        
+                        const promise = queryApi({
+                            source: 'Presupuesto',
+                            operation: 'get_data',
+                            filters: queryFilters,
+                            pagination: { limit: 200000 }
+                        });
+                        apiCallPromises.push(promise);
                     }
-                    
-                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
-                    
-                    const promise = queryApi({
-                        source: 'Presupuesto',
-                        operation: 'get_data',
-                        filters: queryFilters,
-                        pagination: { limit: 200000 }
-                    });
-                    apiCallPromises.push(promise);
                 }
             }
         }
@@ -250,7 +258,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         responses.forEach(response => {
             if (response && response.length > 0) {
                  const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.Sector}-${index}`,
                     año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                     etiqueta: item.Etiqueta || 'Sin Etiqueta',
                     código: normalizeMaterialCode(item.CodMaterial),
@@ -508,11 +516,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
+        Use los filtros para definir el alcance de los datos. Si no selecciona meses, centros o sectores, se cargarán todos para los años seleccionados.
       </p>
 
       {/* --- Filtros --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-start p-4 border rounded-lg bg-gray-50">
         <MultiSelect 
             label="Año(s)"
             options={filterOptions.años}
@@ -530,6 +538,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             options={filterOptions.centros}
             selected={filters.centros}
             onChange={value => handleFilterChange('centros', value)}
+        />
+         <MultiSelect 
+            label="Sector(es)"
+            options={filterOptions.sectores}
+            selected={filters.sectores}
+            onChange={value => handleFilterChange('sectores', value)}
         />
         <div>
              <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
