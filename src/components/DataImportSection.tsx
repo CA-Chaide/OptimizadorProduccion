@@ -293,15 +293,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         }
 
         try {
-            const yearsToLoad = filters.años.map(Number);
             const salesApiCallPromises: Promise<PresupuestoItem[]>[] = [];
-
-            for (const year of yearsToLoad) {
-                const salesApiFilter: { [key: string]: any } = { 'Año': year };
+            for (const year of filters.años) {
                 salesApiCallPromises.push(queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
-                    filters: salesApiFilter,
+                    filters: { 'Año': parseInt(year, 10) },
                     pagination: { limit: 500000 }
                 }));
             }
@@ -386,50 +383,38 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta || 'Todas'}...`);
 
         try {
-             // 1. Get ALL materials for the selected label from Presupuesto
-            const distinctMaterialsResponse = await queryApi({
-                source: 'Presupuesto',
-                operation: 'get_distinct_values',
-                column: 'CodMaterial',
-                ...(filters.etiqueta && { filters: { 'Etiqueta': filters.etiqueta } })
-            });
-
-            const relevantMaterialCodes = new Set(
-                (distinctMaterialsResponse as any[]).map(item => normalizeMaterialCode(item.CodMaterial))
-            );
-
-            if (relevantMaterialCodes.size === 0) {
-                 addNotification('warning', `No se encontraron materiales para la etiqueta seleccionada.`);
-                 setIsProvisioningAnalyzing(false);
-                 return;
-            }
-
-            // 2. Get ALL assembly times and ALL budget data to find descriptions
             const [assemblyData, budgetData] = await Promise.all([
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }) as Promise<TiempoEnsambleItem[]>,
-                queryApi({ source: 'Presupuesto', operation: 'get_data', filters: { 'Etiqueta': filters.etiqueta }, pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
+                queryApi({ source: 'Presupuesto', operation: 'get_data', pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
             ]);
-            
-            const materialDescriptionMap = new Map<string, string>();
+
+            const materialToLabelMap = new Map<string, string>();
+            const materialToDescriptionMap = new Map<string, string>();
+
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
-                if (!materialDescriptionMap.has(code)) {
-                    materialDescriptionMap.set(code, item.Material);
+                if (!materialToLabelMap.has(code) && item.Etiqueta) {
+                    materialToLabelMap.set(code, item.Etiqueta);
+                }
+                if (!materialToDescriptionMap.has(code) && item.Material) {
+                    materialToDescriptionMap.set(code, item.Material);
                 }
             });
 
+            const filteredRules = assemblyData.filter(item => {
+                if (!filters.etiqueta) return true; // Si es "Todas", no filtrar
+                const code = normalizeMaterialCode(item.CodMaterial);
+                const label = materialToLabelMap.get(code);
+                return label === filters.etiqueta;
+            });
+            
+            const provisioningInfo = filteredRules.map(item => ({
+                code: normalizeMaterialCode(item.CodMaterial),
+                description: materialToDescriptionMap.get(normalizeMaterialCode(item.CodMaterial)) || 'Descripción no encontrada',
+                center: String(item.Centro).trim(),
+                provisioningClass: item.ClaseAprovisionamiento || 'N/D'
+            }));
 
-            // 3. Filter assembly data for relevant materials
-            const provisioningInfo = assemblyData
-                .filter(item => relevantMaterialCodes.has(normalizeMaterialCode(item.CodMaterial)))
-                .map(item => ({
-                    code: normalizeMaterialCode(item.CodMaterial),
-                    description: materialDescriptionMap.get(normalizeMaterialCode(item.CodMaterial)) || 'Descripción no encontrada',
-                    center: String(item.Centro).trim(),
-                    provisioningClass: item.ClaseAprovisionamiento || 'N/D'
-                }));
-
-            // 4. Deduplicate
             const uniqueData: ProvisioningInfo[] = [];
             const seen = new Set<string>(); // Keep track of 'code-center' pairs
             for (const item of provisioningInfo) {
