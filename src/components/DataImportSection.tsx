@@ -208,71 +208,52 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         return;
     }
 
-    let allData: SalesDataRow[] = [];
-    const yearsToLoad = filters.años.map(Number);
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-
     try {
-        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
+        addNotification('info', `Iniciando carga de datos para años: ${filters.años.join(', ')}.`);
         
-        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
-        const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores : filterOptions.sectores.map(s => s.value);
+        const queryFilters: { [key: string]: any } = {};
 
-        const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
+        // For multi-select filters, we can use an IN clause if the API supports it.
+        // Assuming API expects a list for IN clauses.
+        if (filters.años.length > 0) queryFilters['Año'] = filters.años.map(Number);
+        if (filters.meses.length > 0) queryFilters['Mes'] = filters.meses.map(Number);
+        if (filters.centros.length > 0) queryFilters['Centro'] = filters.centros;
+        if (filters.sectores.length > 0) queryFilters['Sector'] = filters.sectores;
 
-        for (const year of yearsToLoad) {
-            for (const month of monthsToLoad) {
-                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
-                    continue;
-                }
-                
-                for (const centro of centrosToLoad) {
-                    for (const sector of sectoresToLoad) {
-                        const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro, 'Sector': sector };
-                        if (filters.etiqueta) {
-                            queryFilters['Etiqueta'] = filters.etiqueta;
-                        }
-                        
-                        console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro} - Sector: ${sector}`);
-                        
-                        const promise = queryApi({
-                            source: 'Presupuesto',
-                            operation: 'get_data',
-                            filters: queryFilters,
-                            pagination: { limit: 200000 }
-                        });
-                        apiCallPromises.push(promise);
-                    }
-                }
-            }
+        // For single-select string filters
+        if (filters.etiqueta) {
+            queryFilters['Etiqueta'] = filters.etiqueta;
         }
-        
-        addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
 
-        const responses = await Promise.all(apiCallPromises);
-
-        addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
-
-        responses.forEach(response => {
-            if (response && response.length > 0) {
-                 const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.Sector}-${index}`,
-                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                    código: normalizeMaterialCode(item.CodMaterial),
-                    centro: String(item.Centro).trim(), 
-                    unidadesProyectado: item.UnidadesProyectado,
-                    dolaresProyectado: 0,
-                    descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, 
-                    lineaProduccion: item.LineaProduccion || '',
-                }));
-                allData = [...allData, ...mappedData];
-            }
+        const promise = queryApi({
+            source: 'Presupuesto',
+            operation: 'get_data',
+            filters: queryFilters,
+            pagination: { limit: 500000 } // High limit to fetch all data based on filters
         });
+        
+        addNotification('info', `Realizando consulta a la API con los filtros seleccionados...`);
 
+        const response: PresupuestoItem[] = await promise;
+
+        addNotification('info', 'Consulta a la API completada. Procesando resultados...');
+
+        let allData: SalesDataRow[] = [];
+        if (response && response.length > 0) {
+             const mappedData: SalesDataRow[] = response.map((item, index) => ({
+                id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.Sector}-${index}`,
+                año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                código: normalizeMaterialCode(item.CodMaterial),
+                centro: String(item.Centro).trim(), 
+                unidadesProyectado: item.UnidadesProyectado,
+                dolaresProyectado: 0,
+                descripciónMaterial: item.Material,
+                familia: item.Familia, marca: item.Marca, 
+                lineaProduccion: item.LineaProduccion || '',
+            }));
+            allData = mappedData;
+        }
 
         if (allData.length > 0) {
             setLoadedData(allData);
@@ -289,6 +270,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   };
 
+
     const handleAnalyzeTransfers = async () => {
         setIsAnalyzing(true);
         setTransferAnalysisData({});
@@ -301,21 +283,20 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         }
 
         try {
-            const salesApiCallPromises: Promise<PresupuestoItem[]>[] = [];
-            for (const year of filters.años) {
-                salesApiCallPromises.push(queryApi({
+            const salesPromises = filters.años.map(year =>
+                queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
                     filters: { 'Año': parseInt(year, 10) },
                     pagination: { limit: 500000 }
-                }));
-            }
+                })
+            );
             
-            addNotification('info', `Realizando ${1 + salesApiCallPromises.length} consultas a la API (Tiempos y Ventas)...`);
+            addNotification('info', `Realizando ${1 + salesPromises.length} consultas a la API (Tiempos y Ventas)...`);
 
             const [assemblyData, ...salesDataResponses] = await Promise.all([
                 queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }),
-                ...salesApiCallPromises
+                ...salesPromises
             ]);
             
             let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
