@@ -389,26 +389,28 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             ]);
 
             const materialToLabelMap = new Map<string, string>();
-            const materialToDescriptionMap = new Map<string, string>();
-
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
                 if (!materialToLabelMap.has(code) && item.Etiqueta) {
                     materialToLabelMap.set(code, item.Etiqueta);
                 }
+            });
+
+            const materialToDescriptionMap = new Map<string, string>();
+            budgetData.forEach(item => {
+                const code = normalizeMaterialCode(item.CodMaterial);
                 if (!materialToDescriptionMap.has(code) && item.Material) {
                     materialToDescriptionMap.set(code, item.Material);
                 }
             });
 
-            const filteredRules = assemblyData.filter(item => {
-                if (!filters.etiqueta) return true; // Si es "Todas", no filtrar
+            const relevantAssemblyData = assemblyData.filter(item => {
+                if (!filters.etiqueta) return true; // Include all if "Todas"
                 const code = normalizeMaterialCode(item.CodMaterial);
-                const label = materialToLabelMap.get(code);
-                return label === filters.etiqueta;
+                return materialToLabelMap.get(code) === filters.etiqueta;
             });
             
-            const provisioningInfo = filteredRules.map(item => ({
+            const provisioningInfo = relevantAssemblyData.map(item => ({
                 code: normalizeMaterialCode(item.CodMaterial),
                 description: materialToDescriptionMap.get(normalizeMaterialCode(item.CodMaterial)) || 'Descripción no encontrada',
                 center: String(item.Centro).trim(),
