@@ -292,92 +292,68 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const handleAnalyzeTransfers = async () => {
         setIsAnalyzing(true);
         setTransferAnalysisData({});
-        addNotification('info', 'Analizando datos para traslados...');
-
-        if (filters.años.length === 0) {
-            addNotification('warning', 'Por favor, seleccione al menos un año para el análisis.');
-            setIsAnalyzing(false);
-            return;
-        }
+        addNotification('info', 'Paso 1: Obteniendo materiales con Clase "F" en Centro 2000...');
 
         try {
-            const salesPromises: Promise<PresupuestoItem[]>[] = [];
-            for (const year of filters.años) {
-                const promise = queryApi({
-                    source: 'Presupuesto',
-                    operation: 'get_data',
-                    filters: { 'Año': parseInt(year, 10) },
-                    pagination: { limit: 500000 }
-                });
-                salesPromises.push(promise);
+            // STEP 1: Query TiemposEnsamblado for materials with class 'F' in center '2000'
+            const materialsWithRuleF = await queryApi({
+                source: 'TiemposEnsamblado',
+                operation: 'get_data',
+                filters: { 'ClaseAprovisionamiento': 'F', 'Centro': '2000' },
+                pagination: { limit: 50000 }
+            }) as TiempoEnsambleItem[];
+
+            if (!materialsWithRuleF || materialsWithRuleF.length === 0) {
+                addNotification('warning', 'No se encontraron materiales con Clase "F" en el centro 2000.');
+                setIsAnalyzing(false);
+                return;
             }
-            
-            addNotification('info', `Realizando ${1 + salesPromises.length} consultas a la API (Tiempos y Ventas)...`);
 
-            const [assemblyData, ...salesDataResponses] = await Promise.all([
-                queryApi({ source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 } }),
-                ...salesPromises
-            ]);
-            
-            let allSalesData: PresupuestoItem[] = salesDataResponses.flat();
-            
-            if (filters.meses.length > 0) {
-                const selectedMonths = new Set(filters.meses.map(Number));
-                allSalesData = allSalesData.filter(sale => selectedMonths.has(sale.Mes));
-            }
-            if (filters.etiqueta) {
-                allSalesData = allSalesData.filter(sale => sale.Etiqueta === filters.etiqueta);
-            }
-            
-            const materialsToTransfer = new Set(
-                (assemblyData as TiempoEnsambleItem[])
-                    .filter(item => item.ClaseAprovisionamiento === 'F')
-                    .map(item => normalizeMaterialCode(item.CodMaterial))
-            );
+            // To get descriptions and labels, we need to query Presupuesto.
+            // We'll create a map from the currently loaded sales data for efficiency.
+            const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
+            loadedData.forEach(item => {
+                const code = normalizeMaterialCode(item.código);
+                const hasLabel = item.etiqueta && item.etiqueta.trim() !== '';
+                const existing = materialInfoMap.get(code);
 
-            const salesRequiringTransfer = allSalesData.filter(sale => 
-                materialsToTransfer.has(normalizeMaterialCode(sale.CodMaterial)) &&
-                String(sale.Centro).trim() !== '1000'
-            );
-
-            const groupedData: GroupedTransferAnalysisData = {};
-
-            salesRequiringTransfer.forEach(sale => {
-                const etiqueta = sale.Etiqueta || 'Sin Etiqueta';
-                const code = normalizeMaterialCode(sale.CodMaterial);
-                
-                if (!groupedData[etiqueta]) {
-                    groupedData[etiqueta] = { subtotal: 0, materials: [] };
-                }
-                
-                let existingMaterial = groupedData[etiqueta].materials.find(m => m.code === code);
-                if (existingMaterial) {
-                    existingMaterial.units += sale.UnidadesProyectado;
-                } else {
-                     groupedData[etiqueta].materials.push({
-                        code,
-                        description: sale.Material,
-                        units: sale.UnidadesProyectado,
+                if (!existing || (hasLabel && (!existing.etiqueta || existing.etiqueta === 'Sin Etiqueta'))) {
+                    materialInfoMap.set(code, {
+                        etiqueta: hasLabel ? item.etiqueta : (existing?.etiqueta || 'Sin Etiqueta'),
+                        description: item.descripciónMaterial || existing?.description || 'Descripción no encontrada',
                     });
                 }
             });
 
-            Object.keys(groupedData).forEach(etiqueta => {
-                const group = groupedData[etiqueta];
-                group.subtotal = group.materials.reduce((sum, material) => sum + material.units, 0);
-                group.materials.sort((a, b) => b.units - a.units);
+            const groupedData: GroupedTransferAnalysisData = {};
+
+            materialsWithRuleF.forEach(item => {
+                const code = normalizeMaterialCode(item.CodMaterial);
+                const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: item.CodMaterial }; // Use code as fallback description
+                
+                // Group by label
+                if (!groupedData[info.etiqueta]) {
+                    groupedData[info.etiqueta] = { subtotal: 0, materials: [] };
+                }
+                
+                // Add material to the group (units are 0 for now as requested)
+                groupedData[info.etiqueta].materials.push({
+                    code,
+                    description: info.description,
+                    units: 0, 
+                });
             });
 
+            // Sort and set the final data
             const sortedGroupedData = Object.entries(groupedData)
-                .sort(([, a], [, b]) => b.subtotal - a.subtotal)
-                .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {});
+                .sort(([, a], [, b]) => a.materials.length - b.materials.length) // Simple sort by number of items
+                .reduce((acc, [key, val]) => {
+                    val.materials.sort((a,b) => a.code.localeCompare(b.code));
+                    return { ...acc, [key]: val };
+                }, {});
 
             setTransferAnalysisData(sortedGroupedData);
-            if (Object.keys(sortedGroupedData).length > 0) {
-                addNotification('success', `Análisis completado. Se encontraron ${salesRequiringTransfer.length} registros de venta que requieren traslado.`);
-            } else {
-                addNotification('warning', `No se encontraron necesidades de traslado para los filtros seleccionados.`);
-            }
+            addNotification('success', `Análisis completado. Se encontraron ${materialsWithRuleF.length} materiales con regla "F" en centro 2000.`);
 
         } catch (error) {
             addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
@@ -610,11 +586,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
         <p className="text-sm text-gray-600">
-            Esta herramienta muestra todos los materiales vendidos en centros diferentes al 1000 que, por regla de negocio ('F'), deberían fabricarse en el centro 1000 y generar un traslado. El análisis respeta los filtros de fecha y etiqueta.
+            Esta herramienta muestra todos los materiales que tienen definida la Clase de Aprovisionamiento 'F' en el Centro 2000, según la tabla de Tiempos de Ensamble.
         </p>
         <div>
             <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analizando...' : 'Analizar Traslados'}
+            {isAnalyzing ? 'Analizando...' : 'Analizar Materiales "F" en Centro 2000'}
             </Button>
         </div>
         {Object.keys(transferAnalysisData).length > 0 && (
@@ -634,13 +610,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                 <React.Fragment key={etiqueta}>
                                     <tr className="bg-gray-100">
                                         <td className="px-4 py-2 font-bold text-gray-800" colSpan={2}>{etiqueta}</td>
-                                        <td className="px-4 py-2 text-right font-bold text-gray-800">{group.subtotal.toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-right font-bold text-gray-800">-</td>
                                     </tr>
                                     {group.materials.map(item => (
                                         <tr key={item.code}>
                                             <td className="pl-8 pr-4 py-2 font-mono">{item.code}</td>
                                             <td className="px-4 py-2 text-gray-600">{item.description}</td>
-                                            <td className="px-4 py-2 text-right font-semibold">{item.units.toLocaleString()}</td>
+                                            <td className="px-4 py-2 text-right font-semibold">-</td>
                                         </tr>
                                     ))}
                                 </React.Fragment>
@@ -649,9 +625,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         <tfoot className="bg-gray-200 sticky bottom-0">
                            <tr>
                                 <th className="px-4 py-2 text-left font-bold text-gray-700 uppercase" colSpan={2}>TOTAL GENERAL</th>
-                                <th className="px-4 py-2 text-right font-bold text-indigo-700 uppercase">
-                                    {transferTotalUnits.toLocaleString()}
-                                </th>
+                                <th className="px-4 py-2 text-right font-bold text-indigo-700 uppercase">-</th>
                            </tr>
                         </tfoot>
                     </table>
