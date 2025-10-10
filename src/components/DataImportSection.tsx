@@ -394,37 +394,29 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 queryApi({ source: 'Presupuesto', operation: 'get_data', pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
             ]);
     
-            const materialToLabelMap = new Map<string, string>();
+            const materialInfoMap = new Map<string, { etiqueta: string, description: string }>();
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
-                if (!materialToLabelMap.has(code) && item.Etiqueta) {
-                    materialToLabelMap.set(code, item.Etiqueta);
-                }
-            });
-    
-            const materialToDescriptionMap = new Map<string, string>();
-            assemblyData.forEach(item => {
-                const code = normalizeMaterialCode(item.CodMaterial);
-                // Assume Material description is consistent, take first one.
-                if (!materialToDescriptionMap.has(code)) {
-                    const budgetItem = budgetData.find(b => normalizeMaterialCode(b.CodMaterial) === code);
-                    if (budgetItem) {
-                        materialToDescriptionMap.set(code, budgetItem.Material);
-                    }
+                if (!materialInfoMap.has(code) && (item.Etiqueta || item.Material)) {
+                    materialInfoMap.set(code, { 
+                        etiqueta: item.Etiqueta || 'Sin Etiqueta', 
+                        description: item.Material || 'Descripción no encontrada' 
+                    });
                 }
             });
     
             let relevantAssemblyData = assemblyData;
+            
             if (filters.etiqueta) {
                 relevantAssemblyData = assemblyData.filter(item => {
                     const code = normalizeMaterialCode(item.CodMaterial);
-                    return materialToLabelMap.get(code) === filters.etiqueta;
+                    return materialInfoMap.get(code)?.etiqueta === filters.etiqueta;
                 });
             }
             
             const provisioningInfo = relevantAssemblyData.map(item => ({
                 code: normalizeMaterialCode(item.CodMaterial),
-                description: materialToDescriptionMap.get(normalizeMaterialCode(item.CodMaterial)) || 'Descripción no encontrada',
+                description: materialInfoMap.get(normalizeMaterialCode(item.CodMaterial))?.description || 'Descripción no encontrada en Presupuesto',
                 center: String(item.Centro).trim(),
                 provisioningClass: item.ClaseAprovisionamiento || 'N/D'
             }));
