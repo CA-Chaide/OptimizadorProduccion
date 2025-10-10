@@ -294,14 +294,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         }
 
         try {
-            const salesPromises = filters.años.map(year =>
-                queryApi({
+            const salesPromises: Promise<PresupuestoItem[]>[] = [];
+            for (const year of filters.años) {
+                const promise = queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
                     filters: { 'Año': parseInt(year, 10) },
                     pagination: { limit: 500000 }
-                })
-            );
+                });
+                salesPromises.push(promise);
+            }
             
             addNotification('info', `Realizando ${1 + salesPromises.length} consultas a la API (Tiempos y Ventas)...`);
 
@@ -393,39 +395,39 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 const code = normalizeMaterialCode(item.CodMaterial);
                 const hasLabel = item.Etiqueta && item.Etiqueta.trim() !== '';
     
-                if (!materialInfoMap.has(code) || !materialInfoMap.get(code)!.etiqueta) {
+                if (!materialInfoMap.has(code) || (!materialInfoMap.get(code)!.etiqueta && hasLabel)) {
                     materialInfoMap.set(code, {
-                        etiqueta: hasLabel ? item.Etiqueta : 'Sin Etiqueta',
+                        etiqueta: hasLabel ? item.Etiqueta : (materialInfoMap.get(code)?.etiqueta || 'Sin Etiqueta'),
                         description: item.Material || 'Descripción no encontrada',
                     });
                 }
             });
     
-            const relevantAssemblyData = assemblyData.filter(item => {
-                if (!filters.etiqueta) return true; // Include all if 'Todas' is selected
+            const enrichedAssemblyData = new Map<string, ProvisioningInfo>();
+            assemblyData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
                 const info = materialInfoMap.get(code);
+                const key = `${code}-${item.Centro}`;
+
+                if (!enrichedAssemblyData.has(key)) {
+                    enrichedAssemblyData.set(key, {
+                        code: code,
+                        description: info?.description || 'Descripción no encontrada en Presupuesto',
+                        center: String(item.Centro).trim(),
+                        provisioningClass: item.ClaseAprovisionamiento || 'N/D',
+                    });
+                }
+            });
+
+            const allRules = Array.from(enrichedAssemblyData.values());
+
+            const finalData = allRules.filter(item => {
+                if (!filters.etiqueta) return true;
+                const info = materialInfoMap.get(item.code);
                 return info?.etiqueta === filters.etiqueta;
             });
             
-            const provisioningInfo = relevantAssemblyData.map(item => ({
-                code: normalizeMaterialCode(item.CodMaterial),
-                description: materialInfoMap.get(normalizeMaterialCode(item.CodMaterial))?.description || 'Descripción no encontrada en Presupuesto',
-                center: String(item.Centro).trim(),
-                provisioningClass: item.ClaseAprovisionamiento || 'N/D'
-            }));
-    
-            const uniqueData: ProvisioningInfo[] = [];
-            const seen = new Set<string>(); // Keep track of 'code-center' pairs
-            for (const item of provisioningInfo) {
-                const key = `${item.code}-${item.center}`;
-                if (!seen.has(key)) {
-                    uniqueData.push(item);
-                    seen.add(key);
-                }
-            }
-            
-            uniqueData.sort((a, b) => {
+            finalData.sort((a, b) => {
                 if (a.code < b.code) return -1;
                 if (a.code > b.code) return 1;
                 if (a.center < b.center) return -1;
@@ -433,9 +435,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 return 0;
             });
             
-            setProvisioningAnalysisData(uniqueData);
-            if (uniqueData.length > 0) {
-                addNotification('success', `Análisis completado. Se encontraron ${uniqueData.length} reglas de aprovisionamiento únicas.`);
+            setProvisioningAnalysisData(finalData);
+            if (finalData.length > 0) {
+                addNotification('success', `Análisis completado. Se encontraron ${finalData.length} reglas de aprovisionamiento únicas para la etiqueta.`);
             } else {
                 addNotification('warning', `No se encontraron reglas de aprovisionamiento para la etiqueta seleccionada.`);
             }
