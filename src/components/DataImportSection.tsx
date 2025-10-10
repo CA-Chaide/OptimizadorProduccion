@@ -182,13 +182,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Sector' })
         ]);
 
-        const newFilterOptions = {
+        setFilterOptions({
           años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
           centros: centrosData.map((item: any) => ({ value: item['Centro'], label: item['Centro'] })),
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
           sectores: sectoresData.map((item: any) => ({ value: item['Sector'], label: item['Sector'] })),
-        };
-        setFilterOptions(newFilterOptions);
+        });
         
         handleFilterChange('etiqueta', '');
       } catch (error) {
@@ -229,14 +228,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 
                 for (const centro of centrosToLoad) {
                     const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
+                    
                     if (filters.etiqueta) {
                         queryFilters['Etiqueta'] = filters.etiqueta;
                     }
                     if(filters.sectores.length > 0) {
                         queryFilters['Sector'] = filters.sectores; // API must support array for IN clause
                     }
-                    
-                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
                     
                     const promise = queryApi({
                         source: 'Presupuesto',
@@ -405,18 +403,24 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             });
     
             const materialToDescriptionMap = new Map<string, string>();
-            budgetData.forEach(item => {
+            assemblyData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
-                if (!materialToDescriptionMap.has(code) && item.Material) {
-                    materialToDescriptionMap.set(code, item.Material);
+                // Assume Material description is consistent, take first one.
+                if (!materialToDescriptionMap.has(code)) {
+                    const budgetItem = budgetData.find(b => normalizeMaterialCode(b.CodMaterial) === code);
+                    if (budgetItem) {
+                        materialToDescriptionMap.set(code, budgetItem.Material);
+                    }
                 }
             });
     
-            const relevantAssemblyData = assemblyData.filter(item => {
-                if (!filters.etiqueta) return true; // Include all if "Todas"
-                const code = normalizeMaterialCode(item.CodMaterial);
-                return materialToLabelMap.get(code) === filters.etiqueta;
-            });
+            let relevantAssemblyData = assemblyData;
+            if (filters.etiqueta) {
+                relevantAssemblyData = assemblyData.filter(item => {
+                    const code = normalizeMaterialCode(item.CodMaterial);
+                    return materialToLabelMap.get(code) === filters.etiqueta;
+                });
+            }
             
             const provisioningInfo = relevantAssemblyData.map(item => ({
                 code: normalizeMaterialCode(item.CodMaterial),
