@@ -146,7 +146,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       etiqueta: string;
       sectores: string[];
   }>({
-      años: [new Date().getFullYear().toString()],
+      años: [],
       meses: [],
       centros: [],
       etiqueta: '',
@@ -182,13 +182,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Sector' })
         ]);
 
-        setFilterOptions({
+        const newFilterOptions = {
           años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
           centros: centrosData.map((item: any) => ({ value: item['Centro'], label: item['Centro'] })),
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
           sectores: sectoresData.map((item: any) => ({ value: item['Sector'], label: item['Sector'] })),
-        });
-        
+        };
+        setFilterOptions(newFilterOptions);
+        setFilters(prev => ({ ...prev, años: [new Date().getFullYear().toString()] }));
+
       } catch (error) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
       }
@@ -214,28 +216,34 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
+        const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores : filterOptions.sectores.map(s => s.value);
+
 
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
                 for (const centro of centrosToLoad) {
-                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
-                    
-                    if (filters.etiqueta) {
-                        queryFilters['Etiqueta'] = filters.etiqueta;
+                    for (const sector of sectoresToLoad) {
+                        const queryFilters: { [key: string]: any } = { 
+                            'Año': year, 
+                            'Mes': month, 
+                            'Centro': centro,
+                            'Sector': sector
+                        };
+                        
+                        if (filters.etiqueta) {
+                            queryFilters['Etiqueta'] = filters.etiqueta;
+                        }
+                        
+                        const promise = queryApi({
+                            source: 'Presupuesto',
+                            operation: 'get_data',
+                            filters: queryFilters,
+                            pagination: { limit: 200000 }
+                        });
+                        apiCallPromises.push(promise);
                     }
-                    if(filters.sectores.length > 0) {
-                        queryFilters['Sector'] = filters.sectores; // API must support array for IN clause
-                    }
-                    
-                    const promise = queryApi({
-                        source: 'Presupuesto',
-                        operation: 'get_data',
-                        filters: queryFilters,
-                        pagination: { limit: 200000 }
-                    });
-                    apiCallPromises.push(promise);
                 }
             }
         }
@@ -249,7 +257,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         responses.forEach(response => {
             if (response && response.length > 0) {
                  const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.Sector}-${index}`,
                     año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                     etiqueta: item.Etiqueta || 'Sin Etiqueta',
                     código: normalizeMaterialCode(item.CodMaterial),
@@ -389,7 +397,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 queryApi({ source: 'Presupuesto', operation: 'get_data', pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
             ]);
     
-            // Step 1: Create a robust info map that prioritizes entries with labels.
+            // Step 1: Create a robust info map that prioritizes entries with labels and descriptions.
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
@@ -405,34 +413,33 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }
             });
     
-            // Step 2: Iterate over assembly data and enrich with label info.
+            // Step 2: Iterate over assembly data, enrich it, and filter based on UI.
             const enrichedRules = new Map<string, ProvisioningInfo>();
             assemblyData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
                 const center = String(item.Centro).trim();
                 const key = `${code}-${center}`;
 
-                // Only add if not already present (deduplication)
-                if (!enrichedRules.has(key)) {
-                    const info = materialInfoMap.get(code);
-                    enrichedRules.set(key, {
-                        code: code,
-                        description: info?.description || 'Descripción no encontrada en Presupuesto',
-                        center: center,
-                        provisioningClass: item.ClaseAprovisionamiento || 'N/D',
-                    });
+                // Deduplication: Only process each material-center combo once.
+                if (enrichedRules.has(key)) return;
+
+                const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: 'Descripción no encontrada en Presupuesto' };
+
+                // Apply filter: If an etiqueta is selected, only proceed if it matches.
+                if (filters.etiqueta && info.etiqueta !== filters.etiqueta) {
+                    return;
                 }
+
+                enrichedRules.set(key, {
+                    code: code,
+                    description: info.description,
+                    center: center,
+                    provisioningClass: item.ClaseAprovisionamiento || 'N/D',
+                });
             });
 
-            // Step 3: Filter the final, enriched list based on the UI filter.
-            let finalData = Array.from(enrichedRules.values());
-            if (filters.etiqueta) {
-                finalData = finalData.filter(item => {
-                    const info = materialInfoMap.get(item.code);
-                    return info?.etiqueta === filters.etiqueta;
-                });
-            }
-            
+            // Step 3: Convert map to array and sort for display.
+            const finalData = Array.from(enrichedRules.values());
             finalData.sort((a, b) => {
                 if (a.code < b.code) return -1;
                 if (a.code > b.code) return 1;
