@@ -292,54 +292,42 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const handleAnalyzeTransfers = async () => {
         setIsAnalyzing(true);
         setTransferAnalysisData({});
-        addNotification('info', 'Paso 1: Obteniendo ventas del Centro 2000...');
+        addNotification('info', 'Paso 1: Obteniendo reglas de negocio de TiemposEnsamblado...');
 
         try {
-            // STEP 1: Query Presupuesto for sales in center '2000'
-            const salesInCenter2000 = await queryApi({
-                source: 'Presupuesto',
-                operation: 'get_data',
-                filters: { 'Centro': '2000' },
-                pagination: { limit: 50000 }
-            }) as PresupuestoItem[];
-
-            if (!salesInCenter2000 || salesInCenter2000.length === 0) {
-                addNotification('warning', 'No se encontraron ventas en el centro 2000.');
-                setIsAnalyzing(false);
-                return;
-            }
-
-            addNotification('info', `Paso 2: Se encontraron ${salesInCenter2000.length} registros de ventas. Obteniendo sus reglas de aprovisionamiento...`);
-
-            const materialCodesFromSales = [...new Set(salesInCenter2000.map(item => normalizeMaterialCode(item.CodMaterial)))];
-            
-            // STEP 2: Query TiemposEnsamblado for the rules of those specific materials
-            const materialRules = await queryApi({
+            const assemblyRules = await queryApi({
                 source: 'TiemposEnsamblado',
                 operation: 'get_data',
-                filters: { 'CodMaterial': materialCodesFromSales }, // Assuming API supports IN-clause like filter
                 pagination: { limit: 50000 }
             }) as TiempoEnsambleItem[];
 
-            // STEP 3: Filter for rules with Class 'F'
-            const materialsWithRuleF = materialRules.filter(rule => rule.ClaseAprovisionamiento === 'F');
-
-            if (!materialsWithRuleF || materialsWithRuleF.length === 0) {
-                addNotification('warning', 'De los productos vendidos en Centro 2000, ninguno tiene Clase de Aprovisionamiento "F".');
+            if (!assemblyRules || assemblyRules.length === 0) {
+                addNotification('warning', 'No se encontraron reglas de negocio en TiemposEnsamblado.');
                 setIsAnalyzing(false);
                 return;
             }
             
+            addNotification('info', 'Paso 2: Filtrando materiales con Clase de Aprovisionamiento "F".');
+            const materialsWithRuleF = assemblyRules.filter(rule => rule.ClaseAprovisionamiento === 'F' && rule.Centro === '2000');
+
+            if (materialsWithRuleF.length === 0) {
+                addNotification('warning', 'No se encontraron materiales con Clase "F" en el centro 2000.');
+                setIsAnalyzing(false);
+                return;
+            }
+
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
-            loadedData.forEach(item => {
-                const code = normalizeMaterialCode(item.código);
-                 if (!materialInfoMap.has(code) || (item.etiqueta && item.etiqueta.trim() !== '' && materialInfoMap.get(code)?.etiqueta === 'Sin Etiqueta')) {
-                    materialInfoMap.set(code, {
-                        etiqueta: item.etiqueta || 'Sin Etiqueta',
-                        description: item.descripciónMaterial || 'Descripción no encontrada',
-                    });
-                }
-            });
+            if (loadedData.length > 0) {
+                 loadedData.forEach(item => {
+                    const code = normalizeMaterialCode(item.código);
+                    if (!materialInfoMap.has(code) || (item.etiqueta && item.etiqueta.trim() !== '' && materialInfoMap.get(code)?.etiqueta === 'Sin Etiqueta')) {
+                        materialInfoMap.set(code, {
+                            etiqueta: item.etiqueta || 'Sin Etiqueta',
+                            description: item.descripciónMaterial || 'Descripción no encontrada',
+                        });
+                    }
+                });
+            }
 
             const groupedData: GroupedTransferAnalysisData = {};
 
@@ -355,7 +343,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     groupedData[info.etiqueta].materials.push({
                         code,
                         description: info.description,
-                        units: 0, // As requested, units are not calculated for now
+                        units: 0, // No se calculan unidades por ahora
                     });
                 }
             });
@@ -369,7 +357,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }, {} as GroupedTransferAnalysisData);
             
             setTransferAnalysisData(sortedGroupedData);
-            addNotification('success', `Análisis completado. Se encontraron ${materialsWithRuleF.length} reglas de tipo "F" para productos vendidos en el centro 2000.`);
+            addNotification('success', `Análisis completado. Se encontraron ${materialsWithRuleF.length} reglas de tipo "F" para el centro 2000.`);
 
         } catch (error) {
             addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
