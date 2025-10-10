@@ -350,11 +350,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     groupedData[etiqueta] = { subtotal: 0, materials: [] };
                 }
                 
-                const existingMaterial = groupedData[etiqueta].materials.find(m => m.code === code);
+                let existingMaterial = groupedData[etiqueta].materials.find(m => m.code === code);
                 if (existingMaterial) {
                     existingMaterial.units += sale.UnidadesProyectado;
                 } else {
-                    groupedData[etiqueta].materials.push({
+                     groupedData[etiqueta].materials.push({
                         code,
                         description: sale.Material,
                         units: sale.UnidadesProyectado,
@@ -397,14 +397,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 queryApi({ source: 'Presupuesto', operation: 'get_data', pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
             ]);
     
-            // Step 1: Create a robust info map that prioritizes entries with labels and descriptions.
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
                 const hasLabel = item.Etiqueta && item.Etiqueta.trim() !== '';
                 const existing = materialInfoMap.get(code);
 
-                // If new item has a label and existing one doesn't, or if there's no existing entry, update.
                 if (!existing || (hasLabel && (!existing.etiqueta || existing.etiqueta === 'Sin Etiqueta'))) {
                     materialInfoMap.set(code, {
                         etiqueta: hasLabel ? item.Etiqueta : (existing?.etiqueta || 'Sin Etiqueta'),
@@ -413,19 +411,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }
             });
     
-            // Step 2: Iterate over assembly data, enrich it, and filter based on UI.
             const enrichedRules = new Map<string, ProvisioningInfo>();
             assemblyData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
                 const center = String(item.Centro).trim();
                 const key = `${code}-${center}`;
 
-                // Deduplication: Only process each material-center combo once.
                 if (enrichedRules.has(key)) return;
 
                 const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: 'Descripción no encontrada en Presupuesto' };
 
-                // Apply filter: If an etiqueta is selected, only proceed if it matches.
                 if (filters.etiqueta && info.etiqueta !== filters.etiqueta) {
                     return;
                 }
@@ -438,7 +433,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 });
             });
 
-            // Step 3: Convert map to array and sort for display.
             const finalData = Array.from(enrichedRules.values());
             finalData.sort((a, b) => {
                 if (a.code < b.code) return -1;
