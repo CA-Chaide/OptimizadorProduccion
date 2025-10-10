@@ -292,35 +292,51 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const handleAnalyzeTransfers = async () => {
         setIsAnalyzing(true);
         setTransferAnalysisData({});
-        addNotification('info', 'Paso 1: Obteniendo materiales con Clase "F" en Centro 2000...');
+        addNotification('info', 'Paso 1: Obteniendo ventas del Centro 2000...');
 
         try {
-            // STEP 1: Query TiemposEnsamblado for materials with class 'F' in center '2000'
-            const materialsWithRuleF = await queryApi({
-                source: 'TiemposEnsamblado',
+            // STEP 1: Query Presupuesto for sales in center '2000'
+            const salesInCenter2000 = await queryApi({
+                source: 'Presupuesto',
                 operation: 'get_data',
-                filters: { 'ClaseAprovisionamiento': 'F', 'Centro': '2000' },
+                filters: { 'Centro': '2000' },
                 pagination: { limit: 50000 }
-            }) as TiempoEnsambleItem[];
+            }) as PresupuestoItem[];
 
-            if (!materialsWithRuleF || materialsWithRuleF.length === 0) {
-                addNotification('warning', 'No se encontraron materiales con Clase "F" en el centro 2000.');
+            if (!salesInCenter2000 || salesInCenter2000.length === 0) {
+                addNotification('warning', 'No se encontraron ventas en el centro 2000.');
                 setIsAnalyzing(false);
                 return;
             }
 
-            // To get descriptions and labels, we need to query Presupuesto.
-            // We'll create a map from the currently loaded sales data for efficiency.
+            addNotification('info', `Paso 2: Se encontraron ${salesInCenter2000.length} registros de ventas. Obteniendo sus reglas de aprovisionamiento...`);
+
+            const materialCodesFromSales = [...new Set(salesInCenter2000.map(item => normalizeMaterialCode(item.CodMaterial)))];
+            
+            // STEP 2: Query TiemposEnsamblado for the rules of those specific materials
+            const materialRules = await queryApi({
+                source: 'TiemposEnsamblado',
+                operation: 'get_data',
+                filters: { 'CodMaterial': materialCodesFromSales }, // Assuming API supports IN-clause like filter
+                pagination: { limit: 50000 }
+            }) as TiempoEnsambleItem[];
+
+            // STEP 3: Filter for rules with Class 'F'
+            const materialsWithRuleF = materialRules.filter(rule => rule.ClaseAprovisionamiento === 'F');
+
+            if (!materialsWithRuleF || materialsWithRuleF.length === 0) {
+                addNotification('warning', 'De los productos vendidos en Centro 2000, ninguno tiene Clase de Aprovisionamiento "F".');
+                setIsAnalyzing(false);
+                return;
+            }
+            
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
             loadedData.forEach(item => {
                 const code = normalizeMaterialCode(item.código);
-                const hasLabel = item.etiqueta && item.etiqueta.trim() !== '';
-                const existing = materialInfoMap.get(code);
-
-                if (!existing || (hasLabel && (!existing.etiqueta || existing.etiqueta === 'Sin Etiqueta'))) {
+                 if (!materialInfoMap.has(code) || (item.etiqueta && item.etiqueta.trim() !== '' && materialInfoMap.get(code)?.etiqueta === 'Sin Etiqueta')) {
                     materialInfoMap.set(code, {
-                        etiqueta: hasLabel ? item.etiqueta : (existing?.etiqueta || 'Sin Etiqueta'),
-                        description: item.descripciónMaterial || existing?.description || 'Descripción no encontrada',
+                        etiqueta: item.etiqueta || 'Sin Etiqueta',
+                        description: item.descripciónMaterial || 'Descripción no encontrada',
                     });
                 }
             });
@@ -329,31 +345,31 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
             materialsWithRuleF.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
-                const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: item.CodMaterial }; // Use code as fallback description
+                const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: 'N/A' };
                 
-                // Group by label
                 if (!groupedData[info.etiqueta]) {
                     groupedData[info.etiqueta] = { subtotal: 0, materials: [] };
                 }
                 
-                // Add material to the group (units are 0 for now as requested)
-                groupedData[info.etiqueta].materials.push({
-                    code,
-                    description: info.description,
-                    units: 0, 
-                });
+                if (!groupedData[info.etiqueta].materials.some(m => m.code === code)) {
+                    groupedData[info.etiqueta].materials.push({
+                        code,
+                        description: info.description,
+                        units: 0, // As requested, units are not calculated for now
+                    });
+                }
             });
 
-            // Sort and set the final data
             const sortedGroupedData = Object.entries(groupedData)
-                .sort(([, a], [, b]) => a.materials.length - b.materials.length) // Simple sort by number of items
+                .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
                 .reduce((acc, [key, val]) => {
                     val.materials.sort((a,b) => a.code.localeCompare(b.code));
-                    return { ...acc, [key]: val };
-                }, {});
-
+                    acc[key] = val;
+                    return acc;
+                }, {} as GroupedTransferAnalysisData);
+            
             setTransferAnalysisData(sortedGroupedData);
-            addNotification('success', `Análisis completado. Se encontraron ${materialsWithRuleF.length} materiales con regla "F" en centro 2000.`);
+            addNotification('success', `Análisis completado. Se encontraron ${materialsWithRuleF.length} reglas de tipo "F" para productos vendidos en el centro 2000.`);
 
         } catch (error) {
             addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
@@ -376,13 +392,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
-                const hasLabel = item.Etiqueta && item.Etiqueta.trim() !== '';
-                const existing = materialInfoMap.get(code);
+                const currentInfo = materialInfoMap.get(code);
+                const hasNewLabel = item.Etiqueta && item.Etiqueta.trim() !== '';
 
-                if (!existing || (hasLabel && (!existing.etiqueta || existing.etiqueta === 'Sin Etiqueta'))) {
-                    materialInfoMap.set(code, {
-                        etiqueta: hasLabel ? item.Etiqueta : (existing?.etiqueta || 'Sin Etiqueta'),
-                        description: item.Material || existing?.description || 'Descripción no encontrada',
+                if (!currentInfo || (hasNewLabel && currentInfo.etiqueta === 'Sin Etiqueta')) {
+                     materialInfoMap.set(code, {
+                        etiqueta: hasNewLabel ? item.Etiqueta : (currentInfo?.etiqueta || 'Sin Etiqueta'),
+                        description: item.Material || currentInfo?.description || 'Descripción no encontrada',
                     });
                 }
             });
@@ -586,16 +602,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
         <p className="text-sm text-gray-600">
-            Esta herramienta muestra todos los materiales que tienen definida la Clase de Aprovisionamiento 'F' en el Centro 2000, según la tabla de Tiempos de Ensamble.
+           Esta herramienta lista los materiales vendidos en el centro 2000 que, según las reglas de negocio, deben fabricarse en el centro 1000 (Clase 'F').
         </p>
         <div>
             <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analizando...' : 'Analizar Materiales "F" en Centro 2000'}
+            {isAnalyzing ? 'Analizando...' : 'Analizar Materiales con Regla "F"'}
             </Button>
         </div>
         {Object.keys(transferAnalysisData).length > 0 && (
             <div>
-                <h4 className="font-semibold mb-2">Materiales a Trasladar (Ventas fuera de C1000 / Fabricación en C1000)</h4>
+                <h4 className="font-semibold mb-2">Materiales a Trasladar (Ventas en C2000 / Fabricación en C1000)</h4>
                 <div className="border rounded-md max-h-[60vh] overflow-y-auto">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0">
