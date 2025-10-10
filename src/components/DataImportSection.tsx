@@ -189,7 +189,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           sectores: sectoresData.map((item: any) => ({ value: item['Sector'], label: item['Sector'] })),
         });
         
-        handleFilterChange('etiqueta', '');
       } catch (error) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
       }
@@ -390,42 +389,49 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 queryApi({ source: 'Presupuesto', operation: 'get_data', pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
             ]);
     
+            // Step 1: Create a robust info map that prioritizes entries with labels.
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
                 const hasLabel = item.Etiqueta && item.Etiqueta.trim() !== '';
-    
-                if (!materialInfoMap.has(code) || (!materialInfoMap.get(code)!.etiqueta && hasLabel)) {
+                const existing = materialInfoMap.get(code);
+
+                // If new item has a label and existing one doesn't, or if there's no existing entry, update.
+                if (!existing || (hasLabel && (!existing.etiqueta || existing.etiqueta === 'Sin Etiqueta'))) {
                     materialInfoMap.set(code, {
-                        etiqueta: hasLabel ? item.Etiqueta : (materialInfoMap.get(code)?.etiqueta || 'Sin Etiqueta'),
-                        description: item.Material || 'Descripción no encontrada',
+                        etiqueta: hasLabel ? item.Etiqueta : (existing?.etiqueta || 'Sin Etiqueta'),
+                        description: item.Material || existing?.description || 'Descripción no encontrada',
                     });
                 }
             });
     
-            const enrichedAssemblyData = new Map<string, ProvisioningInfo>();
+            // Step 2: Iterate over assembly data and enrich with label info.
+            const enrichedRules = new Map<string, ProvisioningInfo>();
             assemblyData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
-                const info = materialInfoMap.get(code);
-                const key = `${code}-${item.Centro}`;
+                const center = String(item.Centro).trim();
+                const key = `${code}-${center}`;
 
-                if (!enrichedAssemblyData.has(key)) {
-                    enrichedAssemblyData.set(key, {
+                // Only add if not already present (deduplication)
+                if (!enrichedRules.has(key)) {
+                    const info = materialInfoMap.get(code);
+                    enrichedRules.set(key, {
                         code: code,
                         description: info?.description || 'Descripción no encontrada en Presupuesto',
-                        center: String(item.Centro).trim(),
+                        center: center,
                         provisioningClass: item.ClaseAprovisionamiento || 'N/D',
                     });
                 }
             });
 
-            const allRules = Array.from(enrichedAssemblyData.values());
-
-            const finalData = allRules.filter(item => {
-                if (!filters.etiqueta) return true;
-                const info = materialInfoMap.get(item.code);
-                return info?.etiqueta === filters.etiqueta;
-            });
+            // Step 3: Filter the final, enriched list based on the UI filter.
+            let finalData = Array.from(enrichedRules.values());
+            if (filters.etiqueta) {
+                finalData = finalData.filter(item => {
+                    const info = materialInfoMap.get(item.code);
+                    return info?.etiqueta === filters.etiqueta;
+                });
+            }
             
             finalData.sort((a, b) => {
                 if (a.code < b.code) return -1;
@@ -437,7 +443,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             
             setProvisioningAnalysisData(finalData);
             if (finalData.length > 0) {
-                addNotification('success', `Análisis completado. Se encontraron ${finalData.length} reglas de aprovisionamiento únicas para la etiqueta.`);
+                addNotification('success', `Análisis completado. Se encontraron ${finalData.length} reglas de aprovisionamiento únicas.`);
             } else {
                 addNotification('warning', `No se encontraron reglas de aprovisionamiento para la etiqueta seleccionada.`);
             }
