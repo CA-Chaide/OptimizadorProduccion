@@ -209,8 +209,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     let allData: SalesDataRow[] = [];
     const yearsToLoad = filters.años.map(Number);
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
 
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
@@ -222,10 +220,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
-                    continue;
-                }
-                
                 for (const centro of centrosToLoad) {
                     const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
                     
@@ -394,25 +388,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 queryApi({ source: 'Presupuesto', operation: 'get_data', pagination: { limit: 500000 } }) as Promise<PresupuestoItem[]>
             ]);
     
-            const materialInfoMap = new Map<string, { etiqueta: string, description: string }>();
+            const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
             budgetData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
-                if (!materialInfoMap.has(code) && (item.Etiqueta || item.Material)) {
-                    materialInfoMap.set(code, { 
-                        etiqueta: item.Etiqueta || 'Sin Etiqueta', 
-                        description: item.Material || 'Descripción no encontrada' 
+                const hasLabel = item.Etiqueta && item.Etiqueta.trim() !== '';
+    
+                if (!materialInfoMap.has(code) || !materialInfoMap.get(code)!.etiqueta) {
+                    materialInfoMap.set(code, {
+                        etiqueta: hasLabel ? item.Etiqueta : 'Sin Etiqueta',
+                        description: item.Material || 'Descripción no encontrada',
                     });
                 }
             });
     
-            let relevantAssemblyData = assemblyData;
-            
-            if (filters.etiqueta) {
-                relevantAssemblyData = assemblyData.filter(item => {
-                    const code = normalizeMaterialCode(item.CodMaterial);
-                    return materialInfoMap.get(code)?.etiqueta === filters.etiqueta;
-                });
-            }
+            const relevantAssemblyData = assemblyData.filter(item => {
+                if (!filters.etiqueta) return true; // Include all if 'Todas' is selected
+                const code = normalizeMaterialCode(item.CodMaterial);
+                const info = materialInfoMap.get(code);
+                return info?.etiqueta === filters.etiqueta;
+            });
             
             const provisioningInfo = relevantAssemblyData.map(item => ({
                 code: normalizeMaterialCode(item.CodMaterial),
@@ -441,7 +435,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             
             setProvisioningAnalysisData(uniqueData);
             if (uniqueData.length > 0) {
-                addNotification('success', `Análisis completado. Se encontraron ${uniqueData.length} reglas de aprovisionamiento únicas para la etiqueta.`);
+                addNotification('success', `Análisis completado. Se encontraron ${uniqueData.length} reglas de aprovisionamiento únicas.`);
             } else {
                 addNotification('warning', `No se encontraron reglas de aprovisionamiento para la etiqueta seleccionada.`);
             }
