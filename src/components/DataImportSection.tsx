@@ -47,9 +47,16 @@ interface ProvisioningInfo {
 }
 
 const normalizeMaterialCode = (code: string | number): string => {
+    if (code === null || code === undefined) return '';
     const codeStr = String(code);
+    // Ensure we handle potential scientific notation from Excel parsing
+    if (codeStr.includes('e')) {
+        return String(Number(code));
+    }
+    // Take the last 8 digits, which is the core material code
     return codeStr.slice(-8);
 };
+
 
 const MultiSelect: React.FC<{
   label: string;
@@ -130,7 +137,7 @@ const MultiSelect: React.FC<{
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
-  const { addNotification, isLoading: isAppLoading } = useAppContext();
+  const { addNotification, isLoading: isAppLoading, salesData } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: string, label: string}[],
@@ -301,6 +308,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', 'Analizando traslados requeridos según las reglas de negocio...');
 
         try {
+            // 1. Get all assembly rules
             const assemblyRules = await queryApi({
                 source: 'TiemposEnsamblado',
                 operation: 'get_data',
@@ -312,10 +320,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 setIsAnalyzing(false);
                 return;
             }
-
+            
+            // 2. Create a Set of all material codes that have rule 'F'
             const codesWithRuleF = new Set<string>();
             assemblyRules.forEach(rule => {
                 if (rule.ClaseAprovisionamiento === 'F') {
+                    // *** CRUCIAL FIX: Normalize the code from the rules table ***
                     codesWithRuleF.add(normalizeMaterialCode(rule.CodMaterial));
                 }
             });
@@ -325,48 +335,48 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 setIsAnalyzing(false);
                 return;
             }
-            
-            // Step 1: Aggregate total units to be transferred for each material code.
-            // This is the source of truth for quantities.
+
+            // 3. Aggregate total units to be transferred from `loadedData`
             const totalTransferUnitsByCode: Record<string, number> = {};
             loadedData.forEach(sale => {
-                const code = sale.código;
+                const code = sale.código; // This code is already normalized
+                // Check if the sale is NOT in center 1000 and the material has rule 'F'
                 if (sale.centro !== '1000' && codesWithRuleF.has(code)) {
                     totalTransferUnitsByCode[code] = (totalTransferUnitsByCode[code] || 0) + sale.unidadesProyectado;
                 }
             });
 
             if (Object.keys(totalTransferUnitsByCode).length === 0) {
-                addNotification('info', 'Análisis completado. No se encontraron ventas que requieran traslados con los filtros actuales.');
+                addNotification('info', 'Análisis completado. No se encontraron ventas que requieran traslados con los datos y filtros actuales.');
                 setIsAnalyzing(false);
                 return;
             }
 
-            // Step 2: Build the display structure using the aggregated totals.
+            // 4. Build the final display structure, ensuring one entry per code, grouped by tag
             const groupedData: GroupedTransferAnalysisData = {};
             const processedCodes = new Set<string>();
 
-            // Iterate through loadedData again to get descriptions and labels correctly.
+            // Iterate through `loadedData` again to correctly associate tags and descriptions
             loadedData.forEach(sale => {
                 const code = sale.código;
-                const etiqueta = sale.etiqueta || 'Sin Etiqueta';
-                
-                // Check if this material needs a transfer and hasn't been added to the display group yet.
+                // If this code requires a transfer AND has not been added to the final list yet
                 if (totalTransferUnitsByCode[code] && !processedCodes.has(code)) {
+                    const etiqueta = sale.etiqueta || 'Sin Etiqueta';
+                    
                     if (!groupedData[etiqueta]) {
                         groupedData[etiqueta] = { subtotal: 0, materials: [] };
                     }
                     
-                    const units = totalTransferUnitsByCode[code]; // Use the pre-calculated total.
+                    const unitsToTransfer = totalTransferUnitsByCode[code];
                     
                     groupedData[etiqueta].materials.push({
                         code: code,
                         description: sale.descripciónMaterial,
-                        units: units,
+                        units: unitsToTransfer,
                     });
                     
-                    groupedData[etiqueta].subtotal += units;
-                    processedCodes.add(code); // Mark this code as processed to avoid duplicates in the view.
+                    groupedData[etiqueta].subtotal += unitsToTransfer;
+                    processedCodes.add(code); // Mark code as processed to avoid duplicates in the view
                 }
             });
     
@@ -379,8 +389,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }, {} as GroupedTransferAnalysisData);
             
             setTransferAnalysisData(sortedGroupedData);
-            const totalMaterialsFound = Object.keys(totalTransferUnitsByCode).length;
-            addNotification('success', `Análisis de traslados completado. Se encontraron ${totalMaterialsFound} materiales que requieren traslado.`);
+            addNotification('success', `Análisis de traslados completado. Se encontraron ${processedCodes.size} materiales que requieren traslado.`);
     
         } catch (error) {
             addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
@@ -395,7 +404,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta || 'Todas'}...`);
     
         try {
-             // Use already loaded data instead of fetching again
             if (loadedData.length === 0) {
                 addNotification('warning', 'Por favor, cargue datos de ventas primero.');
                 setIsProvisioningAnalyzing(false);
@@ -410,37 +418,33 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
             
-            // Build a robust map from the already-loaded sales data
             loadedData.forEach(item => {
-                const code = item.código;
-                const currentInfo = materialInfoMap.get(code);
-                const hasNewLabel = item.etiqueta && item.etiqueta.trim() !== 'Sin Etiqueta';
-    
-                if (!currentInfo || (hasNewLabel && currentInfo.etiqueta === 'Sin Etiqueta')) {
-                     materialInfoMap.set(code, {
-                        etiqueta: hasNewLabel ? item.etiqueta : (currentInfo?.etiqueta || 'Sin Etiqueta'),
-                        description: item.descripciónMaterial || currentInfo?.description || 'Descripción no encontrada',
+                const code = item.código; // Already normalized
+                if (!materialInfoMap.has(code)) {
+                    materialInfoMap.set(code, {
+                        etiqueta: item.etiqueta,
+                        description: item.descripciónMaterial,
                     });
                 }
             });
     
             const enrichedRules = new Map<string, ProvisioningInfo>();
             assemblyData.forEach(item => {
-                const code = normalizeMaterialCode(item.CodMaterial);
+                const code = normalizeMaterialCode(item.CodMaterial); // Normalize here too
                 const center = String(item.Centro).trim();
                 const key = `${code}-${center}`;
 
                 if (enrichedRules.has(key)) return;
 
-                const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: item.Material || 'Descripción no encontrada en Presupuesto' };
+                const info = materialInfoMap.get(code);
 
-                if (filters.etiqueta && info.etiqueta !== filters.etiqueta) {
+                if (filters.etiqueta && (!info || info.etiqueta !== filters.etiqueta)) {
                     return;
                 }
 
                 enrichedRules.set(key, {
                     code: code,
-                    description: info.description,
+                    description: info?.description || item.Material || 'Descripción no encontrada en Presupuesto',
                     center: center,
                     provisioningClass: item.ClaseAprovisionamiento || 'N/D',
                 });

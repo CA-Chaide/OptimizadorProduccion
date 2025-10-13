@@ -101,12 +101,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 }
 
-const normalizeMaterialCode = (code: string | number): string => {
-    const codeStr = String(code);
-    return codeStr.slice(-8);
-};
-
-
 type AppContextType = {
     year: number | null;
     activeView: ActiveView;
@@ -123,7 +117,6 @@ type AppContextType = {
     tacticalPlanResult: TacticalPlanResult | null;
     syncStatus: SyncStatus | null;
     planningProgress: PlanningProgress | null;
-    apiAssemblyData: TiempoEnsambleItem[]; // New: Store raw API data
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
@@ -259,7 +252,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
             
-            // CORRECTED: Pass the sales data from the state directly to the planning engine.
             const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
@@ -299,7 +291,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dispatch({ type: 'GENERATE_TACTICAL_PLAN', payload: emptyResult });
             return emptyResult;
         }
-    }, [state.productionPlan.dailyPlan, state.constraints, state.maintenanceEvents, state.absenteeismEvents, state.employees, state.employeeSkills, addNotification]);
+    }, [addNotification]);
 
     const setEmployees = (employees: Employee[]) => dispatch({ type: 'SET_EMPLOYEES', payload: employees });
     const setSkills = (skills: EmployeeSkill[]) => dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: skills });
@@ -310,7 +302,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     const value = {
         ...state,
-        apiAssemblyData,
         dispatch,
         addNotification,
         handleDataImported,
