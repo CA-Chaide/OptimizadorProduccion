@@ -383,21 +383,19 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta || 'Todas'}...`);
     
         try {
-            // This is now the ONLY query to the API in this function
             const assemblyData = await queryApi({
                 source: 'TiemposEnsamblado',
                 operation: 'get_data',
                 pagination: { limit: 50000 }
             }) as TiempoEnsambleItem[];
     
-            // Build the info map from the ALREADY loaded sales data in the state.
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
             loadedData.forEach(item => {
-                const code = item.código; // Already normalized
+                const code = item.código;
                 const currentInfo = materialInfoMap.get(code);
                 const hasNewLabel = item.etiqueta && item.etiqueta.trim() !== 'Sin Etiqueta';
     
-                if (!currentInfo || hasNewLabel) {
+                if (!currentInfo || (hasNewLabel && currentInfo.etiqueta === 'Sin Etiqueta')) {
                      materialInfoMap.set(code, {
                         etiqueta: hasNewLabel ? item.etiqueta : (currentInfo?.etiqueta || 'Sin Etiqueta'),
                         description: item.descripciónMaterial || currentInfo?.description || 'Descripción no encontrada',
@@ -413,9 +411,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
                 if (enrichedRules.has(key)) return;
 
-                const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: 'Descripción no encontrada en Presupuesto' };
+                const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: item.Material || 'Descripción no encontrada en Presupuesto' };
 
-                // Apply the filter here
                 if (filters.etiqueta && info.etiqueta !== filters.etiqueta) {
                     return;
                 }
