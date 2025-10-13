@@ -48,10 +48,10 @@ interface ProvisioningInfo {
 
 const normalizeMaterialCode = (code: string | number): string => {
     if (code === null || code === undefined) return '';
-    const codeStr = String(code);
+    let codeStr = String(code);
     // Ensure we handle potential scientific notation from Excel parsing
     if (codeStr.includes('e')) {
-        return String(Number(code));
+        codeStr = String(Number(code));
     }
     // Take the last 8 digits, which is the core material code
     return codeStr.slice(-8);
@@ -205,7 +205,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     loadFilterOptions();
   }, [addNotification]);
   
-  const handleLoadData = async () => {
+ const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
     
@@ -225,7 +225,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
         const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores : filterOptions.sectores.map(s => s.value);
 
-
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
@@ -233,21 +232,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 for (const centro of centrosToLoad) {
                     for (const sector of sectoresToLoad) {
                         const queryFilters: { [key: string]: any } = { 
-                            'Año': year, 
-                            'Mes': month, 
-                            'Centro': centro,
-                            'Sector': sector
+                            'Año': year, 'Mes': month, 'Centro': centro, 'Sector': sector
                         };
-                        
                         if (filters.etiqueta) {
                             queryFilters['Etiqueta'] = filters.etiqueta;
                         }
                         
                         const promise = queryApi({
-                            source: 'Presupuesto',
-                            operation: 'get_data',
-                            filters: queryFilters,
-                            pagination: { limit: 200000 }
+                            source: 'Presupuesto', operation: 'get_data',
+                            filters: queryFilters, pagination: { limit: 200000 }
                         });
                         apiCallPromises.push(promise);
                     }
@@ -256,7 +249,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         }
         
         addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
-
         const responses = await Promise.all(apiCallPromises);
 
         addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
@@ -278,7 +270,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 allData = [...allData, ...mappedData];
             }
         });
-
 
         if (allData.length > 0) {
             setLoadedData(allData);
@@ -308,11 +299,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', 'Analizando traslados requeridos según las reglas de negocio...');
 
         try {
-            // 1. Get all assembly rules
             const assemblyRules = await queryApi({
-                source: 'TiemposEnsamblado',
-                operation: 'get_data',
-                pagination: { limit: 50000 }
+                source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 }
             }) as TiempoEnsambleItem[];
 
             if (!assemblyRules || assemblyRules.length === 0) {
@@ -321,53 +309,45 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 return;
             }
             
-            // 2. Create a Set of all material codes that have rule 'F'
             const codesWithRuleF = new Set<string>();
             assemblyRules.forEach(rule => {
                 if (rule.ClaseAprovisionamiento === 'F') {
-                    // *** CRUCIAL FIX: Normalize the code from the rules table ***
                     codesWithRuleF.add(normalizeMaterialCode(rule.CodMaterial));
                 }
             });
 
             if (codesWithRuleF.size === 0) {
-                addNotification('info', 'Análisis completado: No se encontraron materiales con regla de aprovisionamiento "F" en los datos maestros.');
+                addNotification('info', 'Análisis completado: No se encontraron materiales con regla "F".');
                 setIsAnalyzing(false);
                 return;
             }
 
-            // 3. Aggregate total units to be transferred from `loadedData`
-            const totalTransferUnitsByCode: Record<string, number> = {};
+            const transferUnitsByCode: Record<string, number> = {};
             loadedData.forEach(sale => {
-                const code = sale.código; // This code is already normalized
-                // Check if the sale is NOT in center 1000 and the material has rule 'F'
+                const code = sale.código;
                 if (sale.centro !== '1000' && codesWithRuleF.has(code)) {
-                    totalTransferUnitsByCode[code] = (totalTransferUnitsByCode[code] || 0) + sale.unidadesProyectado;
+                    transferUnitsByCode[code] = (transferUnitsByCode[code] || 0) + sale.unidadesProyectado;
                 }
             });
 
-            if (Object.keys(totalTransferUnitsByCode).length === 0) {
-                addNotification('info', 'Análisis completado. No se encontraron ventas que requieran traslados con los datos y filtros actuales.');
+            if (Object.keys(transferUnitsByCode).length === 0) {
+                addNotification('info', 'Análisis completado. No se encontraron ventas que requieran traslados.');
                 setIsAnalyzing(false);
                 return;
             }
 
-            // 4. Build the final display structure, ensuring one entry per code, grouped by tag
             const groupedData: GroupedTransferAnalysisData = {};
             const processedCodes = new Set<string>();
 
-            // Iterate through `loadedData` again to correctly associate tags and descriptions
             loadedData.forEach(sale => {
                 const code = sale.código;
-                // If this code requires a transfer AND has not been added to the final list yet
-                if (totalTransferUnitsByCode[code] && !processedCodes.has(code)) {
+                if (transferUnitsByCode[code] && !processedCodes.has(code)) {
                     const etiqueta = sale.etiqueta || 'Sin Etiqueta';
-                    
                     if (!groupedData[etiqueta]) {
                         groupedData[etiqueta] = { subtotal: 0, materials: [] };
                     }
                     
-                    const unitsToTransfer = totalTransferUnitsByCode[code];
+                    const unitsToTransfer = transferUnitsByCode[code];
                     
                     groupedData[etiqueta].materials.push({
                         code: code,
@@ -376,7 +356,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     });
                     
                     groupedData[etiqueta].subtotal += unitsToTransfer;
-                    processedCodes.add(code); // Mark code as processed to avoid duplicates in the view
+                    processedCodes.add(code);
                 }
             });
     
@@ -404,43 +384,48 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta || 'Todas'}...`);
     
         try {
-            if (loadedData.length === 0) {
-                addNotification('warning', 'Por favor, cargue datos de ventas primero.');
-                setIsProvisioningAnalyzing(false);
-                return;
+            const [assemblyData, budgetDataForTag] = await Promise.all([
+                queryApi({
+                    source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 }
+                }) as Promise<TiempoEnsambleItem[]>,
+                filters.etiqueta 
+                    ? queryApi({ 
+                        source: 'Presupuesto', operation: 'get_data', 
+                        filters: { 'Etiqueta': filters.etiqueta }, 
+                        pagination: { limit: 200000 } 
+                      }) as Promise<PresupuestoItem[]>
+                    : Promise.resolve(null)
+            ]);
+
+            const materialCodesForTag = new Set<string>();
+            const materialInfoMap = new Map<string, { description: string }>();
+
+            if (budgetDataForTag) {
+                budgetDataForTag.forEach(item => {
+                    const code = normalizeMaterialCode(item.CodMaterial);
+                    materialCodesForTag.add(code);
+                    if (!materialInfoMap.has(code)) {
+                        materialInfoMap.set(code, { description: item.Material });
+                    }
+                });
+            } else {
+                 addNotification('warning', 'No se ha seleccionado una etiqueta, el análisis puede ser muy grande.');
             }
 
-            const assemblyData = await queryApi({
-                source: 'TiemposEnsamblado',
-                operation: 'get_data',
-                pagination: { limit: 50000 }
-            }) as TiempoEnsambleItem[];
-    
-            const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
-            
-            loadedData.forEach(item => {
-                const code = item.código; // Already normalized
-                if (!materialInfoMap.has(code)) {
-                    materialInfoMap.set(code, {
-                        etiqueta: item.etiqueta,
-                        description: item.descripciónMaterial,
-                    });
-                }
-            });
-    
             const enrichedRules = new Map<string, ProvisioningInfo>();
             assemblyData.forEach(item => {
-                const code = normalizeMaterialCode(item.CodMaterial); // Normalize here too
+                const code = normalizeMaterialCode(item.CodMaterial);
                 const center = String(item.Centro).trim();
                 const key = `${code}-${center}`;
+
+                // Si hay un filtro de etiqueta, solo procesar códigos de esa etiqueta
+                if (filters.etiqueta && !materialCodesForTag.has(code)) {
+                    return;
+                }
 
                 if (enrichedRules.has(key)) return;
 
                 const info = materialInfoMap.get(code);
-
-                if (filters.etiqueta && (!info || info.etiqueta !== filters.etiqueta)) {
-                    return;
-                }
 
                 enrichedRules.set(key, {
                     code: code,
@@ -682,8 +667,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             Esta herramienta consulta las reglas de negocio para todos los materiales de la etiqueta seleccionada en el filtro principal. Muestra la "Clase de Aprovisionamiento" ('E', 'F', 'X') definida para cada código en cada centro.
         </p>
         <div>
-            <Button onClick={handleAnalyzeProvisioning} disabled={isProvisioningAnalyzing || loadedData.length === 0}>
-            {isProvisioningAnalyzing ? 'Analizando...' : `Analizar Aprovisionamiento para "${filters.etiqueta || 'Todas'}"`}
+            <Button onClick={handleAnalyzeProvisioning} disabled={isProvisioningAnalyzing || !filters.etiqueta}>
+            {isProvisioningAnalyzing ? 'Analizando...' : `Analizar Aprovisionamiento para "${filters.etiqueta || 'Seleccione Etiqueta'}"`}
             </Button>
         </div>
         {provisioningAnalysisData.length > 0 && (
@@ -730,3 +715,4 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
+
