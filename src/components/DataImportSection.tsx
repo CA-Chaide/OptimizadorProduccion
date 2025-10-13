@@ -216,7 +216,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
-        const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores.map(s => s.value) : filterOptions.sectores.map(s => s.value);
+        const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores : filterOptions.sectores.map(s => s.value);
 
 
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
@@ -321,37 +321,53 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             });
 
             if (codesWithRuleF.size === 0) {
-                addNotification('info', 'Análisis completado: No se encontraron materiales con regla de aprovisionamiento "F".');
+                addNotification('info', 'Análisis completado: No se encontraron materiales con regla de aprovisionamiento "F" en los datos maestros.');
                 setIsAnalyzing(false);
                 return;
             }
             
-            const transferUnitsByCode: Record<string, { units: number, etiqueta: string, description: string }> = {};
-
+            // Step 1: Aggregate total units to be transferred for each material code.
+            // This is the source of truth for quantities.
+            const totalTransferUnitsByCode: Record<string, number> = {};
             loadedData.forEach(sale => {
                 const code = sale.código;
                 if (sale.centro !== '1000' && codesWithRuleF.has(code)) {
-                    if (!transferUnitsByCode[code]) {
-                        transferUnitsByCode[code] = { units: 0, etiqueta: sale.etiqueta, description: sale.descripciónMaterial };
-                    }
-                    transferUnitsByCode[code].units += sale.unidadesProyectado;
+                    totalTransferUnitsByCode[code] = (totalTransferUnitsByCode[code] || 0) + sale.unidadesProyectado;
                 }
             });
 
+            if (Object.keys(totalTransferUnitsByCode).length === 0) {
+                addNotification('info', 'Análisis completado. No se encontraron ventas que requieran traslados con los filtros actuales.');
+                setIsAnalyzing(false);
+                return;
+            }
+
+            // Step 2: Build the display structure using the aggregated totals.
             const groupedData: GroupedTransferAnalysisData = {};
-            
-            Object.entries(transferUnitsByCode).forEach(([code, data]) => {
-                const { etiqueta, description, units } = data;
-                if (!groupedData[etiqueta]) {
-                    groupedData[etiqueta] = { subtotal: 0, materials: [] };
-                }
+            const processedCodes = new Set<string>();
+
+            // Iterate through loadedData again to get descriptions and labels correctly.
+            loadedData.forEach(sale => {
+                const code = sale.código;
+                const etiqueta = sale.etiqueta || 'Sin Etiqueta';
                 
-                groupedData[etiqueta].materials.push({
-                    code,
-                    description,
-                    units,
-                });
-                groupedData[etiqueta].subtotal += units;
+                // Check if this material needs a transfer and hasn't been added to the display group yet.
+                if (totalTransferUnitsByCode[code] && !processedCodes.has(code)) {
+                    if (!groupedData[etiqueta]) {
+                        groupedData[etiqueta] = { subtotal: 0, materials: [] };
+                    }
+                    
+                    const units = totalTransferUnitsByCode[code]; // Use the pre-calculated total.
+                    
+                    groupedData[etiqueta].materials.push({
+                        code: code,
+                        description: sale.descripciónMaterial,
+                        units: units,
+                    });
+                    
+                    groupedData[etiqueta].subtotal += units;
+                    processedCodes.add(code); // Mark this code as processed to avoid duplicates in the view.
+                }
             });
     
             const sortedGroupedData = Object.entries(groupedData)
@@ -363,12 +379,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }, {} as GroupedTransferAnalysisData);
             
             setTransferAnalysisData(sortedGroupedData);
-            const totalMaterialsFound = Object.keys(transferUnitsByCode).length;
-            if(totalMaterialsFound > 0) {
-              addNotification('success', `Análisis de traslados completado. Se encontraron ${totalMaterialsFound} materiales que requieren traslado.`);
-            } else {
-              addNotification('info', `Análisis completado. No se encontraron materiales que requieran traslado con los filtros actuales.`);
-            }
+            const totalMaterialsFound = Object.keys(totalTransferUnitsByCode).length;
+            addNotification('success', `Análisis de traslados completado. Se encontraron ${totalMaterialsFound} materiales que requieren traslado.`);
     
         } catch (error) {
             addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
@@ -383,6 +395,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta || 'Todas'}...`);
     
         try {
+             // Use already loaded data instead of fetching again
+            if (loadedData.length === 0) {
+                addNotification('warning', 'Por favor, cargue datos de ventas primero.');
+                setIsProvisioningAnalyzing(false);
+                return;
+            }
+
             const assemblyData = await queryApi({
                 source: 'TiemposEnsamblado',
                 operation: 'get_data',
@@ -390,6 +409,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }) as TiempoEnsambleItem[];
     
             const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
+            
+            // Build a robust map from the already-loaded sales data
             loadedData.forEach(item => {
                 const code = item.código;
                 const currentInfo = materialInfoMap.get(code);
@@ -570,7 +591,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                       {Object.entries(aggregatedData).map(([etiqueta, group]) => (
+                       {Object.entries(aggregatedData).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)).map(([etiqueta, group]) => (
                             <tr key={etiqueta}>
                                 <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
                                 {centers.map(center => (
@@ -657,7 +678,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             Esta herramienta consulta las reglas de negocio para todos los materiales de la etiqueta seleccionada en el filtro principal. Muestra la "Clase de Aprovisionamiento" ('E', 'F', 'X') definida para cada código en cada centro.
         </p>
         <div>
-            <Button onClick={handleAnalyzeProvisioning} disabled={isProvisioningAnalyzing}>
+            <Button onClick={handleAnalyzeProvisioning} disabled={isProvisioningAnalyzing || loadedData.length === 0}>
             {isProvisioningAnalyzing ? 'Analizando...' : `Analizar Aprovisionamiento para "${filters.etiqueta || 'Todas'}"`}
             </Button>
         </div>
