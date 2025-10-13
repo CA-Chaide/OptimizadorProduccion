@@ -216,7 +216,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
-        const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores : filterOptions.sectores.map(s => s.value);
+        const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores.map(s => s.value) : filterOptions.sectores.map(s => s.value);
 
 
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
@@ -322,7 +322,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             });
 
             if (codesWithRuleF.size === 0) {
-                addNotification('info', 'No se encontraron materiales con regla de aprovisionamiento "F" en TiemposEnsamblado.');
+                addNotification('info', 'No se encontraron materiales con regla de aprovisionamiento "F".');
                 setIsAnalyzing(false);
                 return;
             }
@@ -369,7 +369,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }, {} as GroupedTransferAnalysisData);
             
             setTransferAnalysisData(sortedGroupedData);
-            addNotification('success', `Análisis de traslados completado. Se encontraron ${Object.keys(transferUnitsByCode).length} materiales que requieren traslado.`);
+            const totalMaterialsFound = Object.keys(transferUnitsByCode).length;
+            if(totalMaterialsFound > 0) {
+              addNotification('success', `Análisis de traslados completado. Se encontraron ${totalMaterialsFound} materiales que requieren traslado.`);
+            } else {
+              addNotification('warning', `Análisis completado. No se encontraron materiales que requieran traslado con los filtros actuales.`);
+            }
     
         } catch (error) {
             addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
