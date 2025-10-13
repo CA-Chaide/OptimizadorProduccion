@@ -291,76 +291,73 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const handleAnalyzeTransfers = async () => {
         setIsAnalyzing(true);
         setTransferAnalysisData({});
-        addNotification('info', 'Paso 1: Obteniendo reglas de negocio de TiemposEnsamblado...');
-    
+        
+        if (loadedData.length === 0) {
+            addNotification('warning', 'Por favor, cargue primero los datos de ventas para analizar los traslados necesarios.');
+            setIsAnalyzing(false);
+            return;
+        }
+
+        addNotification('info', 'Analizando traslados requeridos según las reglas de negocio...');
+
         try {
-            // Step 1: Get all assembly rules
+            // Step 1: Get all assembly rules to identify 'F' class materials
             const assemblyRules = await queryApi({
                 source: 'TiemposEnsamblado',
                 operation: 'get_data',
                 pagination: { limit: 50000 }
             }) as TiempoEnsambleItem[];
-    
+
             if (!assemblyRules || assemblyRules.length === 0) {
                 addNotification('warning', 'No se encontraron reglas de negocio en TiemposEnsamblado.');
                 setIsAnalyzing(false);
                 return;
             }
-    
-            // Step 2: Filter for codes with rule 'F' or no center defined.
+
             const codesWithRuleF = new Set<string>();
             assemblyRules.forEach(rule => {
-                if (rule.ClaseAprovisionamiento === 'F' || !rule.Centro) {
+                if (rule.ClaseAprovisionamiento === 'F') {
                     codesWithRuleF.add(normalizeMaterialCode(rule.CodMaterial));
                 }
             });
-    
+
             if (codesWithRuleF.size === 0) {
-                addNotification('info', 'No se encontraron materiales con regla de aprovisionamiento "F".');
+                addNotification('info', 'No se encontraron materiales con regla de aprovisionamiento "F" en TiemposEnsamblado.');
                 setIsAnalyzing(false);
                 return;
             }
             
-            addNotification('info', `Paso 2: Se encontraron ${codesWithRuleF.size} materiales con regla 'F'. Obteniendo descripciones...`);
+            addNotification('info', `Se encontraron ${codesWithRuleF.size} materiales con regla 'F'. Cruzando con los ${loadedData.length} registros de ventas cargados...`);
 
-            // Step 3: Fetch budget data to get descriptions and labels
-            const budgetData = await queryApi({
-                source: 'Presupuesto',
-                operation: 'get_data',
-                pagination: { limit: 500000 }
-            }) as PresupuestoItem[];
-            
-            const materialInfoMap = new Map<string, { etiqueta: string; description: string }>();
-            budgetData.forEach(item => {
-                const code = normalizeMaterialCode(item.CodMaterial);
-                const hasNewLabel = item.Etiqueta && item.Etiqueta.trim() !== '';
-                const currentInfo = materialInfoMap.get(code);
+            // Step 2: Iterate over the ALREADY LOADED sales data to find transfer needs
+            const transferUnitsByCode: Record<string, { units: number, etiqueta: string, description: string }> = {};
 
-                if (!currentInfo || (hasNewLabel && currentInfo.etiqueta === 'Sin Etiqueta')) {
-                     materialInfoMap.set(code, {
-                        etiqueta: hasNewLabel ? item.Etiqueta : (currentInfo?.etiqueta || 'Sin Etiqueta'),
-                        description: item.Material || currentInfo?.description || 'Descripción no encontrada',
-                    });
+            loadedData.forEach(sale => {
+                const code = sale.código;
+                // A transfer is needed if the sale is NOT in center 1000 AND the material has rule 'F'
+                if (sale.centro !== '1000' && codesWithRuleF.has(code)) {
+                    if (!transferUnitsByCode[code]) {
+                        transferUnitsByCode[code] = { units: 0, etiqueta: sale.etiqueta, description: sale.descripciónMaterial };
+                    }
+                    transferUnitsByCode[code].units += sale.unidadesProyectado;
                 }
             });
-    
-            // Step 4: Build the final result
+
+            // Step 3: Group the results by 'etiqueta' for display
             const groupedData: GroupedTransferAnalysisData = {};
             
-            codesWithRuleF.forEach(code => {
-                const info = materialInfoMap.get(code) || { etiqueta: 'Sin Etiqueta', description: 'N/A' };
-                
-                if (!groupedData[info.etiqueta]) {
-                    groupedData[info.etiqueta] = { subtotal: 0, materials: [] };
+            Object.entries(transferUnitsByCode).forEach(([code, data]) => {
+                const { etiqueta, description, units } = data;
+                if (!groupedData[etiqueta]) {
+                    groupedData[etiqueta] = { subtotal: 0, materials: [] };
                 }
                 
-                if (!groupedData[info.etiqueta].materials.some(m => m.code === code)) {
-                    groupedData[info.etiqueta].materials.push({
-                        code,
-                        description: info.description,
-                        units: 0, // No units calculation for now
-                    });
-                }
+                groupedData[etiqueta].materials.push({
+                    code,
+                    description,
+                    units,
+                });
+                groupedData[etiqueta].subtotal += units;
             });
     
             const sortedGroupedData = Object.entries(groupedData)
@@ -372,7 +369,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }, {} as GroupedTransferAnalysisData);
             
             setTransferAnalysisData(sortedGroupedData);
-            addNotification('success', `Análisis de reglas 'F' completado.`);
+            addNotification('success', `Análisis de traslados completado. Se encontraron ${Object.keys(transferUnitsByCode).length} materiales que requieren traslado.`);
     
         } catch (error) {
             addNotification('error', `Error durante el análisis de traslados: ${(error as Error).message}`);
@@ -398,7 +395,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 const currentInfo = materialInfoMap.get(code);
                 const hasNewLabel = item.Etiqueta && item.Etiqueta.trim() !== '';
 
-                if (!currentInfo || (hasNewLabel && currentInfo.etiqueta === 'Sin Etiqueta')) {
+                if (!currentInfo || (hasNewLabel && currentInfo.etiqueta === 'Sin Etiqueta') || !currentInfo.etiqueta) {
                      materialInfoMap.set(code, {
                         etiqueta: hasNewLabel ? item.Etiqueta : (currentInfo?.etiqueta || 'Sin Etiqueta'),
                         description: item.Material || currentInfo?.description || 'Descripción no encontrada',
@@ -605,10 +602,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
         <p className="text-sm text-gray-600">
-           Esta herramienta lista los materiales que, según las reglas de negocio, deben fabricarse en el centro 1000 (Clase 'F').
+           Esta herramienta lista los materiales que, según las reglas de negocio, deben fabricarse en el centro 1000 (Clase 'F') para satisfacer la demanda de otros centros, basado en los datos de ventas actualmente cargados.
         </p>
         <div>
-            <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing}>
+            <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing || loadedData.length === 0}>
             {isAnalyzing ? 'Analizando...' : 'Analizar Materiales con Regla "F"'}
             </Button>
         </div>
@@ -629,13 +626,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                 <React.Fragment key={etiqueta}>
                                     <tr className="bg-gray-100">
                                         <td className="px-4 py-2 font-bold text-gray-800" colSpan={2}>{etiqueta}</td>
-                                        <td className="px-4 py-2 text-right font-bold text-gray-800">-</td>
+                                        <td className="px-4 py-2 text-right font-bold text-gray-800">{group.subtotal.toLocaleString()}</td>
                                     </tr>
                                     {group.materials.map(item => (
                                         <tr key={item.code}>
                                             <td className="pl-8 pr-4 py-2 font-mono">{item.code}</td>
                                             <td className="px-4 py-2 text-gray-600">{item.description}</td>
-                                            <td className="px-4 py-2 text-right font-semibold">-</td>
+                                            <td className="px-4 py-2 text-right font-semibold">{item.units.toLocaleString()}</td>
                                         </tr>
                                     ))}
                                 </React.Fragment>
@@ -644,7 +641,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         <tfoot className="bg-gray-200 sticky bottom-0">
                            <tr>
                                 <th className="px-4 py-2 text-left font-bold text-gray-700 uppercase" colSpan={2}>TOTAL GENERAL</th>
-                                <th className="px-4 py-2 text-right font-bold text-indigo-700 uppercase">-</th>
+                                <th className="px-4 py-2 text-right font-bold text-indigo-700 uppercase">{transferTotalUnits.toLocaleString()}</th>
                            </tr>
                         </tfoot>
                     </table>
