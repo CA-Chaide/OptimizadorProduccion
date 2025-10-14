@@ -49,11 +49,9 @@ interface ProvisioningInfo {
 const normalizeMaterialCode = (code: string | number): string => {
     if (code === null || code === undefined) return '';
     let codeStr = String(code);
-    // Ensure we handle potential scientific notation from Excel parsing
     if (codeStr.includes('e')) {
         codeStr = String(Number(code));
     }
-    // Take the last 8 digits, which is the core material code
     return codeStr.slice(-8);
 };
 
@@ -137,7 +135,7 @@ const MultiSelect: React.FC<{
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
-  const { addNotification, isLoading: isAppLoading, salesData } = useAppContext();
+  const { addNotification, isLoading: isAppLoading, salesData, loadedData: contextLoadedData } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: string, label: string}[],
@@ -381,20 +379,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const handleAnalyzeProvisioning = async () => {
         setIsProvisioningAnalyzing(true);
         setProvisioningAnalysisData([]);
-        addNotification('info', `Analizando aprovisionamiento para etiqueta: ${filters.etiqueta || 'Todas'}...`);
+        
+        if (!filters.etiqueta) {
+            addNotification('warning', 'Por favor, seleccione una etiqueta para realizar el análisis de aprovisionamiento.');
+            setIsProvisioningAnalyzing(false);
+            return;
+        }
+
+        addNotification('info', `Analizando aprovisionamiento para etiqueta: "${filters.etiqueta}"...`);
     
         try {
             const [assemblyData, budgetDataForTag] = await Promise.all([
                 queryApi({
                     source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 }
                 }) as Promise<TiempoEnsambleItem[]>,
-                filters.etiqueta 
-                    ? queryApi({ 
-                        source: 'Presupuesto', operation: 'get_data', 
-                        filters: { 'Etiqueta': filters.etiqueta }, 
-                        pagination: { limit: 200000 } 
-                      }) as Promise<PresupuestoItem[]>
-                    : Promise.resolve(null)
+                queryApi({ 
+                    source: 'Presupuesto', operation: 'get_data', 
+                    filters: { 'Etiqueta': filters.etiqueta }, 
+                    pagination: { limit: 200000 } 
+                }) as Promise<PresupuestoItem[]>
             ]);
 
             const materialCodesForTag = new Set<string>();
@@ -408,8 +411,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         materialInfoMap.set(code, { description: item.Material });
                     }
                 });
-            } else {
-                 addNotification('warning', 'No se ha seleccionado una etiqueta, el análisis puede ser muy grande.');
             }
 
             const enrichedRules = new Map<string, ProvisioningInfo>();
@@ -418,21 +419,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 const center = String(item.Centro).trim();
                 const key = `${code}-${center}`;
 
-                // Si hay un filtro de etiqueta, solo procesar códigos de esa etiqueta
-                if (filters.etiqueta && !materialCodesForTag.has(code)) {
-                    return;
+                if (materialCodesForTag.has(code)) {
+                     if (enrichedRules.has(key)) return;
+
+                    const info = materialInfoMap.get(code);
+
+                    enrichedRules.set(key, {
+                        code: code,
+                        description: info?.description || item.Material || 'Descripción no encontrada en Presupuesto',
+                        center: center,
+                        provisioningClass: item.ClaseAprovisionamiento || 'N/D',
+                    });
                 }
-
-                if (enrichedRules.has(key)) return;
-
-                const info = materialInfoMap.get(code);
-
-                enrichedRules.set(key, {
-                    code: code,
-                    description: info?.description || item.Material || 'Descripción no encontrada en Presupuesto',
-                    center: center,
-                    provisioningClass: item.ClaseAprovisionamiento || 'N/D',
-                });
             });
 
             const finalData = Array.from(enrichedRules.values());
@@ -715,4 +713,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
-
