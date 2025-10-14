@@ -135,7 +135,7 @@ const MultiSelect: React.FC<{
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
-  const { addNotification, isLoading: isAppLoading, salesData, loadedData: contextLoadedData } = useAppContext();
+  const { addNotification, isLoading: isAppLoading } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: string, label: string}[],
@@ -219,55 +219,35 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
-        const sectoresToLoad = filters.sectores.length > 0 ? filters.sectores : filterOptions.sectores.map(s => s.value);
+        const queryFilters: { [key: string]: any } = { 'Año': yearsToLoad };
 
-        const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
+        if (filters.meses.length > 0) queryFilters['Mes'] = filters.meses.map(Number);
+        if (filters.centros.length > 0) queryFilters['Centro'] = filters.centros;
+        if (filters.sectores.length > 0) queryFilters['Sector'] = filters.sectores;
+        if (filters.etiqueta) queryFilters['Etiqueta'] = filters.etiqueta;
 
-        for (const year of yearsToLoad) {
-            for (const month of monthsToLoad) {
-                for (const centro of centrosToLoad) {
-                    for (const sector of sectoresToLoad) {
-                        const queryFilters: { [key: string]: any } = { 
-                            'Año': year, 'Mes': month, 'Centro': centro, 'Sector': sector
-                        };
-                        if (filters.etiqueta) {
-                            queryFilters['Etiqueta'] = filters.etiqueta;
-                        }
-                        
-                        const promise = queryApi({
-                            source: 'Presupuesto', operation: 'get_data',
-                            filters: queryFilters, pagination: { limit: 200000 }
-                        });
-                        apiCallPromises.push(promise);
-                    }
-                }
-            }
-        }
-        
-        addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
-        const responses = await Promise.all(apiCallPromises);
-
-        addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
-
-        responses.forEach(response => {
-            if (response && response.length > 0) {
-                 const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.Sector}-${index}`,
-                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                    código: normalizeMaterialCode(item.CodMaterial),
-                    centro: String(item.Centro).trim(), 
-                    unidadesProyectado: item.UnidadesProyectado,
-                    dolaresProyectado: 0,
-                    descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, 
-                    lineaProduccion: item.LineaProduccion || '',
-                }));
-                allData = [...allData, ...mappedData];
-            }
+        const response = await queryApi({
+            source: 'Presupuesto', operation: 'get_data',
+            filters: queryFilters, pagination: { limit: 500000 }
         });
+        
+        addNotification('info', 'Consulta a la API completada. Procesando resultados...');
+
+        if (response && response.length > 0) {
+            const mappedData: SalesDataRow[] = response.map((item: PresupuestoItem, index: number) => ({
+                id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.Sector}-${index}`,
+                año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                código: normalizeMaterialCode(item.CodMaterial),
+                centro: String(item.Centro).trim(), 
+                unidadesProyectado: item.UnidadesProyectado,
+                dolaresProyectado: 0,
+                descripciónMaterial: item.Material,
+                familia: item.Familia, marca: item.Marca, 
+                lineaProduccion: item.LineaProduccion || '',
+            }));
+            allData = mappedData;
+        }
 
         if (allData.length > 0) {
             setLoadedData(allData);
@@ -297,55 +277,71 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', 'Analizando traslados requeridos según las reglas de negocio...');
 
         try {
-            const assemblyRules = await queryApi({
+            // PASO 1: Obtener las reglas de negocio y los errores de datos maestros
+            const assemblyRulesResponse = await queryApi({
                 source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 }
             }) as TiempoEnsambleItem[];
 
-            if (!assemblyRules || assemblyRules.length === 0) {
+            if (!assemblyRulesResponse || assemblyRulesResponse.length === 0) {
                 addNotification('warning', 'No se encontraron reglas de negocio en TiemposEnsamblado.');
                 setIsAnalyzing(false);
                 return;
             }
-            
-            const codesWithRuleF = new Set<string>();
-            assemblyRules.forEach(rule => {
-                if (rule.ClaseAprovisionamiento === 'F') {
-                    codesWithRuleF.add(normalizeMaterialCode(rule.CodMaterial));
+
+            const rulesMap = new Map<string, string>(); // Key: 'productId---centerId', Value: 'F'/'E'/'X'
+            const masterDataErrors = new Set<string>();
+
+            assemblyRulesResponse.forEach(rule => {
+                const productId = normalizeMaterialCode(rule.CodMaterial);
+                const centerId = String(rule.Centro).trim();
+                const ruleKey = `${productId}---${centerId}`;
+
+                if (rule.ClaseAprovisionamiento) {
+                    rulesMap.set(ruleKey, rule.ClaseAprovisionamiento);
+                    if (centerId === '1000' && rule.ClaseAprovisionamiento === 'F') {
+                        masterDataErrors.add(productId);
+                    }
                 }
             });
 
-            if (codesWithRuleF.size === 0) {
-                addNotification('info', 'Análisis completado: No se encontraron materiales con regla "F".');
-                setIsAnalyzing(false);
-                return;
+            if (masterDataErrors.size > 0) {
+                 addNotification('error', `Error en datos maestros: ${masterDataErrors.size} materiales tienen regla 'F' en el centro 1000.`, Array.from(masterDataErrors));
             }
+            
+            // PASO 2: Procesar `loadedData` para acumular las unidades que necesitan traslado
+            const totalTransferUnitsByCode = new Map<string, number>(); // Key: productId, Value: total units
 
-            const transferUnitsByCode: Record<string, number> = {};
             loadedData.forEach(sale => {
-                const code = sale.código;
-                if (sale.centro !== '1000' && codesWithRuleF.has(code)) {
-                    transferUnitsByCode[code] = (transferUnitsByCode[code] || 0) + sale.unidadesProyectado;
+                if (sale.centro !== '1000') {
+                    const productId = sale.código;
+                    const ruleKey = `${productId}---${sale.centro}`;
+                    const rule = rulesMap.get(ruleKey);
+
+                    if (rule === 'F') {
+                        totalTransferUnitsByCode.set(productId, (totalTransferUnitsByCode.get(productId) || 0) + sale.unidadesProyectado);
+                    }
                 }
             });
 
-            if (Object.keys(transferUnitsByCode).length === 0) {
+            if (totalTransferUnitsByCode.size === 0) {
                 addNotification('info', 'Análisis completado. No se encontraron ventas que requieran traslados.');
                 setIsAnalyzing(false);
                 return;
             }
 
+            // PASO 3: Consolidar y presentar los resultados
             const groupedData: GroupedTransferAnalysisData = {};
             const processedCodes = new Set<string>();
 
             loadedData.forEach(sale => {
                 const code = sale.código;
-                if (transferUnitsByCode[code] && !processedCodes.has(code)) {
+                if (totalTransferUnitsByCode.has(code) && !processedCodes.has(code)) {
                     const etiqueta = sale.etiqueta || 'Sin Etiqueta';
                     if (!groupedData[etiqueta]) {
                         groupedData[etiqueta] = { subtotal: 0, materials: [] };
                     }
                     
-                    const unitsToTransfer = transferUnitsByCode[code];
+                    const unitsToTransfer = totalTransferUnitsByCode.get(code)!;
                     
                     groupedData[etiqueta].materials.push({
                         code: code,
@@ -354,14 +350,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     });
                     
                     groupedData[etiqueta].subtotal += unitsToTransfer;
-                    processedCodes.add(code);
+                    processedCodes.add(code); 
                 }
             });
     
             const sortedGroupedData = Object.entries(groupedData)
                 .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
                 .reduce((acc, [key, val]) => {
-                    val.materials.sort((a,b) => a.code.localeCompare(b.code));
+                    val.materials.sort((a,b) => a.description.localeCompare(b.description));
                     acc[key] = val;
                     return acc;
                 }, {} as GroupedTransferAnalysisData);
@@ -385,55 +381,60 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             setIsProvisioningAnalyzing(false);
             return;
         }
-
+    
         addNotification('info', `Analizando aprovisionamiento para etiqueta: "${filters.etiqueta}"...`);
     
         try {
-            const [assemblyData, budgetDataForTag] = await Promise.all([
-                queryApi({
-                    source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 }
-                }) as Promise<TiempoEnsambleItem[]>,
-                queryApi({ 
-                    source: 'Presupuesto', operation: 'get_data', 
-                    filters: { 'Etiqueta': filters.etiqueta }, 
-                    pagination: { limit: 200000 } 
-                }) as Promise<PresupuestoItem[]>
-            ]);
-
+            // Paso 1: Obtener la lista completa de materiales para la etiqueta seleccionada
+            const budgetDataForTag = await queryApi({ 
+                source: 'Presupuesto', operation: 'get_data', 
+                filters: { 'Etiqueta': filters.etiqueta }, 
+                pagination: { limit: 500000 } 
+            }) as PresupuestoItem[];
+    
+            if (!budgetDataForTag || budgetDataForTag.length === 0) {
+                addNotification('warning', `No se encontraron materiales para la etiqueta "${filters.etiqueta}" en la base de datos.`);
+                setIsProvisioningAnalyzing(false);
+                return;
+            }
+    
             const materialCodesForTag = new Set<string>();
             const materialInfoMap = new Map<string, { description: string }>();
-
-            if (budgetDataForTag) {
-                budgetDataForTag.forEach(item => {
-                    const code = normalizeMaterialCode(item.CodMaterial);
-                    materialCodesForTag.add(code);
-                    if (!materialInfoMap.has(code)) {
-                        materialInfoMap.set(code, { description: item.Material });
-                    }
-                });
+    
+            budgetDataForTag.forEach(item => {
+                const code = normalizeMaterialCode(item.CodMaterial);
+                materialCodesForTag.add(code);
+                if (!materialInfoMap.has(code)) {
+                    materialInfoMap.set(code, { description: item.Material });
+                }
+            });
+    
+            // Paso 2: Obtener TODAS las reglas de aprovisionamiento
+            const assemblyData = await queryApi({
+                source: 'TiemposEnsamblado', operation: 'get_data', pagination: { limit: 50000 }
+            }) as TiempoEnsambleItem[];
+    
+            if (!assemblyData) {
+                addNotification('error', 'No se pudieron cargar las reglas de TiemposEnsamblado.');
+                setIsProvisioningAnalyzing(false);
+                return;
             }
-
-            const enrichedRules = new Map<string, ProvisioningInfo>();
+    
+            // Paso 3: Filtrar las reglas que aplican a los materiales de la etiqueta
+            const finalData: ProvisioningInfo[] = [];
             assemblyData.forEach(item => {
                 const code = normalizeMaterialCode(item.CodMaterial);
-                const center = String(item.Centro).trim();
-                const key = `${code}-${center}`;
-
                 if (materialCodesForTag.has(code)) {
-                     if (enrichedRules.has(key)) return;
-
                     const info = materialInfoMap.get(code);
-
-                    enrichedRules.set(key, {
+                    finalData.push({
                         code: code,
-                        description: info?.description || item.Material || 'Descripción no encontrada en Presupuesto',
-                        center: center,
+                        description: info?.description || item.Material || 'Descripción no encontrada',
+                        center: String(item.Centro).trim(),
                         provisioningClass: item.ClaseAprovisionamiento || 'N/D',
                     });
                 }
             });
-
-            const finalData = Array.from(enrichedRules.values());
+    
             finalData.sort((a, b) => {
                 if (a.code < b.code) return -1;
                 if (a.code > b.code) return 1;
@@ -444,9 +445,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             
             setProvisioningAnalysisData(finalData);
             if (finalData.length > 0) {
-                addNotification('success', `Análisis completado. Se encontraron ${finalData.length} reglas de aprovisionamiento únicas.`);
+                addNotification('success', `Análisis completado. Se encontraron ${finalData.length} reglas de aprovisionamiento.`);
             } else {
-                addNotification('warning', `No se encontraron reglas de aprovisionamiento para la etiqueta seleccionada.`);
+                addNotification('warning', `No se encontraron reglas de aprovisionamiento para los materiales de la etiqueta seleccionada.`);
             }
     
         } catch (error) {
@@ -608,9 +609,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
       {/* --- Sección de Análisis de Traslados --- */}
       <div className="p-4 border rounded-lg bg-gray-50 mt-6 space-y-4">
-        <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Depuración)</h3>
+        <h3 className="text-lg font-semibold text-gray-700">Análisis de Traslados (Demanda Bruta)</h3>
         <p className="text-sm text-gray-600">
-           Esta herramienta lista los materiales que, según las reglas de negocio, deben fabricarse en el centro 1000 (Clase 'F') para satisfacer la demanda de otros centros, basado en los datos de ventas actualmente cargados.
+           Esta herramienta suma todas las unidades de venta (basado en los datos actualmente cargados) que, por tener regla 'F' en un centro distinto al 1000, deben ser producidas en el centro 1000.
         </p>
         <div>
             <Button onClick={handleAnalyzeTransfers} disabled={isAnalyzing || loadedData.length === 0}>
