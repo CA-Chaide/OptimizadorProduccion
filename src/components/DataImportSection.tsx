@@ -265,7 +265,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         if (!transferReportData[transferKey]) {
                             transferReportData[transferKey] = {
                                 productId: materialCode,
-                                productName: provisionInfo?.name || item.Material, // Use name from rules map
+                                productName: provisionInfo?.name || item.Material,
                                 fromCenter: '1000',
                                 toCenter: originalDemandCenter,
                                 totalUnits: 0,
