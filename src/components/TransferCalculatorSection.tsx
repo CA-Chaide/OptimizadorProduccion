@@ -82,7 +82,12 @@ export const TransferCalculatorSection: React.FC = () => {
             });
             
             if (assemblyData.length > 0) {
-                setMasterData(assemblyData.sort((a, b) => a.Material.localeCompare(b.Material)));
+                const sortedData = assemblyData.sort((a, b) => {
+                    const materialA = a.Material || '';
+                    const materialB = b.Material || '';
+                    return materialA.localeCompare(materialB);
+                });
+                setMasterData(sortedData);
                 addNotification('success', `Carga completada. Se encontraron ${assemblyData.length} registros maestros.`);
             } else {
                 addNotification('warning', 'No se encontraron datos maestros en la fuente TiemposEnsamblado.');
