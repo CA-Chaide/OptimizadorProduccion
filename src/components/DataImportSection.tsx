@@ -199,7 +199,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             pagination: { limit: 50000 }
         });
         
-        // **CORRECTED LOGIC**: Use a composite key (product-center)
+        // CORRECTED LOGIC: Use a composite key (product-center)
         const provisionRules = new Map<string, {rule: 'E' | 'X' | 'F', name: string}>();
         assemblyData.forEach(item => {
             if (item.CodMaterial && item.Centro && item.ClaseAprovisionamiento && item.Material) {
