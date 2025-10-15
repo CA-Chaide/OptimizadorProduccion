@@ -1,7 +1,7 @@
 
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
+import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -179,16 +179,34 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        // Define loops for iteration
+        // 1. Fetch provisioning rules
+        addNotification('info', 'Obteniendo reglas de aprovisionamiento...');
+        const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
+            source: 'TiemposEnsamblado', 
+            operation: 'get_data',
+            columns: ['CodMaterial', 'ClaseAprovisionamiento'],
+            pagination: { limit: 50000 }
+        });
+        
+        const provisionRules = new Map<string, 'E' | 'X' | 'F'>();
+        assemblyData.forEach(item => {
+            const materialCode = normalizeMaterialCode(item.CodMaterial);
+            if (!provisionRules.has(materialCode)) {
+                if (item.ClaseAprovisionamiento) {
+                    provisionRules.set(materialCode, item.ClaseAprovisionamiento);
+                }
+            }
+        });
+        addNotification('success', `Reglas de aprovisionamiento cargadas para ${provisionRules.size} materiales.`);
+
+        // 2. Prepare API calls for sales data (NO CHANGE HERE)
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-        // Array to hold all promises
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                // Skip past months of the current year if all months are being loaded
                 if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
                     continue;
                 }
@@ -198,8 +216,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     if (filters.etiqueta) {
                         queryFilters['Etiqueta'] = filters.etiqueta;
                     }
-                    
-                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
                     
                     const promise = queryApi({
                         source: 'Presupuesto',
@@ -216,22 +232,34 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         const responses = await Promise.all(apiCallPromises);
 
-        addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
+        addNotification('info', 'Consultas a la API completadas. Procesando resultados y aplicando reglas de negocio...');
 
+        // 3. Process results and apply business logic
         responses.forEach(response => {
             if (response && response.length > 0) {
-                 const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
-                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                    código: normalizeMaterialCode(item.CodMaterial),
-                    centro: String(item.Centro).trim(), 
-                    unidadesProyectado: item.UnidadesProyectado,
-                    dolaresProyectado: 0,
-                    descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, 
-                    lineaProduccion: item.LineaProduccion || '',
-                }));
+                 const mappedData: SalesDataRow[] = response.map((item, index) => {
+                    const materialCode = normalizeMaterialCode(item.CodMaterial);
+                    const rule = provisionRules.get(materialCode);
+                    let demandCenter = String(item.Centro).trim();
+                    
+                    // Business Logic: If rule is 'F', centralize demand to center '1000'
+                    if (rule === 'F' && demandCenter !== '1000') {
+                        demandCenter = '1000'; 
+                    }
+
+                    return {
+                        id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                        año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                        etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                        código: materialCode,
+                        centro: demandCenter, // Use the potentially modified center
+                        unidadesProyectado: item.UnidadesProyectado,
+                        dolaresProyectado: 0,
+                        descripciónMaterial: item.Material,
+                        familia: item.Familia, marca: item.Marca, 
+                        lineaProduccion: item.LineaProduccion || '',
+                    };
+                 });
                 allData = [...allData, ...mappedData];
             }
         });
@@ -240,7 +268,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         if (allData.length > 0) {
             setLoadedData(allData);
             onDataImported(allData);
-            addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
+            addNotification('success', `Carga completada. Se importaron y procesaron ${allData.length} registros.`);
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
         }
@@ -290,7 +318,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
+        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados. La lógica de negocio para materiales de fabricación centralizada (Clase 'F') se aplicará automáticamente.
       </p>
 
       {/* --- Filtros --- */}
@@ -334,7 +362,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
        {loadedData.length > 0 && (
          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta (con Lógica de Negocio Aplicada)</h3>
             <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
                 <table className="min-w-full text-xs divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10">
