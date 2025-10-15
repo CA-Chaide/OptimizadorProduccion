@@ -74,9 +74,9 @@ export const TransferCalculatorSection: React.FC = () => {
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
                 filters: {
-                    'CodMaterial': '20000182',
-                    'ClaseAprovisionamiento': 'F',
-                    'Centro': '2000',
+                    'CodMaterial': String('20000182'),
+                    'ClaseAprovisionamiento': String('F'),
+                    'Centro': String('2000'),
                 }
             });
             
@@ -84,6 +84,7 @@ export const TransferCalculatorSection: React.FC = () => {
                 setMasterData(assemblyData);
                 addNotification('success', `Consulta de depuración completada. Se encontraron ${assemblyData.length} registro(s).`);
             } else {
+                setMasterData([]);
                 addNotification('warning', 'La consulta de depuración no devolvió ningún registro para los criterios especificados.');
             }
 
