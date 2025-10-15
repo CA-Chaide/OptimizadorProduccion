@@ -169,19 +169,18 @@ export const TransferCalculatorSection: React.FC = () => {
         try {
             addNotification('info', `Calculando traslados necesarios...`);
             
-            // 1. Fetch materials with 'F' provisioning rule
-            addNotification('info', 'Obteniendo materiales de fabricación centralizada (Clase F)...');
+            // 1. Fetch ALL materials to determine F-Class provisioning rule client-side
+            addNotification('info', 'Obteniendo todos los datos maestros de ensamble...');
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
-                filters: { 'ClaseAprovisionamiento': 'F' },
-                pagination: { limit: 50000 }
+                pagination: { limit: 50000 } // Fetch all data
             });
 
             const fClassMaterials = new Map<string, string>();
             assemblyData.forEach(item => {
                 const materialCode = normalizeMaterialCode(item.CodMaterial);
-                if (!fClassMaterials.has(materialCode) && item.Material) {
+                if (item.ClaseAprovisionamiento === 'F' && !fClassMaterials.has(materialCode) && item.Material) {
                     fClassMaterials.set(materialCode, item.Material);
                 }
             });
@@ -203,11 +202,10 @@ export const TransferCalculatorSection: React.FC = () => {
             for (const year of yearsToLoad) {
                 for (const month of monthsToLoad) {
                     for (const centro of centrosToLoad) {
-                        const queryFilters: { [key: string]: any } = { 
+                         const queryFilters: { [key: string]: any } = { 
                             'Año': year, 
                             'Mes': month, 
                             'Centro': centro,
-                            'CodMaterial': Array.from(fClassMaterials.keys()) // This might be too large for a GET request, but API seems to handle POST
                         };
                         if (filters.etiqueta) {
                             queryFilters['Etiqueta'] = filters.etiqueta;
@@ -352,4 +350,3 @@ export const TransferCalculatorSection: React.FC = () => {
         </div>
     );
 };
-
