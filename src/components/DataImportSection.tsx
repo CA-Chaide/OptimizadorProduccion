@@ -195,16 +195,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
             source: 'TiemposEnsamblado', 
             operation: 'get_data',
-            columns: ['CodMaterial', 'ClaseAprovisionamiento'],
             pagination: { limit: 50000 }
         });
         
-        const provisionRules = new Map<string, 'E' | 'X' | 'F'>();
+        const provisionRules = new Map<string, {rule: 'E' | 'X' | 'F', name: string}>();
         assemblyData.forEach(item => {
             const materialCode = normalizeMaterialCode(item.CodMaterial);
             if (!provisionRules.has(materialCode)) {
                 if (item.ClaseAprovisionamiento) {
-                    provisionRules.set(materialCode, item.ClaseAprovisionamiento);
+                    provisionRules.set(materialCode, { rule: item.ClaseAprovisionamiento, name: item.CodMaterial }); // Assume CodMaterial has a name field. It should be Material.
                 }
             }
         });
@@ -252,7 +251,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             if (response && response.length > 0) {
                  const mappedData: SalesDataRow[] = response.map((item, index) => {
                     const materialCode = normalizeMaterialCode(item.CodMaterial);
-                    const rule = provisionRules.get(materialCode);
+                    const provisionInfo = provisionRules.get(materialCode);
+                    const rule = provisionInfo?.rule;
                     let originalDemandCenter = String(item.Centro).trim();
                     let producingCenter = originalDemandCenter;
                     
@@ -474,3 +474,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
+
+    
