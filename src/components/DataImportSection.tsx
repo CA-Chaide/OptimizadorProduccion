@@ -91,7 +91,7 @@ const MultiSelect: React.FC<{
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
-                    handleSelect(currentValue);
+                    handleSelect(option.value);
                   }}
                 >
                   <Check
