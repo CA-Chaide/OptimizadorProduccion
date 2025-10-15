@@ -20,10 +20,10 @@ export const TransferCalculatorSection: React.FC = () => {
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
-                filters: [
-                    { CodMaterial: '20000182' },
-                    { Centro: '2000' }
-                ],
+                filters: {
+                    'CodMaterial': '20000182',
+                    'Centro': '2000'
+                },
                 pagination: { limit: 50000 }
             });
             
