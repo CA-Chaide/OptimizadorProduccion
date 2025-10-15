@@ -6,42 +6,33 @@ import { queryApi } from '@/hooks/useApiData';
 import { TransferCalculatorIcon } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 
-interface DebugResult {
-    code: string;
-    center: string;
-    count: number;
-}
-
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification, isLoading: isAppLoading } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
-    const [debugResult, setDebugResult] = useState<DebugResult | null>(null);
+    const [debugData, setDebugData] = useState<TiempoEnsambleItem[] | null>(null);
     
     const handleLoadMasterData = async () => {
         setIsProcessing(true);
-        setDebugResult(null);
-        const targetCode = '20000182';
-        const targetCenter = '2000';
+        setDebugData(null);
+        addNotification('info', "Ejecutando consulta de depuración para CodMaterial: '20000182' y Centro: '2000'...");
         
         try {
-            const notificationMessage = `Ejecutando consulta para CodMaterial: ${targetCode} y Centro: ${targetCenter}...`;
-            addNotification('info', notificationMessage);
-            
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
                 filters: {
-                    'CodMaterial': String(targetCode),
-                    'Centro': String(targetCenter)
-                }
+                    'CodMaterial': String('20000182'),
+                    'Centro': String('2000')
+                },
+                pagination: { limit: 50000 }
             });
             
             const resultCount = assemblyData ? assemblyData.length : 0;
             
-            setDebugResult({ code: targetCode, center: targetCenter, count: resultCount });
+            setDebugData(assemblyData || []);
 
             if (resultCount > 0) {
-                addNotification('success', `Consulta completada. Se encontraron ${resultCount} registro(s) para la combinación especificada.`);
+                addNotification('success', `Consulta completada. Se encontraron ${resultCount} registro(s) que cumplen los criterios.`);
             } else {
                 addNotification('warning', `La consulta no devolvió ningún registro para la combinación especificada.`);
             }
@@ -61,7 +52,7 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta herramienta ejecuta una consulta de depuración específica para aislar problemas en la obtención de datos desde la API.
+                Esta herramienta ejecuta una consulta específica para depurar la obtención de datos desde la API.
                 Actualmente, está configurada para traer todos los registros cuyo `CodMaterial` sea '20000182' Y cuyo `Centro` sea '2000'.
             </p>
 
@@ -73,16 +64,41 @@ export const TransferCalculatorSection: React.FC = () => {
                 >
                     {isProcessing ? 'Consultando...' : "Ejecutar Consulta de Depuración"}
                 </button>
-
-                {debugResult !== null && (
-                     <div className="mt-4 p-4 bg-indigo-50 border border-indigo-200 rounded-lg text-center">
-                        <p className="text-lg font-semibold text-indigo-800">Resultado de la Depuración:</p>
-                        <p className="text-xl font-bold text-gray-900 mt-2">
-                           La consulta para el código <span className="font-mono bg-gray-200 px-2 py-1 rounded">{debugResult.code}</span> en el centro <span className="font-mono bg-gray-200 px-2 py-1 rounded">{debugResult.center}</span> devolvió <span className="text-indigo-600">{debugResult.count}</span> registro(s).
-                        </p>
-                    </div>
-                )}
             </div>
+
+            {debugData !== null && (
+                 <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Resultados de la Consulta ({debugData.length} registros)</h3>
+                    <div className="relative max-h-[70vh] overflow-y-auto border rounded-lg shadow-inner">
+                        <table className="min-w-full text-xs divide-y divide-gray-200">
+                            <thead className="bg-gray-100 sticky top-0 z-10">
+                                <tr>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">CodMaterial</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase Aprov.</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Linea</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Puesto Trabajo</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-600">Tiempo</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-600">Stock Seg.</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {debugData.map((item, index) => (
+                                    <tr key={index} className="hover:bg-gray-50">
+                                        <td className="px-3 py-2 whitespace-nowrap font-mono text-indigo-700">{item.CodMaterial}</td>
+                                        <td className="px-3 py-2 whitespace-nowrap">{item.Centro}</td>
+                                        <td className="px-3 py-2 whitespace-nowrap font-bold">{item.ClaseAprovisionamiento}</td>
+                                        <td className="px-3 py-2 whitespace-nowrap">{item.Linea}</td>
+                                        <td className="px-3 py-2 whitespace-nowrap">{item.PuestoTrabajo}</td>
+                                        <td className="px-3 py-2 text-right">{item.Tiempo}</td>
+                                        <td className="px-3 py-2 text-right">{item.StockSeguridad}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
