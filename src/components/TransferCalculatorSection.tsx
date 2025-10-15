@@ -7,11 +7,6 @@ import { queryApi } from '@/hooks/useApiData';
 import { TransferCalculatorIcon } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 
-const normalizeMaterialCode = (code: string | number): string => {
-    const codeStr = String(code);
-    return codeStr.slice(-8);
-};
-
 const FilterInput: React.FC<{
   label: string;
   value: string;
@@ -175,7 +170,7 @@ export const TransferCalculatorSection: React.FC = () => {
                             {filteredData.map((item, index) => (
                                 <tr key={`${item.CodMaterial}-${item.Centro}-${item.Linea}-${item.PuestoTrabajo}-${index}`}>
                                     <td className="px-3 py-2 whitespace-normal font-medium text-gray-800">{item.Material}</td>
-                                    <td className="px-3 py-2 whitespace-nowrap font-mono text-gray-500">{normalizeMaterialCode(item.CodMaterial)}</td>
+                                    <td className="px-3 py-2 whitespace-nowrap font-mono text-gray-500">{item.CodMaterial}</td>
                                     <td className="px-3 py-2 text-center font-bold text-indigo-700">{item.ClaseAprovisionamiento || '-'}</td>
                                     <td className="px-3 py-2 whitespace-nowrap">{item.Centro}</td>
                                     <td className="px-3 py-2 whitespace-nowrap">{item.Linea}</td>
