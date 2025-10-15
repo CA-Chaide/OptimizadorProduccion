@@ -256,7 +256,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     let originalDemandCenter = String(item.Centro).trim();
                     let producingCenter = originalDemandCenter;
                     
-                    // Business Logic: If rule is 'F', centralize demand to center '1000'
                     if (rule === 'F' && originalDemandCenter !== '1000') {
                         producingCenter = '1000';
                         const monthStr = MONTH_NAMES[item.Mes - 1];
@@ -281,7 +280,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                         etiqueta: item.Etiqueta || 'Sin Etiqueta',
                         código: materialCode,
-                        centro: producingCenter, // Use the potentially modified center
+                        centro: producingCenter,
                         unidadesProyectado: item.UnidadesProyectado,
                         dolaresProyectado: 0,
                         descripciónMaterial: item.Material,
