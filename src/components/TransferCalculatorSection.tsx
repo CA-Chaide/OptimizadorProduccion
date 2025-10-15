@@ -16,24 +16,22 @@ export const TransferCalculatorSection: React.FC = () => {
         setMasterData([]);
         
         try {
-            addNotification('info', `Ejecutando consulta de depuración para material 20000182...`);
+            addNotification('info', `Ejecutando consulta de depuración para todos los materiales del centro 2000...`);
             
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
                 filters: {
-                    'CodMaterial': String('20000182'),
-                    'ClaseAprovisionamiento': String('F'),
                     'Centro': String('2000'),
                 }
             });
             
             if (assemblyData && assemblyData.length > 0) {
                 setMasterData(assemblyData);
-                addNotification('success', `Consulta de depuración completada. Se encontraron ${assemblyData.length} registro(s).`);
+                addNotification('success', `Consulta de depuración completada. Se encontraron ${assemblyData.length} registro(s) para el Centro 2000.`);
             } else {
                 setMasterData([]);
-                addNotification('warning', 'La consulta de depuración no devolvió ningún registro para los criterios especificados.');
+                addNotification('warning', 'La consulta de depuración no devolvió ningún registro para el Centro 2000.');
             }
 
         } catch (error) {
@@ -51,7 +49,7 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta herramienta ejecuta una consulta de depuración específica para aislar problemas en la obtención de datos desde la API.
+                Esta herramienta ejecuta una consulta de depuración específica para aislar problemas en la obtención de datos desde la API. Actualmente, está configurada para traer **todos los registros del Centro 2000**.
             </p>
 
             <div className="p-4 border rounded-lg bg-gray-50">
