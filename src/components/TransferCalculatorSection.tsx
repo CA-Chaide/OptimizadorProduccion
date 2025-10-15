@@ -20,10 +20,10 @@ export const TransferCalculatorSection: React.FC = () => {
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
-                filters: {
-                    'CodMaterial': String('20000182'),
-                    'Centro': String('2000')
-                },
+                filters: [
+                    { CodMaterial: '20000182' },
+                    { Centro: '2000' }
+                ],
                 pagination: { limit: 50000 }
             });
             
@@ -32,7 +32,7 @@ export const TransferCalculatorSection: React.FC = () => {
             setDebugData(assemblyData || []);
 
             if (resultCount > 0) {
-                addNotification('success', `Consulta completada. Se encontraron ${resultCount} registro(s).`);
+                addNotification('success', `Consulta completada. Se encontraron ${resultCount} registro(s) que cumplen ambos criterios.`);
             } else {
                 addNotification('warning', `La consulta no devolvió ningún registro para la combinación especificada.`);
             }
