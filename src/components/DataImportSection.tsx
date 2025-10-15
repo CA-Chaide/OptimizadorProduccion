@@ -249,7 +249,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         responses.forEach(response => {
             if (response && response.length > 0) {
-                 const mappedData: SalesDataRow[] = response.map((item, index) => {
+                 response.forEach((item, index) => {
                     const materialCode = normalizeMaterialCode(item.CodMaterial);
                     const provisionInfo = provisionRules.get(materialCode);
                     const rule = provisionInfo?.rule;
@@ -276,7 +276,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         transferReportData[transferKey].monthlyBreakdown[monthStr] = (transferReportData[transferKey].monthlyBreakdown[monthStr] || 0) + item.UnidadesProyectado;
                     }
 
-                    return {
+                    const newRow: SalesDataRow = {
                         id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
                         año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                         etiqueta: item.Etiqueta || 'Sin Etiqueta',
@@ -288,8 +288,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         familia: item.Familia, marca: item.Marca, 
                         lineaProduccion: item.LineaProduccion || '',
                     };
+                    allData.push(newRow);
                  });
-                allData = [...allData, ...mappedData];
             }
         });
         
