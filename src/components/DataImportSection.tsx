@@ -28,6 +28,15 @@ interface AggregatedData {
   };
 }
 
+interface TransferReportItem {
+  productId: string;
+  productName: string;
+  fromCenter: '1000';
+  toCenter: string;
+  totalUnits: number;
+  monthlyBreakdown: { [month: string]: number };
+}
+
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
     return codeStr.slice(-8);
@@ -134,6 +143,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [transferReport, setTransferReport] = useState<TransferReportItem[]>([]);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -164,6 +174,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
+    setTransferReport([]);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -199,7 +210,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         });
         addNotification('success', `Reglas de aprovisionamiento cargadas para ${provisionRules.size} materiales.`);
 
-        // 2. Prepare API calls for sales data (NO CHANGE HERE)
+        // 2. Prepare API calls for sales data
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
@@ -235,16 +246,34 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('info', 'Consultas a la API completadas. Procesando resultados y aplicando reglas de negocio...');
 
         // 3. Process results and apply business logic
+        const transferReportData: { [key: string]: TransferReportItem } = {};
+
         responses.forEach(response => {
             if (response && response.length > 0) {
                  const mappedData: SalesDataRow[] = response.map((item, index) => {
                     const materialCode = normalizeMaterialCode(item.CodMaterial);
                     const rule = provisionRules.get(materialCode);
-                    let demandCenter = String(item.Centro).trim();
+                    let originalDemandCenter = String(item.Centro).trim();
+                    let producingCenter = originalDemandCenter;
                     
                     // Business Logic: If rule is 'F', centralize demand to center '1000'
-                    if (rule === 'F' && demandCenter !== '1000') {
-                        demandCenter = '1000'; 
+                    if (rule === 'F' && originalDemandCenter !== '1000') {
+                        producingCenter = '1000';
+                        const monthStr = MONTH_NAMES[item.Mes - 1];
+
+                        const transferKey = `${materialCode}-${originalDemandCenter}`;
+                        if (!transferReportData[transferKey]) {
+                            transferReportData[transferKey] = {
+                                productId: materialCode,
+                                productName: item.Material,
+                                fromCenter: '1000',
+                                toCenter: originalDemandCenter,
+                                totalUnits: 0,
+                                monthlyBreakdown: {}
+                            };
+                        }
+                        transferReportData[transferKey].totalUnits += item.UnidadesProyectado;
+                        transferReportData[transferKey].monthlyBreakdown[monthStr] = (transferReportData[transferKey].monthlyBreakdown[monthStr] || 0) + item.UnidadesProyectado;
                     }
 
                     return {
@@ -252,7 +281,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                         etiqueta: item.Etiqueta || 'Sin Etiqueta',
                         código: materialCode,
-                        centro: demandCenter, // Use the potentially modified center
+                        centro: producingCenter, // Use the potentially modified center
                         unidadesProyectado: item.UnidadesProyectado,
                         dolaresProyectado: 0,
                         descripciónMaterial: item.Material,
@@ -263,7 +292,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 allData = [...allData, ...mappedData];
             }
         });
-
+        
+        setTransferReport(Object.values(transferReportData).sort((a,b) => b.totalUnits - a.totalUnits));
 
         if (allData.length > 0) {
             setLoadedData(allData);
@@ -361,45 +391,84 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
 
        {loadedData.length > 0 && (
-         <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta (con Lógica de Negocio Aplicada)</h3>
-            <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
-                <table className="min-w-full text-xs divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                        <tr>
-                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">Etiqueta</th>
-                            {centers.map(center => (
-                                <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">{center}</th>
-                            ))}
-                            <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Unidades</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                       {Object.entries(aggregatedData).map(([etiqueta, group]) => (
-                            <tr key={etiqueta}>
-                                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
+         <div className="space-y-8">
+            <div>
+                <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta (con Lógica de Negocio Aplicada)</h3>
+                <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-4">
+                    <table className="min-w-full text-xs divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0 z-10">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">Etiqueta</th>
                                 {centers.map(center => (
-                                    <td key={`${etiqueta}-${center}`} className="px-3 py-2 text-right text-gray-600">{group.unitsByCenter[center]?.toLocaleString() || 0}</td>
+                                    <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">{center}</th>
                                 ))}
-                                <td className="px-3 py-2 text-right font-bold text-gray-900">{group.totalUnits.toLocaleString()}</td>
+                                <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Unidades</th>
                             </tr>
-                        ))}
-                    </tbody>
-                    <tfoot className="bg-gray-200 sticky bottom-0 z-10">
-                        <tr>
-                            <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
-                             {centers.map(center => (
-                                <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
-                                    {(footerTotals[center] || 0).toLocaleString()}
-                                </th>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                           {Object.entries(aggregatedData).map(([etiqueta, group]) => (
+                                <tr key={etiqueta}>
+                                    <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
+                                    {centers.map(center => (
+                                        <td key={`${etiqueta}-${center}`} className="px-3 py-2 text-right text-gray-600">{group.unitsByCenter[center]?.toLocaleString() || 0}</td>
+                                    ))}
+                                    <td className="px-3 py-2 text-right font-bold text-gray-900">{group.totalUnits.toLocaleString()}</td>
+                                </tr>
                             ))}
-                             <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
-                                {footerTotals.grandTotal.toLocaleString()}
-                            </th>
-                        </tr>
-                    </tfoot>
-                </table>
+                        </tbody>
+                        <tfoot className="bg-gray-200 sticky bottom-0 z-10">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
+                                 {centers.map(center => (
+                                    <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
+                                        {(footerTotals[center] || 0).toLocaleString()}
+                                    </th>
+                                ))}
+                                 <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
+                                    {footerTotals.grandTotal.toLocaleString()}
+                                </th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
+
+            {transferReport.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Reporte de Transferencias Logísticas (Clase 'F')</h3>
+                <p className="text-sm text-gray-600">Materiales que deben ser fabricados en el centro 1000 y enviados a sus centros de demanda originales.</p>
+                <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-4">
+                    <table className="min-w-full text-xs divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0 z-10">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Producto</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Destino</th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades Totales</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Detalle Mensual</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {transferReport.map(item => (
+                                <tr key={item.productId + item.toCenter}>
+                                    <td className="px-3 py-2 whitespace-normal font-medium text-gray-800">
+                                        {item.productName} <span className="font-mono text-gray-500">({item.productId})</span>
+                                    </td>
+                                    <td className="px-3 py-2 text-center font-bold text-indigo-700">{item.toCenter}</td>
+                                    <td className="px-3 py-2 text-right font-bold text-gray-900">{item.totalUnits.toLocaleString()}</td>
+                                    <td className="px-3 py-2">
+                                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                            {Object.entries(item.monthlyBreakdown).map(([month, units]) => (
+                                                <Badge key={month} variant="outline">{month}: {units.toLocaleString()}</Badge>
+                                            ))}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+              </div>
+            )}
         </div>
       )}
     </div>
