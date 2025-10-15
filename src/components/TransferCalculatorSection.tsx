@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -69,52 +68,36 @@ export const TransferCalculatorSection: React.FC = () => {
         setMasterData([]);
         
         try {
-            addNotification('info', `Cargando todos los datos maestros de 'TiemposEnsamblado'...`);
+            addNotification('info', `Ejecutando consulta de depuración para material 20000182...`);
             
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
-                pagination: { limit: 200000 }
+                filters: {
+                    'CodMaterial': '20000182',
+                    'ClaseAprovisionamiento': 'F',
+                    'Centro': '2000',
+                }
             });
             
-            if (assemblyData.length > 0) {
-                const sortedData = assemblyData.sort((a, b) => {
-                    const codeA = String(a.CodMaterial || '');
-                    const codeB = String(b.CodMaterial || '');
-                    if (codeA < codeB) return -1;
-                    if (codeA > codeB) return 1;
-
-                    // Secondary sort by center
-                    const centerA = String(a.Centro || '');
-                    const centerB = String(b.Centro || '');
-                    return centerA.localeCompare(centerB);
-                });
-                setMasterData(sortedData);
-                addNotification('success', `Carga completada. Se encontraron ${assemblyData.length} registros maestros.`);
+            if (assemblyData && assemblyData.length > 0) {
+                setMasterData(assemblyData);
+                addNotification('success', `Consulta de depuración completada. Se encontraron ${assemblyData.length} registro(s).`);
             } else {
-                addNotification('warning', 'No se encontraron datos maestros en la fuente TiemposEnsamblado.');
+                addNotification('warning', 'La consulta de depuración no devolvió ningún registro para los criterios especificados.');
             }
 
         } catch (error) {
-            addNotification('error', `Error durante la carga de datos maestros: ${(error as Error).message}`);
+            addNotification('error', `Error durante la consulta de depuración: ${(error as Error).message}`);
         } finally {
             setIsProcessing(false);
         }
     };
     
     const filteredData = useMemo(() => {
-        return masterData.filter(item => {
-            const f = filters;
-            return (
-                (f.nombreMaterial === '' || (item.Material && item.Material.toLowerCase().includes(f.nombreMaterial.toLowerCase()))) &&
-                (f.codigoMaterial === '' || (item.CodMaterial && String(item.CodMaterial).includes(f.codigoMaterial))) &&
-                (f.centro === '' || (item.Centro && String(item.Centro).toLowerCase().includes(f.centro.toLowerCase()))) &&
-                (f.linea === '' || (item.Linea && item.Linea.toLowerCase().includes(f.linea.toLowerCase()))) &&
-                (f.puesto === '' || (item.PuestoTrabajo && item.PuestoTrabajo.toLowerCase().includes(f.puesto.toLowerCase()))) &&
-                (f.claseAprovisionamiento === '' || item.ClaseAprovisionamiento === f.claseAprovisionamiento)
-            );
-        });
-    }, [masterData, filters]);
+        // Since we are not loading all data, we bypass the client-side filters for this debug view.
+        return masterData;
+    }, [masterData]);
 
 
     return (
@@ -134,33 +117,14 @@ export const TransferCalculatorSection: React.FC = () => {
                     disabled={isProcessing || isAppLoading}
                     className="w-full md:w-1/3 h-12 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                    {isProcessing ? 'Cargando...' : 'Cargar Datos Maestros'}
+                    {isProcessing ? 'Cargando...' : 'Cargar Datos (Modo Depuración)'}
                 </button>
             </div>
 
             {masterData.length > 0 && (
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-800">Datos Cargados ({filteredData.length} de {masterData.length} registros)</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Resultados de la Consulta de Depuración ({filteredData.length} registros)</h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 p-4 border rounded-lg bg-gray-50 items-end">
-                    <FilterInput label="Nombre Material" value={filters.nombreMaterial} onChange={v => handleFilterChange('nombreMaterial', v)} />
-                    <FilterInput label="Código Material" value={filters.codigoMaterial} onChange={v => handleFilterChange('codigoMaterial', v)} />
-                    <FilterInput label="Centro" value={filters.centro} onChange={v => handleFilterChange('centro', v)} />
-                    <FilterInput label="Línea" value={filters.linea} onChange={v => handleFilterChange('linea', v)} />
-                    <FilterInput label="Puesto de Trabajo" value={filters.puesto} onChange={v => handleFilterChange('puesto', v)} />
-                    <SelectFilter
-                        label="Clase Aprovisionamiento"
-                        value={filters.claseAprovisionamiento}
-                        onChange={v => handleFilterChange('claseAprovisionamiento', v)}
-                        options={[
-                            { value: '', label: 'Todas' },
-                            { value: 'E', label: 'E (In-house)' },
-                            { value: 'F', label: 'F (Centralizada)' },
-                            { value: 'X', label: 'X (Flexible)' },
-                        ]}
-                    />
-                </div>
-
                 <div className="relative max-h-[70vh] overflow-y-auto border rounded-lg shadow-inner mt-4">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0 z-10">
