@@ -14,7 +14,7 @@ export const TransferCalculatorSection: React.FC = () => {
     const handleLoadMasterData = async () => {
         setIsProcessing(true);
         setDebugData(null);
-        addNotification('info', "Ejecutando consulta de depuración para CodMaterial: '20000182' y Centro: '2000'...");
+        addNotification('info', "Ejecutando consulta de depuración...");
         
         try {
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
@@ -32,7 +32,7 @@ export const TransferCalculatorSection: React.FC = () => {
             setDebugData(assemblyData || []);
 
             if (resultCount > 0) {
-                addNotification('success', `Consulta completada. Se encontraron ${resultCount} registro(s) que cumplen los criterios.`);
+                addNotification('success', `Consulta completada. Se encontraron ${resultCount} registro(s).`);
             } else {
                 addNotification('warning', `La consulta no devolvió ningún registro para la combinación especificada.`);
             }
@@ -53,7 +53,6 @@ export const TransferCalculatorSection: React.FC = () => {
             
             <p className="text-gray-600">
                 Esta herramienta ejecuta una consulta específica para depurar la obtención de datos desde la API.
-                Actualmente, está configurada para traer todos los registros cuyo `CodMaterial` sea '20000182' Y cuyo `Centro` sea '2000'.
             </p>
 
             <div className="p-4 border rounded-lg bg-gray-50 flex flex-col items-center gap-4">
@@ -73,6 +72,7 @@ export const TransferCalculatorSection: React.FC = () => {
                         <table className="min-w-full text-xs divide-y divide-gray-200">
                             <thead className="bg-gray-100 sticky top-0 z-10">
                                 <tr>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">#</th>
                                     <th className="px-3 py-2 text-left font-semibold text-gray-600">CodMaterial</th>
                                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro</th>
                                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase Aprov.</th>
@@ -85,6 +85,7 @@ export const TransferCalculatorSection: React.FC = () => {
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {debugData.map((item, index) => (
                                     <tr key={index} className="hover:bg-gray-50">
+                                        <td className="px-3 py-2 font-medium text-gray-500">{index + 1}</td>
                                         <td className="px-3 py-2 whitespace-nowrap font-mono text-indigo-700">{item.CodMaterial}</td>
                                         <td className="px-3 py-2 whitespace-nowrap">{item.Centro}</td>
                                         <td className="px-3 py-2 whitespace-nowrap font-bold">{item.ClaseAprovisionamiento}</td>
