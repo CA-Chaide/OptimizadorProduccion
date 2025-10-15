@@ -14,17 +14,18 @@ export const TransferCalculatorSection: React.FC = () => {
     const handleLoadMasterData = async () => {
         setIsProcessing(true);
         setDebugData(null);
-        addNotification('info', "Ejecutando consulta de depuración...");
+        addNotification('info', "Ejecutando consulta de depuración (Prueba 2)...");
         
         try {
+            // Se mantiene la estructura de consulta, la nueva lógica está en `queryApi`
             const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
                 filters: {
-                    'Centro': '2000',
-                    'ClaseAprovisionamiento': 'F'
+                    'CodMaterial': '20000182',
+                    'Centro': '2000'
                 },
-                pagination: { limit: 50000 }
+                pagination: { limit: 500 }
             });
             
             const resultCount = assemblyData ? assemblyData.length : 0;
@@ -32,9 +33,9 @@ export const TransferCalculatorSection: React.FC = () => {
             setDebugData(assemblyData || []);
 
             if (resultCount > 0) {
-                addNotification('success', `Consulta completada. Se encontraron ${resultCount} registro(s) que cumplen ambos criterios.`);
+                addNotification('success', `Consulta completada. Se encontraron ${resultCount} registro(s).`);
             } else {
-                addNotification('warning', `La consulta no devolvió ningún registro para la combinación especificada.`);
+                addNotification('warning', `La consulta no devolvió ningún registro.`);
             }
 
         } catch (error) {

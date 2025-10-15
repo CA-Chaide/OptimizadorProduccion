@@ -21,7 +21,9 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
         },
     };
 
-    if (method === 'POST' && body) {
+    // Para POST, solo añadir body si se proporciona explícitamente y no está vacío.
+    // Esto es clave para la nueva prueba de query params.
+    if (method === 'POST' && body && Object.keys(body).length > 0) {
         options.body = JSON.stringify(body);
     }
 
@@ -61,21 +63,37 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
 export const queryApi = async (query: ApiQuery): Promise<any> => {
     let endpoint = '';
     let method: 'GET' | 'POST' = 'POST';
-    let body: any = query;
+    let body: any = {};
+    let urlParams = new URLSearchParams();
 
     if (query.operation === 'get_documentation') {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/documentation/';
         method = 'GET';
-        body = undefined; // No body for documentation GET request
     } else {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/query/';
-    }
+        
+        // **NUEVA LÓGICA DE PRUEBA 2**
+        // Construir query params si existen filtros
+        if (query.filters) {
+            for (const key in query.filters) {
+                if (Object.prototype.hasOwnProperty.call(query.filters, key)) {
+                    urlParams.append(key, String(query.filters[key]));
+                }
+            }
+            // Dejamos el body vacío para esta prueba y enviamos solo 'source' y 'operation' en el cuerpo.
+            body = { source: query.source, operation: query.operation, pagination: query.pagination };
 
-    const fullUrl = API_BASE_URL + endpoint;
-    console.log(`[useApiData] Querying API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
+        } else {
+             body = query; // Comportamiento original si no hay filtros
+        }
+    }
+    
+    const queryString = urlParams.toString();
+    const fullUrl = API_BASE_URL + endpoint + (queryString ? `?${queryString}` : '');
+
+    console.log(`[useApiData] Querying API (Test 2): ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
-        // console.log(`[useApiData] API Response:`, response); // This can be too verbose
         return response;
     } catch(e) {
         console.error('[useApiData] API Fetch failed:', e);
