@@ -52,7 +52,8 @@ export const TransferCalculatorSection: React.FC = () => {
     const [masterData, setMasterData] = useState<TiempoEnsambleItem[]>([]);
     
     const [filters, setFilters] = useState({
-        material: '',
+        nombreMaterial: '',
+        codigoMaterial: '',
         centro: '',
         linea: '',
         puesto: '',
@@ -99,7 +100,8 @@ export const TransferCalculatorSection: React.FC = () => {
         return masterData.filter(item => {
             const f = filters;
             return (
-                (f.material === '' || (item.Material && item.Material.toLowerCase().includes(f.material.toLowerCase())) || (item.CodMaterial && String(item.CodMaterial).includes(f.material))) &&
+                (f.nombreMaterial === '' || (item.Material && item.Material.toLowerCase().includes(f.nombreMaterial.toLowerCase()))) &&
+                (f.codigoMaterial === '' || (item.CodMaterial && String(item.CodMaterial).includes(f.codigoMaterial))) &&
                 (f.centro === '' || (item.Centro && String(item.Centro).toLowerCase().includes(f.centro.toLowerCase()))) &&
                 (f.linea === '' || (item.Linea && item.Linea.toLowerCase().includes(f.linea.toLowerCase()))) &&
                 (f.puesto === '' || (item.PuestoTrabajo && item.PuestoTrabajo.toLowerCase().includes(f.puesto.toLowerCase()))) &&
@@ -134,8 +136,9 @@ export const TransferCalculatorSection: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-800">Datos Cargados ({filteredData.length} de {masterData.length} registros)</h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 border rounded-lg bg-gray-50 items-end">
-                    <FilterInput label="Material (Cód/Nombre)" value={filters.material} onChange={v => handleFilterChange('material', v)} />
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 p-4 border rounded-lg bg-gray-50 items-end">
+                    <FilterInput label="Nombre Material" value={filters.nombreMaterial} onChange={v => handleFilterChange('nombreMaterial', v)} />
+                    <FilterInput label="Código Material" value={filters.codigoMaterial} onChange={v => handleFilterChange('codigoMaterial', v)} />
                     <FilterInput label="Centro" value={filters.centro} onChange={v => handleFilterChange('centro', v)} />
                     <FilterInput label="Línea" value={filters.linea} onChange={v => handleFilterChange('linea', v)} />
                     <FilterInput label="Puesto de Trabajo" value={filters.puesto} onChange={v => handleFilterChange('puesto', v)} />
