@@ -199,16 +199,21 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             pagination: { limit: 50000 }
         });
         
+        // **CORRECTED LOGIC**: Use a composite key (product-center)
         const provisionRules = new Map<string, {rule: 'E' | 'X' | 'F', name: string}>();
         assemblyData.forEach(item => {
-            const materialCode = normalizeMaterialCode(item.CodMaterial);
-            if (!provisionRules.has(materialCode)) {
-                 if (item.ClaseAprovisionamiento && item.Material) {
-                    provisionRules.set(materialCode, { rule: item.ClaseAprovisionamiento, name: item.Material });
+            if (item.CodMaterial && item.Centro && item.ClaseAprovisionamiento && item.Material) {
+                const materialCode = normalizeMaterialCode(item.CodMaterial);
+                const centerId = String(item.Centro).trim();
+                const compositeKey = `${materialCode}-${centerId}`;
+                
+                // This ensures each product-center combination has its specific rule stored.
+                if (!provisionRules.has(compositeKey)) {
+                    provisionRules.set(compositeKey, { rule: item.ClaseAprovisionamiento, name: item.Material });
                 }
             }
         });
-        addNotification('success', `Reglas de aprovisionamiento cargadas para ${provisionRules.size} materiales.`);
+        addNotification('success', `Reglas de aprovisionamiento cargadas para ${provisionRules.size} combinaciones producto-centro.`);
 
         // 2. Prepare API calls for sales data
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
@@ -252,13 +257,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             if (response && response.length > 0) {
                  response.forEach((item, index) => {
                     const materialCode = normalizeMaterialCode(item.CodMaterial);
-                    const provisionInfo = provisionRules.get(materialCode);
-                    const rule = provisionInfo?.rule;
-                    let originalDemandCenter = String(item.Centro).trim();
+                    const originalDemandCenter = String(item.Centro).trim();
+                    const compositeKey = `${materialCode}-${originalDemandCenter}`;
+                    const provisionInfo = provisionRules.get(compositeKey);
+                    
                     let producingCenter = originalDemandCenter;
                     
-                    if (rule === 'F' && originalDemandCenter !== '1000') {
-                        producingCenter = '1000';
+                    if (provisionInfo?.rule === 'F' && originalDemandCenter !== '1000') {
+                        producingCenter = '1000'; // Centralized manufacturing
                         detailedTransferReport.push({
                             id: `transfer-${item.Año}-${item.Mes}-${originalDemandCenter}-${materialCode}-${index}`,
                             mes: item.Mes,
@@ -277,7 +283,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                         etiqueta: item.Etiqueta || 'Sin Etiqueta',
                         código: materialCode,
-                        centro: producingCenter,
+                        centro: producingCenter, // The demand is shifted to the producing center
                         unidadesProyectado: item.UnidadesProyectado,
                         dolaresProyectado: 0,
                         descripciónMaterial: item.Material,
