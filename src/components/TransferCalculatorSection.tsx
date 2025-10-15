@@ -79,9 +79,15 @@ export const TransferCalculatorSection: React.FC = () => {
             
             if (assemblyData.length > 0) {
                 const sortedData = assemblyData.sort((a, b) => {
-                    const materialA = a.Material || '';
-                    const materialB = b.Material || '';
-                    return materialA.localeCompare(materialB);
+                    const codeA = String(a.CodMaterial || '');
+                    const codeB = String(b.CodMaterial || '');
+                    if (codeA < codeB) return -1;
+                    if (codeA > codeB) return 1;
+
+                    // Secondary sort by center
+                    const centerA = String(a.Centro || '');
+                    const centerB = String(b.Centro || '');
+                    return centerA.localeCompare(centerB);
                 });
                 setMasterData(sortedData);
                 addNotification('success', `Carga completada. Se encontraron ${assemblyData.length} registros maestros.`);
