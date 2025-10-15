@@ -14,6 +14,7 @@ import {
     Trash2,
     CalendarCheck,
     DatabaseZap,
+    Truck,
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -22,6 +23,7 @@ export const APP_TITLE = "Optimizador de Producción";
 export enum ActiveView {
   DASHBOARD = 'DASHBOARD',
   DATA_IMPORT = 'DATA_IMPORT',
+  TRANSFER_CALCULATOR = 'TRANSFER_CALCULATOR',
   CONSTRAINTS = 'CONSTRAINTS',
   PRODUCTION_PLAN = 'MEDIUM_TERM_PLAN',
   PERSONNEL = 'PERSONNEL_MANAGEMENT',
@@ -43,6 +45,7 @@ export const PlanIcon = () => <ListChecks className="w-5 h-5" />;
 export const TacticalSchedulingIcon = () => <CalendarClock className="w-5 h-5" />;
 export const WorkShiftIcon = () => <CalendarCheck className="w-5 h-5" />;
 export const RealDataIcon = () => <DatabaseZap className="w-5 h-5" />;
+export const TransferCalculatorIcon = () => <Truck className="w-5 h-5" />;
 
 
 // Common action icons
@@ -78,6 +81,7 @@ export const APP_VERSION = '1.0.0-next';
 const NAVIGATION_ITEMS = [
   { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon /> },
   { id: ActiveView.DATA_IMPORT, label: 'Importar Ventas', icon: <DataImportIcon /> },
+  { id: ActiveView.TRANSFER_CALCULATOR, label: 'Calculador de Traslados', icon: <TransferCalculatorIcon /> },
   { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
   { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon /> },
   { id: ActiveView.MAINTENANCE, label: 'Mantenimiento', icon: <MaintenanceIcon /> },
@@ -91,4 +95,5 @@ const NAVIGATION_ITEMS = [
 
 export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element }> = 
   Object.fromEntries(NAVIGATION_ITEMS.map(item => [item.id, { title: item.label, icon: item.icon }])) as Record<ActiveView, { title: string; icon: JSX.Element }>;
+
 

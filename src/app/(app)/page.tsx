@@ -14,6 +14,7 @@ import {
   TacticalPlanSection,
   WorkShiftPlanningSection,
   RealDataSection,
+  TransferCalculatorSection,
 } from '@/components';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -57,12 +58,14 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <DashboardSection plan={productionPlan.dailyPlan} salesData={salesData} constraints={constraints} />;
             case ActiveView.DATA_IMPORT:
                 return <DataImportSection onDataImported={handleDataImported} />;
+            case ActiveView.TRANSFER_CALCULATOR:
+                return <TransferCalculatorSection />;
             case ActiveView.CONSTRAINTS:
                 return <ConstraintConfigurationSection />;
             case ActiveView.PERSONNEL:
                 return <PersonnelManagementSection employees={employees} setEmployees={setEmployees} skills={employeeSkills} setSkills={setSkills} constraints={constraints} />;
             case ActiveView.MAINTENANCE:
-                return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
+                return <MaintenanceSection events={maintenanceEvents} setEvents={setEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
             case ActiveView.ABSENTEEISM:
                 return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:

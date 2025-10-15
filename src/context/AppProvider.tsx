@@ -150,6 +150,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         const year = new Date().getFullYear();
         dispatch({ type: 'SET_YEAR', payload: year });
+        dispatch({ type: 'SET_ACTIVE_VIEW', payload: ActiveView.TRANSFER_CALCULATOR });
     }, []);
 
     const addNotification = useCallback((type: NotificationMessage['type'], text: string, errors: string[] = []) => {
