@@ -176,7 +176,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
-    setTransferReport([]);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
