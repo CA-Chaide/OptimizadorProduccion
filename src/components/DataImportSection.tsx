@@ -190,8 +190,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        // 1. Fetch provisioning rules
-        addNotification('info', 'Obteniendo reglas de aprovisionamiento...');
+        // 1. Fetch provisioning rules and material names
+        addNotification('info', 'Obteniendo reglas de aprovisionamiento y nombres de materiales...');
         const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
             source: 'TiemposEnsamblado', 
             operation: 'get_data',
@@ -202,8 +202,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         assemblyData.forEach(item => {
             const materialCode = normalizeMaterialCode(item.CodMaterial);
             if (!provisionRules.has(materialCode)) {
-                if (item.ClaseAprovisionamiento) {
-                    provisionRules.set(materialCode, { rule: item.ClaseAprovisionamiento, name: item.CodMaterial }); // Assume CodMaterial has a name field. It should be Material.
+                if (item.ClaseAprovisionamiento && item.Material) {
+                    provisionRules.set(materialCode, { rule: item.ClaseAprovisionamiento, name: item.Material });
                 }
             }
         });
@@ -265,7 +265,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         if (!transferReportData[transferKey]) {
                             transferReportData[transferKey] = {
                                 productId: materialCode,
-                                productName: item.Material,
+                                productName: provisionInfo?.name || item.Material, // Use name from rules map
                                 fromCenter: '1000',
                                 toCenter: originalDemandCenter,
                                 totalUnits: 0,
@@ -474,5 +474,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
-
-    
