@@ -6,63 +6,11 @@ import { queryApi } from '@/hooks/useApiData';
 import { TransferCalculatorIcon } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 
-const FilterInput: React.FC<{
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  className?: string;
-}> = ({ label, value, onChange, placeholder, className }) => (
-  <div className={className}>
-    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    <input
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder || `Buscar por ${label}...`}
-      className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10"
-    />
-  </div>
-);
-
-const SelectFilter: React.FC<{
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-  className?: string;
-}> = ({ label, value, onChange, options, className }) => (
-  <div className={className}>
-    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10"
-    >
-      {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-    </select>
-  </div>
-);
-
-
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification, isLoading: isAppLoading } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [masterData, setMasterData] = useState<TiempoEnsambleItem[]>([]);
     
-    const [filters, setFilters] = useState({
-        nombreMaterial: '',
-        codigoMaterial: '',
-        centro: '',
-        linea: '',
-        puesto: '',
-        claseAprovisionamiento: '',
-    });
-
-    const handleFilterChange = (name: keyof typeof filters, value: string) => {
-        setFilters(prev => ({ ...prev, [name]: value }));
-    };
-
     const handleLoadMasterData = async () => {
         setIsProcessing(true);
         setMasterData([]);
@@ -94,12 +42,6 @@ export const TransferCalculatorSection: React.FC = () => {
             setIsProcessing(false);
         }
     };
-    
-    const filteredData = useMemo(() => {
-        // Since we are not loading all data, we bypass the client-side filters for this debug view.
-        return masterData;
-    }, [masterData]);
-
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -109,7 +51,7 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta herramienta carga todos los registros de la tabla `TiemposEnsamblado` para permitirle visualizar y filtrar los datos maestros. Use los filtros para analizar la configuración de sus productos, incluyendo la Clase de Aprovisionamiento.
+                Esta herramienta ejecuta una consulta de depuración específica para aislar problemas en la obtención de datos desde la API.
             </p>
 
             <div className="p-4 border rounded-lg bg-gray-50">
@@ -124,7 +66,7 @@ export const TransferCalculatorSection: React.FC = () => {
 
             {masterData.length > 0 && (
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-800">Resultados de la Consulta de Depuración ({filteredData.length} registros)</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Resultados de la Consulta de Depuración ({masterData.length} registros)</h3>
                 
                 <div className="relative max-h-[70vh] overflow-y-auto border rounded-lg shadow-inner mt-4">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
@@ -141,7 +83,7 @@ export const TransferCalculatorSection: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredData.map((item, index) => (
+                            {masterData.map((item, index) => (
                                 <tr key={`${item.CodMaterial}-${item.Centro}-${item.Linea}-${item.PuestoTrabajo}-${index}`}>
                                     <td className="px-3 py-2 whitespace-normal font-medium text-gray-800">{item.Material}</td>
                                     <td className="px-3 py-2 whitespace-nowrap font-mono text-gray-500">{item.CodMaterial}</td>
