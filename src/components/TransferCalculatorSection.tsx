@@ -21,8 +21,8 @@ export const TransferCalculatorSection: React.FC = () => {
                 source: 'TiemposEnsamblado', 
                 operation: 'get_data',
                 filters: {
-                    'CodMaterial': '20000182',
-                    'Centro': '2000'
+                    'Centro': '2000',
+                    'ClaseAprovisionamiento': 'F'
                 },
                 pagination: { limit: 50000 }
             });
