@@ -189,15 +189,24 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         // --- 1. Fetch Sales Data ---
         addNotification('info', `Iniciando carga de presupuesto... Años: ${filters.años.join(', ')}.`);
+        
+        const apiFilters: { [key: string]: any } = {
+            'Año': filters.años.map(Number)
+        };
+        if (filters.meses.length > 0) {
+            apiFilters['Mes'] = filters.meses.map(Number);
+        }
+        if (filters.centros.length > 0) {
+            apiFilters['Centro'] = filters.centros;
+        }
+        if (filters.etiqueta) { // This check ensures we only add the filter if it has a non-empty value
+            apiFilters['Etiqueta'] = filters.etiqueta;
+        }
+
         const salesItems: PresupuestoItem[] = await queryApi({
             source: 'Presupuesto',
             operation: 'get_data',
-            filters: {
-                'Año': filters.años.map(Number),
-                ...(filters.meses.length > 0 && { 'Mes': filters.meses.map(Number) }),
-                ...(filters.centros.length > 0 && { 'Centro': filters.centros }),
-                ...(filters.etiqueta && { 'Etiqueta': filters.etiqueta }),
-            },
+            filters: apiFilters,
             pagination: { limit: 200000 }
         });
 
