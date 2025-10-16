@@ -1,7 +1,7 @@
 
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
+import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -32,6 +32,12 @@ const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
     return codeStr.slice(-8);
 };
+
+const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
+    const codeStr = String(code).slice(-8); // Ensure base is 8 digits first
+    return codeStr.padStart(18, '0');
+};
+
 
 const MultiSelect: React.FC<{
   label: string;
@@ -133,6 +139,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   });
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
+  const [transferData, setTransferData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
@@ -164,6 +171,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
+    setTransferData([]);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -195,8 +203,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     if (filters.etiqueta) {
                         queryFilters['Etiqueta'] = filters.etiqueta;
                     }
-                    
-                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
                     
                     const promise = queryApi({
                         source: 'Presupuesto',
@@ -237,7 +243,41 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         if (allData.length > 0) {
             setLoadedData(allData);
             onDataImported(allData);
-            addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
+            addNotification('success', `Carga completada. Se importaron ${allData.length} registros. Calculando traslados...`);
+            
+            // --- NEW: Calculate transfers ---
+            const salesInOtherCenters = allData.filter(sale => String(sale.centro).trim() !== '1000');
+            if (salesInOtherCenters.length > 0) {
+                const uniqueMaterialCodes = Array.from(new Set(salesInOtherCenters.map(sale => sale.código)));
+                const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
+
+                const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({
+                    source: 'CuboInventarios',
+                    operation: 'get_data',
+                    filters: { 'CodMaterial': paddedMaterialCodes },
+                    pagination: { limit: 500000 }
+                });
+                
+                const provisioningRules = new Map<string, 'E' | 'X' | 'F'>();
+                inventoryCubeData.forEach(item => {
+                    if (item.ClaseAprovisionamiento && item.CodMaterial && item.Centro) {
+                        const normalizedCode = String(item.CodMaterial).slice(-8);
+                        const key = `${normalizedCode}---${String(item.Centro).trim()}`;
+                        provisioningRules.set(key, item.ClaseAprovisionamiento);
+                    }
+                });
+
+                const salesRequiringTransfer = salesInOtherCenters.filter(sale => {
+                    const ruleKey = `${sale.código}---${String(sale.centro).trim()}`;
+                    const provisionRule = provisioningRules.get(ruleKey);
+                    return provisionRule === 'F';
+                });
+                setTransferData(salesRequiringTransfer);
+                addNotification('info', `Se encontraron ${salesRequiringTransfer.length} registros de venta que requieren traslado.`);
+            } else {
+                 addNotification('info', 'No hay ventas en centros diferentes a 1000, no se requieren traslados.');
+            }
+
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
         }
@@ -367,6 +407,38 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                             </th>
                         </tr>
                     </tfoot>
+                </table>
+            </div>
+        </div>
+      )}
+
+      {transferData.length > 0 && (
+         <div className="space-y-4 pt-8">
+            <h3 className="text-lg font-semibold text-gray-800">Reporte de Transferencias Logísticas Requeridas (Aprovisionamiento 'F')</h3>
+            <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
+                <table className="min-w-full text-xs divide-y divide-gray-200">
+                    <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Año</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro Destino</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código Material</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                            <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                       {transferData.map((row) => (
+                            <tr key={row.id}>
+                                <td className="px-3 py-2 whitespace-nowrap text-gray-600">{row.año}</td>
+                                <td className="px-3 py-2 whitespace-nowrap text-gray-600">{MONTH_NAMES[row.mes-1]}</td>
+                                <td className="px-3 py-2 whitespace-nowrap text-gray-600">{row.centro}</td>
+                                <td className="px-3 py-2 whitespace-nowrap font-mono text-indigo-700">{row.código}</td>
+                                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{row.descripciónMaterial}</td>
+                                <td className="px-3 py-2 text-right font-bold text-blue-800">{row.unidadesProyectado.toLocaleString()}</td>
+                            </tr>
+                        ))}
+                    </tbody>
                 </table>
             </div>
         </div>

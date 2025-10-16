@@ -16,7 +16,8 @@ interface TransferCalculationItem {
 }
 
 const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
-    return String(code).padStart(18, '0');
+    const codeStr = String(code).slice(-8); // Ensure base is 8 digits first
+    return codeStr.padStart(18, '0');
 };
 
 
@@ -58,6 +59,7 @@ export const TransferCalculatorSection: React.FC = () => {
             const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
 
             // 3. Fetch all provisioning rules from CuboInventarios for the relevant materials
+            addNotification('info', `Consultando CuboInventarios para ${paddedMaterialCodes.length} materiales...`);
             const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
