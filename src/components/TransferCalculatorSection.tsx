@@ -15,10 +15,6 @@ interface TransferCalculationItem {
     year: number;
 }
 
-const padMaterialCode = (code: string | number): string => {
-    return String(code).padStart(18, '0');
-};
-
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
     return codeStr.slice(-8);
@@ -48,20 +44,24 @@ export const TransferCalculatorSection: React.FC = () => {
         addNotification('info', 'Calculando traslados... Obteniendo reglas de aprovisionamiento de CuboInventarios.');
 
         try {
-            const uniqueMaterialCodes = [...new Set(salesData.map(item => item.código))];
-            if (uniqueMaterialCodes.length === 0) {
-                addNotification('warning', 'No hay materiales en los datos de ventas cargados.');
+            // 1. Filter sales data for centers other than 1000
+            const salesInOtherCenters = salesData.filter(sale => String(sale.centro).trim() !== '1000');
+            if (salesInOtherCenters.length === 0) {
+                addNotification('info', 'No hay ventas registradas en centros diferentes al 1000. No se requieren traslados.');
+                setTransferItems([]);
                 setIsProcessing(false);
                 return;
             }
 
-            // Fetch all provisioning rules in one go
+            // 2. Fetch all provisioning rules from CuboInventarios in one go.
+            // This is more robust than trying to filter by a list of materials, which the API might not support well.
             const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
                 pagination: { limit: 500000 } // Get all data
             });
 
+            // 3. Create a lookup map for provisioning rules. Key: 'materialCode---center'
             const provisioningRules = new Map<string, 'E' | 'X' | 'F'>();
             inventoryCubeData.forEach(item => {
                 if (item.ClaseAprovisionamiento && item.CodMaterial && item.Centro) {
@@ -70,18 +70,16 @@ export const TransferCalculatorSection: React.FC = () => {
                 }
             });
             
-            addNotification('info', `Se obtuvieron ${provisioningRules.size} reglas de aprovisionamiento. Procesando transferencias...`);
+            addNotification('info', `Se obtuvieron ${provisioningRules.size} reglas de aprovisionamiento. Cruzando datos...`);
 
-            const salesRequiringTransfer = salesData.filter(sale => {
-                const demandCenter = String(sale.centro).trim();
-                if (demandCenter === '1000') return false; 
-
-                const ruleKey = `${sale.código}---${demandCenter}`;
+            // 4. Filter sales that require transfer based on rule 'F'
+            const salesRequiringTransfer = salesInOtherCenters.filter(sale => {
+                const ruleKey = `${sale.código}---${String(sale.centro).trim()}`;
                 const provisionRule = provisioningRules.get(ruleKey);
-                
                 return provisionRule === 'F';
             });
             
+            // 5. Aggregate the results by material and month
             const aggregatedTransfers: { [key: string]: TransferCalculationItem } = {};
 
             for (const sale of salesRequiringTransfer) {
@@ -146,7 +144,7 @@ export const TransferCalculatorSection: React.FC = () => {
             <div className="p-4 border rounded-lg bg-gray-50 flex items-center">
                 <button
                     onClick={handleCalculateTransfers}
-                    disabled={isProcessing || isAppLoading || salesData.length === 0}
+                    disabled={isProcessing || isAppLoading}
                     className="w-full h-10 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                     {isProcessing ? 'Calculando...' : "Cargar y Calcular Traslados"}
