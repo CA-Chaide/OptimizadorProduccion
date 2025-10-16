@@ -6,35 +6,57 @@ import { queryApi } from '@/hooks/useApiData';
 import { TransferCalculatorIcon } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 
+interface PivotedData {
+    [key: string]: {
+        '1000'?: any;
+        '2000'?: any;
+    };
+}
+
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification, isLoading: isAppLoading } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
-    const [foundData, setFoundData] = useState<any[]>([]);
-    const [availableFields, setAvailableFields] = useState<string[]>([]);
+    const [pivotedData, setPivotedData] = useState<PivotedData | null>(null);
+    const [fieldOrder, setFieldOrder] = useState<string[]>([]);
     
     const handleDebugQuery = async () => {
         setIsProcessing(true);
-        setFoundData([]);
-        setAvailableFields([]);
-        addNotification('info', "Consultando un registro de 'CuboInventarios' para el material '20000182' para inspeccionar sus campos...");
+        setPivotedData(null);
+        setFieldOrder([]);
+        addNotification('info', "Consultando datos maestros para el material '20000182' desde 'CuboInventarios'...");
         
         try {
             const resultData: any[] = await queryApi({ 
                 source: 'CuboInventarios', 
                 operation: 'get_data',
                 filters: { 
-                    'CodMaterial': '20000182',
+                    'Material': '20000182',
                 },
-                pagination: { limit: 1 } // Solo necesitamos 1 registro para ver los campos
             });
             
-            const resultCount = resultData ? resultData.length : 0;
-            
-            if (resultCount > 0) {
-                const firstRecord = resultData[0];
-                const fields = Object.keys(firstRecord);
-                setAvailableFields(fields);
-                addNotification('success', `Consulta completada. Se encontraron los siguientes campos en la tabla 'CuboInventarios'.`);
+            if (resultData && resultData.length > 0) {
+                const dataFor1000 = resultData.find(d => String(d.Centro) === '1000');
+                const dataFor2000 = resultData.find(d => String(d.Centro) === '2000');
+
+                if (!dataFor1000 && !dataFor2000) {
+                    addNotification('warning', `No se encontraron datos para el material '20000182' en los centros 1000 o 2000.`);
+                    return;
+                }
+
+                const allFields = Object.keys(resultData[0]);
+                setFieldOrder(allFields);
+
+                const newPivotedData: PivotedData = {};
+                allFields.forEach(field => {
+                    newPivotedData[field] = {
+                        '1000': dataFor1000 ? dataFor1000[field] : undefined,
+                        '2000': dataFor2000 ? dataFor2000[field] : undefined,
+                    };
+                });
+                
+                setPivotedData(newPivotedData);
+                addNotification('success', `Consulta completada. Mostrando datos comparativos.`);
+
             } else {
                 addNotification('warning', `La consulta para el material '20000182' en 'CuboInventarios' no devolvió ningún registro.`);
             }
@@ -54,7 +76,7 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta herramienta ejecuta una consulta de depuración para inspeccionar la estructura de la nueva tabla `CuboInventarios`.
+                Esta herramienta ejecuta una consulta de depuración para inspeccionar y comparar la definición de un material en diferentes centros.
             </p>
 
             <div className="p-4 border rounded-lg bg-gray-50 flex flex-col items-center gap-4">
@@ -63,21 +85,42 @@ export const TransferCalculatorSection: React.FC = () => {
                     disabled={isProcessing || isAppLoading}
                     className="w-full md:w-1/2 h-12 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                    {isProcessing ? 'Consultando...' : "Inspeccionar Campos de 'CuboInventarios'"}
+                    {isProcessing ? 'Consultando...' : "Inspeccionar Material '20000182'"}
                 </button>
             </div>
 
-            {availableFields.length > 0 && (
+            {pivotedData && (
                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Campos Disponibles en `CuboInventarios`</h3>
-                    <div className="p-4 border rounded-lg bg-gray-50">
-                        <ul className="list-disc list-inside space-y-2">
-                            {availableFields.map((field, index) => (
-                                <li key={index} className="font-mono text-indigo-700 text-lg">
-                                    {field}
-                                </li>
-                            ))}
-                        </ul>
+                    <h3 className="text-lg font-semibold text-gray-800">Datos Comparativos para Material: 20000182</h3>
+                     <div className="overflow-x-auto border rounded-lg">
+                        <table className="min-w-full text-sm divide-y divide-gray-200">
+                            <thead className="bg-gray-100">
+                                <tr>
+                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Campo</th>
+                                    <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Centro 1000</th>
+                                    <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Centro 2000</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {fieldOrder.map(field => {
+                                    const isSensitiveField = field.toLowerCase() === 'descripcion' || field.toLowerCase() === 'etiqueta';
+                                    const value1000 = pivotedData[field]?.['1000'];
+                                    const value2000 = pivotedData[field]?.['2000'];
+
+                                    return (
+                                        <tr key={field}>
+                                            <td className="px-4 py-2 font-mono text-indigo-700">{field}</td>
+                                            <td className="px-4 py-2 text-right font-mono text-gray-800">
+                                                {isSensitiveField ? '' : (value1000 ?? 'N/A')}
+                                            </td>
+                                            <td className="px-4 py-2 text-right font-mono text-gray-800">
+                                                {isSensitiveField ? '' : (value2000 ?? 'N/A')}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             )}
