@@ -1,7 +1,7 @@
 
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
+import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -18,6 +18,8 @@ interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
 }
 
+type GroupByOption = 'sector' | 'etiqueta' | 'material';
+
 interface AggregatedData {
   [key: string]: {
     totalUnits: number;
@@ -25,19 +27,6 @@ interface AggregatedData {
     dataRows: SalesDataRow[];
   };
 }
-
-interface TransferReportItem {
-    id: string;
-    mes: number;
-    año: number;
-    etiqueta: string;
-    productId: string;
-    productName: string;
-    fromCenter: '1000';
-    toCenter: string;
-    units: number;
-}
-
 
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
@@ -145,7 +134,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [transferReport, setTransferReport] = useState<TransferReportItem[]>([]);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -176,7 +164,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
-    setTransferReport([]);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -192,38 +179,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        // 1. Fetch provisioning rules from the new source of truth: 'CuboInventarios'
-        addNotification('info', 'Obteniendo reglas de aprovisionamiento desde Cubo de Inventarios...');
-        const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({ 
-            source: 'CuboInventarios', 
-            operation: 'get_data',
-            pagination: { limit: 200000 } // Fetch a large number to get all rules
-        });
-        
-        // Use a composite key (product-center) to store rules for accuracy
-        const provisionRules = new Map<string, {rule: 'E' | 'X' | 'F' | null, name: string}>();
-        inventoryCubeData.forEach(item => {
-            if (item.CodMaterial && item.Centro) {
-                const materialCode = normalizeMaterialCode(item.CodMaterial);
-                const centerId = String(item.Centro).trim();
-                const compositeKey = `${materialCode}-${centerId}`;
-                
-                // Store the specific rule for each product-center combination
-                if (!provisionRules.has(compositeKey)) {
-                    provisionRules.set(compositeKey, { rule: item.ClaseAprovisionamiento, name: item.Material });
-                }
-            }
-        });
-        addNotification('success', `Reglas de aprovisionamiento cargadas para ${provisionRules.size} combinaciones producto-centro.`);
-
-        // 2. Prepare API calls for sales data
+        // Define loops for iteration
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
+        // Array to hold all promises
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
+                // Skip past months of the current year if all months are being loaded
                 if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
                     continue;
                 }
@@ -233,6 +198,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     if (filters.etiqueta) {
                         queryFilters['Etiqueta'] = filters.etiqueta;
                     }
+                    
+                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
                     
                     const promise = queryApi({
                         source: 'Presupuesto',
@@ -245,71 +212,35 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }
         }
         
-        addNotification('info', `Realizando ${apiCallPromises.length} consultas de presupuesto a la API. Esto puede tardar...`);
+        addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
 
         const responses = await Promise.all(apiCallPromises);
 
-        addNotification('info', 'Consultas a la API completadas. Procesando resultados y aplicando reglas de negocio...');
-
-        // 3. Process results and apply business logic for transfers
-        const detailedTransferReport: TransferReportItem[] = [];
+        addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
 
         responses.forEach(response => {
             if (response && response.length > 0) {
-                 response.forEach((item, index) => {
-                    const materialCode = normalizeMaterialCode(item.CodMaterial);
-                    const originalDemandCenter = String(item.Centro).trim();
-                    const compositeKey = `${materialCode}-${originalDemandCenter}`;
-                    
-                    // Get the specific provisioning rule for THIS product in THIS center
-                    const provisionInfo = provisionRules.get(compositeKey);
-                    
-                    let producingCenter = originalDemandCenter;
-                    
-                    // If rule is 'F' (centralized manufacturing) and the demand is NOT from center 1000...
-                    if (provisionInfo?.rule === 'F' && originalDemandCenter !== '1000') {
-                        // ...then the production must happen at center 1000
-                        producingCenter = '1000'; 
-                        
-                        // And we must generate a transfer record
-                        detailedTransferReport.push({
-                            id: `transfer-${item.Año}-${item.Mes}-${originalDemandCenter}-${materialCode}-${index}`,
-                            mes: item.Mes,
-                            año: item.Año,
-                            etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                            productId: materialCode,
-                            productName: provisionInfo?.name || item.Material,
-                            fromCenter: '1000',
-                            toCenter: originalDemandCenter,
-                            units: item.UnidadesProyectado,
-                        });
-                    }
-
-                    // The final sales data row has its 'centro' (center) field set to the PRODUCING center.
-                    // This is the core of the logic: shifting the demand to where it needs to be produced.
-                    const newRow: SalesDataRow = {
-                        id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
-                        año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                        etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                        código: materialCode,
-                        centro: producingCenter, // The demand is now assigned to the correct producing center
-                        unidadesProyectado: item.UnidadesProyectado,
-                        dolaresProyectado: 0,
-                        descripciónMaterial: item.Material,
-                        familia: item.Familia, marca: item.Marca, 
-                        lineaProduccion: item.LineaProduccion || '',
-                    };
-                    allData.push(newRow);
-                 });
+                 const mappedData: SalesDataRow[] = response.map((item, index) => ({
+                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                    código: normalizeMaterialCode(item.CodMaterial),
+                    centro: String(item.Centro).trim(), 
+                    unidadesProyectado: item.UnidadesProyectado,
+                    dolaresProyectado: 0,
+                    descripciónMaterial: item.Material,
+                    familia: item.Familia, marca: item.Marca, 
+                    lineaProduccion: item.LineaProduccion || '',
+                }));
+                allData = [...allData, ...mappedData];
             }
         });
-        
-        setTransferReport(detailedTransferReport.sort((a,b) => a.mes - b.mes || a.etiqueta.localeCompare(b.etiqueta)));
+
 
         if (allData.length > 0) {
             setLoadedData(allData);
             onDataImported(allData);
-            addNotification('success', `Carga completada. Se importaron y procesaron ${allData.length} registros. Se calcularon ${detailedTransferReport.length} transferencias.`);
+            addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
         }
@@ -355,11 +286,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
       <div className="flex items-center space-x-3">
         <DataImportIcon />
-        <h2 className="text-2xl font-semibold text-gray-700">Cargar Presupuesto y Calcular Transferencias</h2>
+        <h2 className="text-2xl font-semibold text-gray-700">Cargar Presupuesto de Ventas desde API</h2>
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para cargar el presupuesto de ventas. El sistema consultará el **Cubo de Inventarios** para aplicar las reglas de negocio de fabricación centralizada (Clase 'F') y generará automáticamente el reporte de transferencias.
+        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
       </p>
 
       {/* --- Filtros --- */}
@@ -377,7 +308,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             onChange={value => handleFilterChange('meses', value)}
         />
         <MultiSelect 
-            label="Centro(s) de Demanda"
+            label="Centro(s)"
             options={filterOptions.centros}
             selected={filters.centros}
             onChange={value => handleFilterChange('centros', value)}
@@ -396,87 +327,51 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 disabled={isProcessing || isAppLoading || filters.años.length === 0}
                 className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-                {isProcessing ? 'Cargando...' : 'Cargar y Procesar'}
+                {isProcessing ? 'Cargando...' : 'Cargar Datos'}
             </button>
         </div>
       </div>
 
        {loadedData.length > 0 && (
-         <div className="space-y-8">
-            <div>
-                <h3 className="text-lg font-semibold text-gray-800">Resumen de Demanda de Producción (Lógica Aplicada)</h3>
-                <p className="text-sm text-gray-600">Muestra dónde se debe producir la demanda. Note cómo la demanda de productos 'F' se ha movido al centro 1000.</p>
-                <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-4">
-                    <table className="min-w-full text-xs divide-y divide-gray-200">
-                        <thead className="bg-gray-100 sticky top-0 z-10">
-                            <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">Etiqueta</th>
+         <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta</h3>
+            <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
+                <table className="min-w-full text-xs divide-y divide-gray-200">
+                    <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">Etiqueta</th>
+                            {centers.map(center => (
+                                <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">{center}</th>
+                            ))}
+                            <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Unidades</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                       {Object.entries(aggregatedData).map(([etiqueta, group]) => (
+                            <tr key={etiqueta}>
+                                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
                                 {centers.map(center => (
-                                    <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">{center}</th>
+                                    <td key={`${etiqueta}-${center}`} className="px-3 py-2 text-right text-gray-600">{group.unitsByCenter[center]?.toLocaleString() || 0}</td>
                                 ))}
-                                <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Unidades</th>
+                                <td className="px-3 py-2 text-right font-bold text-gray-900">{group.totalUnits.toLocaleString()}</td>
                             </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                           {Object.entries(aggregatedData).map(([etiqueta, group]) => (
-                                <tr key={etiqueta}>
-                                    <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
-                                    {centers.map(center => (
-                                        <td key={`${etiqueta}-${center}`} className="px-3 py-2 text-right text-gray-600">{group.unitsByCenter[center]?.toLocaleString() || 0}</td>
-                                    ))}
-                                    <td className="px-3 py-2 text-right font-bold text-gray-900">{group.totalUnits.toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot className="bg-gray-200 sticky bottom-0 z-10">
-                            <tr>
-                                <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
-                                 {centers.map(center => (
-                                    <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
-                                        {(footerTotals[center] || 0).toLocaleString()}
-                                    </th>
-                                ))}
-                                 <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
-                                    {footerTotals.grandTotal.toLocaleString()}
+                        ))}
+                    </tbody>
+                    <tfoot className="bg-gray-200 sticky bottom-0 z-10">
+                        <tr>
+                            <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
+                             {centers.map(center => (
+                                <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
+                                    {(footerTotals[center] || 0).toLocaleString()}
                                 </th>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-
-            {transferReport.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800">Reporte de Transferencias Logísticas Calculadas (Clase 'F')</h3>
-                <p className="text-sm text-gray-600">Estos materiales deben ser fabricados en el centro 1000 y enviados a sus centros de demanda originales para cumplir con el presupuesto de ventas.</p>
-                <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-4">
-                    <table className="min-w-full text-xs divide-y divide-gray-200">
-                        <thead className="bg-gray-100 sticky top-0 z-10">
-                            <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Etiqueta</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Producto</th>
-                                <th className="px-3 py-2 text-center font-semibold text-gray-600 uppercase tracking-wider">Destino</th>
-                                <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades a Transferir</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {transferReport.map(item => (
-                                <tr key={item.id}>
-                                    <td className="px-3 py-2 whitespace-nowrap">{MONTH_NAMES[item.mes - 1]} '{item.año.toString().slice(-2)}</td>
-                                    <td className="px-3 py-2 whitespace-nowrap">{item.etiqueta}</td>
-                                    <td className="px-3 py-2 whitespace-normal font-medium text-gray-800">
-                                        {item.productName} <span className="font-mono text-gray-500">({item.productId})</span>
-                                    </td>
-                                    <td className="px-3 py-2 text-center font-bold text-indigo-700">{item.toCenter}</td>
-                                    <td className="px-3 py-2 text-right font-bold text-gray-900">{item.units.toLocaleString()}</td>
-                                </tr>
                             ))}
-                        </tbody>
-                    </table>
-                </div>
-              </div>
-            )}
+                             <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
+                                {footerTotals.grandTotal.toLocaleString()}
+                            </th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         </div>
       )}
     </div>
