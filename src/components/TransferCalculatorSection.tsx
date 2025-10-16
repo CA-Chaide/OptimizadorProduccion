@@ -26,7 +26,7 @@ export const TransferCalculatorSection: React.FC = () => {
         setIsProcessing(true);
         setRawData([]);
         setSelectedMaterial('');
-        setMaterialFilter('');
+        setMaterialFilter(''); // <<< FIX: Reset filter on new fetch
         addNotification('info', 'Consultando CuboInventarios... Esto puede tomar un momento.');
 
         try {
