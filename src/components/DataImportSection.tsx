@@ -179,16 +179,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        // Define loops for iteration
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-        // Array to hold all promises
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                // Skip past months of the current year if all months are being loaded
                 if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
                     continue;
                 }

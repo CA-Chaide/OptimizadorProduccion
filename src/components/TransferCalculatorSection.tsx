@@ -15,9 +15,8 @@ interface TransferCalculationItem {
     year: number;
 }
 
-const normalizeMaterialCode = (code: string | number): string => {
-    const codeStr = String(code);
-    return codeStr.slice(-8);
+const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
+    return String(code).padStart(18, '0');
 };
 
 
@@ -44,7 +43,7 @@ export const TransferCalculatorSection: React.FC = () => {
         addNotification('info', 'Calculando traslados... Obteniendo reglas de aprovisionamiento de CuboInventarios.');
 
         try {
-            // 1. Filter sales data for centers other than 1000
+            // 1. Get unique material codes from sales in centers other than 1000
             const salesInOtherCenters = salesData.filter(sale => String(sale.centro).trim() !== '1000');
             if (salesInOtherCenters.length === 0) {
                 addNotification('info', 'No hay ventas registradas en centros diferentes al 1000. No se requieren traslados.');
@@ -53,33 +52,39 @@ export const TransferCalculatorSection: React.FC = () => {
                 return;
             }
 
-            // 2. Fetch all provisioning rules from CuboInventarios in one go.
-            // This is more robust than trying to filter by a list of materials, which the API might not support well.
+            const uniqueMaterialCodes = Array.from(new Set(salesInOtherCenters.map(sale => sale.código)));
+            
+            // 2. Pad codes to 18 digits for the API query
+            const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
+
+            // 3. Fetch all provisioning rules from CuboInventarios for the relevant materials
             const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
-                pagination: { limit: 500000 } // Get all data
+                filters: { 'CodMaterial': paddedMaterialCodes },
+                pagination: { limit: 500000 }
             });
-
-            // 3. Create a lookup map for provisioning rules. Key: 'materialCode---center'
+            
+            // 4. Create a lookup map for provisioning rules. Key: '8-digit-materialCode---center'
             const provisioningRules = new Map<string, 'E' | 'X' | 'F'>();
             inventoryCubeData.forEach(item => {
                 if (item.ClaseAprovisionamiento && item.CodMaterial && item.Centro) {
-                    const key = `${normalizeMaterialCode(item.CodMaterial)}---${String(item.Centro).trim()}`;
+                    const normalizedCode = String(item.CodMaterial).slice(-8);
+                    const key = `${normalizedCode}---${String(item.Centro).trim()}`;
                     provisioningRules.set(key, item.ClaseAprovisionamiento);
                 }
             });
             
             addNotification('info', `Se obtuvieron ${provisioningRules.size} reglas de aprovisionamiento. Cruzando datos...`);
 
-            // 4. Filter sales that require transfer based on rule 'F'
+            // 5. Filter sales that require transfer based on rule 'F'
             const salesRequiringTransfer = salesInOtherCenters.filter(sale => {
                 const ruleKey = `${sale.código}---${String(sale.centro).trim()}`;
                 const provisionRule = provisioningRules.get(ruleKey);
                 return provisionRule === 'F';
             });
             
-            // 5. Aggregate the results by material and month
+            // 6. Aggregate the results by material and month
             const aggregatedTransfers: { [key: string]: TransferCalculationItem } = {};
 
             for (const sale of salesRequiringTransfer) {
@@ -144,7 +149,7 @@ export const TransferCalculatorSection: React.FC = () => {
             <div className="p-4 border rounded-lg bg-gray-50 flex items-center">
                 <button
                     onClick={handleCalculateTransfers}
-                    disabled={isProcessing || isAppLoading}
+                    disabled={isProcessing || isAppLoading || salesData.length === 0}
                     className="w-full h-10 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                     {isProcessing ? 'Calculando...' : "Cargar y Calcular Traslados"}
