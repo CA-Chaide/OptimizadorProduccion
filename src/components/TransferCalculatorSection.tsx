@@ -67,25 +67,20 @@ export const TransferCalculatorSection: React.FC = () => {
                  <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-gray-800">Resultados de la Consulta</h3>
                     <div className="relative max-h-[70vh] overflow-y-auto border rounded-lg shadow-inner">
-                        <table className="min-w-full text-xs divide-y divide-gray-200">
+                        <table className="min-w-full text-sm divide-y divide-gray-200">
                             <thead className="bg-gray-100 sticky top-0 z-10">
                                 <tr>
-                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">#</th>
                                     <th className="px-3 py-2 text-left font-semibold text-gray-600">CodMaterial</th>
                                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro</th>
-                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase Aprov.</th>
-                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Stock Seg.</th>
-                                    {/* Agregue más columnas si es necesario */}
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase de Aprov.</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {foundData.map((item, index) => (
                                     <tr key={index} className="hover:bg-gray-50">
-                                        <td className="px-3 py-2 font-medium text-gray-500">{index + 1}</td>
                                         <td className="px-3 py-2 whitespace-nowrap font-mono text-indigo-700">{item.CodMaterial}</td>
                                         <td className="px-3 py-2 whitespace-nowrap">{item.Centro}</td>
                                         <td className="px-3 py-2 whitespace-nowrap font-bold">{item.ClaseAprovisionamiento}</td>
-                                        <td className="px-3 py-2 text-right">{item.StockSeguridad}</td>
                                     </tr>
                                 ))}
                             </tbody>
