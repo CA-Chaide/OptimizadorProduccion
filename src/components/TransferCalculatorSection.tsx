@@ -145,7 +145,7 @@ export const TransferCalculatorSection: React.FC = () => {
             <div className="p-4 border rounded-lg bg-gray-50 flex items-center">
                 <button
                     onClick={handleCalculateTransfers}
-                    disabled={isProcessing || isAppLoading || salesData.length === 0}
+                    disabled={isProcessing || isAppLoading}
                     className="w-full h-10 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                     {isProcessing ? 'Calculando...' : "Cargar y Calcular Traslados"}
