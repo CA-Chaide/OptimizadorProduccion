@@ -39,43 +39,49 @@ export const TransferCalculatorSection: React.FC = () => {
     });
 
     const handleCalculateTransfers = async () => {
+        if (salesData.length === 0) {
+            addNotification('warning', 'Por favor, cargue primero los datos de ventas desde la sección "Importar Ventas".');
+            return;
+        }
+
         setIsProcessing(true);
         addNotification('info', 'Calculando traslados... Obteniendo reglas de aprovisionamiento de CuboInventarios.');
 
         try {
-            // 1. Get unique material codes from sales data
             const uniqueMaterialCodes = [...new Set(salesData.map(item => item.código))];
-            const paddedMaterialCodes = uniqueMaterialCodes.map(padMaterialCode);
+            if (uniqueMaterialCodes.length === 0) {
+                addNotification('warning', 'No hay materiales en los datos de ventas cargados.');
+                setIsProcessing(false);
+                return;
+            }
 
-            // 2. Fetch provisioning rules from CuboInventarios
+            // Fetch all provisioning rules in one go
             const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
-                filters: { 'Material': paddedMaterialCodes },
-                pagination: { limit: 200000 }
+                pagination: { limit: 500000 } // Get all data
             });
 
             const provisioningRules = new Map<string, 'E' | 'X' | 'F'>();
             inventoryCubeData.forEach(item => {
-                const key = `${normalizeMaterialCode(item.CodMaterial)}---${String(item.Centro).trim()}`;
-                if (item.ClaseAprovisionamiento) {
+                if (item.ClaseAprovisionamiento && item.CodMaterial && item.Centro) {
+                    const key = `${normalizeMaterialCode(item.CodMaterial)}---${String(item.Centro).trim()}`;
                     provisioningRules.set(key, item.ClaseAprovisionamiento);
                 }
             });
+            
+            addNotification('info', `Se obtuvieron ${provisioningRules.size} reglas de aprovisionamiento. Procesando transferencias...`);
 
-            addNotification('info', `Se obtuvieron ${provisioningRules.size} reglas. Procesando transferencias...`);
-
-            // 3. Filter sales data for transfers
             const salesRequiringTransfer = salesData.filter(sale => {
                 const demandCenter = String(sale.centro).trim();
-                if (demandCenter === '1000') return false; // Rule applies to non-central centers
+                if (demandCenter === '1000') return false; 
 
                 const ruleKey = `${sale.código}---${demandCenter}`;
                 const provisionRule = provisioningRules.get(ruleKey);
+                
                 return provisionRule === 'F';
             });
             
-            // 4. Aggregate quantities
             const aggregatedTransfers: { [key: string]: TransferCalculationItem } = {};
 
             for (const sale of salesRequiringTransfer) {
