@@ -10,6 +10,7 @@ interface PivotedData {
     [key: string]: {
         '1000'?: any;
         '2000'?: any;
+        [key: string]: any; // Allow other centers
     };
 }
 
@@ -45,23 +46,18 @@ export const TransferCalculatorSection: React.FC = () => {
             });
             
             if (resultData && resultData.length > 0) {
-                const dataFor1000 = resultData.find(d => String(d.Centro) === '1000');
-                const dataFor2000 = resultData.find(d => String(d.Centro) === '2000');
-
-                if (!dataFor1000 && !dataFor2000) {
-                    addNotification('warning', `No se encontraron datos para el material '${materialCodeWithPadding}' en los centros 1000 o 2000.`);
-                    return;
-                }
-
                 const allFields = Object.keys(resultData[0]);
+                const centerKeys = [...new Set(resultData.map(d => String(d.Centro)))];
                 setFieldOrder(allFields);
 
                 const newPivotedData: PivotedData = {};
+
                 allFields.forEach(field => {
-                    newPivotedData[field] = {
-                        '1000': dataFor1000 ? dataFor1000[field] : undefined,
-                        '2000': dataFor2000 ? dataFor2000[field] : undefined,
-                    };
+                    newPivotedData[field] = {};
+                    resultData.forEach(item => {
+                        const center = String(item.Centro);
+                        newPivotedData[field][center] = item[field];
+                    });
                 });
                 
                 setPivotedData(newPivotedData);
@@ -78,15 +74,26 @@ export const TransferCalculatorSection: React.FC = () => {
         }
     };
 
+    const centerColumns = useMemo(() => {
+        if (!pivotedData) return [];
+        const centers = new Set<string>();
+        Object.values(pivotedData).forEach(fieldData => {
+            Object.keys(fieldData).forEach(center => centers.add(center));
+        });
+        return Array.from(centers).sort();
+    }, [pivotedData]);
+
+
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
             <div className="flex items-center space-x-3">
                 <TransferCalculatorIcon />
-                <h2 className="text-2xl font-semibold text-gray-700">Explorador de Datos: `CuboInventarios`</h2>
+                <h2 className="text-2xl font-semibold text-gray-700">Explorador de Datos Maestros: `CuboInventarios`</h2>
             </div>
             
             <p className="text-gray-600">
-                Esta herramienta ejecuta una consulta para inspeccionar y comparar la definición de un material en diferentes centros.
+                Esta herramienta ejecuta una consulta para inspeccionar y comparar la definición de un material en diferentes centros. 
+                El sistema aplicará automáticamente el padding de 18 dígitos al código de material.
             </p>
 
             <div className="p-4 border rounded-lg bg-gray-50 flex flex-col md:flex-row items-end gap-4">
@@ -99,6 +106,7 @@ export const TransferCalculatorSection: React.FC = () => {
                         onChange={(e) => setMaterialToSearch(e.target.value)}
                         className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                         placeholder="Ingrese el código de material..."
+                        onKeyDown={(e) => e.key === 'Enter' && handleDebugQuery()}
                     />
                  </div>
                 <button
@@ -112,31 +120,32 @@ export const TransferCalculatorSection: React.FC = () => {
 
             {pivotedData && (
                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Datos Comparativos para Material: {materialToSearch.padStart(18, '0')}</h3>
+                    <h3 className="text-lg font-semibold text-gray-800">Datos Comparativos para Material: {materialToSearch}</h3>
                      <div className="overflow-x-auto border rounded-lg">
                         <table className="min-w-full text-sm divide-y divide-gray-200">
                             <thead className="bg-gray-100">
                                 <tr>
-                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Campo</th>
-                                    <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Centro 1000</th>
-                                    <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Centro 2000</th>
+                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider sticky left-0 bg-gray-100 z-10">Campo</th>
+                                    {centerColumns.map(center => (
+                                         <th key={center} className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Centro {center}</th>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {fieldOrder.map(field => {
                                     const isSensitiveField = field.toLowerCase() === 'descripcion' || field.toLowerCase() === 'etiqueta';
-                                    const value1000 = pivotedData[field]?.['1000'];
-                                    const value2000 = pivotedData[field]?.['2000'];
+                                    
+                                    // Don't render the Material field row if we are searching by it
+                                    if (field === 'Material') return null;
 
                                     return (
-                                        <tr key={field}>
-                                            <td className="px-4 py-2 font-mono text-indigo-700">{field}</td>
-                                            <td className="px-4 py-2 text-right font-mono text-gray-800">
-                                                {isSensitiveField ? '' : (value1000 ?? 'N/A')}
-                                            </td>
-                                            <td className="px-4 py-2 text-right font-mono text-gray-800">
-                                                {isSensitiveField ? '' : (value2000 ?? 'N/A')}
-                                            </td>
+                                        <tr key={field} className="hover:bg-gray-50">
+                                            <td className="px-4 py-2 font-mono text-indigo-700 sticky left-0 bg-white hover:bg-gray-50">{field}</td>
+                                            {centerColumns.map(center => (
+                                                <td key={center} className="px-4 py-2 text-right font-mono text-gray-800">
+                                                    {isSensitiveField ? '' : (pivotedData[field]?.[center] ?? 'N/A')}
+                                                 </td>
+                                            ))}
                                         </tr>
                                     );
                                 })}
