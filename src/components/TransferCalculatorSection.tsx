@@ -39,11 +39,6 @@ export const TransferCalculatorSection: React.FC = () => {
     });
 
     const handleCalculateTransfers = async () => {
-        if (salesData.length === 0) {
-            addNotification('warning', 'No hay datos de ventas cargados. Por favor, vaya a la sección "Importar Ventas" primero.');
-            return;
-        }
-
         setIsProcessing(true);
         addNotification('info', 'Calculando traslados... Obteniendo reglas de aprovisionamiento de CuboInventarios.');
 
@@ -145,7 +140,7 @@ export const TransferCalculatorSection: React.FC = () => {
             <div className="p-4 border rounded-lg bg-gray-50 flex items-center">
                 <button
                     onClick={handleCalculateTransfers}
-                    disabled={isProcessing || isAppLoading}
+                    disabled={isProcessing || isAppLoading || salesData.length === 0}
                     className="w-full h-10 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                     {isProcessing ? 'Calculando...' : "Cargar y Calcular Traslados"}
