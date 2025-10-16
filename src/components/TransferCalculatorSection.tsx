@@ -72,7 +72,7 @@ export const TransferCalculatorSection: React.FC = () => {
                                 <tr>
                                     <th className="px-3 py-2 text-left font-semibold text-gray-600">CodMaterial</th>
                                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro</th>
-                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase de Aprov.</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600">ClaseAprov</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
