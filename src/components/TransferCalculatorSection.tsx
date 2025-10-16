@@ -18,7 +18,7 @@ export const TransferCalculatorSection: React.FC = () => {
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [pivotedData, setPivotedData] = useState<PivotedData | null>(null);
     const [fieldOrder, setFieldOrder] = useState<string[]>([]);
-    const [materialToSearch, setMaterialToSearch] = useState<string>('000000000020000182');
+    const [materialToSearch, setMaterialToSearch] = useState<string>('20000182');
     
     const handleDebugQuery = async () => {
         if (!materialToSearch || materialToSearch.trim().length === 0) {
@@ -30,7 +30,9 @@ export const TransferCalculatorSection: React.FC = () => {
         setPivotedData(null);
         setFieldOrder([]);
         
-        const materialCodeWithPadding = materialToSearch.trim();
+        // REGLA DE NEGOCIO: Rellenar con ceros a la izquierda hasta 18 dígitos.
+        const materialCodeWithPadding = materialToSearch.trim().padStart(18, '0');
+        
         addNotification('info', `Consultando datos maestros para el material '${materialCodeWithPadding}' desde 'CuboInventarios'...`);
         
         try {
@@ -110,7 +112,7 @@ export const TransferCalculatorSection: React.FC = () => {
 
             {pivotedData && (
                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Datos Comparativos para Material: {materialToSearch}</h3>
+                    <h3 className="text-lg font-semibold text-gray-800">Datos Comparativos para Material: {materialToSearch.padStart(18, '0')}</h3>
                      <div className="overflow-x-auto border rounded-lg">
                         <table className="min-w-full text-sm divide-y divide-gray-200">
                             <thead className="bg-gray-100">
