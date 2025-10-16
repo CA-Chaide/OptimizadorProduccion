@@ -23,14 +23,16 @@ export const TransferCalculatorSection: React.FC = () => {
         setIsProcessing(true);
         setPivotedData(null);
         setFieldOrder([]);
-        addNotification('info', "Consultando datos maestros para el material '20000182' desde 'CuboInventarios'...");
+        
+        const materialCodeWithPadding = '000000000020000182';
+        addNotification('info', `Consultando datos maestros para el material '${materialCodeWithPadding}' desde 'CuboInventarios'...`);
         
         try {
             const resultData: any[] = await queryApi({ 
                 source: 'CuboInventarios', 
                 operation: 'get_data',
                 filters: { 
-                    'Material': '20000182',
+                    'Material': materialCodeWithPadding,
                 },
             });
             
@@ -39,7 +41,7 @@ export const TransferCalculatorSection: React.FC = () => {
                 const dataFor2000 = resultData.find(d => String(d.Centro) === '2000');
 
                 if (!dataFor1000 && !dataFor2000) {
-                    addNotification('warning', `No se encontraron datos para el material '20000182' en los centros 1000 o 2000.`);
+                    addNotification('warning', `No se encontraron datos para el material '${materialCodeWithPadding}' en los centros 1000 o 2000.`);
                     return;
                 }
 
@@ -55,10 +57,10 @@ export const TransferCalculatorSection: React.FC = () => {
                 });
                 
                 setPivotedData(newPivotedData);
-                addNotification('success', `Consulta completada. Mostrando datos comparativos.`);
+                addNotification('success', `Consulta completada. Mostrando datos comparativos para ${materialCodeWithPadding}.`);
 
             } else {
-                addNotification('warning', `La consulta para el material '20000182' en 'CuboInventarios' no devolvió ningún registro.`);
+                addNotification('warning', `La consulta para el material '${materialCodeWithPadding}' en 'CuboInventarios' no devolvió ningún registro.`);
             }
 
         } catch (error) {
