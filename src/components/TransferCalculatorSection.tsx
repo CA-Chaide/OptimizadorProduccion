@@ -3,23 +3,30 @@
 import React, { useState, useMemo } from 'react';
 import { TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
-import { DatabaseZap } from 'lucide-react';
+import { DatabaseZap, Search } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
 
-const normalizeMaterialCode = (code: string | number): string => {
-    const codeStr = String(code);
-    return codeStr.slice(-8);
-};
+interface PivotedData {
+    centers: string[];
+    attributes: Array<{
+        name: string;
+        values: { [center: string]: string | number | null };
+    }>;
+}
 
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [rawData, setRawData] = useState<TiempoEnsambleItem[]>([]);
     
-    const [filters, setFilters] = useState<{ [key: string]: string }>({});
+    const [selectedMaterial, setSelectedMaterial] = useState<string>('');
+    const [materialFilter, setMaterialFilter] = useState('');
 
     const handleFetchData = async () => {
         setIsProcessing(true);
+        setRawData([]);
+        setSelectedMaterial('');
+        setMaterialFilter('');
         addNotification('info', 'Consultando CuboInventarios... Esto puede tomar un momento.');
 
         try {
@@ -31,17 +38,10 @@ export const TransferCalculatorSection: React.FC = () => {
 
             if (!data || data.length === 0) {
                 addNotification('warning', 'No se encontraron datos en CuboInventarios.');
-                setRawData([]);
                 return;
             }
-            
-            // Enrich with normalized code for potential use, but show raw data
-            const processedData = data.map(item => ({
-                ...item,
-                CodMaterial: normalizeMaterialCode(item.CodMaterial)
-            }))
 
-            setRawData(processedData);
+            setRawData(data);
             addNotification('success', `Carga completada. Se obtuvieron ${data.length} registros.`);
 
         } catch (error) {
@@ -51,39 +51,45 @@ export const TransferCalculatorSection: React.FC = () => {
         }
     };
     
-    const handleFilterChange = (field: keyof TiempoEnsambleItem | string, value: string) => {
-        setFilters(prev => ({...prev, [field]: value}));
-    };
-    
-    const filteredItems = useMemo(() => {
-        return rawData.filter(item => {
-            for (const key in filters) {
-                if (filters[key]) {
-                    const itemValue = (item as any)[key];
-                    if (itemValue === null || itemValue === undefined || !String(itemValue).toLowerCase().includes(filters[key].toLowerCase())) {
-                        return false;
-                    }
-                }
+    const uniqueMaterials = useMemo(() => {
+        const materialSet = new Set<string>();
+        rawData.forEach(item => {
+            if (item.CodMaterial) {
+                materialSet.add(String(item.CodMaterial));
             }
-            return true;
         });
-    }, [rawData, filters]);
+        const sortedMaterials = Array.from(materialSet).sort();
+        if (!materialFilter) {
+            return sortedMaterials;
+        }
+        return sortedMaterials.filter(mat => mat.toLowerCase().includes(materialFilter.toLowerCase()));
+    }, [rawData, materialFilter]);
     
-    const tableColumns: Array<{ key: keyof TiempoEnsambleItem, label: string }> = [
-        { key: 'CodMaterial', label: 'Cód. Material' },
-        { key: 'Centro', label: 'Centro' },
-        { key: 'Linea', label: 'Línea' },
-        { key: 'PuestoTrabajo', label: 'Puesto Trabajo' },
-        { key: 'Tiempo', label: 'Tiempo' },
-        { key: 'StockActual', label: 'Stock Actual' },
-        { key: 'StockSeguridad', label: 'Stock Seguridad' },
-        { key: 'StockMaximo', label: 'Stock Máximo' },
-        { key: 'TamLoteMin', label: 'Lote Mínimo' },
-        { key: 'TamLoteMax', label: 'Lote Máximo' },
-        { key: 'GrupoCompras', label: 'Gpo. Compras' },
-        { key: 'ClaseAprovisionamiento', label: 'Clase Aprov.' },
-    ];
+    const pivotedData = useMemo<PivotedData | null>(() => {
+        if (!selectedMaterial) return null;
 
+        const materialRecords = rawData.filter(item => String(item.CodMaterial) === selectedMaterial);
+        if (materialRecords.length === 0) return null;
+
+        const centers = Array.from(new Set(materialRecords.map(rec => String(rec.Centro)))).sort();
+        
+        const attributeKeys: Array<keyof TiempoEnsambleItem> = [
+            'Linea', 'PuestoTrabajo', 'Tiempo', 'StockActual', 'StockSeguridad',
+            'StockMaximo', 'TamLoteMin', 'TamLoteMax', 'GrupoCompras', 'ClaseAprovisionamiento'
+        ];
+        
+        const attributes = attributeKeys.map(key => {
+            const values: { [center: string]: string | number | null } = {};
+            centers.forEach(center => {
+                const record = materialRecords.find(rec => String(rec.Centro) === center);
+                values[center] = record ? (record[key] ?? 'N/A') : 'N/A';
+            });
+            return { name: key, values };
+        });
+        
+        return { centers, attributes };
+
+    }, [selectedMaterial, rawData]);
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -93,46 +99,67 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta herramienta consulta y muestra directamente los datos maestros de la tabla <strong>CuboInventarios</strong>. Use los filtros en la cabecera de la tabla para explorar la información.
+                Esta herramienta consulta los datos maestros de `CuboInventarios` y los presenta en una tabla pivotante para su análisis.
             </p>
 
-            <div className="p-4 border rounded-lg bg-gray-50 flex items-center">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end p-4 border rounded-lg bg-gray-50">
                 <button
                     onClick={handleFetchData}
                     disabled={isProcessing}
                     className="w-full h-10 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                    {isProcessing ? 'Consultando...' : "Consultar Cubo de Inventarios"}
+                    {isProcessing ? 'Consultando...' : "1. Consultar Cubo de Inventarios"}
                 </button>
+                <div>
+                     <label htmlFor="material-select" className="block text-sm font-medium text-gray-700">2. Seleccione un Material para Analizar</label>
+                     <div className="relative mt-1">
+                        <input
+                            type="text"
+                            placeholder="Filtrar materiales..."
+                            value={materialFilter}
+                            onChange={e => setMaterialFilter(e.target.value)}
+                            disabled={rawData.length === 0}
+                            className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm disabled:bg-gray-100"
+                        />
+                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <Search className="h-5 w-5 text-gray-400" />
+                        </div>
+                    </div>
+                     <select 
+                        id="material-select"
+                        value={selectedMaterial}
+                        onChange={e => setSelectedMaterial(e.target.value)}
+                        disabled={rawData.length === 0}
+                        className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100"
+                        size={5}
+                     >
+                        {uniqueMaterials.map(mat => (
+                            <option key={mat} value={mat}>{mat}</option>
+                        ))}
+                     </select>
+                </div>
             </div>
 
-            {rawData.length > 0 && (
+            {pivotedData && (
                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Datos de Inventario ({filteredItems.length} de {rawData.length} registros)</h3>
+                    <h3 className="text-lg font-semibold text-gray-800">Análisis para el Material: <span className="font-bold text-indigo-700 font-mono">{selectedMaterial}</span></h3>
                      <div className="overflow-auto max-h-[70vh] border rounded-lg">
-                        <table className="min-w-full text-xs divide-y divide-gray-200">
+                        <table className="min-w-full text-sm divide-y divide-gray-200">
                             <thead className="bg-gray-100 sticky top-0 z-10">
                                 <tr>
-                                    {tableColumns.map(col => (
-                                        <th key={col.key} className="px-2 py-2 text-left font-semibold text-gray-600">
-                                            {col.label}
-                                            <input 
-                                                type="text" 
-                                                placeholder="Filtrar..." 
-                                                value={filters[col.key] || ''}
-                                                onChange={e => handleFilterChange(col.key, e.target.value)}
-                                                className="w-full text-xs p-1 mt-1 border rounded"
-                                            />
-                                        </th>
-                                    ))}
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-20">Atributo</th>
+                                     {pivotedData.centers.map(center => (
+                                        <th key={center} className="px-3 py-2 text-center font-semibold text-gray-600">{center}</th>
+                                     ))}
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredItems.map((item, index) => (
-                                    <tr key={index} className="hover:bg-gray-50">
-                                        {tableColumns.map(col => (
-                                            <td key={col.key} className="px-2 py-1 whitespace-nowrap">
-                                                {(item as any)[col.key] ?? 'N/A'}
+                                {pivotedData.attributes.map(attr => (
+                                    <tr key={attr.name} className="hover:bg-gray-50">
+                                        <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800 sticky left-0 bg-white z-10">{attr.name}</td>
+                                        {pivotedData.centers.map(center => (
+                                            <td key={`${attr.name}-${center}`} className="px-3 py-2 text-center whitespace-nowrap text-gray-600">
+                                                {attr.values[center]}
                                             </td>
                                         ))}
                                     </tr>
