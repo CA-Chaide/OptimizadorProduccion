@@ -176,6 +176,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
+    setTransferReport([]);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -191,23 +192,23 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        // 1. Fetch provisioning rules and material names
-        addNotification('info', 'Obteniendo reglas de aprovisionamiento y nombres de materiales...');
-        const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
-            source: 'TiemposEnsamblado', 
+        // 1. Fetch provisioning rules from the new source of truth: 'CuboInventarios'
+        addNotification('info', 'Obteniendo reglas de aprovisionamiento desde Cubo de Inventarios...');
+        const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({ 
+            source: 'CuboInventarios', 
             operation: 'get_data',
-            pagination: { limit: 50000 }
+            pagination: { limit: 200000 } // Fetch a large number to get all rules
         });
         
-        // CORRECTED LOGIC: Use a composite key (product-center)
-        const provisionRules = new Map<string, {rule: 'E' | 'X' | 'F', name: string}>();
-        assemblyData.forEach(item => {
-            if (item.CodMaterial && item.Centro && item.ClaseAprovisionamiento && item.Material) {
+        // Use a composite key (product-center) to store rules for accuracy
+        const provisionRules = new Map<string, {rule: 'E' | 'X' | 'F' | null, name: string}>();
+        inventoryCubeData.forEach(item => {
+            if (item.CodMaterial && item.Centro) {
                 const materialCode = normalizeMaterialCode(item.CodMaterial);
                 const centerId = String(item.Centro).trim();
                 const compositeKey = `${materialCode}-${centerId}`;
                 
-                // This ensures each product-center combination has its specific rule stored.
+                // Store the specific rule for each product-center combination
                 if (!provisionRules.has(compositeKey)) {
                     provisionRules.set(compositeKey, { rule: item.ClaseAprovisionamiento, name: item.Material });
                 }
@@ -244,13 +245,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }
         }
         
-        addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
+        addNotification('info', `Realizando ${apiCallPromises.length} consultas de presupuesto a la API. Esto puede tardar...`);
 
         const responses = await Promise.all(apiCallPromises);
 
         addNotification('info', 'Consultas a la API completadas. Procesando resultados y aplicando reglas de negocio...');
 
-        // 3. Process results and apply business logic
+        // 3. Process results and apply business logic for transfers
         const detailedTransferReport: TransferReportItem[] = [];
 
         responses.forEach(response => {
@@ -259,12 +260,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     const materialCode = normalizeMaterialCode(item.CodMaterial);
                     const originalDemandCenter = String(item.Centro).trim();
                     const compositeKey = `${materialCode}-${originalDemandCenter}`;
+                    
+                    // Get the specific provisioning rule for THIS product in THIS center
                     const provisionInfo = provisionRules.get(compositeKey);
                     
                     let producingCenter = originalDemandCenter;
                     
+                    // If rule is 'F' (centralized manufacturing) and the demand is NOT from center 1000...
                     if (provisionInfo?.rule === 'F' && originalDemandCenter !== '1000') {
-                        producingCenter = '1000'; // Centralized manufacturing
+                        // ...then the production must happen at center 1000
+                        producingCenter = '1000'; 
+                        
+                        // And we must generate a transfer record
                         detailedTransferReport.push({
                             id: `transfer-${item.Año}-${item.Mes}-${originalDemandCenter}-${materialCode}-${index}`,
                             mes: item.Mes,
@@ -278,12 +285,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         });
                     }
 
+                    // The final sales data row has its 'centro' (center) field set to the PRODUCING center.
+                    // This is the core of the logic: shifting the demand to where it needs to be produced.
                     const newRow: SalesDataRow = {
                         id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
                         año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                         etiqueta: item.Etiqueta || 'Sin Etiqueta',
                         código: materialCode,
-                        centro: producingCenter, // The demand is shifted to the producing center
+                        centro: producingCenter, // The demand is now assigned to the correct producing center
                         unidadesProyectado: item.UnidadesProyectado,
                         dolaresProyectado: 0,
                         descripciónMaterial: item.Material,
@@ -300,7 +309,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         if (allData.length > 0) {
             setLoadedData(allData);
             onDataImported(allData);
-            addNotification('success', `Carga completada. Se importaron y procesaron ${allData.length} registros.`);
+            addNotification('success', `Carga completada. Se importaron y procesaron ${allData.length} registros. Se calcularon ${detailedTransferReport.length} transferencias.`);
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
         }
@@ -346,11 +355,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
       <div className="flex items-center space-x-3">
         <DataImportIcon />
-        <h2 className="text-2xl font-semibold text-gray-700">Cargar Presupuesto de Ventas desde API</h2>
+        <h2 className="text-2xl font-semibold text-gray-700">Cargar Presupuesto y Calcular Transferencias</h2>
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados. La lógica de negocio para materiales de fabricación centralizada (Clase 'F') se aplicará automáticamente.
+        Use los filtros para cargar el presupuesto de ventas. El sistema consultará el **Cubo de Inventarios** para aplicar las reglas de negocio de fabricación centralizada (Clase 'F') y generará automáticamente el reporte de transferencias.
       </p>
 
       {/* --- Filtros --- */}
@@ -368,7 +377,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             onChange={value => handleFilterChange('meses', value)}
         />
         <MultiSelect 
-            label="Centro(s)"
+            label="Centro(s) de Demanda"
             options={filterOptions.centros}
             selected={filters.centros}
             onChange={value => handleFilterChange('centros', value)}
@@ -387,7 +396,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 disabled={isProcessing || isAppLoading || filters.años.length === 0}
                 className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-                {isProcessing ? 'Cargando...' : 'Cargar Datos'}
+                {isProcessing ? 'Cargando...' : 'Cargar y Procesar'}
             </button>
         </div>
       </div>
@@ -395,7 +404,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
        {loadedData.length > 0 && (
          <div className="space-y-8">
             <div>
-                <h3 className="text-lg font-semibold text-gray-800">Resumen de Demanda por Etiqueta (con Lógica de Negocio Aplicada)</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Resumen de Demanda de Producción (Lógica Aplicada)</h3>
+                <p className="text-sm text-gray-600">Muestra dónde se debe producir la demanda. Note cómo la demanda de productos 'F' se ha movido al centro 1000.</p>
                 <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-4">
                     <table className="min-w-full text-xs divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0 z-10">
@@ -437,8 +447,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
             {transferReport.length > 0 && (
               <div>
-                <h3 className="text-lg font-semibold text-gray-800">Reporte Detallado de Transferencias Logísticas (Clase 'F')</h3>
-                <p className="text-sm text-gray-600">Materiales que deben ser fabricados en el centro 1000 y enviados a sus centros de demanda originales.</p>
+                <h3 className="text-lg font-semibold text-gray-800">Reporte de Transferencias Logísticas Calculadas (Clase 'F')</h3>
+                <p className="text-sm text-gray-600">Estos materiales deben ser fabricados en el centro 1000 y enviados a sus centros de demanda originales para cumplir con el presupuesto de ventas.</p>
                 <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-4">
                     <table className="min-w-full text-xs divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0 z-10">

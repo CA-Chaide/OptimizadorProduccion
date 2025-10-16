@@ -63,6 +63,7 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     let endpoint = '';
     let method: 'GET' | 'POST' = 'POST';
     let body: any = query;
+    let finalUrl = API_BASE_URL;
 
     if (query.operation === 'get_documentation') {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/documentation/';
@@ -72,11 +73,11 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/query/';
     }
     
-    const fullUrl = API_BASE_URL + endpoint;
+    finalUrl += endpoint;
 
-    console.log(`[useApiData] Querying API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
+    console.log(`[useApiData] Querying API: ${method} ${finalUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
-        const response = await fetcher(fullUrl, method, body);
+        const response = await fetcher(finalUrl, method, body);
         return response;
     } catch(e) {
         console.error('[useApiData] API Fetch failed:', e);
