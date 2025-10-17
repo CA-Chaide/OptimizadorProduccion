@@ -6,27 +6,29 @@ import { queryApi } from '@/hooks/useApiData';
 import { DatabaseZap, Search } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
 
-interface PivotedData {
-    centers: string[];
-    attributes: Array<{
-        name: string;
-        values: { [center: string]: string | number | null };
-    }>;
+
+interface FilterState {
+    CodMaterial: string;
+    Centro: string;
+    Linea: string;
+    PuestoTrabajo: string;
+    ClaseAprovisionamiento: string;
 }
+
+const initialFilterState: FilterState = {
+    CodMaterial: '', Centro: '', Linea: '', PuestoTrabajo: '', ClaseAprovisionamiento: ''
+};
 
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [rawData, setRawData] = useState<TiempoEnsambleItem[]>([]);
-    
-    const [selectedMaterial, setSelectedMaterial] = useState<string>('');
-    const [materialFilter, setMaterialFilter] = useState('');
+    const [filters, setFilters] = useState<FilterState>(initialFilterState);
 
     const handleFetchData = async () => {
         setIsProcessing(true);
         setRawData([]);
-        setSelectedMaterial('');
-        setMaterialFilter(''); // <<< FIX: Reset filter on new fetch
+        setFilters(initialFilterState);
         addNotification('info', 'Consultando CuboInventarios... Esto puede tomar un momento.');
 
         try {
@@ -50,46 +52,37 @@ export const TransferCalculatorSection: React.FC = () => {
             setIsProcessing(false);
         }
     };
-    
-    const uniqueMaterials = useMemo(() => {
-        const materialSet = new Set<string>();
-        rawData.forEach(item => {
-            if (item.CodMaterial) {
-                materialSet.add(String(item.CodMaterial));
-            }
+
+    const handleFilterChange = (field: keyof FilterState, value: string) => {
+        setFilters(prev => ({ ...prev, [field]: value }));
+    };
+
+    const filteredData = useMemo(() => {
+        if (rawData.length === 0) return [];
+        return rawData.filter(item => {
+            return (
+                String(item.CodMaterial || '').toLowerCase().includes(filters.CodMaterial.toLowerCase()) &&
+                String(item.Centro || '').toLowerCase().includes(filters.Centro.toLowerCase()) &&
+                String(item.Linea || '').toLowerCase().includes(filters.Linea.toLowerCase()) &&
+                String(item.PuestoTrabajo || '').toLowerCase().includes(filters.PuestoTrabajo.toLowerCase()) &&
+                String(item.ClaseAprovisionamiento || '').toLowerCase().includes(filters.ClaseAprovisionamiento.toLowerCase())
+            );
         });
-        const sortedMaterials = Array.from(materialSet).sort();
-        if (!materialFilter) {
-            return sortedMaterials;
-        }
-        return sortedMaterials.filter(mat => mat.toLowerCase().includes(materialFilter.toLowerCase()));
-    }, [rawData, materialFilter]);
-    
-    const pivotedData = useMemo<PivotedData | null>(() => {
-        if (!selectedMaterial) return null;
+    }, [rawData, filters]);
 
-        const materialRecords = rawData.filter(item => String(item.CodMaterial) === selectedMaterial);
-        if (materialRecords.length === 0) return null;
-
-        const centers = Array.from(new Set(materialRecords.map(rec => String(rec.Centro)))).sort();
-        
-        const attributeKeys: Array<keyof TiempoEnsambleItem> = [
-            'Linea', 'PuestoTrabajo', 'Tiempo', 'StockActual', 'StockSeguridad',
-            'StockMaximo', 'TamLoteMin', 'TamLoteMax', 'GrupoCompras', 'ClaseAprovisionamiento'
-        ];
-        
-        const attributes = attributeKeys.map(key => {
-            const values: { [center: string]: string | number | null } = {};
-            centers.forEach(center => {
-                const record = materialRecords.find(rec => String(rec.Centro) === center);
-                values[center] = record ? (record[key] ?? 'N/A') : 'N/A';
-            });
-            return { name: key, values };
-        });
-        
-        return { centers, attributes };
-
-    }, [selectedMaterial, rawData]);
+    const renderTableHeaderWithFilter = (field: keyof FilterState, label: string) => (
+        <th className="p-2 border-b border-gray-300">
+            <div className="font-semibold text-gray-600 uppercase">{label}</div>
+            <input
+                type="text"
+                value={filters[field]}
+                onChange={e => handleFilterChange(field, e.target.value)}
+                className="w-full mt-1 p-1 border border-gray-300 rounded text-xs"
+                placeholder={`Filtrar...`}
+                disabled={rawData.length === 0}
+            />
+        </th>
+    );
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -99,73 +92,58 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta herramienta consulta los datos maestros de `CuboInventarios` y los presenta en una tabla pivotante para su análisis.
+                Esta herramienta consulta los datos maestros de `CuboInventarios` y los presenta en una tabla para su análisis y filtrado.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end p-4 border rounded-lg bg-gray-50">
+            <div className="p-4 border rounded-lg bg-gray-50">
                 <button
                     onClick={handleFetchData}
                     disabled={isProcessing}
-                    className="w-full h-10 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="w-full md:w-1/3 h-10 px-6 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                    {isProcessing ? 'Consultando...' : "1. Consultar Cubo de Inventarios"}
+                    {isProcessing ? 'Consultando...' : "Consultar Cubo de Inventarios"}
                 </button>
-                <div>
-                     <label htmlFor="material-select" className="block text-sm font-medium text-gray-700">2. Seleccione un Material para Analizar</label>
-                     <div className="relative mt-1">
-                        <input
-                            type="text"
-                            placeholder="Filtrar materiales..."
-                            value={materialFilter}
-                            onChange={e => setMaterialFilter(e.target.value)}
-                            disabled={rawData.length === 0}
-                            className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm disabled:bg-gray-100"
-                        />
-                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                            <Search className="h-5 w-5 text-gray-400" />
-                        </div>
-                    </div>
-                     <select 
-                        id="material-select"
-                        value={selectedMaterial}
-                        onChange={e => setSelectedMaterial(e.target.value)}
-                        disabled={rawData.length === 0}
-                        className="mt-1 block w-full border border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100"
-                        size={5}
-                     >
-                        {uniqueMaterials.map(mat => (
-                            <option key={mat} value={mat}>{mat}</option>
-                        ))}
-                     </select>
-                </div>
             </div>
 
-            {pivotedData && (
+            {rawData.length > 0 && (
                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Análisis para el Material: <span className="font-bold text-indigo-700 font-mono">{selectedMaterial}</span></h3>
+                    <h3 className="text-lg font-semibold text-gray-800">Resultados de la Consulta ({filteredData.length} de {rawData.length} registros)</h3>
                      <div className="overflow-auto max-h-[70vh] border rounded-lg">
-                        <table className="min-w-full text-sm divide-y divide-gray-200">
+                        <table className="min-w-full text-xs divide-y divide-gray-200">
                             <thead className="bg-gray-100 sticky top-0 z-10">
                                 <tr>
-                                    <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-20">Atributo</th>
-                                     {pivotedData.centers.map(center => (
-                                        <th key={center} className="px-3 py-2 text-center font-semibold text-gray-600">{center}</th>
-                                     ))}
+                                    {renderTableHeaderWithFilter('CodMaterial', 'CodMaterial')}
+                                    {renderTableHeaderWithFilter('Centro', 'Centro')}
+                                    {renderTableHeaderWithFilter('Linea', 'Linea')}
+                                    {renderTableHeaderWithFilter('PuestoTrabajo', 'PuestoTrabajo')}
+                                    {renderTableHeaderWithFilter('ClaseAprovisionamiento', 'Clase Aprovisionamiento')}
+                                    <th className="p-2 border-b border-gray-300 font-semibold text-gray-600 uppercase">Tiempo</th>
+                                    <th className="p-2 border-b border-gray-300 font-semibold text-gray-600 uppercase">Stock Actual</th>
+                                    <th className="p-2 border-b border-gray-300 font-semibold text-gray-600 uppercase">Stock Seguridad</th>
+                                    <th className="p-2 border-b border-gray-300 font-semibold text-gray-600 uppercase">Lote Mínimo</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {pivotedData.attributes.map(attr => (
-                                    <tr key={attr.name} className="hover:bg-gray-50">
-                                        <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800 sticky left-0 bg-white z-10">{attr.name}</td>
-                                        {pivotedData.centers.map(center => (
-                                            <td key={`${attr.name}-${center}`} className="px-3 py-2 text-center whitespace-nowrap text-gray-600">
-                                                {attr.values[center]}
-                                            </td>
-                                        ))}
+                                {filteredData.slice(0, 1000).map((item, index) => ( // Limiting to 1000 rows for performance
+                                    <tr key={index} className="hover:bg-gray-50">
+                                        <td className="p-2 whitespace-nowrap">{item.CodMaterial}</td>
+                                        <td className="p-2 whitespace-nowrap">{item.Centro}</td>
+                                        <td className="p-2 whitespace-nowrap">{item.Linea}</td>
+                                        <td className="p-2 whitespace-nowrap">{item.PuestoTrabajo}</td>
+                                        <td className="p-2 whitespace-nowrap text-center font-medium">{item.ClaseAprovisionamiento}</td>
+                                        <td className="p-2 whitespace-nowrap text-right">{item.Tiempo}</td>
+                                        <td className="p-2 whitespace-nowrap text-right">{item.StockActual}</td>
+                                        <td className="p-2 whitespace-nowrap text-right">{item.StockSeguridad}</td>
+                                        <td className="p-2 whitespace-nowrap text-right">{item.TamLoteMin}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
+                        {filteredData.length > 1000 && 
+                            <div className="p-2 text-center text-sm font-semibold text-yellow-700 bg-yellow-50">
+                                Se muestran los primeros 1000 registros. Use los filtros para acotar la búsqueda.
+                            </div>
+                        }
                     </div>
                 </div>
             )}
