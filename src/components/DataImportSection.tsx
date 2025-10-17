@@ -40,9 +40,9 @@ const normalizeMaterialCode = (code: string | number): string => {
 };
 
 const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
-    // Primero normalizamos a 8 para asegurar que no hay basura al inicio
+    // Normaliza a 8 dígitos para quitar basura inicial
     const eightDigitCode = String(code).slice(-8);
-    // Luego expandimos a 18
+    // Expande a 18 dígitos anteponiendo ceros
     return eightDigitCode.padStart(18, '0');
 };
 
@@ -266,6 +266,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             inventoryCubeData.forEach(item => {
                 if (item.ClaseAprovisionamiento && item.CodMaterial && item.Centro) {
+                    // La clave es el código de 18 dígitos y el centro.
                     const key = `${String(item.CodMaterial).trim()}---${String(item.Centro).trim()}`;
                     rules.set(key, item.ClaseAprovisionamiento);
                 }
@@ -301,10 +302,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const eighteenDigitCode = normalizeMaterialCodeTo18Digits(row.código);
         
+        // Lógica de búsqueda dual para la regla de aprovisionamiento
         let rule = provisioningRules.get(`${eighteenDigitCode}---${row.centro}`);
-        
         if (!rule && row.centro !== '1000') {
             const centralizedRule = provisioningRules.get(`${eighteenDigitCode}---1000`);
+            // Solo si la regla centralizada es 'F', la aplicamos al centro de demanda.
             if (centralizedRule === 'F') {
                 rule = 'F';
             }
