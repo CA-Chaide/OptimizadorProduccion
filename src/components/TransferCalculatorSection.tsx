@@ -24,7 +24,6 @@ export const TransferCalculatorSection: React.FC = () => {
             addNotification('info', 'Consultando datos para el material 20000182...');
 
             try {
-                // El material debe tener 18 dígitos, rellenamos con ceros a la izquierda.
                 const materialCode = '20000182'.padStart(18, '0');
 
                 const queryResult = await queryApi({
