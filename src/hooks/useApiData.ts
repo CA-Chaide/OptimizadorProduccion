@@ -25,12 +25,18 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
     if (method === 'POST' && body && Object.keys(body).length > 0) {
         options.body = JSON.stringify(body);
     }
+    
+    console.log(`[Fetcher Log] ---> INICIANDO PETICIÓN...`);
+    console.log(`[Fetcher Log] URL: ${url}`);
+    console.log(`[Fetcher Log] Opciones:`, options);
 
     try {
         const res = await fetch(url, options);
 
         if (!res.ok) {
             const errorText = await res.text();
+            console.error(`[Fetcher Log] ERROR en la respuesta. Estado: ${res.status} ${res.statusText}`);
+            console.error(`[Fetcher Log] Cuerpo del error:`, errorText);
             const error: any = new Error('Ocurrió un error al cargar los datos desde la API.');
             try {
                 error.info = JSON.parse(errorText);
@@ -40,16 +46,20 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
             error.status = res.status;
             throw error;
         }
+        
+        console.log(`[Fetcher Log] Respuesta OK. Estado: ${res.status} ${res.statusText}`);
 
         if (res.status === 204 || res.headers.get('content-length') === '0') {
+             console.log('[Fetcher Log] Respuesta vacía (204 No Content). Retornando null.');
             return null;
         }
 
         const jsonResponse = await res.json();
+        console.log('[Fetcher Log] Respuesta JSON parseada:', jsonResponse);
         return jsonResponse;
 
     } catch (error) {
-        console.error('Fetcher: Capturado error de fetch', error);
+        console.error('[Fetcher Log] <--- PETICIÓN FALLIDA. Error de red o en fetch.', error);
         throw error;
     }
 };
@@ -75,12 +85,12 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     
     finalUrl += endpoint;
 
-    console.log(`[useApiData] Querying API: ${method} ${finalUrl}`, body ? JSON.stringify(body) : 'No Body');
+    console.log(`[useApiData] Preparando consulta para API: ${method} ${finalUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
         const response = await fetcher(finalUrl, method, body);
         return response;
     } catch(e) {
-        console.error('[useApiData] API Fetch failed:', e);
+        // El error ya se loguea en el fetcher. Aquí solo lo relanzamos.
         throw e;
     }
 };
