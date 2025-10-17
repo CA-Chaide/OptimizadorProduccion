@@ -298,8 +298,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             data[key].unitsByCenter[row.centro] = { E: 0, F: 0, Other: 0 };
         }
         
-        const provisionRuleKey = `${row.código}---${row.centro}`;
-        const rule = provisioningRules.get(provisionRuleKey);
+        // --- CORRECTED LOGIC ---
+        // First, check for a rule in the product's own center
+        let rule = provisioningRules.get(`${row.código}---${row.centro}`);
+        
+        // If no rule is found and the center is not 1000, check for a centralized 'F' rule in center 1000
+        if (!rule && row.centro !== '1000') {
+            const centralizedRule = provisioningRules.get(`${row.código}---1000`);
+            if (centralizedRule === 'F') {
+                rule = 'F';
+            }
+        }
         
         if (rule === 'E') {
             data[key].unitsByCenter[row.centro].E += row.unidadesProyectado;
@@ -313,7 +322,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         centerSet.add(row.centro);
     });
 
-    return { aggregatedData: data, centers: Array.from(centerSet).sort() };
+    return { aggregatedData: data, centers: Array.from(centerSet).sort((a,b) => a.localeCompare(b, undefined, {numeric: true})) };
   }, [loadedData, provisioningRules]);
 
 
@@ -415,8 +424,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                 <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
                                 {centers.map(center => (
                                    <React.Fragment key={`${etiqueta}-${center}`}>
-                                        <td className="px-2 py-2 text-right text-gray-600 border-l">{group.unitsByCenter[center]?.E.toLocaleString() || 0}</td>
-                                        <td className="px-2 py-2 text-right text-blue-700">{group.unitsByCenter[center]?.F.toLocaleString() || 0}</td>
+                                        <td className="px-2 py-2 text-right text-gray-600 border-l">{(group.unitsByCenter[center]?.E || 0).toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-blue-700">{(group.unitsByCenter[center]?.F || 0).toLocaleString()}</td>
                                    </React.Fragment>
                                 ))}
                                 <td className="px-3 py-2 text-right font-bold text-gray-900 border-l">{group.totalUnits.toLocaleString()}</td>
