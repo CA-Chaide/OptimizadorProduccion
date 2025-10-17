@@ -1,47 +1,57 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DatabaseZap, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
 
+interface ColumnInfo {
+    column_name: string;
+    friendly_name: string;
+    description: string;
+    sample_value: string;
+}
+
+interface SourceInfo {
+    description: string;
+    columns: ColumnInfo[];
+}
+
+interface Documentation {
+    [sourceName: string]: SourceInfo;
+}
+
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(true);
-    const [results, setResults] = useState<TiempoEnsambleItem[]>([]);
+    const [sourceInfo, setSourceInfo] = useState<SourceInfo | null>(null);
 
     useEffect(() => {
-        const handleFetchData = async () => {
+        const handleFetchSchema = async () => {
             setIsProcessing(true);
-            addNotification('info', 'Consultando datos para el material 20000182...');
+            addNotification('info', 'Consultando el esquema de la fuente de datos CuboInventarios...');
 
             try {
-                // El código de material se rellena con ceros a la izquierda hasta completar 18 caracteres.
-                const materialCode = '20000182'.padStart(18, '0');
-                
-                const data: TiempoEnsambleItem[] = await queryApi({
-                    source: 'CuboInventarios',
-                    operation: 'get_data',
-                    filters: { 'CodMaterial': materialCode }
+                const docData: Documentation = await queryApi({
+                    operation: 'get_documentation'
                 });
 
-                if (!data || data.length === 0) {
-                    addNotification('warning', `No se encontraron datos para el material ${materialCode}.`);
-                    setResults([]);
+                if (!docData || !docData['CuboInventarios']) {
+                    addNotification('warning', `No se encontró la documentación para la fuente de datos 'CuboInventarios'.`);
+                    setSourceInfo(null);
                 } else {
-                    setResults(data);
-                    addNotification('success', `Carga completada. Se encontraron ${data.length} registros para el material.`);
+                    setSourceInfo(docData['CuboInventarios']);
+                    addNotification('success', `Esquema cargado exitosamente.`);
                 }
 
             } catch (error) {
-                addNotification('error', `Error durante la consulta a CuboInventarios: ${(error as Error).message}`);
+                addNotification('error', `Error durante la consulta del esquema: ${(error as Error).message}`);
             } finally {
                 setIsProcessing(false);
             }
         };
 
-        handleFetchData();
+        handleFetchSchema();
     }, [addNotification]);
 
 
@@ -49,20 +59,20 @@ export const TransferCalculatorSection: React.FC = () => {
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
             <div className="flex items-center space-x-3">
                 <DatabaseZap />
-                <h2 className="text-2xl font-semibold text-gray-700">Explorador de Cubo de Inventarios</h2>
+                <h2 className="text-2xl font-semibold text-gray-700">Diccionario de Datos: CuboInventarios</h2>
             </div>
             
             <p className="text-gray-600">
-                Resultados de la consulta para el material específico <span className="font-mono bg-gray-100 p-1 rounded">20000182</span>.
+                A continuación se listan todos los campos disponibles en la fuente de datos <span className="font-mono bg-gray-100 p-1 rounded">CuboInventarios</span>, según la documentación de la API.
             </p>
 
             <div className="border rounded-lg overflow-hidden">
                 <table className="min-w-full text-sm divide-y divide-gray-200">
                     <thead className="bg-gray-100">
                         <tr>
-                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
-                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
-                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase Aprovisionamiento</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Nombre de Columna (API)</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Valor de Ejemplo</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -71,22 +81,22 @@ export const TransferCalculatorSection: React.FC = () => {
                                 <td colSpan={3} className="text-center p-8">
                                     <div className="flex justify-center items-center gap-2 text-gray-500">
                                         <Loader2 className="w-5 h-5 animate-spin" />
-                                        <span>Consultando datos...</span>
+                                        <span>Consultando esquema...</span>
                                     </div>
                                 </td>
                             </tr>
-                        ) : results.length > 0 ? (
-                            results.map((item, index) => (
-                                <tr key={index} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 whitespace-nowrap font-mono">{item.CodMaterial}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap">{item.Centro}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap font-medium">{item.ClaseAprovisionamiento}</td>
+                        ) : sourceInfo && sourceInfo.columns.length > 0 ? (
+                            sourceInfo.columns.map((col) => (
+                                <tr key={col.column_name} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 whitespace-nowrap font-mono text-indigo-700">{col.column_name}</td>
+                                    <td className="px-4 py-3 whitespace-normal">{col.description}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap font-mono text-gray-500">{col.sample_value || 'N/A'}</td>
                                 </tr>
                             ))
                         ) : (
                              <tr>
                                 <td colSpan={3} className="text-center p-8 text-gray-500">
-                                    No se encontraron resultados para la consulta.
+                                    No se encontró el esquema para esta fuente de datos.
                                 </td>
                             </tr>
                         )}
