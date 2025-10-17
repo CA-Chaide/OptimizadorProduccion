@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
@@ -150,7 +149,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         const year = new Date().getFullYear();
         dispatch({ type: 'SET_YEAR', payload: year });
-        dispatch({ type: 'SET_ACTIVE_VIEW', payload: ActiveView.TRANSFER_CALCULATOR });
+        dispatch({ type: 'SET_ACTIVE_VIEW', payload: ActiveView.DATA_IMPORT });
     }, []);
 
     const addNotification = useCallback((type: NotificationMessage['type'], text: string, errors: string[] = []) => {
