@@ -5,53 +5,53 @@ import { queryApi } from '@/hooks/useApiData';
 import { DatabaseZap, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
 
-interface ColumnInfo {
-    column_name: string;
-    friendly_name: string;
-    description: string;
-    sample_value: string;
-}
-
-interface SourceInfo {
-    description: string;
-    columns: ColumnInfo[];
-}
-
-interface Documentation {
-    [sourceName: string]: SourceInfo;
+interface InventoryRecord {
+    CodMaterial: string;
+    ClaseAprovisionamiento: 'E' | 'F' | 'X' | null;
+    Centro: string;
 }
 
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(true);
-    const [sourceInfo, setSourceInfo] = useState<SourceInfo | null>(null);
+    const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const handleFetchSchema = async () => {
+        const fetchInventoryData = async () => {
             setIsProcessing(true);
-            addNotification('info', 'Consultando el esquema de la fuente de datos CuboInventarios...');
+            setError(null);
+            addNotification('info', 'Consultando datos para el material 20000182...');
 
             try {
-                const docData: Documentation = await queryApi({
-                    operation: 'get_documentation'
+                // El material debe tener 18 dígitos, rellenamos con ceros a la izquierda.
+                const materialCode = '20000182'.padStart(18, '0');
+
+                const queryResult = await queryApi({
+                    source: 'CuboInventarios',
+                    operation: 'get_data',
+                    filters: { 'CodMaterial': materialCode },
+                    columns: ['CodMaterial', 'ClaseAprovisionamiento', 'Centro']
                 });
 
-                if (!docData || !docData['CuboInventarios']) {
-                    addNotification('warning', `No se encontró la documentación para la fuente de datos 'CuboInventarios'.`);
-                    setSourceInfo(null);
+                if (queryResult && queryResult.length > 0) {
+                    setInventoryData(queryResult);
+                    addNotification('success', `Se encontraron ${queryResult.length} registros para el material.`);
                 } else {
-                    setSourceInfo(docData['CuboInventarios']);
-                    addNotification('success', `Esquema cargado exitosamente.`);
+                    setInventoryData([]);
+                    addNotification('warning', 'No se encontraron registros para el material especificado.');
                 }
 
-            } catch (error) {
-                addNotification('error', `Error durante la consulta del esquema: ${(error as Error).message}`);
+            } catch (err) {
+                const errorMessage = `Error durante la consulta: ${(err as Error).message}`;
+                setError(errorMessage);
+                addNotification('error', errorMessage);
             } finally {
                 setIsProcessing(false);
             }
         };
 
-        handleFetchSchema();
+        fetchInventoryData();
     }, [addNotification]);
 
 
@@ -59,20 +59,20 @@ export const TransferCalculatorSection: React.FC = () => {
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
             <div className="flex items-center space-x-3">
                 <DatabaseZap />
-                <h2 className="text-2xl font-semibold text-gray-700">Diccionario de Datos: CuboInventarios</h2>
+                <h2 className="text-2xl font-semibold text-gray-700">Explorador de Cubo de Inventarios</h2>
             </div>
             
             <p className="text-gray-600">
-                A continuación se listan todos los campos disponibles en la fuente de datos <span className="font-mono bg-gray-100 p-1 rounded">CuboInventarios</span>, según la documentación de la API.
+                Mostrando resultados para el material <span className="font-mono bg-gray-100 p-1 rounded">20000182</span>.
             </p>
 
             <div className="border rounded-lg overflow-hidden">
                 <table className="min-w-full text-sm divide-y divide-gray-200">
                     <thead className="bg-gray-100">
                         <tr>
-                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Nombre de Columna (API)</th>
-                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
-                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Valor de Ejemplo</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase de Aprovisionamiento</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -81,22 +81,28 @@ export const TransferCalculatorSection: React.FC = () => {
                                 <td colSpan={3} className="text-center p-8">
                                     <div className="flex justify-center items-center gap-2 text-gray-500">
                                         <Loader2 className="w-5 h-5 animate-spin" />
-                                        <span>Consultando esquema...</span>
+                                        <span>Consultando...</span>
                                     </div>
                                 </td>
                             </tr>
-                        ) : sourceInfo && sourceInfo.columns.length > 0 ? (
-                            sourceInfo.columns.map((col) => (
-                                <tr key={col.column_name} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 whitespace-nowrap font-mono text-indigo-700">{col.column_name}</td>
-                                    <td className="px-4 py-3 whitespace-normal">{col.description}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap font-mono text-gray-500">{col.sample_value || 'N/A'}</td>
+                        ) : error ? (
+                            <tr>
+                                <td colSpan={3} className="text-center p-8 text-red-500">
+                                    {error}
+                                </td>
+                            </tr>
+                        ) : inventoryData.length > 0 ? (
+                            inventoryData.map((item, index) => (
+                                <tr key={`${item.CodMaterial}-${item.Centro}-${index}`} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 whitespace-nowrap font-mono text-indigo-700">{item.CodMaterial}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap">{item.Centro}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap">{item.ClaseAprovisionamiento || 'N/D'}</td>
                                 </tr>
                             ))
                         ) : (
                              <tr>
                                 <td colSpan={3} className="text-center p-8 text-gray-500">
-                                    No se encontró el esquema para esta fuente de datos.
+                                    No se encontraron datos para el material especificado.
                                 </td>
                             </tr>
                         )}
