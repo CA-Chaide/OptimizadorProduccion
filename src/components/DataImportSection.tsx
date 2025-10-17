@@ -40,8 +40,10 @@ const normalizeMaterialCode = (code: string | number): string => {
 };
 
 const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
-    const codeStr = String(code).slice(-8);
-    return codeStr.padStart(18, '0');
+    // Primero normalizamos a 8 para asegurar que no hay basura al inicio
+    const eightDigitCode = String(code).slice(-8);
+    // Luego expandimos a 18
+    return eightDigitCode.padStart(18, '0');
 };
 
 
@@ -264,8 +266,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             inventoryCubeData.forEach(item => {
                 if (item.ClaseAprovisionamiento && item.CodMaterial && item.Centro) {
-                    const normalizedCode = normalizeMaterialCode(item.CodMaterial);
-                    const key = `${normalizedCode}---${String(item.Centro).trim()}`;
+                    const key = `${String(item.CodMaterial).trim()}---${String(item.Centro).trim()}`;
                     rules.set(key, item.ClaseAprovisionamiento);
                 }
             });
@@ -298,13 +299,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             data[key].unitsByCenter[row.centro] = { E: 0, F: 0, Other: 0 };
         }
         
-        // --- CORRECTED LOGIC ---
-        // First, check for a rule in the product's own center
-        let rule = provisioningRules.get(`${row.código}---${row.centro}`);
+        const eighteenDigitCode = normalizeMaterialCodeTo18Digits(row.código);
         
-        // If no rule is found and the center is not 1000, check for a centralized 'F' rule in center 1000
+        let rule = provisioningRules.get(`${eighteenDigitCode}---${row.centro}`);
+        
         if (!rule && row.centro !== '1000') {
-            const centralizedRule = provisioningRules.get(`${row.código}---1000`);
+            const centralizedRule = provisioningRules.get(`${eighteenDigitCode}---1000`);
             if (centralizedRule === 'F') {
                 rule = 'F';
             }
