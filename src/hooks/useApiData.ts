@@ -21,14 +21,14 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
         },
     };
 
-    // Para POST, solo añadir body si se proporciona explícitamente y no está vacío.
-    if (method === 'POST' && body && Object.keys(body).length > 0) {
+    if (method === 'POST' && body) {
         options.body = JSON.stringify(body);
     }
     
     console.log(`[Fetcher Log] ---> INICIANDO PETICIÓN...`);
     console.log(`[Fetcher Log] URL: ${url}`);
-    console.log(`[Fetcher Log] Opciones:`, options);
+    console.log(`[Fetcher Log] Opciones:`, { method: options.method, headers: options.headers, body: body ? JSON.stringify(body) : 'No Body' });
+
 
     try {
         const res = await fetch(url, options);
@@ -73,7 +73,6 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     let endpoint = '';
     let method: 'GET' | 'POST' = 'POST';
     let body: any = query;
-    let finalUrl = API_BASE_URL;
 
     if (query.operation === 'get_documentation') {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/documentation/';
@@ -82,12 +81,11 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     } else {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/query/';
     }
-    
-    finalUrl += endpoint;
 
-    console.log(`[useApiData] Preparando consulta para API: ${method} ${finalUrl}`, body ? JSON.stringify(body) : 'No Body');
+    const fullUrl = API_BASE_URL + endpoint;
+    console.log(`[useApiData] Preparando consulta para API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
-        const response = await fetcher(finalUrl, method, body);
+        const response = await fetcher(fullUrl, method, body);
         return response;
     } catch(e) {
         // El error ya se loguea en el fetcher. Aquí solo lo relanzamos.
