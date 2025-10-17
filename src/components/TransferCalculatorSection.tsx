@@ -14,11 +14,11 @@ export const TransferCalculatorSection: React.FC = () => {
     useEffect(() => {
         const handleFetchData = async () => {
             setIsProcessing(true);
-            addNotification('info', 'Consultando datos para el material 20000181...');
+            addNotification('info', 'Consultando datos para el material 20000182...');
 
             try {
                 // El código de material se rellena con ceros a la izquierda hasta completar 18 caracteres.
-                const materialCode = '20000181'.padStart(18, '0');
+                const materialCode = '20000182'.padStart(18, '0');
                 
                 const data: TiempoEnsambleItem[] = await queryApi({
                     source: 'CuboInventarios',
@@ -53,7 +53,7 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Resultados de la consulta para el material específico <span className="font-mono bg-gray-100 p-1 rounded">20000181</span>.
+                Resultados de la consulta para el material específico <span className="font-mono bg-gray-100 p-1 rounded">20000182</span>.
             </p>
 
             <div className="border rounded-lg overflow-hidden">
