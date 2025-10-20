@@ -22,7 +22,7 @@ export const TransferCalculatorSection: React.FC = () => {
     const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    const handleFetchData = useCallback(async () => {
+    const handleFetchData = async () => {
         if (!materialToQuery) {
             addNotification('warning', 'Por favor, ingrese un código de material para consultar.');
             return;
@@ -59,7 +59,7 @@ export const TransferCalculatorSection: React.FC = () => {
         } finally {
             setIsProcessing(false);
         }
-    }, [addNotification, materialToQuery]);
+    };
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
