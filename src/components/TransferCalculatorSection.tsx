@@ -26,10 +26,10 @@ export const TransferCalculatorSection: React.FC = () => {
     const fetchInventoryRules = useCallback(async () => {
         setIsProcessing(true);
         setError(null);
-        addNotification('info', 'Consultando reglas de aprovisionamiento para el material 20000282...');
+        const materialCode = '20000182';
+        addNotification('info', `Consultando reglas de aprovisionamiento para el material ${materialCode}...`);
 
         try {
-            const materialCode = '20000282';
             const paddedMaterialCode = normalizeMaterialCodeTo18Digits(materialCode);
             
             const rulesData: InventoryRule[] = await queryApi({
@@ -69,7 +69,7 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta pantalla muestra las reglas de aprovisionamiento (`ClaseAprovisionam`) para el material de ejemplo **20000282** en los diferentes centros, consultando directamente la tabla `CuboInventarios`.
+                Esta pantalla muestra las reglas de aprovisionamiento (`ClaseAprovisionam`) para el material de ejemplo **20000182** en los diferentes centros, consultando directamente la tabla `CuboInventarios`.
             </p>
 
             <div className="border rounded-lg overflow-auto max-h-[70vh]">
