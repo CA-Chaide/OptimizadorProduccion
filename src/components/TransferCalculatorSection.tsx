@@ -65,16 +65,16 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Mostrando las columnas <span className="font-mono bg-gray-100 p-1 rounded">CodMaterial</span>, <span className="font-mono bg-gray-100 p-1 rounded">Centro</span>, y <span className="font-mono bg-gray-100 p-1 rounded">ClaseAprovisionamiento</span> desde la fuente de datos <span className="font-mono bg-gray-100 p-1 rounded">CuboInventarios</span>.
+                Mostrando las columnas <span className="font-mono bg-gray-100 p-1 rounded">Material</span>, <span className="font-mono bg-gray-100 p-1 rounded">Centro</span>, y <span className="font-mono bg-gray-100 p-1 rounded">ClaseAprovisionam</span> desde la fuente de datos <span className="font-mono bg-gray-100 p-1 rounded">CuboInventarios</span>.
             </p>
 
             <div className="border rounded-lg overflow-auto max-h-[70vh]">
                 <table className="min-w-full text-xs divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0">
                         <tr>
-                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">CodMaterial</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
                             <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
-                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">ClaseAprovisionamiento</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase de Aprovisionamiento</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -96,9 +96,9 @@ export const TransferCalculatorSection: React.FC = () => {
                         ) : inventoryData.length > 0 ? (
                             inventoryData.map((item, index) => (
                                 <tr key={index} className="hover:bg-gray-50">
-                                    <td className="px-3 py-2 whitespace-nowrap font-mono">{String(item.CodMaterial ?? 'N/D')}</td>
+                                    <td className="px-3 py-2 whitespace-nowrap font-mono">{String(item.Material ?? 'N/D')}</td>
                                     <td className="px-3 py-2 whitespace-nowrap font-mono">{String(item.Centro ?? 'N/D')}</td>
-                                    <td className="px-3 py-2 whitespace-nowrap font-mono">{String(item.ClaseAprovisionamiento ?? 'N/D')}</td>
+                                    <td className="px-3 py-2 whitespace-nowrap font-mono">{String(item.ClaseAprovisionam ?? 'N/D')}</td>
                                 </tr>
                             ))
                         ) : (
