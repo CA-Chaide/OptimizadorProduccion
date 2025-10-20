@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { queryApi } from '@/hooks/useApiData';
 import { DatabaseZap, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
@@ -11,46 +11,95 @@ interface InventoryRecord {
     Centro: string;
 }
 
+const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
+    return String(code).padStart(18, '0');
+};
+
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification } = useAppContext();
-    const [isProcessing, setIsProcessing] = useState<boolean>(true);
-    const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
+    const [isProcessing, setIsProcessing] = useState<boolean>(false);
+    const [displayData, setDisplayData] = useState<InventoryRecord[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const fetchInventoryData = async () => {
-            setIsProcessing(true);
-            setError(null);
-            addNotification('info', 'Consultando datos para el material 20000182...');
+    const handleFetchData = useCallback(async () => {
+        setIsProcessing(true);
+        setError(null);
+        setDisplayData([]);
+        addNotification('info', 'Consultando Cubo de Inventarios para el material 20000182...');
 
-            try {
-                const materialCode = '20000182'.padStart(18, '0');
+        try {
+            const materialCode = normalizeMaterialCodeTo18Digits('20000182');
 
-                const queryResult = await queryApi({
-                    source: 'CuboInventarios',
-                    operation: 'get_data',
-                    filters: { 'CodMaterial': materialCode },
-                    columns: ['CodMaterial', 'ClaseAprovisionamiento', 'Centro']
-                });
+            // 1. Obtener todos los registros del material desde la API
+            const queryResult: InventoryRecord[] = await queryApi({
+                source: 'CuboInventarios',
+                operation: 'get_data',
+                filters: { 'CodMaterial': materialCode },
+                columns: ['CodMaterial', 'ClaseAprovisionamiento', 'Centro']
+            });
 
-                if (queryResult && queryResult.length > 0) {
-                    setInventoryData(queryResult);
-                    addNotification('success', `Se encontraron ${queryResult.length} registros para el material.`);
-                } else {
-                    setInventoryData([]);
-                    addNotification('warning', 'No se encontraron registros para el material especificado.');
-                }
-
-            } catch (err) {
-                const errorMessage = `Error durante la consulta: ${(err as Error).message}`;
-                setError(errorMessage);
-                addNotification('error', errorMessage);
-            } finally {
+            if (!queryResult || queryResult.length === 0) {
+                addNotification('warning', 'No se encontraron registros para el material especificado.');
                 setIsProcessing(false);
+                return;
             }
-        };
 
-        fetchInventoryData();
+            // 2. Procesar los datos para aplicar la lógica de fallback de 'F'
+            const rulesMap = new Map<string, InventoryRecord>();
+            const allCenters = new Set<string>();
+
+            queryResult.forEach(record => {
+                const key = `${record.Centro}`;
+                rulesMap.set(key, record);
+                allCenters.add(record.Centro);
+            });
+            
+            // Si el centro 1000 no está, lo añadimos para asegurar la lógica de fallback
+            if (!allCenters.has('1000')) {
+                allCenters.add('1000');
+            }
+
+            const ruleForCenter1000 = rulesMap.get('1000');
+            const isCentralized = ruleForCenter1000?.ClaseAprovisionamiento === 'F';
+
+            const processedData: InventoryRecord[] = [];
+            
+            allCenters.forEach(center => {
+                let record = rulesMap.get(center);
+
+                if (!record) {
+                    // Si no hay un registro para este centro
+                    if (isCentralized && center !== '1000') {
+                        // Y la regla del centro 1000 es 'F', creamos un registro virtual con 'F'
+                        processedData.push({
+                            CodMaterial: materialCode,
+                            Centro: center,
+                            ClaseAprovisionamiento: 'F'
+                        });
+                    } else {
+                         // Si no, lo mostramos como indefinido
+                         processedData.push({
+                            CodMaterial: materialCode,
+                            Centro: center,
+                            ClaseAprovisionamiento: null
+                        });
+                    }
+                } else {
+                    // Si hay un registro, lo usamos tal cual
+                    processedData.push(record);
+                }
+            });
+
+            setDisplayData(processedData.sort((a,b) => a.Centro.localeCompare(b.Centro)));
+            addNotification('success', `Consulta completada. Se encontraron y procesaron ${processedData.length} registros.`);
+
+        } catch (err) {
+            const errorMessage = `Error durante la consulta: ${(err as Error).message}`;
+            setError(errorMessage);
+            addNotification('error', errorMessage);
+        } finally {
+            setIsProcessing(false);
+        }
     }, [addNotification]);
 
 
@@ -62,8 +111,27 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Mostrando resultados para el material <span className="font-mono bg-gray-100 p-1 rounded">20000182</span>.
+                Esta herramienta consulta la <span className="font-mono bg-gray-100 p-1 rounded">ClaseAprovisionamiento</span> para un material específico en todos sus centros, aplicando la lógica de fabricación centralizada ('F') desde el centro 1000 si es necesario.
             </p>
+
+            <div className="flex items-center space-x-4 p-4 border rounded-lg bg-gray-50">
+                <div className="flex-grow">
+                    <label className="block text-sm font-medium text-gray-700">Material a consultar</label>
+                    <input 
+                        type="text" 
+                        readOnly 
+                        value="20000182"
+                        className="w-full mt-1 border-gray-300 bg-gray-100 rounded-md shadow-sm py-2 px-3 sm:text-sm"
+                    />
+                </div>
+                <button
+                    onClick={handleFetchData}
+                    disabled={isProcessing}
+                    className="self-end h-10 px-6 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
+                >
+                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Consultar'}
+                </button>
+            </div>
 
             <div className="border rounded-lg overflow-hidden">
                 <table className="min-w-full text-sm divide-y divide-gray-200">
@@ -75,7 +143,7 @@ export const TransferCalculatorSection: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {isProcessing ? (
+                        {isProcessing && !displayData.length ? (
                             <tr>
                                 <td colSpan={3} className="text-center p-8">
                                     <div className="flex justify-center items-center gap-2 text-gray-500">
@@ -90,8 +158,8 @@ export const TransferCalculatorSection: React.FC = () => {
                                     {error}
                                 </td>
                             </tr>
-                        ) : inventoryData.length > 0 ? (
-                            inventoryData.map((item, index) => (
+                        ) : displayData.length > 0 ? (
+                            displayData.map((item, index) => (
                                 <tr key={`${item.CodMaterial}-${item.Centro}-${index}`} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 whitespace-nowrap font-mono text-indigo-700">{item.CodMaterial}</td>
                                     <td className="px-4 py-3 whitespace-nowrap">{item.Centro}</td>
@@ -101,7 +169,7 @@ export const TransferCalculatorSection: React.FC = () => {
                         ) : (
                              <tr>
                                 <td colSpan={3} className="text-center p-8 text-gray-500">
-                                    No se encontraron datos para el material especificado.
+                                    Presione "Consultar" para buscar los datos.
                                 </td>
                             </tr>
                         )}
