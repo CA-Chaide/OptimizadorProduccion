@@ -30,7 +30,6 @@ export const TransferCalculatorSection: React.FC = () => {
         try {
             const materialCode = normalizeMaterialCodeTo18Digits('20000182');
 
-            // 1. Obtener todos los registros del material desde la API
             const queryResult: InventoryRecord[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
@@ -44,48 +43,42 @@ export const TransferCalculatorSection: React.FC = () => {
                 return;
             }
 
-            // 2. Procesar los datos para aplicar la lógica de fallback de 'F'
-            const rulesMap = new Map<string, InventoryRecord>();
-            const allCenters = new Set<string>();
-
-            queryResult.forEach(record => {
-                const key = `${record.Centro}`;
-                rulesMap.set(key, record);
-                allCenters.add(record.Centro);
-            });
-            
-            // Si el centro 1000 no está, lo añadimos para asegurar la lógica de fallback
-            if (!allCenters.has('1000')) {
-                allCenters.add('1000');
+            const allCentersWithData = new Set(queryResult.map(r => r.Centro));
+            if (!allCentersWithData.has('1000')) {
+                // To ensure fallback logic works, we need info for center 1000
+                const center1000Data: InventoryRecord[] = await queryApi({
+                    source: 'CuboInventarios',
+                    operation: 'get_data',
+                    filters: { 'CodMaterial': materialCode, 'Centro': '1000' },
+                    columns: ['CodMaterial', 'ClaseAprovisionamiento', 'Centro']
+                });
+                if(center1000Data.length > 0) {
+                    queryResult.push(...center1000Data);
+                }
             }
 
-            const ruleForCenter1000 = rulesMap.get('1000');
+            const uniqueResults = Array.from(new Map(queryResult.map(item => [`${item.Centro}-${item.CodMaterial}`, item])).values());
+
+            const ruleForCenter1000 = uniqueResults.find(r => r.Centro === '1000');
             const isCentralized = ruleForCenter1000?.ClaseAprovisionamiento === 'F';
+            
+            const allKnownCenters = new Set(uniqueResults.map(r => r.Centro));
+            // Manually add centers if they don't appear in the results, for full visibility
+            if (!allKnownCenters.has('1000')) allKnownCenters.add('1000');
+            if (!allKnownCenters.has('2000')) allKnownCenters.add('2000');
 
             const processedData: InventoryRecord[] = [];
             
-            allCenters.forEach(center => {
-                let record = rulesMap.get(center);
+            allKnownCenters.forEach(center => {
+                let record = uniqueResults.find(r => r.Centro === center);
 
                 if (!record) {
-                    // Si no hay un registro para este centro
-                    if (isCentralized && center !== '1000') {
-                        // Y la regla del centro 1000 es 'F', creamos un registro virtual con 'F'
-                        processedData.push({
-                            CodMaterial: materialCode,
-                            Centro: center,
-                            ClaseAprovisionamiento: 'F'
-                        });
-                    } else {
-                         // Si no, lo mostramos como indefinido
-                         processedData.push({
-                            CodMaterial: materialCode,
-                            Centro: center,
-                            ClaseAprovisionamiento: null
-                        });
-                    }
+                    processedData.push({
+                        CodMaterial: materialCode,
+                        Centro: center,
+                        ClaseAprovisionamiento: isCentralized ? 'F' : null
+                    });
                 } else {
-                    // Si hay un registro, lo usamos tal cual
                     processedData.push(record);
                 }
             });
@@ -160,9 +153,9 @@ export const TransferCalculatorSection: React.FC = () => {
                             </tr>
                         ) : displayData.length > 0 ? (
                             displayData.map((item, index) => (
-                                <tr key={`${item.CodMaterial}-${item.Centro}-${index}`} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 whitespace-nowrap font-mono text-indigo-700">{item.CodMaterial}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap">{item.Centro}</td>
+                                <tr key={`${item.Centro}-${index}`} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 whitespace-nowrap font-mono text-indigo-700">{item.CodMaterial || 'N/D'}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap">{item.Centro || 'N/D'}</td>
                                     <td className="px-4 py-3 whitespace-nowrap">{item.ClaseAprovisionamiento || 'N/D'}</td>
                                 </tr>
                             ))
