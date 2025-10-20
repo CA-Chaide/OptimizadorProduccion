@@ -12,6 +12,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;

@@ -258,6 +258,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const uniqueMaterialCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => sale.código)));
             const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
 
+            addNotification('info', `Consultando reglas de aprovisionamiento para ${uniqueMaterialCodes.length} materiales...`);
+
             const inventoryCubeData: any[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
@@ -280,6 +282,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 
                 let aprovisionamiento = rules.get(ruleKey);
                 
+                // Fallback logic for centralized production ('F')
                 if (!aprovisionamiento && center !== '1000') {
                     const fallbackRuleKey = `${materialCode18}---1000`;
                     const fallbackRule = rules.get(fallbackRuleKey);
