@@ -259,16 +259,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
-                filters: { 'CodMaterial': paddedMaterialCodes },
+                filters: { 'Material': paddedMaterialCodes },
                 pagination: { limit: 500000 }
             });
             
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             inventoryCubeData.forEach(item => {
-                if (item.ClaseAprovisionamiento && item.CodMaterial && item.Centro) {
-                    // La clave es el código de 18 dígitos y el centro.
-                    const key = `${String(item.CodMaterial).trim()}---${String(item.Centro).trim()}`;
-                    rules.set(key, item.ClaseAprovisionamiento);
+                if (item.ClaseAprovisionam && item.Material && item.Centro) {
+                    const key = `${String(item.Material).trim()}---${String(item.Centro).trim()}`;
+                    rules.set(key, item.ClaseAprovisionam);
                 }
             });
             setProvisioningRules(rules);
@@ -302,11 +301,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const eighteenDigitCode = normalizeMaterialCodeTo18Digits(row.código);
         
-        // Lógica de búsqueda dual para la regla de aprovisionamiento
         let rule = provisioningRules.get(`${eighteenDigitCode}---${row.centro}`);
         if (!rule && row.centro !== '1000') {
             const centralizedRule = provisioningRules.get(`${eighteenDigitCode}---1000`);
-            // Solo si la regla centralizada es 'F', la aplicamos al centro de demanda.
             if (centralizedRule === 'F') {
                 rule = 'F';
             }

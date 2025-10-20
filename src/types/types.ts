@@ -10,6 +10,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -494,6 +495,7 @@ export interface PresupuestoItem {
 
 export interface TiempoEnsambleItem {
   CodMaterial: string;
+  Material?: string; // Adding this as it seems to be used
   Centro: string;
   Linea: string;
   PuestoTrabajo: string;
@@ -504,7 +506,7 @@ export interface TiempoEnsambleItem {
   TamLoteMin: number;
   TamLoteMax: number | null;
   GrupoCompras: string;
-  ClaseAprovisionamiento: 'E' | 'X' | 'F' | null;
+  ClaseAprovisionam: 'E' | 'X' | 'F' | null;
 }
 
 import { ActiveView } from '@/constants/constants';

@@ -27,7 +27,7 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
     
     console.log(`[Fetcher Log] ---> INICIANDO PETICIÓN...`);
     console.log(`[Fetcher Log] URL: ${url}`);
-    console.log(`[Fetcher Log] Opciones:`, { method: options.method, headers: options.headers, body: body ? JSON.stringify(body) : 'No Body' });
+    console.log(`[Fetcher Log] Opciones:`, { method: options.method, headers: options.headers, body: body ? body : 'No Body' });
 
 
     try {
@@ -83,7 +83,7 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     }
 
     const fullUrl = API_BASE_URL + endpoint;
-    console.log(`[useApiData] Preparando consulta para API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
+    console.log(`[useApiData] Preparando consulta para API: ${method} ${fullUrl}`, body ? body : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
         return response;
