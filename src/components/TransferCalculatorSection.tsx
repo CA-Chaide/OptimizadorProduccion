@@ -14,14 +14,15 @@ export const TransferCalculatorSection: React.FC = () => {
     const [isProcessing, setIsProcessing] = useState<boolean>(true);
     const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [headers, setHeaders] = useState<string[]>([]);
+
+    const columnsToShow = ['CodMaterial', 'Centro', 'ClaseAprovisionamiento'];
 
     useEffect(() => {
         const handleFetchData = async () => {
             setIsProcessing(true);
             setError(null);
             setInventoryData([]);
-            addNotification('info', `Consultando todos los registros de Cubo de Inventarios...`);
+            addNotification('info', `Consultando registros de Cubo de Inventarios...`);
 
             try {
                 const queryResult: InventoryRecord[] = await queryApi({
@@ -36,10 +37,6 @@ export const TransferCalculatorSection: React.FC = () => {
                     return;
                 }
                 
-                // Extraer cabeceras del primer objeto
-                const firstItemHeaders = Object.keys(queryResult[0]);
-                setHeaders(firstItemHeaders);
-
                 setInventoryData(queryResult);
                 addNotification('success', `Consulta completada. Se encontraron ${queryResult.length} registros.`);
 
@@ -63,24 +60,22 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Mostrando todos los registros encontrados en la fuente de datos <span className="font-mono bg-gray-100 p-1 rounded">CuboInventarios</span>.
+                Mostrando las columnas <span className="font-mono bg-gray-100 p-1 rounded">CodMaterial</span>, <span className="font-mono bg-gray-100 p-1 rounded">Centro</span>, y <span className="font-mono bg-gray-100 p-1 rounded">ClaseAprovisionamiento</span> de la fuente de datos <span className="font-mono bg-gray-100 p-1 rounded">CuboInventarios</span>.
             </p>
 
             <div className="border rounded-lg overflow-auto max-h-[70vh]">
                 <table className="min-w-full text-xs divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0">
                         <tr>
-                            {headers.map(header => (
-                                <th key={header} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">
-                                    {header}
-                                </th>
-                            ))}
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase de Aprovisionamiento</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {isProcessing ? (
                             <tr>
-                                <td colSpan={headers.length || 1} className="text-center p-8">
+                                <td colSpan={3} className="text-center p-8">
                                     <div className="flex justify-center items-center gap-2 text-gray-500">
                                         <Loader2 className="w-5 h-5 animate-spin" />
                                         <span>Consultando...</span>
@@ -89,23 +84,21 @@ export const TransferCalculatorSection: React.FC = () => {
                             </tr>
                         ) : error ? (
                             <tr>
-                                <td colSpan={headers.length || 1} className="text-center p-8 text-red-500">
+                                <td colSpan={3} className="text-center p-8 text-red-500">
                                     {error}
                                 </td>
                             </tr>
                         ) : inventoryData.length > 0 ? (
                             inventoryData.map((item, index) => (
                                 <tr key={index} className="hover:bg-gray-50">
-                                    {headers.map(header => (
-                                        <td key={header} className="px-3 py-2 whitespace-nowrap">
-                                            {String(item[header] ?? 'N/D')}
-                                        </td>
-                                    ))}
+                                    <td className="px-3 py-2 whitespace-nowrap font-mono">{item.CodMaterial || 'N/D'}</td>
+                                    <td className="px-3 py-2 whitespace-nowrap">{item.Centro || 'N/D'}</td>
+                                    <td className="px-3 py-2 whitespace-nowrap">{item.ClaseAprovisionamiento || 'N/D'}</td>
                                 </tr>
                             ))
                         ) : (
                              <tr>
-                                <td colSpan={headers.length || 1} className="text-center p-8 text-gray-500">
+                                <td colSpan={3} className="text-center p-8 text-gray-500">
                                     No se encontraron datos para mostrar.
                                 </td>
                             </tr>
