@@ -24,9 +24,11 @@ interface TransferNeed {
     unitsToTransfer: number;
 }
 
-// New data structure for master-detail view
+// Estructura para agrupar por etiqueta y mes
 interface GroupedData {
-    [etiqueta: string]: {
+    [groupKey: string]: { // groupKey will be "Etiqueta---Mes"
+        etiqueta: string;
+        mes: number;
         items: SalesDataRow[];
         totalUnits: number;
     };
@@ -229,7 +231,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         responses.forEach(response => {
             if (response && response.length > 0) {
                  const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.CodMaterial}-${index}`,
                     año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                     etiqueta: item.Etiqueta || 'Sin Etiqueta',
                     código: normalizeMaterialCode(item.CodMaterial),
@@ -314,14 +316,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const groupedData = useMemo(() => {
         const groups: GroupedData = {};
         loadedData.forEach(row => {
-            const key = row.etiqueta || 'Sin Etiqueta';
-            if (!groups[key]) {
-                groups[key] = { items: [], totalUnits: 0 };
+            const groupKey = `${row.etiqueta || 'Sin Etiqueta'}---${row.mes}`;
+            if (!groups[groupKey]) {
+                groups[groupKey] = { etiqueta: row.etiqueta || 'Sin Etiqueta', mes: row.mes, items: [], totalUnits: 0 };
             }
-            groups[key].items.push(row);
-            groups[key].totalUnits += row.unidadesProyectado;
+            groups[groupKey].items.push(row);
+            groups[groupKey].totalUnits += row.unidadesProyectado;
         });
-        return groups;
+        return Object.values(groups).sort((a, b) => {
+            if (a.etiqueta < b.etiqueta) return -1;
+            if (a.etiqueta > b.etiqueta) return 1;
+            return a.mes - b.mes;
+        });
     }, [loadedData]);
 
     const grandTotal = useMemo(() => {
@@ -382,38 +388,42 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
        {loadedData.length > 0 && (
          <div className="space-y-8">
             <div>
-                <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Datos de Ventas Cargados</h3>
                 <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-2">
                     <table className="min-w-full text-xs divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0 z-10">
                             <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-2/12">Etiqueta</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/12">Mes</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/12">Código</th>
                                 <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/12">Centro</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-2/12">Código</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-8/12">Descripción Material</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-6/12">Descripción Material</th>
                                 <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider w-1/12">Unidades</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                           {Object.entries(groupedData).sort(([a], [b]) => a.localeCompare(b)).map(([etiqueta, group]) => (
-                                <React.Fragment key={etiqueta}>
-                                    <tr className="bg-gray-200 sticky top-0">
-                                        <td colSpan={3} className="px-3 py-2 font-bold text-gray-800">{etiqueta}</td>
-                                        <td className="px-3 py-2 text-right font-bold text-gray-800">{group.totalUnits.toLocaleString()}</td>
-                                    </tr>
-                                    {group.items.sort((a,b) => a.descripciónMaterial.localeCompare(b.descripciónMaterial)).map(item => (
+                           {groupedData.map((group, groupIndex) => (
+                                <React.Fragment key={groupIndex}>
+                                    {group.items.sort((a,b) => a.descripciónMaterial.localeCompare(b.descripciónMaterial)).map((item, itemIndex) => (
                                         <tr key={item.id}>
-                                            <td className="px-3 py-2 whitespace-nowrap text-gray-500">{item.centro}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-gray-800">{itemIndex === 0 ? group.etiqueta : ''}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-gray-500">{itemIndex === 0 ? MONTH_NAMES[group.mes - 1] : ''}</td>
                                             <td className="px-3 py-2 whitespace-nowrap font-mono text-gray-700">{item.código}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-gray-500">{item.centro}</td>
                                             <td className="px-3 py-2 whitespace-nowrap text-gray-800">{item.descripciónMaterial}</td>
                                             <td className="px-3 py-2 text-right font-medium text-gray-900">{item.unidadesProyectado.toLocaleString()}</td>
                                         </tr>
                                     ))}
+                                    <tr className="bg-gray-200 font-bold">
+                                        <td colSpan={5} className="px-3 py-2 text-right text-gray-800">{group.etiqueta} - {MONTH_NAMES[group.mes - 1]} Total</td>
+                                        <td className="px-3 py-2 text-right text-gray-800">{group.totalUnits.toLocaleString()}</td>
+                                    </tr>
                                 </React.Fragment>
                             ))}
                         </tbody>
                          <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
                             <tr>
-                                <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL GENERAL</th>
+                                <th colSpan={5} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL GENERAL</th>
                                 <th className="px-3 py-2 text-right font-bold uppercase tracking-wider">
                                     {grandTotal.toLocaleString()}
                                 </th>
