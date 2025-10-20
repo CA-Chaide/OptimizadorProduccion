@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { queryApi } from '@/hooks/useApiData';
 import { DatabaseZap, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
@@ -17,18 +17,24 @@ const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
 
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification } = useAppContext();
+    const [materialToQuery, setMaterialToQuery] = useState<string>('20000182');
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     const handleFetchData = useCallback(async () => {
+        if (!materialToQuery) {
+            addNotification('warning', 'Por favor, ingrese un código de material para consultar.');
+            return;
+        }
+
         setIsProcessing(true);
         setError(null);
         setInventoryData([]);
-        addNotification('info', 'Consultando Cubo de Inventarios para el material 20000182...');
+        addNotification('info', `Consultando Cubo de Inventarios para el material ${materialToQuery}...`);
 
         try {
-            const materialCode = normalizeMaterialCodeTo18Digits('20000182');
+            const materialCode = normalizeMaterialCodeTo18Digits(materialToQuery);
 
             const queryResult: InventoryRecord[] = await queryApi({
                 source: 'CuboInventarios',
@@ -38,34 +44,13 @@ export const TransferCalculatorSection: React.FC = () => {
             });
 
             if (!queryResult || queryResult.length === 0) {
-                addNotification('warning', 'No se encontraron registros para el material especificado.');
+                addNotification('warning', `No se encontraron registros para el material ${materialToQuery}.`);
                 setIsProcessing(false);
                 return;
             }
             
-            const allKnownCenters = new Set(queryResult.map(r => r.Centro));
-            ['1000', '2000'].forEach(c => allKnownCenters.add(c));
-
-            const ruleForCenter1000 = queryResult.find(r => r.Centro === '1000');
-            const isCentralized = ruleForCenter1000?.ClaseAprovisionamiento === 'F';
-            
-            const processedData: InventoryRecord[] = [];
-            allKnownCenters.forEach(center => {
-                let record = queryResult.find(r => r.Centro === center);
-                if (!record) {
-                    processedData.push({
-                        CodMaterial: materialCode,
-                        Centro: center,
-                        ClaseAprovisionamiento: isCentralized ? 'F' : null
-                    });
-                } else {
-                    processedData.push(record);
-                }
-            });
-
-
-            setInventoryData(processedData.sort((a, b) => a.Centro.localeCompare(b.Centro)));
-            addNotification('success', `Consulta completada. Se procesaron ${processedData.length} registros.`);
+            setInventoryData(queryResult.sort((a, b) => a.Centro.localeCompare(b.Centro)));
+            addNotification('success', `Consulta completada. Se encontraron ${queryResult.length} registros.`);
 
         } catch (err) {
             const errorMessage = `Error durante la consulta: ${(err as Error).message}`;
@@ -74,7 +59,7 @@ export const TransferCalculatorSection: React.FC = () => {
         } finally {
             setIsProcessing(false);
         }
-    }, [addNotification]);
+    }, [addNotification, materialToQuery]);
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -84,17 +69,19 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Esta herramienta consulta la <span className="font-mono bg-gray-100 p-1 rounded">ClaseAprovisionamiento</span> para un material específico en todos sus centros, aplicando la lógica de fabricación centralizada ('F') desde el centro 1000 si es necesario.
+                Esta herramienta consulta la <span className="font-mono bg-gray-100 p-1 rounded">ClaseAprovisionamiento</span> para un material específico en todos sus centros registrados.
             </p>
 
             <div className="flex items-center space-x-4 p-4 border rounded-lg bg-gray-50">
                 <div className="flex-grow">
-                    <label className="block text-sm font-medium text-gray-700">Material a consultar</label>
+                    <label htmlFor="material-input" className="block text-sm font-medium text-gray-700">Material a consultar</label>
                     <input 
+                        id="material-input"
                         type="text" 
-                        readOnly 
-                        value="20000182"
-                        className="w-full mt-1 border-gray-300 bg-gray-100 rounded-md shadow-sm py-2 px-3 sm:text-sm"
+                        value={materialToQuery}
+                        onChange={(e) => setMaterialToQuery(e.target.value)}
+                        className="w-full mt-1 border-gray-300 bg-white rounded-md shadow-sm py-2 px-3 sm:text-sm"
+                        placeholder="Ingrese código de material"
                     />
                 </div>
                 <button
@@ -142,7 +129,7 @@ export const TransferCalculatorSection: React.FC = () => {
                         ) : (
                              <tr>
                                 <td colSpan={3} className="text-center p-8 text-gray-500">
-                                    Presione "Consultar" para buscar los datos.
+                                    Ingrese un material y presione "Consultar" para buscar los datos.
                                 </td>
                             </tr>
                         )}
