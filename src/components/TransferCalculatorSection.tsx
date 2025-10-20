@@ -31,16 +31,12 @@ export const TransferCalculatorSection: React.FC = () => {
     const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (salesData.length > 0) {
-            // Recalculate if sales data changes
-            calculateTransferNeeds();
-        } else {
+    const calculateTransferNeeds = useCallback(async () => {
+        if (salesData.length === 0) {
             setTransferNeeds([]);
+            return;
         }
-    }, [salesData]); // Depend on salesData from context
 
-    const calculateTransferNeeds = async () => {
         setIsProcessing(true);
         setError(null);
         addNotification('info', 'Calculando necesidades de traslado basadas en los datos de ventas cargados...');
@@ -113,7 +109,11 @@ export const TransferCalculatorSection: React.FC = () => {
         } finally {
             setIsProcessing(false);
         }
-    };
+    }, [salesData, addNotification]);
+    
+    useEffect(() => {
+        calculateTransferNeeds();
+    }, [calculateTransferNeeds]);
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
