@@ -18,13 +18,13 @@ const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
 export const TransferCalculatorSection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
-    const [displayData, setDisplayData] = useState<InventoryRecord[]>([]);
+    const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     const handleFetchData = useCallback(async () => {
         setIsProcessing(true);
         setError(null);
-        setDisplayData([]);
+        setInventoryData([]);
         addNotification('info', 'Consultando Cubo de Inventarios para el material 20000182...');
 
         try {
@@ -42,36 +42,16 @@ export const TransferCalculatorSection: React.FC = () => {
                 setIsProcessing(false);
                 return;
             }
+            
+            const allKnownCenters = new Set(queryResult.map(r => r.Centro));
+            ['1000', '2000'].forEach(c => allKnownCenters.add(c));
 
-            const allCentersWithData = new Set(queryResult.map(r => r.Centro));
-            if (!allCentersWithData.has('1000')) {
-                // To ensure fallback logic works, we need info for center 1000
-                const center1000Data: InventoryRecord[] = await queryApi({
-                    source: 'CuboInventarios',
-                    operation: 'get_data',
-                    filters: { 'CodMaterial': materialCode, 'Centro': '1000' },
-                    columns: ['CodMaterial', 'ClaseAprovisionamiento', 'Centro']
-                });
-                if(center1000Data.length > 0) {
-                    queryResult.push(...center1000Data);
-                }
-            }
-
-            const uniqueResults = Array.from(new Map(queryResult.map(item => [`${item.Centro}-${item.CodMaterial}`, item])).values());
-
-            const ruleForCenter1000 = uniqueResults.find(r => r.Centro === '1000');
+            const ruleForCenter1000 = queryResult.find(r => r.Centro === '1000');
             const isCentralized = ruleForCenter1000?.ClaseAprovisionamiento === 'F';
             
-            const allKnownCenters = new Set(uniqueResults.map(r => r.Centro));
-            // Manually add centers if they don't appear in the results, for full visibility
-            if (!allKnownCenters.has('1000')) allKnownCenters.add('1000');
-            if (!allKnownCenters.has('2000')) allKnownCenters.add('2000');
-
             const processedData: InventoryRecord[] = [];
-            
             allKnownCenters.forEach(center => {
-                let record = uniqueResults.find(r => r.Centro === center);
-
+                let record = queryResult.find(r => r.Centro === center);
                 if (!record) {
                     processedData.push({
                         CodMaterial: materialCode,
@@ -83,8 +63,9 @@ export const TransferCalculatorSection: React.FC = () => {
                 }
             });
 
-            setDisplayData(processedData.sort((a,b) => a.Centro.localeCompare(b.Centro)));
-            addNotification('success', `Consulta completada. Se encontraron y procesaron ${processedData.length} registros.`);
+
+            setInventoryData(processedData.sort((a, b) => a.Centro.localeCompare(b.Centro)));
+            addNotification('success', `Consulta completada. Se procesaron ${processedData.length} registros.`);
 
         } catch (err) {
             const errorMessage = `Error durante la consulta: ${(err as Error).message}`;
@@ -94,7 +75,6 @@ export const TransferCalculatorSection: React.FC = () => {
             setIsProcessing(false);
         }
     }, [addNotification]);
-
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -136,7 +116,7 @@ export const TransferCalculatorSection: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {isProcessing && !displayData.length ? (
+                        {isProcessing ? (
                             <tr>
                                 <td colSpan={3} className="text-center p-8">
                                     <div className="flex justify-center items-center gap-2 text-gray-500">
@@ -151,8 +131,8 @@ export const TransferCalculatorSection: React.FC = () => {
                                     {error}
                                 </td>
                             </tr>
-                        ) : displayData.length > 0 ? (
-                            displayData.map((item, index) => (
+                        ) : inventoryData.length > 0 ? (
+                            inventoryData.map((item, index) => (
                                 <tr key={`${item.Centro}-${index}`} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 whitespace-nowrap font-mono text-indigo-700">{item.CodMaterial || 'N/D'}</td>
                                     <td className="px-4 py-3 whitespace-nowrap">{item.Centro || 'N/D'}</td>
