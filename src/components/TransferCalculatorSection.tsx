@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { queryApi } from '@/hooks/useApiData';
 import { Truck, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
