@@ -32,90 +32,88 @@ export const TransferCalculatorSection: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const calculateTransferNeeds = async () => {
-            if (salesData.length === 0) {
-                setTransferNeeds([]);
-                return;
-            }
+        if (salesData.length > 0) {
+            // Recalculate if sales data changes
+            calculateTransferNeeds();
+        } else {
+            setTransferNeeds([]);
+        }
+    }, [salesData]); // Depend on salesData from context
 
-            setIsProcessing(true);
-            setError(null);
-            addNotification('info', 'Calculando necesidades de traslado basadas en los datos de ventas cargados...');
+    const calculateTransferNeeds = async () => {
+        setIsProcessing(true);
+        setError(null);
+        addNotification('info', 'Calculando necesidades de traslado basadas en los datos de ventas cargados...');
 
-            try {
-                // 1. Obtener códigos de material únicos de los datos de ventas
-                const uniqueMaterialCodes = Array.from(new Set(salesData.map(sale => sale.código)));
-                const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
+        try {
+            // 1. Obtener códigos de material únicos de los datos de ventas
+            const uniqueMaterialCodes = Array.from(new Set(salesData.map(sale => sale.código)));
+            const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
 
-                // 2. Consultar CuboInventarios para todas las reglas de aprovisionamiento necesarias
-                const inventoryRules: InventoryRule[] = await queryApi({
-                    source: 'CuboInventarios',
-                    operation: 'get_data',
-                    filters: { 'Material': paddedMaterialCodes },
-                    columns: ['Material', 'Centro', 'ClaseAprovisionam'],
-                    pagination: { limit: 500000 }
-                });
+            // 2. Consultar CuboInventarios para todas las reglas de aprovisionamiento necesarias
+            const inventoryRules: any[] = await queryApi({
+                source: 'CuboInventarios',
+                operation: 'get_data',
+                filters: { 'Material': paddedMaterialCodes },
+                columns: ['Material', 'Centro', 'ClaseAprovisionam'],
+                pagination: { limit: 500000 }
+            });
+            
+            const rulesMap = new Map<string, 'E' | 'X' | 'F'>();
+            inventoryRules.forEach(rule => {
+                if (rule.Material && rule.Centro && rule.ClaseAprovisionam) {
+                    const key = `${String(rule.Material).trim()}---${String(rule.Centro).trim()}`;
+                    rulesMap.set(key, rule.ClaseAprovisionam);
+                }
+            });
+
+            // 3. Filtrar ventas que requieren traslado
+            const salesRequiringTransfer = salesData.filter(sale => {
+                const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
+                const center = String(sale.centro).trim();
                 
-                const rulesMap = new Map<string, 'E' | 'X' | 'F'>();
-                inventoryRules.forEach(rule => {
-                    if (rule.Material && rule.Centro && rule.ClaseAprovisionam) {
-                        const key = `${String(rule.Material).trim()}---${String(rule.Centro).trim()}`;
-                        rulesMap.set(key, rule.ClaseAprovisionam);
-                    }
-                });
-
-                // 3. Filtrar ventas que requieren traslado
-                const salesRequiringTransfer = salesData.filter(sale => {
-                    const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
-                    const center = String(sale.centro).trim();
-                    
-                    // La regla solo aplica si el centro de demanda NO es 1000
-                    if (center === '1000') {
-                        return false;
-                    }
-
-                    // La regla de aprovisionamiento debe ser 'F' para el centro 1000
-                    const ruleKeyForCenter1000 = `${materialCode18}---1000`;
-                    const rule = rulesMap.get(ruleKeyForCenter1000);
-                    
-                    return rule === 'F';
-                });
-
-                // 4. Agregar las unidades a trasladar
-                const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
-
-                salesRequiringTransfer.forEach(sale => {
-                    const productId = sale.código;
-                    if (!aggregatedNeeds[productId]) {
-                        aggregatedNeeds[productId] = {
-                            productId: productId,
-                            productName: sale.descripciónMaterial,
-                            unitsToTransfer: 0
-                        };
-                    }
-                    aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
-                });
-                
-                const results = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
-                setTransferNeeds(results);
-
-                if (results.length > 0) {
-                    addNotification('success', `Cálculo completado. Se identificaron ${results.length} productos que requieren traslados.`);
-                } else {
-                    addNotification('info', 'No se identificaron necesidades de traslado con los datos de ventas actuales.');
+                if (center === '1000') {
+                    return false;
                 }
 
-            } catch (err) {
-                const errorMessage = `Error durante el cálculo de traslados: ${(err as Error).message}`;
-                setError(errorMessage);
-                addNotification('error', errorMessage);
-            } finally {
-                setIsProcessing(false);
-            }
-        };
+                const ruleKeyForCenter1000 = `${materialCode18}---1000`;
+                const rule = rulesMap.get(ruleKeyForCenter1000);
+                
+                return rule === 'F';
+            });
 
-        calculateTransferNeeds();
-    }, [salesData, addNotification]);
+            // 4. Agregar las unidades a trasladar
+            const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
+
+            salesRequiringTransfer.forEach(sale => {
+                const productId = sale.código;
+                if (!aggregatedNeeds[productId]) {
+                    aggregatedNeeds[productId] = {
+                        productId: productId,
+                        productName: sale.descripciónMaterial,
+                        unitsToTransfer: 0
+                    };
+                }
+                aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
+            });
+            
+            const results = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
+            setTransferNeeds(results);
+
+            if (results.length > 0) {
+                addNotification('success', `Cálculo completado. Se identificaron ${results.length} productos que requieren traslados.`);
+            } else {
+                addNotification('info', 'No se identificaron necesidades de traslado con los datos de ventas actuales.');
+            }
+
+        } catch (err) {
+            const errorMessage = `Error durante el cálculo de traslados: ${(err as Error).message}`;
+            setError(errorMessage);
+            addNotification('error', errorMessage);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -125,7 +123,7 @@ export const TransferCalculatorSection: React.FC = () => {
             </div>
             
             <p className="text-gray-600">
-                Este reporte analiza los datos de ventas cargados y muestra la cantidad total de unidades por producto que deben ser fabricadas en el centro 1000 y trasladadas a otros centros de demanda (Aprovisionamiento 'F').
+                Este reporte analiza los datos de ventas cargados en la pestaña "Importar Ventas" y muestra la cantidad total de unidades por producto que deben ser fabricadas en el centro 1000 y trasladadas a otros centros de demanda (Aprovisionamiento 'F').
             </p>
 
             <div className="border rounded-lg overflow-auto max-h-[70vh]">

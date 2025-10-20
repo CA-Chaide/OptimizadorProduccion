@@ -9,7 +9,7 @@ import { useAppContext } from '@/context/AppProvider';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, ChevronsUpDown, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
@@ -18,7 +18,11 @@ interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
 }
 
-type GroupByOption = 'sector' | 'etiqueta' | 'material';
+interface TransferNeed {
+    productId: string;
+    productName: string;
+    unitsToTransfer: number;
+}
 
 interface AggregatedData {
   [key: string]: {
@@ -149,6 +153,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [provisioningRules, setProvisioningRules] = useState<Map<string, 'E' | 'X' | 'F'>>(new Map());
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -180,6 +185,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setIsProcessing(true);
     setLoadedData([]);
     setProvisioningRules(new Map());
+    setTransferNeeds([]);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -271,7 +277,37 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }
             });
             setProvisioningRules(rules);
-            addNotification('info', `Se obtuvieron ${rules.size} reglas de aprovisionamiento de CuboInventarios.`);
+            addNotification('info', `Se obtuvieron ${rules.size} reglas de aprovisionamiento de CuboInventarios. Calculando traslados...`);
+
+            // --- CÁLCULO DE TRASLADOS ---
+            const salesRequiringTransfer = allData.filter(sale => {
+                const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
+                const center = String(sale.centro).trim();
+                
+                if (center === '1000') return false; // Traslados son desde 1000 a OTROS centros
+
+                const ruleKeyForCenter1000 = `${materialCode18}---1000`;
+                const rule = rules.get(ruleKeyForCenter1000);
+                
+                return rule === 'F';
+            });
+
+            const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
+            salesRequiringTransfer.forEach(sale => {
+                const productId = sale.código;
+                if (!aggregatedNeeds[productId]) {
+                    aggregatedNeeds[productId] = {
+                        productId: productId,
+                        productName: sale.descripciónMaterial,
+                        unitsToTransfer: 0
+                    };
+                }
+                aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
+            });
+            
+            const transferResults = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
+            setTransferNeeds(transferResults);
+            addNotification('success', `Cálculo de traslados completado. Se identificaron ${transferResults.length} productos.`);
 
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
@@ -396,61 +432,93 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
 
        {loadedData.length > 0 && (
-         <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta y Aprovisionamiento</h3>
-            <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
-                <table className="min-w-full text-xs divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                        <tr>
-                            <th rowSpan={2} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 align-bottom">Etiqueta</th>
-                            {centers.map(center => (
-                                <th key={center} colSpan={2} className="px-3 py-2 text-center font-semibold text-gray-600 uppercase tracking-wider border-b border-l">{center}</th>
-                            ))}
-                            <th rowSpan={2} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100 align-bottom border-l">Total Unidades</th>
-                        </tr>
-                        <tr>
-                            {centers.map(center => (
-                                <React.Fragment key={`${center}-sub`}>
-                                    <th className="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider border-l">Aprov. E</th>
-                                    <th className="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider">Aprov. F</th>
-                                </React.Fragment>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                       {Object.entries(aggregatedData).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)).map(([etiqueta, group]) => (
-                            <tr key={etiqueta}>
-                                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
+         <div className="space-y-8">
+            <div>
+                <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta y Aprovisionamiento</h3>
+                <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-2">
+                    <table className="min-w-full text-xs divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0 z-10">
+                            <tr>
+                                <th rowSpan={2} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 align-bottom">Etiqueta</th>
                                 {centers.map(center => (
-                                   <React.Fragment key={`${etiqueta}-${center}`}>
-                                        <td className="px-2 py-2 text-right text-gray-600 border-l">{(group.unitsByCenter[center]?.E || 0).toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-blue-700">{(group.unitsByCenter[center]?.F || 0).toLocaleString()}</td>
-                                   </React.Fragment>
+                                    <th key={center} colSpan={2} className="px-3 py-2 text-center font-semibold text-gray-600 uppercase tracking-wider border-b border-l">{center}</th>
                                 ))}
-                                <td className="px-3 py-2 text-right font-bold text-gray-900 border-l">{group.totalUnits.toLocaleString()}</td>
+                                <th rowSpan={2} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100 align-bottom border-l">Total Unidades</th>
                             </tr>
-                        ))}
-                    </tbody>
-                    <tfoot className="bg-gray-200 sticky bottom-0 z-10">
-                        <tr>
-                            <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
-                             {centers.map(center => (
-                                <React.Fragment key={`total-${center}`}>
-                                    <th className="px-2 py-2 text-right font-bold text-gray-700 uppercase tracking-wider border-l">
-                                        {(footerTotals[center]?.E || 0).toLocaleString()}
-                                    </th>
-                                    <th className="px-2 py-2 text-right font-bold text-blue-800 uppercase tracking-wider">
-                                        {(footerTotals[center]?.F || 0).toLocaleString()}
-                                    </th>
-                                </React.Fragment>
+                            <tr>
+                                {centers.map(center => (
+                                    <React.Fragment key={`${center}-sub`}>
+                                        <th className="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider border-l">Aprov. E</th>
+                                        <th className="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider">Aprov. F</th>
+                                    </React.Fragment>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                           {Object.entries(aggregatedData).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)).map(([etiqueta, group]) => (
+                                <tr key={etiqueta}>
+                                    <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
+                                    {centers.map(center => (
+                                       <React.Fragment key={`${etiqueta}-${center}`}>
+                                            <td className="px-2 py-2 text-right text-gray-600 border-l">{(group.unitsByCenter[center]?.E || 0).toLocaleString()}</td>
+                                            <td className="px-2 py-2 text-right text-blue-700">{(group.unitsByCenter[center]?.F || 0).toLocaleString()}</td>
+                                       </React.Fragment>
+                                    ))}
+                                    <td className="px-3 py-2 text-right font-bold text-gray-900 border-l">{group.totalUnits.toLocaleString()}</td>
+                                </tr>
                             ))}
-                             <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider border-l">
-                                {footerTotals.grandTotal.toLocaleString()}
-                            </th>
-                        </tr>
-                    </tfoot>
-                </table>
+                        </tbody>
+                        <tfoot className="bg-gray-200 sticky bottom-0 z-10">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
+                                 {centers.map(center => (
+                                    <React.Fragment key={`total-${center}`}>
+                                        <th className="px-2 py-2 text-right font-bold text-gray-700 uppercase tracking-wider border-l">
+                                            {(footerTotals[center]?.E || 0).toLocaleString()}
+                                        </th>
+                                        <th className="px-2 py-2 text-right font-bold text-blue-800 uppercase tracking-wider">
+                                            {(footerTotals[center]?.F || 0).toLocaleString()}
+                                        </th>
+                                    </React.Fragment>
+                                ))}
+                                 <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider border-l">
+                                    {footerTotals.grandTotal.toLocaleString()}
+                                </th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
+
+            {transferNeeds.length > 0 && (
+                <div>
+                    <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                        <Truck className="w-5 h-5"/>
+                        Reporte de Necesidades de Traslado (Aprov. 'F')
+                    </h3>
+                    <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-2">
+                        <table className="min-w-full text-sm divide-y divide-gray-200">
+                             <thead className="bg-gray-100 sticky top-0">
+                                <tr>
+                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código Material</th>
+                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                                    <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades a Trasladar</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {transferNeeds.map((item) => (
+                                    <tr key={item.productId} className="hover:bg-gray-50">
+                                        <td className="px-4 py-2 whitespace-nowrap font-mono">{item.productId}</td>
+                                        <td className="px-4 py-2 whitespace-nowrap">{item.productName}</td>
+                                        <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-700">{item.unitsToTransfer.toLocaleString()}</td>
+                                    </tr>
+                                ))
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
       )}
     </div>
