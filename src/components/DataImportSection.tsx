@@ -313,7 +313,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             
             const transferResults = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
             setTransferNeeds(transferResults);
-            addNotification('success', `Cálculo de traslados completado. Se identificaron ${transferResults.length} productos.`);
 
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
@@ -480,3 +479,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
+
+    
