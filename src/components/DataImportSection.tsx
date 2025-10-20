@@ -27,6 +27,7 @@ interface TransferNeed {
 interface AggregatedData {
   [key: string]: { // The key is the 'etiqueta'
     totalUnits: number;
+    unitsByCenter: { [centerName: string]: number };
     dataRows: SalesDataRow[];
   };
 }
@@ -144,7 +145,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   });
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
-  const [provisioningRules, setProvisioningRules] = useState<Map<string, 'E' | 'X' | 'F'>>(new Map());
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
   
@@ -177,7 +177,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
-    setProvisioningRules(new Map());
     setTransferNeeds([]);
     
     if (filters.años.length === 0) {
@@ -270,15 +269,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     rules.set(key, item.ClaseAprovisionam);
                 }
             });
-            setProvisioningRules(rules);
-            addNotification('info', `Se obtuvieron ${rules.size} reglas de aprovisionamiento de CuboInventarios. Calculando traslados...`);
 
-            // --- CÁLCULO DE TRASLADOS ---
+            addNotification('info', `Se obtuvieron ${rules.size} reglas de aprovisionamiento. Calculando traslados...`);
+
             const salesRequiringTransfer = allData.filter(sale => {
                 const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
                 const center = String(sale.centro).trim();
                 
-                if (center === '1000') return false; // Traslados son desde 1000 a OTROS centros
+                if (center === '1000') return false; 
 
                 const ruleKeyForCenter1000 = `${materialCode18}---1000`;
                 const rule = rules.get(ruleKeyForCenter1000);
@@ -314,24 +312,36 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   };
 
-  const { aggregatedData } = useMemo(() => {
+  const { aggregatedData, centers } = useMemo(() => {
     const data: AggregatedData = {};
+    const centerSet = new Set<string>();
 
     loadedData.forEach(row => {
-      const key = row.etiqueta || 'Sin Etiqueta';
+      const key = row.etiqueta;
       if (!data[key]) {
-        data[key] = { totalUnits: 0, dataRows: [] };
+        data[key] = { totalUnits: 0, unitsByCenter: {}, dataRows: [] };
       }
       data[key].totalUnits += row.unidadesProyectado;
+      data[key].unitsByCenter[row.centro] = (data[key].unitsByCenter[row.centro] || 0) + row.unidadesProyectado;
       data[key].dataRows.push(row);
+      centerSet.add(row.centro);
     });
 
-    Object.values(data).forEach(group => {
-      group.dataRows.sort((a, b) => a.código.localeCompare(b.código));
-    });
-
-    return { aggregatedData: data };
+    return { aggregatedData: data, centers: Array.from(centerSet).sort() };
   }, [loadedData]);
+
+  const footerTotals = useMemo(() => {
+    const totals: { [centerName: string]: number } = {};
+    let grandTotal = 0;
+    Object.values(aggregatedData).forEach(group => {
+      Object.entries(group.unitsByCenter).forEach(([center, units]) => {
+        totals[center] = (totals[center] || 0) + units;
+      });
+      grandTotal += group.totalUnits;
+    });
+    return { ...totals, grandTotal };
+  }, [aggregatedData]);
+
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -386,37 +396,42 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
        {loadedData.length > 0 && (
          <div className="space-y-8">
             <div>
-                <h3 className="text-lg font-semibold text-gray-800">Datos Cargados Agrupados por Etiqueta</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta</h3>
                 <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-2">
                     <table className="min-w-full text-xs divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0 z-10">
                             <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Etiqueta</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
-                                <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">Etiqueta</th>
+                                {centers.map(center => (
+                                    <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">{center}</th>
+                                ))}
+                                <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Unidades</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                           {Object.entries(aggregatedData).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)).map(([etiqueta, group]) => (
-                                <React.Fragment key={etiqueta}>
-                                    <tr className="bg-gray-50 font-semibold">
-                                        <td colSpan={4} className="px-3 py-2 text-sm text-gray-800">{etiqueta}</td>
-                                        <td className="px-3 py-2 text-right text-sm text-gray-800">{group.totalUnits.toLocaleString()}</td>
-                                    </tr>
-                                    {group.dataRows.map((row, index) => (
-                                        <tr key={`${etiqueta}-${row.id}-${index}`}>
-                                            <td></td>
-                                            <td className="px-3 py-1 font-mono text-gray-700">{row.código}</td>
-                                            <td className="px-3 py-1 text-gray-700">{row.centro}</td>
-                                            <td className="px-3 py-1 text-gray-700">{row.descripciónMaterial}</td>
-                                            <td className="px-3 py-1 text-right font-medium text-gray-800">{row.unidadesProyectado.toLocaleString()}</td>
-                                        </tr>
+                           {Object.entries(aggregatedData).map(([etiqueta, group]) => (
+                                <tr key={etiqueta}>
+                                    <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
+                                    {centers.map(center => (
+                                        <td key={`${etiqueta}-${center}`} className="px-3 py-2 text-right text-gray-600">{group.unitsByCenter[center]?.toLocaleString() || 0}</td>
                                     ))}
-                                </React.Fragment>
+                                    <td className="px-3 py-2 text-right font-bold text-gray-900">{group.totalUnits.toLocaleString()}</td>
+                                </tr>
                             ))}
                         </tbody>
+                        <tfoot className="bg-gray-200 sticky bottom-0 z-10">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
+                                 {centers.map(center => (
+                                    <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
+                                        {(footerTotals[center] || 0).toLocaleString()}
+                                    </th>
+                                ))}
+                                 <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
+                                    {footerTotals.grandTotal.toLocaleString()}
+                                </th>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>
