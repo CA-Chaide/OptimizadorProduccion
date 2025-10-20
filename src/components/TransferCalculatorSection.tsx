@@ -1,116 +1,140 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { queryApi } from '@/hooks/useApiData';
-import { DatabaseZap, Loader2, Search } from 'lucide-react';
+import { Truck, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
+import { SalesDataRow } from '@/types/types';
 
-interface InventoryRecord {
-    [key: string]: any;
+// Tipado para la data de inventario de la API
+interface InventoryRule {
+    Material: string;
+    Centro: string;
+    ClaseAprovisionam: 'E' | 'X' | 'F' | null;
 }
 
+// Tipado para el resultado agregado que mostraremos en la tabla
+interface TransferNeed {
+    productId: string;
+    productName: string;
+    unitsToTransfer: number;
+}
+
+const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
+    const eightDigitCode = String(code).slice(-8);
+    return eightDigitCode.padStart(18, '0');
+};
+
 export const TransferCalculatorSection: React.FC = () => {
-    const { addNotification } = useAppContext();
+    const { salesData, addNotification } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
-    const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
+    const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [materialInput, setMaterialInput] = useState<string>('20000182');
 
-    const handleFetchData = async () => {
-        if (!materialInput.trim()) {
-            addNotification('warning', 'Por favor, ingrese un código de material.');
-            return;
-        }
+    useEffect(() => {
+        const calculateTransferNeeds = async () => {
+            if (salesData.length === 0) {
+                setTransferNeeds([]);
+                return;
+            }
 
-        setIsProcessing(true);
-        setError(null);
-        setInventoryData([]);
+            setIsProcessing(true);
+            setError(null);
+            addNotification('info', 'Calculando necesidades de traslado basadas en los datos de ventas cargados...');
 
-        // Rellenar con ceros a la izquierda para completar 18 caracteres
-        const paddedMaterialCode = materialInput.trim().padStart(18, '0');
+            try {
+                // 1. Obtener códigos de material únicos de los datos de ventas
+                const uniqueMaterialCodes = Array.from(new Set(salesData.map(sale => sale.código)));
+                const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
 
-        const query = {
-            source: 'CuboInventarios',
-            operation: 'get_data',
-            filters: { 'Material': paddedMaterialCode },
-            // Especificamos las columnas para ser eficientes
-            columns: ['Material', 'Centro', 'ClaseAprovisionam'],
+                // 2. Consultar CuboInventarios para todas las reglas de aprovisionamiento necesarias
+                const inventoryRules: InventoryRule[] = await queryApi({
+                    source: 'CuboInventarios',
+                    operation: 'get_data',
+                    filters: { 'Material': paddedMaterialCodes },
+                    columns: ['Material', 'Centro', 'ClaseAprovisionam'],
+                    pagination: { limit: 500000 }
+                });
+                
+                const rulesMap = new Map<string, 'E' | 'X' | 'F'>();
+                inventoryRules.forEach(rule => {
+                    if (rule.Material && rule.Centro && rule.ClaseAprovisionam) {
+                        const key = `${String(rule.Material).trim()}---${String(rule.Centro).trim()}`;
+                        rulesMap.set(key, rule.ClaseAprovisionam);
+                    }
+                });
+
+                // 3. Filtrar ventas que requieren traslado
+                const salesRequiringTransfer = salesData.filter(sale => {
+                    const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
+                    const center = String(sale.centro).trim();
+                    
+                    // La regla solo aplica si el centro de demanda NO es 1000
+                    if (center === '1000') {
+                        return false;
+                    }
+
+                    // La regla de aprovisionamiento debe ser 'F' para el centro 1000
+                    const ruleKeyForCenter1000 = `${materialCode18}---1000`;
+                    const rule = rulesMap.get(ruleKeyForCenter1000);
+                    
+                    return rule === 'F';
+                });
+
+                // 4. Agregar las unidades a trasladar
+                const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
+
+                salesRequiringTransfer.forEach(sale => {
+                    const productId = sale.código;
+                    if (!aggregatedNeeds[productId]) {
+                        aggregatedNeeds[productId] = {
+                            productId: productId,
+                            productName: sale.descripciónMaterial,
+                            unitsToTransfer: 0
+                        };
+                    }
+                    aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
+                });
+                
+                const results = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
+                setTransferNeeds(results);
+
+                if (results.length > 0) {
+                    addNotification('success', `Cálculo completado. Se identificaron ${results.length} productos que requieren traslados.`);
+                } else {
+                    addNotification('info', 'No se identificaron necesidades de traslado con los datos de ventas actuales.');
+                }
+
+            } catch (err) {
+                const errorMessage = `Error durante el cálculo de traslados: ${(err as Error).message}`;
+                setError(errorMessage);
+                addNotification('error', errorMessage);
+            } finally {
+                setIsProcessing(false);
+            }
         };
 
-        console.log('[DEBUG] Enviando la siguiente consulta a la API:', query);
-        addNotification('info', `Consultando material: ${paddedMaterialCode}...`);
-
-        try {
-            const queryResult: InventoryRecord[] = await queryApi(query);
-
-            console.log('[DEBUG] Respuesta recibida de la API:', queryResult);
-
-            if (!queryResult || queryResult.length === 0) {
-                addNotification('warning', `No se encontraron registros para el material ${paddedMaterialCode}.`);
-            } else {
-                setInventoryData(queryResult);
-                addNotification('success', `Consulta completada. Se encontraron ${queryResult.length} registros.`);
-            }
-        } catch (err) {
-            const errorMessage = `Error durante la consulta: ${(err as Error).message}`;
-            console.error('[DEBUG] Error en la consulta a la API:', err);
-            setError(errorMessage);
-            addNotification('error', errorMessage);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-    
-    // Cargar datos iniciales al montar el componente
-    useEffect(() => {
-        handleFetchData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
+        calculateTransferNeeds();
+    }, [salesData, addNotification]);
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
             <div className="flex items-center space-x-3">
-                <DatabaseZap />
-                <h2 className="text-2xl font-semibold text-gray-700">Explorador de Cubo de Inventarios</h2>
+                <Truck />
+                <h2 className="text-2xl font-semibold text-gray-700">Reporte de Necesidades de Traslado</h2>
             </div>
             
             <p className="text-gray-600">
-                Ingrese un código de material para consultar su información de aprovisionamiento en los diferentes centros.
+                Este reporte analiza los datos de ventas cargados y muestra la cantidad total de unidades por producto que deben ser fabricadas en el centro 1000 y trasladadas a otros centros de demanda (Aprovisionamiento 'F').
             </p>
-
-            <div className="flex items-end gap-4 p-4 border rounded-lg bg-gray-50">
-                <div className="flex-grow">
-                    <label htmlFor="material-input" className="block text-sm font-medium text-gray-700 mb-1">
-                        Código de Material
-                    </label>
-                    <input
-                        id="material-input"
-                        type="text"
-                        value={materialInput}
-                        onChange={(e) => setMaterialInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleFetchData()}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        placeholder="Escriba el código..."
-                    />
-                </div>
-                <button
-                    onClick={handleFetchData}
-                    disabled={isProcessing}
-                    className="h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-                    Consultar
-                </button>
-            </div>
 
             <div className="border rounded-lg overflow-auto max-h-[70vh]">
                 <table className="min-w-full text-sm divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0">
                         <tr>
-                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
-                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
-                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase de Aprovisionamiento</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código Material</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                            <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades a Trasladar</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -119,7 +143,7 @@ export const TransferCalculatorSection: React.FC = () => {
                                 <td colSpan={3} className="text-center p-8">
                                     <div className="flex justify-center items-center gap-2 text-gray-500">
                                         <Loader2 className="w-5 h-5 animate-spin" />
-                                        <span>Consultando...</span>
+                                        <span>Calculando...</span>
                                     </div>
                                 </td>
                             </tr>
@@ -129,18 +153,18 @@ export const TransferCalculatorSection: React.FC = () => {
                                     {error}
                                 </td>
                             </tr>
-                        ) : inventoryData.length > 0 ? (
-                            inventoryData.map((item, index) => (
-                                <tr key={index} className="hover:bg-gray-50">
-                                    <td className="px-4 py-2 whitespace-nowrap font-mono">{String(item.Material ?? 'N/D')}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap font-mono">{String(item.Centro ?? 'N/D')}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap font-mono">{String(item.ClaseAprovisionam ?? 'N/D')}</td>
+                        ) : transferNeeds.length > 0 ? (
+                            transferNeeds.map((item) => (
+                                <tr key={item.productId} className="hover:bg-gray-50">
+                                    <td className="px-4 py-2 whitespace-nowrap font-mono">{item.productId}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{item.productName}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-700">{item.unitsToTransfer.toLocaleString()}</td>
                                 </tr>
                             ))
                         ) : (
                              <tr>
                                 <td colSpan={3} className="text-center p-8 text-gray-500">
-                                    No se encontraron datos. Ingrese un código de material y presione "Consultar".
+                                    {salesData.length > 0 ? 'No se encontraron necesidades de traslado para los datos cargados.' : 'No hay datos de ventas cargados. Por favor, vaya a la sección "Importar Ventas".'}
                                 </td>
                             </tr>
                         )}
