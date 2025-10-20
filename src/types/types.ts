@@ -11,6 +11,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -119,6 +120,7 @@ export interface SalesDataRow {
   familia: string;
   marca: string;
   lineaProduccion: string; 
+  claseAprovisionamiento?: 'E' | 'X' | 'F' | 'N/A';
 }
 
 export interface WorkstationDefinition {

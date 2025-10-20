@@ -139,7 +139,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
   
   const [tableFilters, setTableFilters] = useState({
-    etiqueta: '', mes: '', código: '', centro: '', descripciónMaterial: ''
+    etiqueta: '', mes: '', código: '', centro: '', descripciónMaterial: '', claseAprovisionamiento: ''
   });
 
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
@@ -232,7 +232,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         });
         
         const aggregatedData: { [key: string]: SalesDataRow } = {};
-        allData.forEach((item, index) => {
+        allData.forEach((item) => {
             const key = `${item.Año}-${item.Mes}-${item.Centro}-${normalizeMaterialCode(item.CodMaterial)}`;
             if (!aggregatedData[key]) {
                  aggregatedData[key] = {
@@ -246,19 +246,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     descripciónMaterial: item.Material,
                     familia: item.Familia, marca: item.Marca, 
                     lineaProduccion: item.LineaProduccion || '',
+                    claseAprovisionamiento: 'N/A'
                 };
             }
             aggregatedData[key].unidadesProyectado += item.UnidadesProyectado;
         });
 
-        const mappedAndAggregatedData = Object.values(aggregatedData);
+        let mappedAndAggregatedData = Object.values(aggregatedData);
 
         if (mappedAndAggregatedData.length > 0) {
-            console.log('[DataImportSection] Muestra de datos mapeados y guardados en memoria:', mappedAndAggregatedData.slice(0, 5));
-            setLoadedData(mappedAndAggregatedData);
-            onDataImported(mappedAndAggregatedData);
-            addNotification('success', `Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`);
-            
             const uniqueMaterialCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => sale.código)));
             const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
 
@@ -276,20 +272,31 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     rules.set(key, item.ClaseAprovisionam);
                 }
             });
-
-            addNotification('info', `Se obtuvieron ${rules.size} reglas de aprovisionamiento. Calculando traslados...`);
-
-            const salesRequiringTransfer = mappedAndAggregatedData.filter(sale => {
+            
+            mappedAndAggregatedData = mappedAndAggregatedData.map(sale => {
                 const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
                 const center = String(sale.centro).trim();
+                const ruleKey = `${materialCode18}---${center}`;
                 
-                if (center === '1000') return false; 
+                let aprovisionamiento = rules.get(ruleKey);
+                
+                if (!aprovisionamiento && center !== '1000') {
+                    const fallbackRuleKey = `${materialCode18}---1000`;
+                    const fallbackRule = rules.get(fallbackRuleKey);
+                    if (fallbackRule === 'F') {
+                        aprovisionamiento = 'F';
+                    }
+                }
 
-                const ruleKeyForCenter1000 = `${materialCode18}---1000`;
-                const rule = rules.get(ruleKeyForCenter1000);
-                
-                return rule === 'F';
+                return { ...sale, claseAprovisionamiento: aprovisionamiento || 'N/A' };
             });
+
+            console.log('[DataImportSection] Muestra de datos mapeados y guardados en memoria:', mappedAndAggregatedData.slice(0, 5));
+            setLoadedData(mappedAndAggregatedData);
+            onDataImported(mappedAndAggregatedData);
+            addNotification('success', `Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`);
+            
+            const salesRequiringTransfer = mappedAndAggregatedData.filter(sale => sale.claseAprovisionamiento === 'F' && sale.centro !== '1000');
 
             const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
             salesRequiringTransfer.forEach(sale => {
@@ -327,7 +334,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 MONTH_NAMES[item.mes - 1].toLowerCase().includes(tableFilters.mes.toLowerCase()) &&
                 item.código.toLowerCase().includes(tableFilters.código.toLowerCase()) &&
                 item.centro.toLowerCase().includes(tableFilters.centro.toLowerCase()) &&
-                item.descripciónMaterial.toLowerCase().includes(tableFilters.descripciónMaterial.toLowerCase())
+                item.descripciónMaterial.toLowerCase().includes(tableFilters.descripciónMaterial.toLowerCase()) &&
+                (item.claseAprovisionamiento || 'N/A').toLowerCase().includes(tableFilters.claseAprovisionamiento.toLowerCase())
             );
         });
     }, [loadedData, tableFilters]);
@@ -400,6 +408,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                 <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código</th>
                                 <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
                                 <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción Material</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase de Aprovisionamiento</th>
                                 <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades</th>
                             </tr>
                             <tr>
@@ -408,6 +417,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                 <th className="p-1"><input type="text" value={tableFilters.código} onChange={e => handleTableFilterChange('código', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
                                 <th className="p-1"><input type="text" value={tableFilters.centro} onChange={e => handleTableFilterChange('centro', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
                                 <th className="p-1"><input type="text" value={tableFilters.descripciónMaterial} onChange={e => handleTableFilterChange('descripciónMaterial', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
+                                <th className="p-1"><input type="text" value={tableFilters.claseAprovisionamiento} onChange={e => handleTableFilterChange('claseAprovisionamiento', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
                                 <th className="p-1"></th>
                             </tr>
                         </thead>
@@ -419,13 +429,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                   <td className="px-3 py-2 whitespace-nowrap font-mono text-gray-700">{item.código}</td>
                                   <td className="px-3 py-2 whitespace-nowrap text-gray-500">{item.centro}</td>
                                   <td className="px-3 py-2 whitespace-nowrap text-gray-800">{item.descripciónMaterial}</td>
+                                  <td className="px-3 py-2 whitespace-nowrap text-center font-semibold text-gray-700">{item.claseAprovisionamiento}</td>
                                   <td className="px-3 py-2 text-right font-medium text-gray-900">{item.unidadesProyectado.toLocaleString()}</td>
                               </tr>
                             ))}
                         </tbody>
                          <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
                             <tr>
-                                <th colSpan={5} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL FILTRADO</th>
+                                <th colSpan={6} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL FILTRADO</th>
                                 <th className="px-3 py-2 text-right font-bold uppercase tracking-wider">
                                     {grandTotal.toLocaleString()}
                                 </th>
