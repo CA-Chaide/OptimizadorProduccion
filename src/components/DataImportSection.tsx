@@ -1,7 +1,7 @@
 
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
+import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -255,6 +255,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
 
         if (allData.length > 0) {
+            console.log('[DataImportSection] Muestra de datos mapeados y guardados en memoria:', allData.slice(0, 5));
             setLoadedData(allData);
             onDataImported(allData);
             addNotification('success', `Carga completada. Se importaron ${allData.length} registros. Obteniendo reglas de aprovisionamiento...`);
@@ -262,7 +263,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const uniqueMaterialCodes = Array.from(new Set(allData.map(sale => sale.código)));
             const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
 
-            const inventoryCubeData: TiempoEnsambleItem[] = await queryApi({
+            const inventoryCubeData: any[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
                 filters: { 'Material': paddedMaterialCodes },
@@ -271,7 +272,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             inventoryCubeData.forEach(item => {
-                if (item.ClaseAprovisionam && item.Material && item.Centro) {
+                if (item.Material && item.Centro && item.ClaseAprovisionam) {
                     const key = `${String(item.Material).trim()}---${String(item.Centro).trim()}`;
                     rules.set(key, item.ClaseAprovisionam);
                 }
