@@ -26,7 +26,27 @@ Estas son las reglas clave del dominio de negocio que deben ser respetadas en to
 - **Estilo:** Utilizar **TailwindCSS** para todo el estilizado. No usar CSS en línea. No añadir colores explícitos.
 - **Estado Global:** El estado se maneja a través del `AppContext`. Las modificaciones deben usar las acciones del `appReducer`. No mutar el estado directamente.
 
-## 4. Protocolo de Interacción y Operación (Reglas Maestras)
+## 4. Reglas Específicas por Fuente de Datos
+
+### 4.1. Fuente de Datos: `CuboInventarios`
+
+Esta es una de las fuentes más críticas y requiere un manejo preciso.
+
+- **Nombres de Columna Reales:** La API devuelve los campos con los nombres exactos de la base de datos. Estos son sensibles a mayúsculas y minúsculas. Los campos clave son:
+    - **`Material`**: (No `CodMaterial`) El código del producto.
+    - **`Centro`**: El centro de trabajo.
+    - **`ClaseAprovisionam`**: (No `ClaseAprovisionamiento`) La regla de aprovisionamiento ('E', 'F', 'X').
+    - Siempre debo verificar la consulta SQL del backend o el diccionario de datos para confirmar los nombres antes de usarlos en el código.
+
+- **Formato del Código de Material:** Al filtrar por el campo `Material`, el valor debe ser una cadena de texto de **18 caracteres**. Si el usuario ingresa un código más corto, debo rellenarlo con ceros (`0`) a la izquierda hasta completar los 18 caracteres.
+    - *Ejemplo:* `20000182` se convierte en `000000000020000182`.
+
+- **Lógica de Aprovisionamiento (Regla de Fallback):** La lógica para obtener la clase de aprovisionamiento no es directa. El componente `DataImportSection.tsx` contiene la implementación correcta que debo replicar:
+    1.  Consultar la regla para la combinación `Material` y `Centro` de demanda.
+    2.  Si no se encuentra una regla y el centro de demanda **no es** `1000`, debo realizar una segunda consulta para ese mismo `Material` pero con el `Centro` `1000`.
+    3.  Si en esta segunda consulta la `ClaseAprovisionam` es `'F'`, entonces esa es la regla que aplica para el centro de demanda original.
+
+## 5. Protocolo de Interacción y Operación (Reglas Maestras)
 
 1.  **Revisión Holística Obligatoria:** Antes de cualquier acción, debo revisar la totalidad de estas instrucciones, así como los archivos `docs/business_rules.md`, `docs/data_integration_tutorial.md` y, crucialmente, `API_DOCUMENTACION.md` para garantizar la coherencia.
 
