@@ -24,16 +24,6 @@ interface TransferNeed {
     unitsToTransfer: number;
 }
 
-interface GroupedData {
-    [groupKey: string]: { 
-        etiqueta: string;
-        mes: number;
-        items: SalesDataRow[];
-        totalUnits: number;
-    };
-}
-
-
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
     return codeStr.slice(-8);
@@ -193,7 +183,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         return;
     }
 
-    let allData: SalesDataRow[] = [];
+    let allData: PresupuestoItem[] = [];
     const yearsToLoad = filters.años.map(Number);
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
@@ -237,30 +227,39 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         responses.forEach(response => {
             if (response && response.length > 0) {
-                 const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${item.CodMaterial}-${index}`,
+                allData = [...allData, ...response];
+            }
+        });
+        
+        const aggregatedData: { [key: string]: SalesDataRow } = {};
+        allData.forEach((item, index) => {
+            const key = `${item.Año}-${item.Mes}-${item.Centro}-${normalizeMaterialCode(item.CodMaterial)}`;
+            if (!aggregatedData[key]) {
+                 aggregatedData[key] = {
+                    id: `agg-${key}`,
                     año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                     etiqueta: item.Etiqueta || 'Sin Etiqueta',
                     código: normalizeMaterialCode(item.CodMaterial),
                     centro: String(item.Centro).trim(), 
-                    unidadesProyectado: item.UnidadesProyectado,
+                    unidadesProyectado: 0,
                     dolaresProyectado: 0,
                     descripciónMaterial: item.Material,
                     familia: item.Familia, marca: item.Marca, 
                     lineaProduccion: item.LineaProduccion || '',
-                }));
-                allData = [...allData, ...mappedData];
+                };
             }
+            aggregatedData[key].unidadesProyectado += item.UnidadesProyectado;
         });
 
+        const mappedAndAggregatedData = Object.values(aggregatedData);
 
-        if (allData.length > 0) {
-            console.log('[DataImportSection] Muestra de datos mapeados y guardados en memoria:', allData.slice(0, 5));
-            setLoadedData(allData);
-            onDataImported(allData);
-            addNotification('success', `Carga completada. Se importaron ${allData.length} registros. Obteniendo reglas de aprovisionamiento...`);
+        if (mappedAndAggregatedData.length > 0) {
+            console.log('[DataImportSection] Muestra de datos mapeados y guardados en memoria:', mappedAndAggregatedData.slice(0, 5));
+            setLoadedData(mappedAndAggregatedData);
+            onDataImported(mappedAndAggregatedData);
+            addNotification('success', `Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`);
             
-            const uniqueMaterialCodes = Array.from(new Set(allData.map(sale => sale.código)));
+            const uniqueMaterialCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => sale.código)));
             const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
 
             const inventoryCubeData: any[] = await queryApi({
@@ -280,7 +279,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
             addNotification('info', `Se obtuvieron ${rules.size} reglas de aprovisionamiento. Calculando traslados...`);
 
-            const salesRequiringTransfer = allData.filter(sale => {
+            const salesRequiringTransfer = mappedAndAggregatedData.filter(sale => {
                 const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
                 const center = String(sale.centro).trim();
                 
@@ -391,7 +390,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
        {loadedData.length > 0 && (
          <div className="space-y-8">
             <div>
-                <h3 className="text-lg font-semibold text-gray-800">Datos de Ventas Cargados</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Datos de Ventas Cargados y Consolidados</h3>
                 <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-2">
                     <table className="min-w-full text-xs divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0 z-10">
