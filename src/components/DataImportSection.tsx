@@ -24,13 +24,14 @@ interface TransferNeed {
     unitsToTransfer: number;
 }
 
-interface AggregatedData {
-  [key: string]: { // The key is the 'etiqueta'
-    totalUnits: number;
-    unitsByCenter: { [centerName: string]: number };
-    dataRows: SalesDataRow[];
-  };
+// New data structure for master-detail view
+interface GroupedData {
+    [etiqueta: string]: {
+        items: SalesDataRow[];
+        totalUnits: number;
+    };
 }
+
 
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
@@ -38,9 +39,7 @@ const normalizeMaterialCode = (code: string | number): string => {
 };
 
 const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
-    // Normaliza a 8 dígitos para quitar basura inicial
     const eightDigitCode = String(code).slice(-8);
-    // Expande a 18 dígitos anteponiendo ceros
     return eightDigitCode.padStart(18, '0');
 };
 
@@ -312,35 +311,22 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   };
 
-  const { aggregatedData, centers } = useMemo(() => {
-    const data: AggregatedData = {};
-    const centerSet = new Set<string>();
+    const groupedData = useMemo(() => {
+        const groups: GroupedData = {};
+        loadedData.forEach(row => {
+            const key = row.etiqueta || 'Sin Etiqueta';
+            if (!groups[key]) {
+                groups[key] = { items: [], totalUnits: 0 };
+            }
+            groups[key].items.push(row);
+            groups[key].totalUnits += row.unidadesProyectado;
+        });
+        return groups;
+    }, [loadedData]);
 
-    loadedData.forEach(row => {
-      const key = row.etiqueta;
-      if (!data[key]) {
-        data[key] = { totalUnits: 0, unitsByCenter: {}, dataRows: [] };
-      }
-      data[key].totalUnits += row.unidadesProyectado;
-      data[key].unitsByCenter[row.centro] = (data[key].unitsByCenter[row.centro] || 0) + row.unidadesProyectado;
-      data[key].dataRows.push(row);
-      centerSet.add(row.centro);
-    });
-
-    return { aggregatedData: data, centers: Array.from(centerSet).sort() };
-  }, [loadedData]);
-
-  const footerTotals = useMemo(() => {
-    const totals: { [centerName: string]: number } = {};
-    let grandTotal = 0;
-    Object.values(aggregatedData).forEach(group => {
-      Object.entries(group.unitsByCenter).forEach(([center, units]) => {
-        totals[center] = (totals[center] || 0) + units;
-      });
-      grandTotal += group.totalUnits;
-    });
-    return { ...totals, grandTotal };
-  }, [aggregatedData]);
+    const grandTotal = useMemo(() => {
+        return loadedData.reduce((sum, row) => sum + row.unidadesProyectado, 0);
+    }, [loadedData]);
 
 
   return (
@@ -401,34 +387,35 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     <table className="min-w-full text-xs divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0 z-10">
                             <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">Etiqueta</th>
-                                {centers.map(center => (
-                                    <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">{center}</th>
-                                ))}
-                                <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Unidades</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-1/12">Centro</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-2/12">Código</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider w-8/12">Descripción Material</th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider w-1/12">Unidades</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                           {Object.entries(aggregatedData).map(([etiqueta, group]) => (
-                                <tr key={etiqueta}>
-                                    <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
-                                    {centers.map(center => (
-                                        <td key={`${etiqueta}-${center}`} className="px-3 py-2 text-right text-gray-600">{group.unitsByCenter[center]?.toLocaleString() || 0}</td>
+                           {Object.entries(groupedData).sort(([a], [b]) => a.localeCompare(b)).map(([etiqueta, group]) => (
+                                <React.Fragment key={etiqueta}>
+                                    <tr className="bg-gray-200 sticky top-0">
+                                        <td colSpan={3} className="px-3 py-2 font-bold text-gray-800">{etiqueta}</td>
+                                        <td className="px-3 py-2 text-right font-bold text-gray-800">{group.totalUnits.toLocaleString()}</td>
+                                    </tr>
+                                    {group.items.sort((a,b) => a.descripciónMaterial.localeCompare(b.descripciónMaterial)).map(item => (
+                                        <tr key={item.id}>
+                                            <td className="px-3 py-2 whitespace-nowrap text-gray-500">{item.centro}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap font-mono text-gray-700">{item.código}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-gray-800">{item.descripciónMaterial}</td>
+                                            <td className="px-3 py-2 text-right font-medium text-gray-900">{item.unidadesProyectado.toLocaleString()}</td>
+                                        </tr>
                                     ))}
-                                    <td className="px-3 py-2 text-right font-bold text-gray-900">{group.totalUnits.toLocaleString()}</td>
-                                </tr>
+                                </React.Fragment>
                             ))}
                         </tbody>
-                        <tfoot className="bg-gray-200 sticky bottom-0 z-10">
+                         <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
                             <tr>
-                                <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
-                                 {centers.map(center => (
-                                    <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
-                                        {(footerTotals[center] || 0).toLocaleString()}
-                                    </th>
-                                ))}
-                                 <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
-                                    {footerTotals.grandTotal.toLocaleString()}
+                                <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL GENERAL</th>
+                                <th className="px-3 py-2 text-right font-bold uppercase tracking-wider">
+                                    {grandTotal.toLocaleString()}
                                 </th>
                             </tr>
                         </tfoot>
