@@ -80,9 +80,13 @@ const MultiSelect: React.FC<{
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.value}
+                  value={option.label} // Use label for searching in CMDK
                   onSelect={(currentValue) => {
-                    handleSelect(option.value);
+                    // Find the option by label to get the value
+                    const selectedOption = options.find(opt => opt.label.toLowerCase() === currentValue);
+                    if (selectedOption) {
+                      handleSelect(selectedOption.value);
+                    }
                   }}
                 >
                   <Check
