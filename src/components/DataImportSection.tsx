@@ -80,9 +80,9 @@ const MultiSelect: React.FC<{
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.value}
+                  value={option.label} // Use label for search
                   onSelect={() => {
-                     handleSelect(option.value);
+                     handleSelect(option.value); // Use value for state update
                   }}
                 >
                   <Check
@@ -259,7 +259,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         if (mappedAndAggregatedData.length > 0) {
             const unique8DigitCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => normalizeMaterialCode(sale.código))));
             const unique18DigitCodes = unique8DigitCodes.map(normalizeMaterialCodeTo18Digits);
-            const allCodesToQuery = [...new Set([...unique8DigitCodes, ...unique8DigitCodes])];
+            const allCodesToQuery = [...new Set([...unique8DigitCodes, ...unique18DigitCodes])];
 
             addNotification('info', `Consultando reglas de aprovisionamiento para ${unique8DigitCodes.length} materiales (probando formatos de 8 y 18 dígitos)...`);
 
@@ -272,15 +272,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             });
             
             const rules = new Map<string, 'E' | 'X' | 'F'>();
-            inventoryCubeData.forEach(item => {
-                if (item.Material && item.Centro && item.ClaseAprovisionam) {
-                    const materialCode8 = normalizeMaterialCode(item.Material);
-                    rules.set(`${materialCode8}---${String(item.Centro).trim()}`, item.ClaseAprovisionam);
-                    
-                    const materialCode18 = normalizeMaterialCodeTo18Digits(item.Material);
-                    rules.set(`${materialCode18}---${String(item.Centro).trim()}`, item.ClaseAprovisionam);
-                }
-            });
+            if (inventoryCubeData) {
+                inventoryCubeData.forEach(item => {
+                    if (item.Material && item.Centro && item.ClaseAprovisionam) {
+                        const materialCode8 = normalizeMaterialCode(item.Material);
+                        const materialCode18 = normalizeMaterialCodeTo18Digits(item.Material);
+                        const center = String(item.Centro).trim();
+                        
+                        rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
+                        rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
+                    }
+                });
+            }
             
             mappedAndAggregatedData = mappedAndAggregatedData.map(sale => {
                 const materialCode8 = normalizeMaterialCode(sale.código);
