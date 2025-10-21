@@ -81,8 +81,7 @@ const MultiSelect: React.FC<{
                 <CommandItem
                   key={option.value}
                   value={option.value}
-                  onSelect={(currentValue) => {
-                     // FIX: Use option.value directly, as currentValue might be the label from search
+                  onSelect={() => {
                      handleSelect(option.value);
                   }}
                 >
@@ -234,7 +233,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const aggregatedData: { [key: string]: SalesDataRow } = {};
         allData.forEach((item) => {
-            // If Centro is empty or null, default to '1000'
             const centro = String(item.Centro || '1000').trim();
             const key = `${item.Año}-${item.Mes}-${centro}-${normalizeMaterialCode(item.CodMaterial)}`;
 
@@ -261,7 +259,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         if (mappedAndAggregatedData.length > 0) {
             const unique8DigitCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => normalizeMaterialCode(sale.código))));
             const unique18DigitCodes = unique8DigitCodes.map(normalizeMaterialCodeTo18Digits);
-            const allCodesToQuery = [...new Set([...unique8DigitCodes, ...unique18DigitCodes])];
+            const allCodesToQuery = [...new Set([...unique8DigitCodes, ...unique8DigitCodes])];
 
             addNotification('info', `Consultando reglas de aprovisionamiento para ${unique8DigitCodes.length} materiales (probando formatos de 8 y 18 dígitos)...`);
 
@@ -269,6 +267,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 source: 'CuboInventarios',
                 operation: 'get_data',
                 filters: { 'Material': allCodesToQuery },
+                columns: ['Material', 'Centro', 'ClaseAprovisionam'],
                 pagination: { limit: 500000 }
             });
             
@@ -276,11 +275,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             inventoryCubeData.forEach(item => {
                 if (item.Material && item.Centro && item.ClaseAprovisionam) {
                     const materialCode8 = normalizeMaterialCode(item.Material);
+                    rules.set(`${materialCode8}---${String(item.Centro).trim()}`, item.ClaseAprovisionam);
+                    
                     const materialCode18 = normalizeMaterialCodeTo18Digits(item.Material);
-                    const center = String(item.Centro).trim();
-                    // Store rule for both 8 and 18 digit codes to be safe
-                    rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
-                    rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
+                    rules.set(`${materialCode18}---${String(item.Centro).trim()}`, item.ClaseAprovisionam);
                 }
             });
             
@@ -289,13 +287,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
                 const center = String(sale.centro).trim();
                 
-                // Try finding rule with both formats for the specific center
                 let aprovisionamiento = rules.get(`${materialCode18}---${center}`) || rules.get(`${materialCode8}---${center}`);
                 
-                // Fallback logic
                 if (!aprovisionamiento && center !== '1000') {
-                    const fallbackRule = rules.get(`${materialCode18}---1000`) || rules.get(`${materialCode8}---1000`);
-                    if (fallbackRule === 'F') {
+                    const fallbackRule18 = rules.get(`${materialCode18}---1000`);
+                    const fallbackRule8 = rules.get(`${materialCode8}---1000`);
+
+                    if (fallbackRule18 === 'F' || fallbackRule8 === 'F') {
                         aprovisionamiento = 'F';
                     }
                 }
@@ -491,5 +489,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
-
-    
