@@ -83,7 +83,7 @@ const MultiSelect: React.FC<{
                   value={option.value}
                   onSelect={(currentValue) => {
                      // Find the option by the value that was selected in the CommandItem
-                     const opt = options.find(o => o.value === currentValue);
+                     const opt = options.find(o => o.value.toLowerCase() === currentValue.toLowerCase());
                      if (opt) {
                        handleSelect(opt.value);
                      }
@@ -278,24 +278,23 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             if (inventoryCubeData) {
                 inventoryCubeData.forEach(item => {
                     if (item.Material && item.Centro && item.ClaseAprovisionam) {
-                        const materialCode8 = normalizeMaterialCode(item.Material);
-                        const materialCode18 = normalizeMaterialCodeTo18Digits(item.Material);
+                        const materialCode18 = String(item.Material).trim();
+                        const materialCode8 = normalizeMaterialCode(materialCode18);
                         const center = String(item.Centro).trim();
                         
-                        // Store rules for both 8 and 18 digit codes to be safe
-                        rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
                         rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
+                        rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
                     }
                 });
             }
             console.log(`--- DEBUG: Mapa de reglas creado con ${rules.size} entradas.`);
             
             mappedAndAggregatedData = mappedAndAggregatedData.map((sale, index) => {
-                const materialCode8 = normalizeMaterialCode(sale.código);
+                const materialCode8 = sale.código;
                 const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
-                const center = String(sale.centro).trim();
+                const center = sale.centro;
                 
-                if (index < 5) { // Log details for the first 5 items for easier debugging
+                if (index < 5) {
                    console.log(`--- DEBUG: Procesando venta #${index + 1} para Material: ${materialCode8}, Centro: ${center}`);
                    console.log(`--- DEBUG: Buscando con Key18: ${materialCode18}---${center}`);
                    console.log(`--- DEBUG: Buscando con Key8: ${materialCode8}---${center}`);
