@@ -80,13 +80,9 @@ const MultiSelect: React.FC<{
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label} // Use label for searching in CMDK
+                  value={option.value} // Use value for searching and selection
                   onSelect={(currentValue) => {
-                    // Find the option by label to get the value
-                    const selectedOption = options.find(opt => opt.label.toLowerCase() === currentValue);
-                    if (selectedOption) {
-                      handleSelect(selectedOption.value);
-                    }
+                     handleSelect(currentValue);
                   }}
                 >
                   <Check
@@ -262,7 +258,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         let mappedAndAggregatedData = Object.values(aggregatedData);
 
         if (mappedAndAggregatedData.length > 0) {
-            const uniqueMaterialCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => sale.código)));
+            const uniqueMaterialCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => normalizeMaterialCode(sale.código))));
             const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
 
             addNotification('info', `Consultando reglas de aprovisionamiento para ${uniqueMaterialCodes.length} materiales...`);
@@ -488,3 +484,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
+
+    
