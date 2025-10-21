@@ -282,7 +282,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 
                 let aprovisionamiento = rules.get(ruleKey);
                 
-                // Fallback logic for centralized production ('F')
                 if (!aprovisionamiento && center !== '1000') {
                     const fallbackRuleKey = `${materialCode18}---1000`;
                     const fallbackRule = rules.get(fallbackRuleKey);
@@ -482,6 +481,3 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
-
-    
-    
