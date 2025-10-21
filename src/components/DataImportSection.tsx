@@ -80,9 +80,10 @@ const MultiSelect: React.FC<{
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.value} // Use value for searching and selection
+                  value={option.value}
                   onSelect={(currentValue) => {
-                     handleSelect(currentValue);
+                     // FIX: Use option.value directly, as currentValue might be the label from search
+                     handleSelect(option.value);
                   }}
                 >
                   <Check
@@ -258,36 +259,42 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         let mappedAndAggregatedData = Object.values(aggregatedData);
 
         if (mappedAndAggregatedData.length > 0) {
-            const uniqueMaterialCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => normalizeMaterialCode(sale.código))));
-            const paddedMaterialCodes = uniqueMaterialCodes.map(normalizeMaterialCodeTo18Digits);
+            const unique8DigitCodes = Array.from(new Set(mappedAndAggregatedData.map(sale => normalizeMaterialCode(sale.código))));
+            const unique18DigitCodes = unique8DigitCodes.map(normalizeMaterialCodeTo18Digits);
+            const allCodesToQuery = [...new Set([...unique8DigitCodes, ...unique18DigitCodes])];
 
-            addNotification('info', `Consultando reglas de aprovisionamiento para ${uniqueMaterialCodes.length} materiales...`);
+            addNotification('info', `Consultando reglas de aprovisionamiento para ${unique8DigitCodes.length} materiales (probando formatos de 8 y 18 dígitos)...`);
 
             const inventoryCubeData: any[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
-                filters: { 'Material': paddedMaterialCodes },
+                filters: { 'Material': allCodesToQuery },
                 pagination: { limit: 500000 }
             });
             
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             inventoryCubeData.forEach(item => {
                 if (item.Material && item.Centro && item.ClaseAprovisionam) {
-                    const key = `${String(item.Material).trim()}---${String(item.Centro).trim()}`;
-                    rules.set(key, item.ClaseAprovisionam);
+                    const materialCode8 = normalizeMaterialCode(item.Material);
+                    const materialCode18 = normalizeMaterialCodeTo18Digits(item.Material);
+                    const center = String(item.Centro).trim();
+                    // Store rule for both 8 and 18 digit codes to be safe
+                    rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
+                    rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
                 }
             });
             
             mappedAndAggregatedData = mappedAndAggregatedData.map(sale => {
+                const materialCode8 = normalizeMaterialCode(sale.código);
                 const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
                 const center = String(sale.centro).trim();
-                const ruleKey = `${materialCode18}---${center}`;
                 
-                let aprovisionamiento = rules.get(ruleKey);
+                // Try finding rule with both formats for the specific center
+                let aprovisionamiento = rules.get(`${materialCode18}---${center}`) || rules.get(`${materialCode8}---${center}`);
                 
+                // Fallback logic
                 if (!aprovisionamiento && center !== '1000') {
-                    const fallbackRuleKey = `${materialCode18}---1000`;
-                    const fallbackRule = rules.get(fallbackRuleKey);
+                    const fallbackRule = rules.get(`${materialCode18}---1000`) || rules.get(`${materialCode8}---1000`);
                     if (fallbackRule === 'F') {
                         aprovisionamiento = 'F';
                     }
