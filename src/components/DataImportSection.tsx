@@ -80,9 +80,13 @@ const MultiSelect: React.FC<{
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label} // Use label for search
-                  onSelect={() => {
-                     handleSelect(option.value); // Use value for state update
+                  value={option.value} // Use value for search/filter
+                  onSelect={(currentValue) => {
+                     // Find the option by the value that was selected in the CommandItem
+                     const opt = options.find(o => o.value === currentValue);
+                     if (opt) {
+                       handleSelect(opt.value);
+                     }
                   }}
                 >
                   <Check
@@ -161,7 +165,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         const newFilterOptions = {
           años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
-          centros: centrosData.map((item: any) => ({ value: item['Centro'], label: item['Centro'] })),
+          centros: centrosData.map((item: any) => ({ value: String(item['Centro']), label: String(item['Centro']) })),
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
         };
         setFilterOptions(newFilterOptions);
@@ -261,7 +265,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const unique18DigitCodes = unique8DigitCodes.map(normalizeMaterialCodeTo18Digits);
             const allCodesToQuery = [...new Set([...unique8DigitCodes, ...unique18DigitCodes])];
 
-            addNotification('info', `Consultando reglas de aprovisionamiento para ${unique8DigitCodes.length} materiales (probando formatos de 8 y 18 dígitos)...`);
+            addNotification('info', `Consultando reglas para ${unique8DigitCodes.length} materiales (formatos 8 y 18 dígitos)...`);
 
             const inventoryCubeData: any[] = await queryApi({
                 source: 'CuboInventarios',
@@ -271,6 +275,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 pagination: { limit: 500000 }
             });
             
+            console.log("--- DEBUG: RESPUESTA DE CuboInventarios ---");
+            console.log(inventoryCubeData);
+
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             if (inventoryCubeData) {
                 inventoryCubeData.forEach(item => {
@@ -279,28 +286,45 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         const materialCode18 = normalizeMaterialCodeTo18Digits(item.Material);
                         const center = String(item.Centro).trim();
                         
-                        rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
-                        rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
+                        const key8 = `${materialCode8}---${center}`;
+                        const key18 = `${materialCode18}---${center}`;
+                        
+                        rules.set(key8, item.ClaseAprovisionam);
+                        rules.set(key18, item.ClaseAprovisionam);
+                        console.log(`--- DEBUG: Creando regla en mapa. Key8: ${key8}, Key18: ${key18}, Value: ${item.ClaseAprovisionam}`);
                     }
                 });
             }
+            console.log(`--- DEBUG: Mapa de reglas creado con ${rules.size} entradas.`);
             
-            mappedAndAggregatedData = mappedAndAggregatedData.map(sale => {
+            mappedAndAggregatedData = mappedAndAggregatedData.map((sale, index) => {
                 const materialCode8 = normalizeMaterialCode(sale.código);
                 const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
                 const center = String(sale.centro).trim();
                 
+                if (index < 5) { // Log details for the first 5 items for easier debugging
+                   console.log(`--- DEBUG: Procesando venta #${index + 1} para Material: ${materialCode8}, Centro: ${center}`);
+                   console.log(`--- DEBUG: Buscando con Key18: ${materialCode18}---${center}`);
+                   console.log(`--- DEBUG: Buscando con Key8: ${materialCode8}---${center}`);
+                }
+
                 let aprovisionamiento = rules.get(`${materialCode18}---${center}`) || rules.get(`${materialCode8}---${center}`);
                 
+                if(index < 5) console.log(`--- DEBUG: Resultado Búsqueda Directa: ${aprovisionamiento}`);
+
                 if (!aprovisionamiento && center !== '1000') {
+                    if(index < 5) console.log(`--- DEBUG: Búsqueda directa falló. Intentando fallback al centro 1000.`);
                     const fallbackRule18 = rules.get(`${materialCode18}---1000`);
                     const fallbackRule8 = rules.get(`${materialCode8}---1000`);
+                    if(index < 5) console.log(`--- DEBUG: Fallback 18-dig: ${fallbackRule18}, Fallback 8-dig: ${fallbackRule8}`);
 
                     if (fallbackRule18 === 'F' || fallbackRule8 === 'F') {
                         aprovisionamiento = 'F';
+                        if(index < 5) console.log(`--- DEBUG: Fallback exitoso. Asignando 'F'.`);
                     }
                 }
 
+                if(index < 5) console.log(`--- DEBUG: Aprovisionamiento final para venta #${index + 1}: ${aprovisionamiento || 'N/A'}`);
                 return { ...sale, claseAprovisionamiento: aprovisionamiento || 'N/A' };
             });
 
