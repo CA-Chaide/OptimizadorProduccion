@@ -237,14 +237,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         const aggregatedData: { [key: string]: SalesDataRow } = {};
         allData.forEach((item) => {
-            const key = `${item.Año}-${item.Mes}-${item.Centro}-${normalizeMaterialCode(item.CodMaterial)}`;
+            // If Centro is empty or null, default to '1000'
+            const centro = String(item.Centro || '1000').trim();
+            const key = `${item.Año}-${item.Mes}-${centro}-${normalizeMaterialCode(item.CodMaterial)}`;
+
             if (!aggregatedData[key]) {
                  aggregatedData[key] = {
                     id: `agg-${key}`,
                     año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
                     etiqueta: item.Etiqueta || 'Sin Etiqueta',
                     código: normalizeMaterialCode(item.CodMaterial),
-                    centro: String(item.Centro).trim(), 
+                    centro: centro, 
                     unidadesProyectado: 0,
                     dolaresProyectado: 0,
                     descripciónMaterial: item.Material,
