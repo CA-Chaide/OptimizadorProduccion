@@ -279,8 +279,9 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('[%s] --- RUNNING STRATEGIC PLANNER V31.1 (Corrected Inventory Flow) ---', new Date().toLocaleTimeString());
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v31.1.'];
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V31.1 (Corrected Inventory Flow) ---`);
+    const auditLog: string[] = [`[${timestamp}] Iniciando Planificador Estratégico v31.1.`];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
@@ -304,7 +305,7 @@ export const generateProductionPlan = async (
     filteredSalesData.forEach(s => allMonthKeys.add(`${s.año}-${String(s.mes).padStart(2, '0')}`));
     const planningMonths = Array.from(allMonthKeys).sort();
 
-    auditLog.push(`Consultando inventario completo desde CuboInventarios para materiales con y sin presupuesto.`);
+    auditLog.push(`[${new Date().toLocaleTimeString()}] Consultando inventario completo desde CuboInventarios.`);
     const allInventoryData: any[] = await queryApi({
       source: 'CuboInventarios',
       operation: 'get_data',
@@ -324,9 +325,9 @@ export const generateProductionPlan = async (
                 }
             }
         });
-        auditLog.push(`Inventario inicial cargado para ${inventoryState.size} combinaciones únicas de producto-centro.`);
+        auditLog.push(`[${new Date().toLocaleTimeString()}] Inventario inicial cargado para ${inventoryState.size} combinaciones únicas de producto-centro.`);
     } else {
-        auditLog.push("ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. Se usarán los datos de TiemposEnsamblado.");
+        auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. Se usarán los datos de TiemposEnsamblado.`);
         inventorySettings.forEach(inv => {
             if (inv.currentStock > 0) {
                 const key = `${inv.itemId}---${inv.centerId}`;
@@ -334,6 +335,8 @@ export const generateProductionPlan = async (
             }
         });
     }
+    
+    const initialInventoryState = new Map(inventoryState); // Snapshot for summary calculation
 
     const monthlyPlanItems: MonthlyProductionPlanItem[] = [];
     let productionBacklog = new Map<string, number>();
@@ -343,6 +346,7 @@ export const generateProductionPlan = async (
         const [year, monthNum] = monthKey.split('-').map(Number);
         
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
+        auditLog.push(`[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
 
         const monthlyMovements = new Map<string, { production: number; sales: number; transfersIn: number; transfersOut: number }>();
         const getMovements = (key: string) => {
@@ -375,16 +379,20 @@ export const generateProductionPlan = async (
                 productionNeedsThisMonth.set(demandKey, (productionNeedsThisMonth.get(demandKey) || 0) + sale.unidadesProyectado);
             }
         });
-
+        
+        auditLog.push(`Mes ${monthNum}: Demanda local y de traslados calculada.`);
+        
         productionBacklog.forEach((qty, key) => {
             productionNeedsThisMonth.set(key, (productionNeedsThisMonth.get(key) || 0) + qty);
+            auditLog.push(`  -> Añadiendo ${qty.toFixed(0)} unidades de backlog para ${key}`);
         });
         productionBacklog.clear();
 
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
             const { regularHours, extraHours, saturdayHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
-            monthlyCapacityByLine.set(line.id, regularHours + extraHours + saturdayHours);
+            const totalHours = regularHours + extraHours + saturdayHours;
+            monthlyCapacityByLine.set(line.id, totalHours);
         });
 
         const hoursUsedByLine = new Map<string, number>();
@@ -392,11 +400,12 @@ export const generateProductionPlan = async (
             const [productId, centerId] = prodCenterKey.split('---');
             const invKey = `${productId}---${centerId}`;
             
-            const initialStock = inventoryState.get(invKey) || 0;
+            const currentStock = inventoryState.get(invKey) || 0;
             const safetyStock = inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
             
-            const netNeed = Math.max(0, (totalDemand + safetyStock) - (initialStock - getMovements(invKey).sales));
-            if (netNeed === 0) continue;
+            const netNeed = Math.max(0, (totalDemand + safetyStock) - (currentStock));
+            
+            if (netNeed <= 0) continue;
 
             const linesInCenter = productionLines.filter(l => l.workCenterId === centerId && l.materialsHandled.includes(productId));
             const relevantLine = linesInCenter[0]; 
@@ -404,20 +413,24 @@ export const generateProductionPlan = async (
             if (relevantLine) {
                 const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
                 if (timePerUnit === Infinity) {
+                    auditLog.push(`ADVERTENCIA: Tiempo de fabricación infinito para ${productId} en línea ${relevantLine.name}. Pasando a backlog.`);
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
                     continue;
                 }
 
                 const availableHours = (monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0);
-                let actualProduction = Math.min(netNeed, timePerUnit > 0 ? Math.floor(availableHours / timePerUnit) : Infinity);
+                let actualProduction = Math.min(netNeed, timePerUnit > 0 ? Math.floor(availableHours / timePerUnit) : netNeed);
                 
                 getMovements(invKey).production += actualProduction;
                 hoursUsedByLine.set(relevantLine.id, (hoursUsedByLine.get(relevantLine.id) || 0) + (actualProduction * timePerUnit));
 
                 if (actualProduction < netNeed) {
-                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + (netNeed - actualProduction));
+                    const pending = netNeed - actualProduction;
+                    auditLog.push(`  -> Capacidad insuficiente para ${productId} en línea ${relevantLine.name}. Pendientes ${pending.toFixed(0)} unidades.`);
+                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pending);
                 }
             } else {
+                 auditLog.push(`ADVERTENCIA: No se encontró línea de producción para ${productId} en centro ${centerId}. Pasando a backlog.`);
                  productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
             }
         }
@@ -434,28 +447,27 @@ export const generateProductionPlan = async (
             const finalStock = initialStock + movements.production + movements.transfersIn - movements.transfersOut - movements.sales;
             inventoryState.set(pairKey, finalStock); 
 
-            const planItem: MonthlyProductionPlanItem = {
-                id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
-                productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
-                totalQuantityToProduce: movements.production,
-                totalDemand: movements.sales,
-                netTransfers: movements.transfersIn - movements.transfersOut,
-                initialStock: initialStock,
-                finalStock: finalStock,
-                totalHoursWorked: 0, 
-                totalEstimatedLaborCost: 0, 
-                assignedLineId: productionLines.find(l => l.workCenterId === centerId)?.id,
-            };
-
-            if (Object.values(movements).some(v => v !== 0) || planItem.initialStock !== 0 || planItem.finalStock !== 0) {
-                 monthlyPlanItems.push(planItem);
+            // Only add to plan if there's some activity
+            if (Object.values(movements).some(v => v !== 0) || initialStock !== finalStock) {
+                 monthlyPlanItems.push({
+                    id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
+                    productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
+                    totalQuantityToProduce: movements.production,
+                    totalDemand: movements.sales,
+                    netTransfers: movements.transfersIn - movements.transfersOut,
+                    initialStock: initialStock, // Stock at the beginning of THIS month
+                    finalStock: finalStock,     // Stock at the end of THIS month
+                    totalHoursWorked: 0, 
+                    totalEstimatedLaborCost: 0, 
+                    assignedLineId: productionLines.find(l => l.workCenterId === centerId && l.materialsHandled.includes(productId))?.id,
+                });
             }
         }
     }
     
-    auditLog.push(`Paso 2 (V31.1): Plan mensual con lógica de flujo de inventario corregida, completado.`);
+    auditLog.push(`[${new Date().toLocaleTimeString()}] Plan mensual completado.`);
     onProgress(null);
-    return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan: [], auditLog };
+    return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan: [], auditLog, initialInventory: initialInventoryState };
 };
 
 

@@ -170,7 +170,7 @@ export const ProductionPlanSection: React.FC = () => {
   }>({ month: '', line: '', center: '', product: '', productCode: ''});
 
 
-  const { dailyPlan = [], monthlyPlan = [], weeklyPlan = [], auditLog = [] } = productionPlan || { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [] };
+  const { dailyPlan = [], monthlyPlan = [], weeklyPlan = [], auditLog = [], initialInventory } = productionPlan || { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [], initialInventory: new Map() };
   
   const handleExportDaily = () => {
     if (filteredDailyPlan.length > 0) {
@@ -282,7 +282,7 @@ export const ProductionPlanSection: React.FC = () => {
 }, [filterInputs.centers, filterInputs.processType, filterInputs.lines, constraints.productionLines]);
 
   const monthlyFlowByCenter = useMemo(() => {
-    const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
+    const { monthlyPlan, initialInventory } = productionPlan || { monthlyPlan: [], initialInventory: new Map() };
     if (!monthlyPlan || monthlyPlan.length === 0) return null;
 
     const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
@@ -301,13 +301,24 @@ export const ProductionPlanSection: React.FC = () => {
         };
         
         let previousMonthFinalStock = NaN;
+        
+        // Calculate total initial stock for this center from the snapshot
+        let totalInitialStockForCenter = 0;
+        if (initialInventory) {
+          for (const [key, value] of initialInventory.entries()) {
+            if (key.endsWith(`---${centerId}`)) {
+              totalInitialStockForCenter += value;
+            }
+          }
+        }
+
 
         for (const monthKey of monthKeys) {
           const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
           
           let initialStockForMonth;
-          if (isNaN(previousMonthFinalStock)) { // Is first month
-              initialStockForMonth = monthItems.reduce((sum, item) => sum + item.initialStock, 0);
+          if (isNaN(previousMonthFinalStock)) { // Is first month of the period
+              initialStockForMonth = totalInitialStockForCenter;
           } else {
               initialStockForMonth = previousMonthFinalStock;
           }
@@ -478,7 +489,7 @@ export const ProductionPlanSection: React.FC = () => {
                                 <tr key={row.label} className="hover:bg-gray-50 group">
                                   <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
                                   {keys.map((key: string) => (
-                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-red-600' : (row.label === 'Traslados (Neto)' && (row.values[key] || 0) > 0 ? 'text-blue-600' : 'text-gray-700')}`}>
                                        {(isNaN(row.values[key])) ? 'N/A' : Math.round(row.values[key] || 0).toLocaleString()}
                                     </td>
                                   ))}
@@ -638,3 +649,4 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
