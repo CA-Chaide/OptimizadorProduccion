@@ -258,72 +258,47 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         let mappedAndAggregatedData = Object.values(aggregatedData);
 
         if (mappedAndAggregatedData.length > 0) {
-            addNotification('info', `Consultando todas las reglas de aprovisionamiento desde CuboInventarios...`);
+            addNotification('info', `Consultando todas las reglas de aprovisionamiento desde TiemposEnsamblado...`);
             
-            const inventoryCubeData: any[] = await queryApi({
-                source: 'CuboInventarios',
+            const assemblyTimeData: any[] = await queryApi({
+                source: 'TiemposEnsamblado',
                 operation: 'get_data',
-                columns: ['Material', 'Centro', 'ClaseAprovisionam', 'Sector'],
+                columns: ['CodMaterial', 'Centro', 'ClaseAprovisionam'],
                 pagination: { limit: 500000 }
             });
             
-            console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: RESPUESTA DE CuboInventarios ---`);
-            console.log(inventoryCubeData);
+            console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: RESPUESTA DE TiemposEnsamblado ---`);
 
-            const rules = new Map<string, { rule: 'E' | 'X' | 'F', sector: string }>();
-            if (inventoryCubeData) {
-              inventoryCubeData.forEach(item => {
-                if (item.Material && item.Centro && item.ClaseAprovisionam) {
-                  const materialCode = String(item.Material).trim();
+            const rules = new Map<string, 'E' | 'X' | 'F'>();
+            if (assemblyTimeData) {
+              assemblyTimeData.forEach(item => {
+                if (item.CodMaterial && item.Centro && item.ClaseAprovisionam) {
+                  const materialCode = normalizeMaterialCode(item.CodMaterial);
                   const center = String(item.Centro).trim();
-                  const sector = item.Sector || 'N/A';
-                  const ruleData = { rule: item.ClaseAprovisionam, sector };
-
-                  rules.set(`${materialCode}---${center}`, ruleData); // Key con 18 digitos
-                  rules.set(`${normalizeMaterialCode(materialCode)}---${center}`, ruleData); // Key con 8 digitos
+                  rules.set(`${materialCode}---${center}`, item.ClaseAprovisionam);
                 }
               });
             }
             console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: Mapa de reglas creado con ${rules.size} entradas.`);
             
-            let processedCount = 0;
             mappedAndAggregatedData = mappedAndAggregatedData.map(sale => {
-                const materialCode8 = sale.código;
-                const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
+                const materialCode = sale.código;
                 const center = sale.centro;
                 
                 let aprovisionamiento: SalesDataRow['claseAprovisionamiento'] = 'N/A';
-                let sector = sale.sector;
-
-                if (processedCount < 5) {
-                  console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: Procesando venta #${processedCount+1} para Material: ${materialCode8}, Centro: ${center}`);
-                  console.log(`--- DEBUG: Buscando con Key18: ${materialCode18}---${center}`);
-                  console.log(`--- DEBUG: Buscando con Key8: ${materialCode8}---${center}`);
-                }
-
-                const directRule = rules.get(`${materialCode18}---${center}`) || rules.get(`${materialCode8}---${center}`);
-
-                if (processedCount < 5) console.log(`--- DEBUG: Resultado Búsqueda Directa:`, directRule);
+                
+                const directRule = rules.get(`${materialCode}---${center}`);
 
                 if (directRule) {
-                    aprovisionamiento = directRule.rule;
-                    sector = directRule.sector;
+                    aprovisionamiento = directRule;
                 } else if (center !== '1000') {
-                    if (processedCount < 5) console.log(`--- DEBUG: No se encontró regla directa para centro no principal. Buscando fallback en centro 1000.`);
-                    const fallbackRule = rules.get(`${materialCode18}---1000`) || rules.get(`${materialCode8}---1000`);
-                    if (processedCount < 5) console.log(`--- DEBUG: Resultado Búsqueda Fallback:`, fallbackRule);
-                    if (fallbackRule && fallbackRule.rule === 'F') {
+                    const fallbackRule = rules.get(`${materialCode}---1000`);
+                    if (fallbackRule && fallbackRule === 'F') {
                         aprovisionamiento = 'F';
-                        sector = fallbackRule.sector;
                     }
                 }
                 
-                if (processedCount < 5) {
-                    console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: Aprovisionamiento final para venta #${processedCount+1}: ${aprovisionamiento}`);
-                }
-                processedCount++;
-
-                return { ...sale, claseAprovisionamiento: aprovisionamiento, sector };
+                return { ...sale, claseAprovisionamiento: aprovisionamiento };
             });
 
             console.log("[DataImportSection] Muestra de datos mapeados y guardados en memoria:", mappedAndAggregatedData.slice(0,5));

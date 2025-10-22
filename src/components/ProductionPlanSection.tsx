@@ -299,39 +299,39 @@ export const ProductionPlanSection: React.FC = () => {
         let previousMonthFinalStock: number | undefined = undefined;
 
         for (const monthKey of monthKeys) {
-          const monthItemsForCenter = monthlyPlan.filter(item => 
-              item.centerId === centerId &&
-              `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey &&
-              (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId))
-          );
+            const monthItemsForCenter = monthlyPlan.filter(item => 
+                item.centerId === centerId &&
+                `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey &&
+                (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId))
+            );
           
-          let initialStockForMonth: number;
+            let initialStockForMonth: number;
           
-          if (previousMonthFinalStock === undefined) { // Is first month of the period
-              let totalInitialStockForCenter = 0;
-              // Correctly sum all initial inventory for the center from the master inventory map
-              for (const [key, value] of initialInventory.entries()) {
-                if (key.endsWith(`---${centerId}`)) {
-                  totalInitialStockForCenter += value;
+            if (previousMonthFinalStock === undefined) { // Is first month of the period
+                let totalInitialStockForCenter = 0;
+                // Correctly sum all initial inventory for the center from the master inventory map
+                for (const [key, value] of initialInventory.entries()) {
+                    if (key.endsWith(`---${centerId}`)) {
+                        totalInitialStockForCenter += value;
+                    }
                 }
-              }
-              initialStockForMonth = totalInitialStockForCenter;
-          } else {
-              initialStockForMonth = previousMonthFinalStock;
-          }
+                initialStockForMonth = totalInitialStockForCenter;
+            } else {
+                initialStockForMonth = previousMonthFinalStock;
+            }
           
-          const production = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
-          const sales = monthItemsForCenter.reduce((sum, item) => sum + item.totalDemand, 0);
-          const netTransfers = monthItemsForCenter.reduce((sum, item) => sum + (item.netTransfers || 0), 0);
-          const finalStock = initialStockForMonth + production + netTransfers - sales;
+            const production = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+            const sales = monthItemsForCenter.reduce((sum, item) => sum + item.totalDemand, 0);
+            const netTransfers = monthItemsForCenter.reduce((sum, item) => sum + (item.netTransfers || 0), 0);
+            const finalStock = initialStockForMonth + production + netTransfers - sales;
           
-          aggregatedData['Saldo Inicial'][monthKey] = initialStockForMonth;
-          aggregatedData['Producción'][monthKey] = production;
-          aggregatedData['Ventas'][monthKey] = sales;
-          aggregatedData['Traslados (Neto)'][monthKey] = netTransfers;
-          aggregatedData['Saldo Final'][monthKey] = finalStock;
+            aggregatedData['Saldo Inicial'][monthKey] = initialStockForMonth;
+            aggregatedData['Producción'][monthKey] = production;
+            aggregatedData['Ventas'][monthKey] = sales;
+            aggregatedData['Traslados (Neto)'][monthKey] = netTransfers;
+            aggregatedData['Saldo Final'][monthKey] = finalStock;
           
-          previousMonthFinalStock = finalStock;
+            previousMonthFinalStock = finalStock;
         }
 
         const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Saldo Final'];
