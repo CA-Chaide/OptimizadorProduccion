@@ -281,7 +281,7 @@ export const generateProductionPlan = async (
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V33.0 (Inventory & Capacity Fix) ---`);
+    console.log(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V33.0 (Capacity & Full Inventory Fix) ---`);
     const auditLog: string[] = [`[${timestamp}] Iniciando Planificador Estratégico v33.0.`];
 
     const { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;

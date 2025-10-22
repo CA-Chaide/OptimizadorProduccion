@@ -309,6 +309,7 @@ export const ProductionPlanSection: React.FC = () => {
           
           if (previousMonthFinalStock === undefined) { // Is first month of the period
               let totalInitialStockForCenter = 0;
+              // Correctly sum all initial inventory for the center from the master inventory map
               for (const [key, value] of initialInventory.entries()) {
                 if (key.endsWith(`---${centerId}`)) {
                   totalInitialStockForCenter += value;
