@@ -261,17 +261,15 @@ const calculateEffectiveManufacturingTime = (productId: string, line: Production
         );
         
         if (apiRow && apiRow.Tiempo > 0) {
-            // This time is per individual post. The total time for this type of post is divided by the number of posts.
             const timePerPost = apiRow.Tiempo / (assignedWorkstation.quantity > 0 ? assignedWorkstation.quantity : 1);
             workstationTimes.push(timePerPost);
         }
     }
     
-    if (workstationTimes.length === 0) return Infinity; // Cannot be produced on this line
+    if (workstationTimes.length === 0) return Infinity;
 
-    // The bottleneck is the slowest step (highest time)
     const bottleneckTimeMinutes = Math.max(0, ...workstationTimes);
-    return bottleneckTimeMinutes / 60; // Convert to hours
+    return bottleneckTimeMinutes / 60;
 };
 
 export const generateProductionPlan = async (
@@ -281,8 +279,8 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V31 (Corrected Transfer Logic) ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v31.'];
+    console.log('--- RUNNING STRATEGIC PLANNER V31.1 (Corrected Inventory Flow) ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v31.1.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
@@ -301,103 +299,111 @@ export const generateProductionPlan = async (
     const ignoredSalesCount = salesData.length - filteredSalesData.length;
     if (ignoredSalesCount > 0) auditLog.push(`ADVERTENCIA: Se ignoraron ${ignoredSalesCount} registros de ventas para materiales sin tiempos de ensamble.`);
 
-    // ================== REFACTORED LOGIC V31 ==================
-    // Step 1: Consolidate demand into local sales and transfer needs
-    const localSalesDemand = new Map<string, number>(); // Key: 'YYYY-MM---productId---centerId', Value: units
-    const transferNeeds = new Map<string, number>(); // Key: 'YYYY-MM---productId---fromCenterId---toCenterId', Value: units
+    
+    const allMonthKeys = new Set<string>();
+    filteredSalesData.forEach(s => allMonthKeys.add(`${s.año}-${String(s.mes).padStart(2, '0')}`));
+    const planningMonths = Array.from(allMonthKeys).sort();
 
+    // Step 1: Initialize monthly inventory state for all relevant product-center pairs
+    const inventoryState = new Map<string, number>(); // Key: 'productId---centerId' -> stock
+    inventorySettings.forEach(inv => {
+        const key = `${inv.itemId}---${inv.centerId}`;
+        inventoryState.set(key, inv.currentStock);
+        auditLog.push(`[Inventario Inicial] Para ${key}, stock inicial es ${inv.currentStock}`);
+    });
+    
+    // Ensure all items from sales data have an entry in inventory state
     filteredSalesData.forEach(sale => {
-        const { año, mes, código, centro, unidadesProyectado, claseAprovisionamiento } = sale;
-        const productId = normalizeMaterialCode(código);
-        const demandCenterId = String(centro).trim();
-        const monthKey = `${año}-${String(mes).padStart(2, '0')}`;
-        
-        const provisionRule = claseAprovisionamiento || 'E';
-        
-        if (provisionRule === 'F' && demandCenterId !== '1000') {
-            // This is a transfer need. Production happens at 1000, demand is at another center.
-            const transferKey = `${monthKey}---${productId}---1000---${demandCenterId}`;
-            transferNeeds.set(transferKey, (transferNeeds.get(transferKey) || 0) + unidadesProyectado);
-            auditLog.push(`[LOG-TRASLADO]: Venta de ${unidadesProyectado}u de ${productId} en centro ${demandCenterId} registrada como necesidad de traslado desde 1000.`);
-        } else {
-            // This is a local sale. Production and demand are in the same center (or it's rule E/X).
-            const producingCenterId = (provisionRule === 'F') ? '1000' : demandCenterId;
-            const saleKey = `${monthKey}---${productId}---${producingCenterId}`;
-            localSalesDemand.set(saleKey, (localSalesDemand.get(saleKey) || 0) + unidadesProyectado);
-        }
+       const productId = normalizeMaterialCode(sale.código);
+       const centerId = String(sale.centro).trim();
+       const key = `${productId}---${centerId}`;
+       if (!inventoryState.has(key)) {
+           inventoryState.set(key, 0); // Default to 0 if no setting exists
+       }
+       if (sale.claseAprovisionamiento === 'F' && centerId !== '1000') {
+           const productionCenterKey = `${productId}---1000`;
+           if (!inventoryState.has(productionCenterKey)) {
+               inventoryState.set(productionCenterKey, 0);
+           }
+       }
     });
 
-    auditLog.push(`Paso 1 (V31): Demanda consolidada. Ventas locales: ${localSalesDemand.size}. Necesidades de traslado: ${transferNeeds.size}.`);
-
-    // Step 2: Monthly Planning with stateful inventory
-    const allMonthKeys = new Set([
-        ...Array.from(localSalesDemand.keys()).map(k => k.split('---')[0]),
-        ...Array.from(transferNeeds.keys()).map(k => k.split('---')[0])
-    ]);
-    const planningMonths = Array.from(allMonthKeys).sort();
-    
-    const monthlyPlan: MonthlyProductionPlanItem[] = [];
-    
-    const inventoryState = new Map<string, number>(); // Key: 'productId---centerId' -> stock
-    inventorySettings.forEach(inv => inventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock));
-    
+    const monthlyPlanItems: MonthlyProductionPlanItem[] = [];
     let productionBacklog = new Map<string, number>(); // Key: 'productId---producingCenterId' -> units
 
+    // Step 2: Iterate through each month and plan
     for (let i = 0; i < planningMonths.length; i++) {
         const monthKey = planningMonths[i];
         const [year, monthNum] = monthKey.split('-').map(Number);
-
+        
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         
-        const totalMonthlyNeed = new Map<string, number>(); // Key 'productId---producingCenterId' -> units
+        // This map will hold all inventory movements for the current month.
+        const monthlyMovements = new Map<string, { production: number, sales: number, transfersIn: number, transfersOut: number }>();
+        const getMovements = (key: string) => {
+            if (!monthlyMovements.has(key)) {
+                monthlyMovements.set(key, { production: 0, sales: 0, transfersIn: 0, transfersOut: 0 });
+            }
+            return monthlyMovements.get(key)!;
+        };
+
+        // Consolidate demand for the month
+        const salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
         
-        // Add local sales demand for the month
-        localSalesDemand.forEach((qty, key) => {
-            if(key.startsWith(monthKey)) {
-                const [_, productId, centerId] = key.split('---');
-                const prodKey = `${productId}---${centerId}`;
-                totalMonthlyNeed.set(prodKey, (totalMonthlyNeed.get(prodKey) || 0) + qty);
+        const productionNeedsThisMonth = new Map<string, number>(); // Key 'productId---producingCenterId' -> units to produce
+
+        salesThisMonth.forEach(sale => {
+            const productId = normalizeMaterialCode(sale.código);
+            const demandCenterId = String(sale.centro).trim();
+            
+            if (sale.claseAprovisionamiento === 'F' && demandCenterId !== '1000') {
+                // This is a transfer need. Production happens at 1000.
+                const productionCenterId = '1000';
+                const productionKey = `${productId}---${productionCenterId}`;
+                productionNeedsThisMonth.set(productionKey, (productionNeedsThisMonth.get(productionKey) || 0) + sale.unidadesProyectado);
+
+                // Log the transfer event for inventory calculation
+                getMovements(`${productId}---${productionCenterId}`).transfersOut += sale.unidadesProyectado;
+                getMovements(`${productId}---${demandCenterId}`).transfersIn += sale.unidadesProyectado;
+            } else {
+                // This is a local sale. Production is in the same center as demand.
+                const productionCenterId = demandCenterId;
+                const productionKey = `${productId}---${productionCenterId}`;
+                productionNeedsThisMonth.set(productionKey, (productionNeedsThisMonth.get(productionKey) || 0) + sale.unidadesProyectado);
+                
+                // Log the sale event for inventory calculation
+                getMovements(productionKey).sales += sale.unidadesProyectado;
             }
         });
 
-        // Add transfer demand for the month
-        transferNeeds.forEach((qty, key) => {
-            if(key.startsWith(monthKey)) {
-                const [_, productId, fromCenterId, toCenterId] = key.split('---');
-                const prodKey = `${productId}---${fromCenterId}`; // Production happens at the 'from' center (1000)
-                totalMonthlyNeed.set(prodKey, (totalMonthlyNeed.get(prodKey) || 0) + qty);
-            }
-        });
-
-        auditLog.push(`Mes ${monthKey}: Demanda total (ventas+traslados) para el centro 1000 es ${Array.from(totalMonthlyNeed.entries()).filter(([k]) => k.endsWith('---1000')).reduce((sum, [,qty]) => sum + qty, 0)}`);
-
-        // Add backlog
+        // Add backlog to current needs
         productionBacklog.forEach((qty, key) => {
-            totalMonthlyNeed.set(key, (totalMonthlyNeed.get(key) || 0) + qty);
+            productionNeedsThisMonth.set(key, (productionNeedsThisMonth.get(key) || 0) + qty);
         });
         productionBacklog.clear();
 
+        // Calculate available capacity for the month
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
             const { regularHours, extraHours, saturdayHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
             monthlyCapacityByLine.set(line.id, regularHours + extraHours + saturdayHours);
         });
 
-        const productionPlanThisMonth = new Map<string, {lineId: string, quantity: number}>();
+        // Plan production based on needs and capacity
         const hoursUsedByLine = new Map<string, number>();
-
-        for (const [prodCenterKey, totalDemand] of totalMonthlyNeed.entries()) {
+        for (const [prodCenterKey, totalDemand] of productionNeedsThisMonth.entries()) {
             const [productId, centerId] = prodCenterKey.split('---');
             const invKey = `${productId}---${centerId}`;
             
             const initialStock = inventoryState.get(invKey) || 0;
             const safetyStock = inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
             
+            // Net need considers what we already have vs demand and safety stock
             const netNeed = Math.max(0, (totalDemand + safetyStock) - initialStock);
             if (netNeed === 0) continue;
 
             const linesInCenter = productionLines.filter(l => l.workCenterId === centerId && l.materialsHandled.includes(productId));
-            const relevantLine = linesInCenter[0];
+            const relevantLine = linesInCenter[0]; // Simplification: using first available line
 
             if (relevantLine) {
                 const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
@@ -408,70 +414,62 @@ export const generateProductionPlan = async (
 
                 const availableHours = (monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0);
                 const maxUnitsInAvailableTime = timePerUnit > 0 ? Math.floor(availableHours / timePerUnit) : Infinity;
-
                 let actualProduction = Math.min(netNeed, maxUnitsInAvailableTime);
                 
-                productionPlanThisMonth.set(invKey, { lineId: relevantLine.id, quantity: (productionPlanThisMonth.get(invKey)?.quantity || 0) + actualProduction });
+                // Log production event
+                getMovements(invKey).production += actualProduction;
                 hoursUsedByLine.set(relevantLine.id, (hoursUsedByLine.get(relevantLine.id) || 0) + (actualProduction * timePerUnit));
 
                 if (actualProduction < netNeed) {
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + (netNeed - actualProduction));
                 }
             } else {
-                productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
+                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
             }
         }
         
+        // Final Step for the month: Create MonthlyProductionPlanItems and update inventory state for next month
         const allProductCenterPairsThisMonth = new Set<string>();
-        totalMonthlyNeed.forEach((_, key) => allProductCenterPairsThisMonth.add(key.split('---').slice(0, 2).join('---')));
-        inventoryState.forEach((_, key) => allProductCenterPairsThisMonth.add(key));
-
+        monthlyMovements.forEach((_, key) => allProductCenterPairsThisMonth.add(key));
+        
         for (const pairKey of allProductCenterPairsThisMonth) {
             const [productId, centerId] = pairKey.split('---');
+            
             const initialStock = inventoryState.get(pairKey) || 0;
-            const production = productionPlanThisMonth.get(pairKey)?.quantity || 0;
+            const movements = getMovements(pairKey);
             
-            const salesDemand = localSalesDemand.get(`${monthKey}---${productId}---${centerId}`) || 0;
-            
-            let transfersOut = 0;
-            transferNeeds.forEach((qty, key) => {
-                const [mKey, pId, fromCenter, toCenter] = key.split('---');
-                if (mKey === monthKey && pId === productId && fromCenter === centerId) {
-                    transfersOut += qty;
-                }
-            });
+            // Sales demand for 'F' items is not local, so we must find it from the original sales data
+            const salesDemand = salesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey && normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === centerId)
+                                       .reduce((sum, s) => sum + s.unidadesProyectado, 0);
 
-            let transfersIn = 0;
-            transferNeeds.forEach((qty, key) => {
-                const [mKey, pId, fromCenter, toCenter] = key.split('---');
-                if (mKey === monthKey && pId === productId && toCenter === centerId) {
-                    transfersIn += qty;
-                }
-            });
-            
-            const netTransfers = transfersIn - transfersOut;
-            const finalStock = initialStock + production - salesDemand + netTransfers;
-            inventoryState.set(pairKey, finalStock);
-            
+            const finalStock = initialStock + movements.production + movements.transfersIn - movements.transfersOut - salesDemand;
+            inventoryState.set(pairKey, finalStock); // Update state for the next month
+
             const planItem: MonthlyProductionPlanItem = {
                 id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
                 productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
-                totalQuantityToProduce: production, totalDemand: salesDemand,
-                netTransfers: netTransfers, initialStock: initialStock, finalStock: finalStock,
-                totalHoursWorked: 0, totalEstimatedLaborCost: 0,
-                assignedLineId: productionPlanThisMonth.get(pairKey)?.lineId
+                totalQuantityToProduce: movements.production,
+                totalDemand: salesDemand, // This now reflects the actual sales from this center
+                netTransfers: movements.transfersIn - movements.transfersOut,
+                initialStock: initialStock,
+                finalStock: finalStock,
+                totalHoursWorked: 0, 
+                totalEstimatedLaborCost: 0, 
+                assignedLineId: productionLines.find(l => l.workCenterId === centerId)?.id, // Simplified
             };
 
-            if (planItem.totalQuantityToProduce > 0 || planItem.totalDemand > 0 || planItem.netTransfers !== 0 || planItem.initialStock > 0 || planItem.finalStock > 0) {
-                 monthlyPlan.push(planItem);
+            // Only add if there's any activity
+            if (Object.values(movements).some(v => v > 0) || salesDemand > 0 || initialStock > 0) {
+                 monthlyPlanItems.push(planItem);
             }
         }
     }
-    auditLog.push(`Paso 2 (V31): Plan mensual con lógica de traslados corregida completado.`);
-
+    
+    auditLog.push(`Paso 2 (V31.1): Plan mensual con lógica de flujo de inventario corregida, completado.`);
     onProgress(null);
-    return { dailyPlan: [], monthlyPlan, weeklyPlan: [], auditLog };
+    return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan: [], auditLog };
 };
+
 
 function getMonthlyCapacity(year: number, month: number, lineId: string, holidays: Holiday[], shiftParams: ShiftParameters): { regularHours: number, extraHours: number, saturdayHours: number } {
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
@@ -550,7 +548,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-
-    
-
