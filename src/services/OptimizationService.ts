@@ -281,10 +281,9 @@ export const generateProductionPlan = async (
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V34.0 (Capacity & Inventory Final Fix) ---`);
-    const auditLog: string[] = [`[${timestamp}] Iniciando Planificador Estratégico v34.0.`];
+    auditLog.push(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V35.0 (Final Fix) ---`);
 
-    const { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
+    var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
         auditLog.push("Error: No hay datos de ventas para planificar.");
@@ -324,6 +323,7 @@ export const generateProductionPlan = async (
     const initialInventoryState = new Map(inventoryState);
     const monthlyPlanItems: MonthlyProductionPlanItem[] = [];
     let productionBacklog = new Map<string, number>();
+    const auditLog: string[] = [];
 
     const plannableMaterialCodes = new Set(apiData.map(item => normalizeMaterialCode(item.CodMaterial)));
     const filteredSalesData = salesData.filter(sale => plannableMaterialCodes.has(normalizeMaterialCode(sale.código)));
@@ -435,13 +435,14 @@ export const generateProductionPlan = async (
                 }
 
                 if (actualProduction < netNeed) {
-                    const pending = netNeed - actualProduction;
-                    auditLog.push(`    - BACKLOG: Se pasan ${pending.toFixed(0)} unidades para el próximo mes.`);
-                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pending);
+                    const pendingUnits = netNeed - actualProduction;
+                    auditLog.push(`    - BACKLOG: Se pasan ${pendingUnits.toFixed(0)} unidades para el próximo mes.`);
+                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
                 }
             } else {
-                 auditLog.push(`    - ADVERTENCIA: No se encontró línea para ${productId} en centro ${centerId}. Pasando ${netNeed.toFixed(0)} uds a backlog.`);
-                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pending);
+                 const pendingUnits = netNeed;
+                 auditLog.push(`    - ADVERTENCIA: No se encontró línea para ${productId} en centro ${centerId}. Pasando ${pendingUnits.toFixed(0)} uds a backlog.`);
+                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
             }
         }
         

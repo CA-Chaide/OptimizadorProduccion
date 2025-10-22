@@ -258,7 +258,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const assemblyTimeData: TiempoEnsambleItem[] = await queryApi({
                 source: 'TiemposEnsamblado',
                 operation: 'get_data',
-                columns: ['CodMaterial', 'Centro', 'ClaseAprovisionam'],
                 pagination: { limit: 500000 }
             });
             
