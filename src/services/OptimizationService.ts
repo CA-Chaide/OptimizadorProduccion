@@ -279,7 +279,7 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V31.1 (Corrected Inventory Flow) ---');
+    console.log('[%s] --- RUNNING STRATEGIC PLANNER V31.1 (Corrected Inventory Flow) ---', new Date().toLocaleTimeString());
     const auditLog: string[] = ['Iniciando Planificador Estratégico v31.1.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
@@ -304,8 +304,8 @@ export const generateProductionPlan = async (
     filteredSalesData.forEach(s => allMonthKeys.add(`${s.año}-${String(s.mes).padStart(2, '0')}`));
     const planningMonths = Array.from(allMonthKeys).sort();
 
-    auditLog.push("Consultando inventario completo desde CuboInventarios...");
-    const allInventoryData = await queryApi({
+    auditLog.push(`Consultando inventario completo desde CuboInventarios para materiales con y sin presupuesto.`);
+    const allInventoryData: any[] = await queryApi({
       source: 'CuboInventarios',
       operation: 'get_data',
       columns: ['Material', 'Centro', 'StockActual']
@@ -314,19 +314,24 @@ export const generateProductionPlan = async (
     const inventoryState = new Map<string, number>(); // Key: 'productId---centerId' -> stock
     if (allInventoryData) {
         allInventoryData.forEach((inv: any) => {
-            if(inv.Material && inv.Centro && inv.StockActual > 0) {
-                const productId = normalizeMaterialCode(inv.Material);
-                const centerId = String(inv.Centro).trim();
-                const key = `${productId}---${centerId}`;
-                inventoryState.set(key, (inventoryState.get(key) || 0) + inv.StockActual);
+            if(inv.Material && inv.Centro && inv.StockActual) {
+                const stock = Number(inv.StockActual)
+                if (stock > 0) {
+                    const productId = normalizeMaterialCode(inv.Material);
+                    const centerId = String(inv.Centro).trim();
+                    const key = `${productId}---${centerId}`;
+                    inventoryState.set(key, (inventoryState.get(key) || 0) + stock);
+                }
             }
         });
         auditLog.push(`Inventario inicial cargado para ${inventoryState.size} combinaciones únicas de producto-centro.`);
     } else {
-        auditLog.push("ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. Los saldos iniciales pueden ser incorrectos.");
+        auditLog.push("ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. Se usarán los datos de TiemposEnsamblado.");
         inventorySettings.forEach(inv => {
-            const key = `${inv.itemId}---${inv.centerId}`;
-            inventoryState.set(key, inv.currentStock);
+            if (inv.currentStock > 0) {
+                const key = `${inv.itemId}---${inv.centerId}`;
+                inventoryState.set(key, inv.currentStock);
+            }
         });
     }
 
@@ -350,32 +355,25 @@ export const generateProductionPlan = async (
         const salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
         
         const productionNeedsThisMonth = new Map<string, number>();
-        const transferEvents = new Map<string, number>();
-
+        
         salesThisMonth.forEach(sale => {
             const productId = normalizeMaterialCode(sale.código);
             const demandCenterId = String(sale.centro).trim();
-            const productionKey = `${productId}---${demandCenterId}`;
+            const demandKey = `${productId}---${demandCenterId}`;
             
-            getMovements(productionKey).sales += sale.unidadesProyectado;
+            getMovements(demandKey).sales += sale.unidadesProyectado;
 
             if (sale.claseAprovisionamiento === 'F' && demandCenterId !== '1000') {
                 const productionCenterId = '1000';
-                const transferKey = `${productId}---${productionCenterId}`;
-                productionNeedsThisMonth.set(transferKey, (productionNeedsThisMonth.get(transferKey) || 0) + sale.unidadesProyectado);
+                const productionKey = `${productId}---${productionCenterId}`;
+                productionNeedsThisMonth.set(productionKey, (productionNeedsThisMonth.get(productionKey) || 0) + sale.unidadesProyectado);
                 
-                const transferEventKey = `${productId}---${productionCenterId}---${demandCenterId}`;
-                transferEvents.set(transferEventKey, (transferEvents.get(transferEventKey) || 0) + sale.unidadesProyectado);
+                getMovements(`${productId}---${productionCenterId}`).transfersOut += sale.unidadesProyectado;
+                getMovements(`${productId}---${demandCenterId}`).transfersIn += sale.unidadesProyectado;
 
             } else {
-                productionNeedsThisMonth.set(productionKey, (productionNeedsThisMonth.get(productionKey) || 0) + sale.unidadesProyectado);
+                productionNeedsThisMonth.set(demandKey, (productionNeedsThisMonth.get(demandKey) || 0) + sale.unidadesProyectado);
             }
-        });
-
-        transferEvents.forEach((quantity, key) => {
-            const [productId, sourceCenter, destCenter] = key.split('---');
-            getMovements(`${productId}---${sourceCenter}`).transfersOut += quantity;
-            getMovements(`${productId}---${destCenter}`).transfersIn += quantity;
         });
 
         productionBacklog.forEach((qty, key) => {
@@ -397,7 +395,7 @@ export const generateProductionPlan = async (
             const initialStock = inventoryState.get(invKey) || 0;
             const safetyStock = inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
             
-            const netNeed = Math.max(0, (totalDemand + safetyStock) - initialStock);
+            const netNeed = Math.max(0, (totalDemand + safetyStock) - (initialStock - getMovements(invKey).sales));
             if (netNeed === 0) continue;
 
             const linesInCenter = productionLines.filter(l => l.workCenterId === centerId && l.materialsHandled.includes(productId));
@@ -432,16 +430,15 @@ export const generateProductionPlan = async (
             
             const initialStock = inventoryState.get(pairKey) || 0;
             const movements = getMovements(pairKey);
-            const salesDemand = movements.sales;
-
-            const finalStock = initialStock + movements.production + movements.transfersIn - movements.transfersOut - salesDemand;
+            
+            const finalStock = initialStock + movements.production + movements.transfersIn - movements.transfersOut - movements.sales;
             inventoryState.set(pairKey, finalStock); 
 
             const planItem: MonthlyProductionPlanItem = {
                 id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
                 productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
                 totalQuantityToProduce: movements.production,
-                totalDemand: salesDemand,
+                totalDemand: movements.sales,
                 netTransfers: movements.transfersIn - movements.transfersOut,
                 initialStock: initialStock,
                 finalStock: finalStock,
@@ -450,7 +447,7 @@ export const generateProductionPlan = async (
                 assignedLineId: productionLines.find(l => l.workCenterId === centerId)?.id,
             };
 
-            if (Object.values(movements).some(v => v !== 0) || salesDemand > 0 || initialStock > 0 || finalStock > 0) {
+            if (Object.values(movements).some(v => v !== 0) || planItem.initialStock !== 0 || planItem.finalStock !== 0) {
                  monthlyPlanItems.push(planItem);
             }
         }

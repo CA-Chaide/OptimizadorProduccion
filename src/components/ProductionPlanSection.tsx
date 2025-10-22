@@ -283,43 +283,47 @@ export const ProductionPlanSection: React.FC = () => {
 
   const monthlyFlowByCenter = useMemo(() => {
     const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
-    if (filterInputs.centers.length === 0 || !monthlyPlan || monthlyPlan.length === 0) return null;
+    if (!monthlyPlan || monthlyPlan.length === 0) return null;
 
     const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
+    const centerIdsToDisplay = filterInputs.centers.length > 0 ? filterInputs.centers : constraints.workCenters.map(c => c.id);
     const filteredLineIds = getFilteredLineIds;
 
-    for(const centerId of filterInputs.centers) {
+    for(const centerId of centerIdsToDisplay) {
         const filteredData = monthlyPlan.filter(item => 
           (item.centerId === centerId) && 
           (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId))
         );
-        if (filteredData.length === 0) continue;
-
-        const monthKeys = Array.from(new Set(filteredData.map(d => `${d.year}-${String(d.month).padStart(2,'0')}`))).sort();
+        
+        const monthKeys = Array.from(new Set(monthlyPlan.map(d => `${d.year}-${String(d.month).padStart(2,'0')}`))).sort();
         const aggregatedData: Record<string, Record<string, number>> = {
-            'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
+            'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Saldo Final': {}
         };
+        
+        let previousMonthFinalStock = NaN;
 
         for (const monthKey of monthKeys) {
           const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
           
-          const uniqueProductStocks = new Map<string, number>();
-          monthItems.forEach(item => {
-              if(!uniqueProductStocks.has(item.productId)) {
-                 uniqueProductStocks.set(item.productId, item.initialStock);
-              }
-          });
-          const initialStock = Array.from(uniqueProductStocks.values()).reduce((sum, stock) => sum + stock, 0);
-
+          let initialStockForMonth;
+          if (isNaN(previousMonthFinalStock)) { // Is first month
+              initialStockForMonth = monthItems.reduce((sum, item) => sum + item.initialStock, 0);
+          } else {
+              initialStockForMonth = previousMonthFinalStock;
+          }
+          
           const production = monthItems.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
           const sales = monthItems.reduce((sum, item) => sum + item.totalDemand, 0);
           const netTransfers = monthItems.reduce((sum, item) => sum + (item.netTransfers || 0), 0);
+          const finalStock = initialStockForMonth + production + netTransfers - sales;
           
+          aggregatedData['Saldo Inicial'][monthKey] = initialStockForMonth;
           aggregatedData['Producción'][monthKey] = production;
           aggregatedData['Ventas'][monthKey] = sales;
           aggregatedData['Traslados (Neto)'][monthKey] = netTransfers;
-          aggregatedData['Saldo Inicial'][monthKey] = initialStock;
-          aggregatedData['Saldo Final'][monthKey] = initialStock + production + netTransfers - sales;
+          aggregatedData['Saldo Final'][monthKey] = finalStock;
+          
+          previousMonthFinalStock = finalStock;
         }
 
         const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Saldo Final'];
@@ -328,7 +332,7 @@ export const ProductionPlanSection: React.FC = () => {
     }
     
     return result;
-  }, [filterInputs.centers, productionPlan, getFilteredLineIds]);
+  }, [filterInputs.centers, productionPlan, getFilteredLineIds, constraints.workCenters]);
   
   const weeklyFlow = useMemo(() => {
       const { weeklyPlan } = productionPlan || { weeklyPlan: [] };
@@ -475,7 +479,7 @@ export const ProductionPlanSection: React.FC = () => {
                                   <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
                                   {keys.map((key: string) => (
                                     <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                                      {Math.round(row.values[key] || 0).toLocaleString()}
+                                       {(isNaN(row.values[key])) ? 'N/A' : Math.round(row.values[key] || 0).toLocaleString()}
                                     </td>
                                   ))}
                                 </tr>
