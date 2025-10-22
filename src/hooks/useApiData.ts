@@ -25,9 +25,10 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
         options.body = JSON.stringify(body);
     }
     
-    console.log(`[Fetcher Log] ---> INICIANDO PETICIÓN...`);
-    console.log(`[Fetcher Log] URL: ${url}`);
-    console.log(`[Fetcher Log] Opciones:`, { method: options.method, headers: options.headers, body: body ? body : 'No Body' });
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[${timestamp}] [Fetcher] ---> INICIANDO PETICIÓN...`);
+    console.log(`[${timestamp}] [Fetcher] URL: ${url}`);
+    console.log(`[${timestamp}] [Fetcher] Opciones:`, { method: options.method, headers: options.headers, body: body ? '...' : 'No Body' });
 
 
     try {
@@ -35,8 +36,8 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
 
         if (!res.ok) {
             const errorText = await res.text();
-            console.error(`[Fetcher Log] ERROR en la respuesta. Estado: ${res.status} ${res.statusText}`);
-            console.error(`[Fetcher Log] Cuerpo del error:`, errorText);
+            console.error(`[${timestamp}] [Fetcher] ERROR en la respuesta. Estado: ${res.status} ${res.statusText}`);
+            console.error(`[${timestamp}] [Fetcher] Cuerpo del error:`, errorText);
             const error: any = new Error('Ocurrió un error al cargar los datos desde la API.');
             try {
                 error.info = JSON.parse(errorText);
@@ -47,19 +48,20 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
             throw error;
         }
         
-        console.log(`[Fetcher Log] Respuesta OK. Estado: ${res.status} ${res.statusText}`);
+        console.log(`[${timestamp}] [Fetcher] Respuesta OK. Estado: ${res.status} ${res.statusText}`);
 
         if (res.status === 204 || res.headers.get('content-length') === '0') {
-             console.log('[Fetcher Log] Respuesta vacía (204 No Content). Retornando null.');
+             console.log(`[${timestamp}] [Fetcher] Respuesta vacía (204 No Content). Retornando null.`);
             return null;
         }
 
         const jsonResponse = await res.json();
-        console.log('[Fetcher Log] Respuesta JSON parseada:', jsonResponse);
+        // Evitamos loguear respuestas muy grandes para no saturar la consola
+        // console.log(`[${timestamp}] [Fetcher] Respuesta JSON parseada:`, jsonResponse);
         return jsonResponse;
 
     } catch (error) {
-        console.error('[Fetcher Log] <--- PETICIÓN FALLIDA. Error de red o en fetch.', error);
+        console.error(`[${timestamp}] [Fetcher] <--- PETICIÓN FALLIDA. Error de red o en fetch.`, error);
         throw error;
     }
 };
@@ -73,6 +75,7 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     let endpoint = '';
     let method: 'GET' | 'POST' = 'POST';
     let body: any = query;
+    const timestamp = new Date().toLocaleTimeString();
 
     if (query.operation === 'get_documentation') {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/documentation/';
@@ -83,7 +86,7 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     }
 
     const fullUrl = API_BASE_URL + endpoint;
-    console.log(`[useApiData] Preparando consulta para API: ${method} ${fullUrl}`, body ? body : 'No Body');
+    console.log(`[${timestamp}] [useApiData] Preparando consulta para API: ${method} ${fullUrl}`, body ? body : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
         return response;
