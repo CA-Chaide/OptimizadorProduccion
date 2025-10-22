@@ -288,14 +288,10 @@ export const ProductionPlanSection: React.FC = () => {
     const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
     const centerIdsToDisplay = filterInputs.centers.length > 0 ? filterInputs.centers : constraints.workCenters.map(c => c.id);
     const filteredLineIds = getFilteredLineIds;
+    
+    const monthKeys = Array.from(new Set(monthlyPlan.map(d => `${d.year}-${String(d.month).padStart(2,'0')}`))).sort();
 
     for(const centerId of centerIdsToDisplay) {
-        const filteredData = monthlyPlan.filter(item => 
-          (item.centerId === centerId) && 
-          (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId))
-        );
-        
-        const monthKeys = Array.from(new Set(monthlyPlan.map(d => `${d.year}-${String(d.month).padStart(2,'0')}`))).sort();
         const aggregatedData: Record<string, Record<string, number>> = {
             'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Saldo Final': {}
         };
@@ -303,9 +299,14 @@ export const ProductionPlanSection: React.FC = () => {
         let previousMonthFinalStock: number | undefined = undefined;
 
         for (const monthKey of monthKeys) {
-          const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
+          const monthItemsForCenter = monthlyPlan.filter(item => 
+              item.centerId === centerId &&
+              `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey &&
+              (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId))
+          );
           
-          let initialStockForMonth;
+          let initialStockForMonth: number;
+          
           if (previousMonthFinalStock === undefined) { // Is first month of the period
               let totalInitialStockForCenter = 0;
               if (initialInventory) {
@@ -320,9 +321,9 @@ export const ProductionPlanSection: React.FC = () => {
               initialStockForMonth = previousMonthFinalStock;
           }
           
-          const production = monthItems.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
-          const sales = monthItems.reduce((sum, item) => sum + item.totalDemand, 0);
-          const netTransfers = monthItems.reduce((sum, item) => sum + (item.netTransfers || 0), 0);
+          const production = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+          const sales = monthItemsForCenter.reduce((sum, item) => sum + item.totalDemand, 0);
+          const netTransfers = monthItemsForCenter.reduce((sum, item) => sum + (item.netTransfers || 0), 0);
           const finalStock = initialStockForMonth + production + netTransfers - sales;
           
           aggregatedData['Saldo Inicial'][monthKey] = initialStockForMonth;
@@ -575,8 +576,8 @@ export const ProductionPlanSection: React.FC = () => {
       
       if (noPlanGenerated && auditLog.length > 0) {
           return (
-              <div className="text-center py-10">
-                  <h3 className="text-lg font-medium text-gray-900">El plan de producción está vacío.</h3>
+              <div className="p-4">
+                  <h3 className="text-lg font-medium text-red-700">El plan de producción está vacío o contiene errores.</h3>
                   <p className="mt-1 text-sm text-gray-500">
                       La planificación no generó ningún resultado. Esto puede deberse a que no hay demanda en los datos de ventas o a inconsistencias en los datos maestros.
                       Revise la bitácora del planificador para más detalles.
@@ -646,4 +647,5 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
 
