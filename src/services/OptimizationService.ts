@@ -423,7 +423,7 @@ export const generateProductionPlan = async (
         }
         
         const allProductCenterPairsThisMonth = new Set<string>();
-        totalMonthlyNeed.forEach((_, key) => allProductCenterPairsThisMonth.add(key));
+        totalMonthlyNeed.forEach((_, key) => allProductCenterPairsThisMonth.add(key.split('---').slice(0, 2).join('---')));
         inventoryState.forEach((_, key) => allProductCenterPairsThisMonth.add(key));
 
         for (const pairKey of allProductCenterPairsThisMonth) {
@@ -553,3 +553,4 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
