@@ -145,6 +145,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [tableFilters, setTableFilters] = useState({
     etiqueta: '', mes: '', código: '', centro: '', descripciónMaterial: '', claseAprovisionamiento: ''
   });
+  
+  const [transferFilters, setTransferFilters] = useState({
+    productId: '',
+    productName: '',
+  });
 
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -152,6 +157,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const handleTableFilterChange = (name: keyof typeof tableFilters, value: string) => {
     setTableFilters(prev => ({ ...prev, [name]: value }));
+  };
+  
+  const handleTransferFilterChange = (name: keyof typeof transferFilters, value: string) => {
+    setTransferFilters(prev => ({ ...prev, [name]: value }));
   };
 
   useEffect(() => {
@@ -176,15 +185,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     loadFilterOptions();
   }, [addNotification]);
   
-  const handleLoadData = async () => {
+ const handleLoadData = async () => {
     setIsProcessing(true);
     setLoadedData([]);
     setTransferNeeds([]);
-    
+
     if (filters.años.length === 0) {
-        addNotification('warning', 'Por favor, seleccione al menos un año.');
-        setIsProcessing(false);
-        return;
+      addNotification('warning', 'Por favor, seleccione al menos un año.');
+      setIsProcessing(false);
+      return;
     }
 
     let allData: PresupuestoItem[] = [];
@@ -193,159 +202,119 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const currentMonth = new Date().getMonth() + 1;
 
     try {
-        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
-        
-        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
+      addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
+      
+      const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
+      const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-        const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
+      const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
-        for (const year of yearsToLoad) {
-            for (const month of monthsToLoad) {
-                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
-                    continue;
-                }
-                
-                for (const centro of centrosToLoad) {
-                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
-                    if (filters.etiqueta) {
-                        queryFilters['Etiqueta'] = filters.etiqueta;
-                    }
-                    
-                    const promise = queryApi({
-                        source: 'Presupuesto',
-                        operation: 'get_data',
-                        filters: queryFilters,
-                        pagination: { limit: 200000 }
-                    });
-                    apiCallPromises.push(promise);
-                }
+      for (const year of yearsToLoad) {
+        for (const month of monthsToLoad) {
+          if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
+            continue;
+          }
+          for (const centro of centrosToLoad) {
+            const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
+            if (filters.etiqueta) {
+              queryFilters['Etiqueta'] = filters.etiqueta;
             }
+            const promise = queryApi({ source: 'Presupuesto', operation: 'get_data', filters: queryFilters, pagination: { limit: 200000 } });
+            apiCallPromises.push(promise);
+          }
         }
-        
-        addNotification('info', `Realizando ${apiCallPromises.length} consultas de presupuesto a la API. Esto puede tardar...`);
+      }
+      
+      addNotification('info', `Realizando ${apiCallPromises.length} consultas de presupuesto a la API. Esto puede tardar...`);
+      const responses = await Promise.all(apiCallPromises);
+      addNotification('info', 'Consultas de presupuesto completadas. Procesando resultados...');
 
-        const responses = await Promise.all(apiCallPromises);
+      responses.forEach(response => {
+        if (response && response.length > 0) {
+          allData = [...allData, ...response];
+        }
+      });
+      
+      const aggregatedData: { [key: string]: SalesDataRow } = {};
+      allData.forEach((item) => {
+        const centro = String(item.Centro || '1000').trim();
+        const key = `${item.Año}-${item.Mes}-${centro}-${normalizeMaterialCode(item.CodMaterial)}`;
 
-        addNotification('info', 'Consultas de presupuesto completadas. Procesando resultados...');
+        if (!aggregatedData[key]) {
+          aggregatedData[key] = {
+            id: `agg-${key}`, año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+            etiqueta: item.Etiqueta || 'Sin Etiqueta', código: normalizeMaterialCode(item.CodMaterial),
+            centro: centro, unidadesProyectado: 0, dolaresProyectado: 0, descripciónMaterial: item.Material,
+            familia: item.Familia, marca: item.Marca, lineaProduccion: item.LineaProduccion || '',
+            claseAprovisionamiento: 'N/A'
+          };
+        }
+        aggregatedData[key].unidadesProyectado += item.UnidadesProyectado;
+      });
 
-        responses.forEach(response => {
-            if (response && response.length > 0) {
-                allData = [...allData, ...response];
-            }
+      let mappedAndAggregatedData = Object.values(aggregatedData);
+
+      if (mappedAndAggregatedData.length > 0) {
+        addNotification('info', `Consultando todas las reglas de aprovisionamiento desde CuboInventarios...`);
+
+        const inventoryCubeData: any[] = await queryApi({
+            source: 'CuboInventarios',
+            operation: 'get_data',
+            columns: ['Material', 'Centro', 'ClaseAprovisionam'],
+            pagination: { limit: 500000 }
         });
         
-        const aggregatedData: { [key: string]: SalesDataRow } = {};
-        allData.forEach((item) => {
-            const centro = String(item.Centro || '1000').trim();
-            const key = `${item.Año}-${item.Mes}-${centro}-${normalizeMaterialCode(item.CodMaterial)}`;
-
-            if (!aggregatedData[key]) {
-                 aggregatedData[key] = {
-                    id: `agg-${key}`,
-                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                    código: normalizeMaterialCode(item.CodMaterial),
-                    centro: centro, 
-                    unidadesProyectado: 0,
-                    dolaresProyectado: 0,
-                    descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, 
-                    lineaProduccion: item.LineaProduccion || '',
-                    claseAprovisionamiento: 'N/A'
-                };
+        const rules = new Map<string, 'E' | 'X' | 'F'>();
+        if (inventoryCubeData) {
+          inventoryCubeData.forEach(item => {
+            if (item.Material && item.Centro && item.ClaseAprovisionam) {
+              const materialCode = String(item.Material).trim();
+              const center = String(item.Centro).trim();
+              rules.set(`${materialCode}---${center}`, item.ClaseAprovisionam);
+              rules.set(`${normalizeMaterialCode(materialCode)}---${center}`, item.ClaseAprovisionam);
             }
-            aggregatedData[key].unidadesProyectado += item.UnidadesProyectado;
+          });
+        }
+        
+        mappedAndAggregatedData = mappedAndAggregatedData.map(sale => {
+          const materialCode8 = sale.código;
+          const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
+          const center = sale.centro;
+          
+          let aprovisionamiento = rules.get(`${materialCode18}---${center}`) || rules.get(`${materialCode8}---${center}`);
+          
+          if (!aprovisionamiento && center !== '1000') {
+            const fallbackRule18 = rules.get(`${materialCode18}---1000`);
+            const fallbackRule8 = rules.get(`${materialCode8}---1000`);
+            if (fallbackRule18 === 'F' || fallbackRule8 === 'F') {
+              aprovisionamiento = 'F';
+            }
+          }
+
+          return { ...sale, claseAprovisionamiento: aprovisionamiento || 'N/A' };
         });
 
-        let mappedAndAggregatedData = Object.values(aggregatedData);
+        setLoadedData(mappedAndAggregatedData);
+        onDataImported(mappedAndAggregatedData);
+        addNotification('success', `Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`);
+        
+        const salesRequiringTransfer = mappedAndAggregatedData.filter(sale => sale.claseAprovisionamiento === 'F' && sale.centro !== '1000');
 
-        if (mappedAndAggregatedData.length > 0) {
-            
-            addNotification('info', `Consultando todas las reglas de aprovisionamiento...`);
+        const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
+        salesRequiringTransfer.forEach(sale => {
+          const productId = sale.código;
+          if (!aggregatedNeeds[productId]) {
+            aggregatedNeeds[productId] = { productId: productId, productName: sale.descripciónMaterial, unitsToTransfer: 0 };
+          }
+          aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
+        });
+        
+        const transferResults = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
+        setTransferNeeds(transferResults);
 
-            const inventoryCubeData: any[] = await queryApi({
-                source: 'CuboInventarios',
-                operation: 'get_data',
-                columns: ['Material', 'Centro', 'ClaseAprovisionam'],
-                pagination: { limit: 500000 }
-            });
-            
-            console.log("--- DEBUG: RESPUESTA DE CuboInventarios ---");
-            console.log(inventoryCubeData);
-
-            const rules = new Map<string, 'E' | 'X' | 'F'>();
-            if (inventoryCubeData) {
-                inventoryCubeData.forEach(item => {
-                    if (item.Material && item.Centro && item.ClaseAprovisionam) {
-                        const materialCode18 = String(item.Material).trim();
-                        const materialCode8 = normalizeMaterialCode(materialCode18);
-                        const center = String(item.Centro).trim();
-                        
-                        rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
-                        rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
-                    }
-                });
-            }
-            console.log(`--- DEBUG: Mapa de reglas creado con ${rules.size} entradas.`);
-            
-            mappedAndAggregatedData = mappedAndAggregatedData.map((sale, index) => {
-                const materialCode8 = sale.código;
-                const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
-                const center = sale.centro;
-                
-                if (index < 5) {
-                   console.log(`--- DEBUG: Procesando venta #${index + 1} para Material: ${materialCode8}, Centro: ${center}`);
-                   console.log(`--- DEBUG: Buscando con Key18: ${materialCode18}---${center}`);
-                   console.log(`--- DEBUG: Buscando con Key8: ${materialCode8}---${center}`);
-                }
-                
-                let aprovisionamiento = rules.get(`${materialCode18}---${center}`) || rules.get(`${materialCode8}---${center}`);
-                
-                if(index < 5) console.log(`--- DEBUG: Resultado Búsqueda Directa: ${aprovisionamiento}`);
-
-                if (!aprovisionamiento && center !== '1000') {
-                    if(index < 5) console.log(`--- DEBUG: Búsqueda directa falló. Intentando fallback al centro 1000.`);
-                    const fallbackRule18 = rules.get(`${materialCode18}---1000`);
-                    const fallbackRule8 = rules.get(`${materialCode8}---1000`);
-                    if(index < 5) console.log(`--- DEBUG: Fallback 18-dig: ${fallbackRule18}, Fallback 8-dig: ${fallbackRule8}`);
-
-                    if (fallbackRule18 === 'F' || fallbackRule8 === 'F') {
-                        aprovisionamiento = 'F';
-                        if(index < 5) console.log(`--- DEBUG: Fallback exitoso. Asignando 'F'.`);
-                    }
-                }
-
-                if(index < 5) console.log(`--- DEBUG: Aprovisionamiento final para venta #${index + 1}: ${aprovisionamiento || 'N/A'}`);
-                return { ...sale, claseAprovisionamiento: aprovisionamiento || 'N/A' };
-            });
-
-            console.log('[DataImportSection] Muestra de datos mapeados y guardados en memoria:', mappedAndAggregatedData.slice(0, 5));
-            setLoadedData(mappedAndAggregatedData);
-            onDataImported(mappedAndAggregatedData);
-            addNotification('success', `Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`);
-            
-            const salesRequiringTransfer = mappedAndAggregatedData.filter(sale => sale.claseAprovisionamiento === 'F' && sale.centro !== '1000');
-
-            const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
-            salesRequiringTransfer.forEach(sale => {
-                const productId = sale.código;
-                if (!aggregatedNeeds[productId]) {
-                    aggregatedNeeds[productId] = {
-                        productId: productId,
-                        productName: sale.descripciónMaterial,
-                        unitsToTransfer: 0
-                    };
-                }
-                aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
-            });
-            
-            const transferResults = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
-            setTransferNeeds(transferResults);
-
-        } else {
-            addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
-        }
+      } else {
+        addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
+      }
 
     } catch (error) {
         addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
@@ -371,6 +340,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const grandTotal = useMemo(() => {
         return filteredData.reduce((sum, row) => sum + row.unidadesProyectado, 0);
     }, [filteredData]);
+    
+    const filteredTransferNeeds = useMemo(() => {
+        return transferNeeds.filter(item => 
+            item.productId.toLowerCase().includes(transferFilters.productId.toLowerCase()) &&
+            item.productName.toLowerCase().includes(transferFilters.productName.toLowerCase())
+        );
+    }, [transferNeeds, transferFilters]);
+
+    const transferTotal = useMemo(() => {
+        return filteredTransferNeeds.reduce((sum, item) => sum + item.unitsToTransfer, 0);
+    }, [filteredTransferNeeds]);
 
 
   return (
@@ -488,17 +468,29 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                     <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
                                     <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades a Trasladar</th>
                                 </tr>
+                                <tr>
+                                  <th className="p-1"><input type="text" placeholder="Filtrar código..." value={transferFilters.productId} onChange={e => handleTransferFilterChange('productId', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
+                                  <th className="p-1"><input type="text" placeholder="Filtrar descripción..." value={transferFilters.productName} onChange={e => handleTransferFilterChange('productName', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
+                                  <th className="p-1"></th>
+                                </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {transferNeeds.map((item) => (
+                                {filteredTransferNeeds.map((item) => (
                                     <tr key={item.productId} className="hover:bg-gray-50">
                                         <td className="px-4 py-2 whitespace-nowrap font-mono">{item.productId}</td>
                                         <td className="px-4 py-2 whitespace-nowrap">{item.productName}</td>
                                         <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-700">{item.unitsToTransfer.toLocaleString()}</td>
                                     </tr>
-                                ))
-                                }
+                                ))}
                             </tbody>
+                             <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
+                                <tr>
+                                    <th colSpan={2} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL FILTRADO</th>
+                                    <th className="px-3 py-2 text-right font-bold uppercase tracking-wider">
+                                        {transferTotal.toLocaleString()}
+                                    </th>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>
