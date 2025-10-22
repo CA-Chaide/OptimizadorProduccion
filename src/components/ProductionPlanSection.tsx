@@ -300,24 +300,21 @@ export const ProductionPlanSection: React.FC = () => {
             'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Saldo Final': {}
         };
         
-        let previousMonthFinalStock = NaN;
-        
-        // Calculate total initial stock for this center from the snapshot
-        let totalInitialStockForCenter = 0;
-        if (initialInventory) {
-          for (const [key, value] of initialInventory.entries()) {
-            if (key.endsWith(`---${centerId}`)) {
-              totalInitialStockForCenter += value;
-            }
-          }
-        }
-
+        let previousMonthFinalStock: number | undefined = undefined;
 
         for (const monthKey of monthKeys) {
           const monthItems = filteredData.filter(d => `${d.year}-${String(d.month).padStart(2,'0')}` === monthKey);
           
           let initialStockForMonth;
-          if (isNaN(previousMonthFinalStock)) { // Is first month of the period
+          if (previousMonthFinalStock === undefined) { // Is first month of the period
+              let totalInitialStockForCenter = 0;
+              if (initialInventory) {
+                for (const [key, value] of initialInventory.entries()) {
+                  if (key.endsWith(`---${centerId}`)) {
+                    totalInitialStockForCenter += value;
+                  }
+                }
+              }
               initialStockForMonth = totalInitialStockForCenter;
           } else {
               initialStockForMonth = previousMonthFinalStock;
