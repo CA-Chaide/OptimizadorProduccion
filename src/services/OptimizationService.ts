@@ -281,9 +281,10 @@ export const generateProductionPlan = async (
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V32.0 (Capacity & Full Inventory Fix) ---`);
-    const auditLog: string[] = [`[${timestamp}] Iniciando Planificador Estratégico v32.0.`];
-    const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
+    console.log(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V33.0 (Inventory & Capacity Fix) ---`);
+    const auditLog: string[] = [`[${timestamp}] Iniciando Planificador Estratégico v33.0.`];
+
+    const { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
         auditLog.push("Error: No hay datos de ventas para planificar.");
@@ -295,6 +296,7 @@ export const generateProductionPlan = async (
     }
     
     auditLog.push(`[${new Date().toLocaleTimeString()}] Consultando inventario completo desde CuboInventarios.`);
+    
     const allInventoryData: any[] = await queryApi({
       source: 'CuboInventarios',
       operation: 'get_data',
@@ -316,12 +318,7 @@ export const generateProductionPlan = async (
         });
         auditLog.push(`[${new Date().toLocaleTimeString()}] Inventario inicial cargado para ${inventoryState.size} combinaciones únicas de producto-centro.`);
     } else {
-        auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. Se usará el stock de TiemposEnsamblado.`);
-        inventorySettings.forEach(inv => {
-            if (inv.currentStock > 0) {
-                inventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock);
-            }
-        });
+        auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`);
     }
     
     const initialInventoryState = new Map(inventoryState);
@@ -334,7 +331,7 @@ export const generateProductionPlan = async (
     filteredSalesData.forEach(s => allMonthKeys.add(`${s.año}-${String(s.mes).padStart(2, '0')}`));
     const planningMonths = Array.from(allMonthKeys).sort();
     
-    auditLog.push(`Horizonte de planificación: ${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}`);
+    auditLog.push(`Horizonte de planificación: ${planningMonths.length > 0 ? `${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}` : 'Ninguno'}`);
 
     for (let i = 0; i < planningMonths.length; i++) {
         const monthKey = planningMonths[i];
@@ -375,7 +372,7 @@ export const generateProductionPlan = async (
             }
         });
         
-        auditLog.push(`Mes ${monthNum}: Demanda local y de traslados calculada.`);
+        auditLog.push(`Mes ${monthNum}: Demanda local y de traslados consolidada.`);
         
         productionBacklog.forEach((qty, key) => {
             productionNeedsThisMonth.set(key, (productionNeedsThisMonth.get(key) || 0) + qty);
@@ -387,7 +384,6 @@ export const generateProductionPlan = async (
         productionLines.forEach(line => {
             const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
             monthlyCapacityByLine.set(line.id, totalHours);
-            auditLog.push(`  [Capacidad] Línea ${line.name} (${line.workCenterId}): ${totalHours.toFixed(1)} horas disponibles.`);
         });
 
         const hoursUsedByLine = new Map<string, number>();
@@ -396,12 +392,12 @@ export const generateProductionPlan = async (
             const invKey = `${productId}---${centerId}`;
             
             const currentStock = inventoryState.get(invKey) || 0;
-            const safetyStock = inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
+            const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
             
             const netNeed = Math.max(0, (totalDemand + safetyStock) - (currentStock));
             
             auditLog.push(`\n  [Cálculo Prod] Material: ${productId} en Centro: ${centerId}`);
-            auditLog.push(`    - Stock Inicial: ${currentStock.toFixed(0)}, Demanda Total (Ventas+Traslados): ${totalDemand.toFixed(0)}, Stock Seg: ${safetyStock}`);
+            auditLog.push(`    - Stock Inicial Mes: ${currentStock.toFixed(0)}, Demanda Total (Ventas+Traslados): ${totalDemand.toFixed(0)}, Stock Seg: ${safetyStock}`);
             auditLog.push(`    - NECESIDAD NETA: ${netNeed.toFixed(0)}`);
             
             if (netNeed <= 0) {
@@ -558,5 +554,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-

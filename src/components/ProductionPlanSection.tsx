@@ -283,7 +283,7 @@ export const ProductionPlanSection: React.FC = () => {
 
   const monthlyFlowByCenter = useMemo(() => {
     const { monthlyPlan, initialInventory } = productionPlan || { monthlyPlan: [], initialInventory: new Map() };
-    if (!monthlyPlan || monthlyPlan.length === 0) return null;
+    if (!monthlyPlan || monthlyPlan.length === 0 || !initialInventory) return null;
 
     const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
     const centerIdsToDisplay = filterInputs.centers.length > 0 ? filterInputs.centers : constraints.workCenters.map(c => c.id);
@@ -309,11 +309,9 @@ export const ProductionPlanSection: React.FC = () => {
           
           if (previousMonthFinalStock === undefined) { // Is first month of the period
               let totalInitialStockForCenter = 0;
-              if (initialInventory) {
-                for (const [key, value] of initialInventory.entries()) {
-                  if (key.endsWith(`---${centerId}`)) {
-                    totalInitialStockForCenter += value;
-                  }
+              for (const [key, value] of initialInventory.entries()) {
+                if (key.endsWith(`---${centerId}`)) {
+                  totalInitialStockForCenter += value;
                 }
               }
               initialStockForMonth = totalInitialStockForCenter;
@@ -647,5 +645,3 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
-
-
