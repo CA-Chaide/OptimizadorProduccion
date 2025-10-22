@@ -384,6 +384,7 @@ export const generateProductionPlan = async (
         productionLines.forEach(line => {
             const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
             monthlyCapacityByLine.set(line.id, totalHours);
+            auditLog.push(`  - Capacidad Línea ${line.name} (${line.workCenterId}): ${totalHours.toFixed(2)}h`);
         });
 
         const hoursUsedByLine = new Map<string, number>();
@@ -554,3 +555,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
+    
