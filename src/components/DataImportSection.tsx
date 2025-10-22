@@ -1,7 +1,7 @@
 
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
+import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -28,11 +28,6 @@ interface TransferNeed {
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
     return codeStr.slice(-8);
-};
-
-const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
-    const eightDigitCode = String(code).slice(-8);
-    return eightDigitCode.padStart(18, '0');
 };
 
 
@@ -205,7 +200,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const currentMonth = new Date().getMonth() + 1;
 
     try {
-        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
+        addNotification('info', `Iniciando carga de datos de presupuesto... Años: ${yearsToLoad.join(', ')}.`);
         
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
@@ -258,16 +253,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         let mappedAndAggregatedData = Object.values(aggregatedData);
 
         if (mappedAndAggregatedData.length > 0) {
-            addNotification('info', `Consultando todas las reglas de aprovisionamiento desde TiemposEnsamblado...`);
+            addNotification('info', `Consultando reglas de aprovisionamiento desde TiemposEnsamblado...`);
             
-            const assemblyTimeData: any[] = await queryApi({
+            const assemblyTimeData: TiempoEnsambleItem[] = await queryApi({
                 source: 'TiemposEnsamblado',
                 operation: 'get_data',
                 columns: ['CodMaterial', 'Centro', 'ClaseAprovisionam'],
                 pagination: { limit: 500000 }
             });
             
-            console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: RESPUESTA DE TiemposEnsamblado ---`);
+            console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: RESPUESTA DE TiemposEnsamblado OBTENIDA CON ${assemblyTimeData?.length || 0} REGLAS ---`);
 
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             if (assemblyTimeData) {
@@ -281,23 +276,31 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }
             console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: Mapa de reglas creado con ${rules.size} entradas.`);
             
-            mappedAndAggregatedData = mappedAndAggregatedData.map(sale => {
+            mappedAndAggregatedData = mappedAndAggregatedData.map((sale, index) => {
                 const materialCode = sale.código;
                 const center = sale.centro;
                 
                 let aprovisionamiento: SalesDataRow['claseAprovisionamiento'] = 'N/A';
                 
-                const directRule = rules.get(`${materialCode}---${center}`);
+                const directRuleKey = `${materialCode}---${center}`;
+                const directRule = rules.get(directRuleKey);
+
+                console.log(`--- [APROV LOG #${index+1}] Mat: ${materialCode}, Centro: ${center} ---`);
+                console.log(` - Buscando regla directa con key: '${directRuleKey}'. Resultado: ${directRule || 'No encontrada'}`);
 
                 if (directRule) {
                     aprovisionamiento = directRule;
                 } else if (center !== '1000') {
-                    const fallbackRule = rules.get(`${materialCode}---1000`);
+                    const fallbackRuleKey = `${materialCode}---1000`;
+                    const fallbackRule = rules.get(fallbackRuleKey);
+                    console.log(` - No hubo regla directa. Buscando fallback en centro 1000 con key: '${fallbackRuleKey}'. Resultado: ${fallbackRule || 'No encontrada'}`);
                     if (fallbackRule && fallbackRule === 'F') {
                         aprovisionamiento = 'F';
+                        console.log(` - Se aplica regla fallback 'F' del centro 1000.`);
                     }
                 }
                 
+                console.log(` - Aprovisionamiento Final para venta #${index+1}: ${aprovisionamiento}`);
                 return { ...sale, claseAprovisionamiento: aprovisionamiento };
             });
 

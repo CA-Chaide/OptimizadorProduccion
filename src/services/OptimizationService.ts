@@ -187,7 +187,7 @@ export function processAndValidateAssemblyData(
                 id: pairKey, itemId: productId, itemName: productId, centerId: centerId, isRawMaterial: false,
                 minStock: parseInt(String(inventoryDataSource.StockSeguridad || 0), 10),
                 maxStock: parseInt(String(inventoryDataSource.StockMaximo || 0), 10),
-                currentStock: 0, // This will be loaded from CuboInventarios at planning time
+                currentStock: 0, 
                 lotMin: parseInt(String(inventoryDataSource.TamLoteMin || 1), 10) || 1,
                 lotMax: inventoryDataSource.TamLoteMax ? parseInt(String(inventoryDataSource.TamLoteMax), 10) : null,
             });
@@ -281,7 +281,7 @@ export const generateProductionPlan = async (
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V34.0 (Unified Inventory & Capacity Fix) ---`);
+    console.log(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V34.0 (Capacity & Inventory Final Fix) ---`);
     const auditLog: string[] = [`[${timestamp}] Iniciando Planificador Estratégico v34.0.`];
 
     const { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
@@ -441,7 +441,7 @@ export const generateProductionPlan = async (
                 }
             } else {
                  auditLog.push(`    - ADVERTENCIA: No se encontró línea para ${productId} en centro ${centerId}. Pasando ${netNeed.toFixed(0)} uds a backlog.`);
-                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
+                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pending);
             }
         }
         
@@ -555,5 +555,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-    
