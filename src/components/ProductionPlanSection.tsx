@@ -309,12 +309,19 @@ export const ProductionPlanSection: React.FC = () => {
           
             if (previousMonthFinalStock === undefined) { // Is first month of the period
                 let totalInitialStockForCenter = 0;
-                // Correctly sum all initial inventory for the center from the master inventory map
+                const stockDetails: {productId: string, stock: number}[] = [];
+
                 for (const [key, value] of initialInventory.entries()) {
                     if (key.endsWith(`---${centerId}`)) {
                         totalInitialStockForCenter += value;
+                        stockDetails.push({ productId: key.split('---')[0], stock: value });
                     }
                 }
+                
+                console.log(`--- DETALLE SALDO INICIAL para Centro: ${centerId} ---`);
+                console.table(stockDetails);
+                console.log(`--- TOTAL SALDO INICIAL para Centro ${centerId}: ${totalInitialStockForCenter} ---`);
+                
                 initialStockForMonth = totalInitialStockForCenter;
             } else {
                 initialStockForMonth = previousMonthFinalStock;
@@ -647,4 +654,5 @@ export const ProductionPlanSection: React.FC = () => {
   );
 };
 
+    
     
