@@ -22,6 +22,7 @@ interface TransferNeed {
     productId: string;
     productName: string;
     unitsToTransfer: number;
+    sector: string;
 }
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -149,6 +150,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [transferFilters, setTransferFilters] = useState({
     productId: '',
     productName: '',
+    sector: '',
   });
 
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
@@ -260,18 +262,21 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         const inventoryCubeData: any[] = await queryApi({
             source: 'CuboInventarios',
             operation: 'get_data',
-            columns: ['Material', 'Centro', 'ClaseAprovisionam'],
+            columns: ['Material', 'Centro', 'ClaseAprovisionam', 'Sector'],
             pagination: { limit: 500000 }
         });
         
-        const rules = new Map<string, 'E' | 'X' | 'F'>();
+        const rules = new Map<string, { rule: 'E' | 'X' | 'F', sector: string }>();
         if (inventoryCubeData) {
           inventoryCubeData.forEach(item => {
             if (item.Material && item.Centro && item.ClaseAprovisionam) {
               const materialCode = String(item.Material).trim();
               const center = String(item.Centro).trim();
-              rules.set(`${materialCode}---${center}`, item.ClaseAprovisionam);
-              rules.set(`${normalizeMaterialCode(materialCode)}---${center}`, item.ClaseAprovisionam);
+              const sector = item.Sector || 'N/A';
+              const ruleData = { rule: item.ClaseAprovisionam, sector };
+
+              rules.set(`${materialCode}---${center}`, ruleData);
+              rules.set(`${normalizeMaterialCode(materialCode)}---${center}`, ruleData);
             }
           });
         }
@@ -281,17 +286,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
           const center = sale.centro;
           
-          let aprovisionamiento = rules.get(`${materialCode18}---${center}`) || rules.get(`${materialCode8}---${center}`);
-          
-          if (!aprovisionamiento && center !== '1000') {
-            const fallbackRule18 = rules.get(`${materialCode18}---1000`);
-            const fallbackRule8 = rules.get(`${materialCode8}---1000`);
-            if (fallbackRule18 === 'F' || fallbackRule8 === 'F') {
-              aprovisionamiento = 'F';
-            }
+          let aprovisionamiento = rules.get(`${materialCode18}---${center}`)?.rule || rules.get(`${materialCode8}---${center}`)?.rule;
+          let sector = sale.sector;
+
+          if (!aprovisionamiento) {
+             const fallbackRule18 = rules.get(`${materialCode18}---1000`);
+             const fallbackRule8 = rules.get(`${materialCode8}---1000`);
+             if(fallbackRule18?.rule === 'F') {
+                 aprovisionamiento = 'F';
+                 sector = fallbackRule18.sector;
+             } else if (fallbackRule8?.rule === 'F') {
+                 aprovisionamiento = 'F';
+                 sector = fallbackRule8.sector;
+             }
+          } else {
+             const ruleData = rules.get(`${materialCode18}---${center}`) || rules.get(`${materialCode8}---${center}`);
+             if(ruleData) sector = ruleData.sector;
           }
 
-          return { ...sale, claseAprovisionamiento: aprovisionamiento || 'N/A' };
+          return { ...sale, claseAprovisionamiento: aprovisionamiento || 'N/A', sector };
         });
 
         setLoadedData(mappedAndAggregatedData);
@@ -304,7 +317,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         salesRequiringTransfer.forEach(sale => {
           const productId = sale.código;
           if (!aggregatedNeeds[productId]) {
-            aggregatedNeeds[productId] = { productId: productId, productName: sale.descripciónMaterial, unitsToTransfer: 0 };
+            aggregatedNeeds[productId] = { productId: productId, productName: sale.descripciónMaterial, sector: sale.sector, unitsToTransfer: 0 };
           }
           aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
         });
@@ -344,7 +357,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const filteredTransferNeeds = useMemo(() => {
         return transferNeeds.filter(item => 
             item.productId.toLowerCase().includes(transferFilters.productId.toLowerCase()) &&
-            item.productName.toLowerCase().includes(transferFilters.productName.toLowerCase())
+            item.productName.toLowerCase().includes(transferFilters.productName.toLowerCase()) &&
+            item.sector.toLowerCase().includes(transferFilters.sector.toLowerCase())
         );
     }, [transferNeeds, transferFilters]);
 
@@ -466,11 +480,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                 <tr>
                                     <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código Material</th>
                                     <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Sector</th>
                                     <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades a Trasladar</th>
                                 </tr>
                                 <tr>
                                   <th className="p-1"><input type="text" placeholder="Filtrar código..." value={transferFilters.productId} onChange={e => handleTransferFilterChange('productId', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
                                   <th className="p-1"><input type="text" placeholder="Filtrar descripción..." value={transferFilters.productName} onChange={e => handleTransferFilterChange('productName', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
+                                  <th className="p-1"><input type="text" placeholder="Filtrar sector..." value={transferFilters.sector} onChange={e => handleTransferFilterChange('sector', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
                                   <th className="p-1"></th>
                                 </tr>
                             </thead>
@@ -479,13 +495,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                     <tr key={item.productId} className="hover:bg-gray-50">
                                         <td className="px-4 py-2 whitespace-nowrap font-mono">{item.productId}</td>
                                         <td className="px-4 py-2 whitespace-nowrap">{item.productName}</td>
+                                        <td className="px-4 py-2 whitespace-nowrap">{item.sector}</td>
                                         <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-700">{item.unitsToTransfer.toLocaleString()}</td>
                                     </tr>
                                 ))}
                             </tbody>
                              <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
                                 <tr>
-                                    <th colSpan={2} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL FILTRADO</th>
+                                    <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL FILTRADO</th>
                                     <th className="px-3 py-2 text-right font-bold uppercase tracking-wider">
                                         {transferTotal.toLocaleString()}
                                     </th>
