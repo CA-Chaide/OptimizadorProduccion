@@ -186,7 +186,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setLoadedData([]);
     setTransferNeeds([]);
     
-    console.log(`\n\n--- INICIANDO CARGA DE DATOS @ ${new Date().toLocaleTimeString()} ---`);
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`\n\n[${timestamp}] --- INICIANDO CARGA DE DATOS ---`);
 
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -261,7 +262,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 pagination: { limit: 500000 }
             });
             
-            console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: RESPUESTA DE TiemposEnsamblado OBTENIDA CON ${assemblyTimeData?.length || 0} REGLAS ---`);
+            console.log(`[${new Date().toLocaleTimeString()}] --- DEBUG: RESPUESTA DE TiemposEnsamblado OBTENIDA CON ${assemblyTimeData?.length || 0} REGLAS ---`);
 
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             if (assemblyTimeData) {
@@ -273,37 +274,38 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 }
               });
             }
-            console.log(`--- DEBUG @ ${new Date().toLocaleTimeString()}: Mapa de reglas creado con ${rules.size} entradas.`);
+            console.log(`[${new Date().toLocaleTimeString()}] --- DEBUG: Mapa de reglas creado con ${rules.size} entradas.`);
             
             mappedAndAggregatedData = mappedAndAggregatedData.map((sale, index) => {
                 const materialCode = sale.código;
                 const center = sale.centro;
+                const ts = new Date().toLocaleTimeString();
                 
                 let aprovisionamiento: SalesDataRow['claseAprovisionamiento'] = 'N/A';
                 
                 const directRuleKey = `${materialCode}---${center}`;
                 const directRule = rules.get(directRuleKey);
 
-                console.log(`--- [APROV LOG #${index+1}] Mat: ${materialCode}, Centro: ${center} ---`);
-                console.log(` - Buscando regla directa con key: '${directRuleKey}'. Resultado: ${directRule || 'No encontrada'}`);
+                console.log(`[${ts}] --- [APROV LOG #${index+1}] Mat: ${materialCode}, Centro: ${center} ---`);
+                console.log(`[${ts}]  - Buscando regla directa con key: '${directRuleKey}'. Resultado: ${directRule || 'No encontrada'}`);
 
                 if (directRule) {
                     aprovisionamiento = directRule;
                 } else if (center !== '1000') {
                     const fallbackRuleKey = `${materialCode}---1000`;
                     const fallbackRule = rules.get(fallbackRuleKey);
-                    console.log(` - No hubo regla directa. Buscando fallback en centro 1000 con key: '${fallbackRuleKey}'. Resultado: ${fallbackRule || 'No encontrada'}`);
+                    console.log(`[${ts}]  - No hubo regla directa. Buscando fallback en centro 1000 con key: '${fallbackRuleKey}'. Resultado: ${fallbackRule || 'No encontrada'}`);
                     if (fallbackRule && fallbackRule === 'F') {
                         aprovisionamiento = 'F';
-                        console.log(` - Se aplica regla fallback 'F' del centro 1000.`);
+                        console.log(`[${ts}]  - Se aplica regla fallback 'F' del centro 1000.`);
                     }
                 }
                 
-                console.log(` - Aprovisionamiento Final para venta #${index+1}: ${aprovisionamiento}`);
+                console.log(`[${ts}]  - Aprovisionamiento Final para venta #${index+1}: ${aprovisionamiento}`);
                 return { ...sale, claseAprovisionamiento: aprovisionamiento };
             });
 
-            console.log("[DataImportSection] Muestra de datos mapeados y guardados en memoria:", mappedAndAggregatedData.slice(0,5));
+            console.log(`[${new Date().toLocaleTimeString()}] [DataImportSection] Muestra de datos mapeados y guardados en memoria:`, mappedAndAggregatedData.slice(0,5));
 
             setLoadedData(mappedAndAggregatedData);
             onDataImported(mappedAndAggregatedData);

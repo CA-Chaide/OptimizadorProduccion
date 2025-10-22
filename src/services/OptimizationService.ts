@@ -281,7 +281,8 @@ export const generateProductionPlan = async (
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
     const timestamp = new Date().toLocaleTimeString();
-    auditLog.push(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V35.0 (Final Fix) ---`);
+    const auditLog: string[] = [];
+    auditLog.push(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V35.1 (Final Fix) ---`);
 
     var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
@@ -323,7 +324,6 @@ export const generateProductionPlan = async (
     const initialInventoryState = new Map(inventoryState);
     const monthlyPlanItems: MonthlyProductionPlanItem[] = [];
     let productionBacklog = new Map<string, number>();
-    const auditLog: string[] = [];
 
     const plannableMaterialCodes = new Set(apiData.map(item => normalizeMaterialCode(item.CodMaterial)));
     const filteredSalesData = salesData.filter(sale => plannableMaterialCodes.has(normalizeMaterialCode(sale.código)));
@@ -331,14 +331,15 @@ export const generateProductionPlan = async (
     filteredSalesData.forEach(s => allMonthKeys.add(`${s.año}-${String(s.mes).padStart(2, '0')}`));
     const planningMonths = Array.from(allMonthKeys).sort();
     
-    auditLog.push(`Horizonte de planificación: ${planningMonths.length > 0 ? `${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}` : 'Ninguno'}`);
+    auditLog.push(`[${new Date().toLocaleTimeString()}] Horizonte de planificación: ${planningMonths.length > 0 ? `${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}` : 'Ninguno'}`);
 
     for (let i = 0; i < planningMonths.length; i++) {
         const monthKey = planningMonths[i];
         const [year, monthNum] = monthKey.split('-').map(Number);
+        const monthTimestamp = new Date().toLocaleTimeString();
         
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
-        auditLog.push(`\n[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
+        auditLog.push(`\n[${monthTimestamp}] --- Planificando Mes ${monthNum}/${year} ---`);
 
         const monthlyMovements = new Map<string, { production: number; sales: number; transfersIn: number; transfersOut: number }>();
         const getMovements = (key: string) => {
@@ -372,11 +373,11 @@ export const generateProductionPlan = async (
             }
         });
         
-        auditLog.push(`Mes ${monthNum}: Demanda local y de traslados consolidada.`);
+        auditLog.push(`[${new Date().toLocaleTimeString()}] Mes ${monthNum}: Demanda local y de traslados consolidada.`);
         
         productionBacklog.forEach((qty, key) => {
             productionNeedsThisMonth.set(key, (productionNeedsThisMonth.get(key) || 0) + qty);
-            auditLog.push(`  -> Añadiendo ${qty.toFixed(0)} unidades de backlog para ${key}`);
+            auditLog.push(`[${new Date().toLocaleTimeString()}] -> Añadiendo ${qty.toFixed(0)} unidades de backlog para ${key}`);
         });
         productionBacklog.clear();
 
@@ -384,25 +385,26 @@ export const generateProductionPlan = async (
         productionLines.forEach(line => {
             const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
             monthlyCapacityByLine.set(line.id, totalHours);
-            auditLog.push(`  - Capacidad Línea ${line.name} (${line.workCenterId}): ${totalHours.toFixed(2)}h`);
+            auditLog.push(`[${new Date().toLocaleTimeString()}] - Capacidad Línea ${line.name} (${line.workCenterId}): ${totalHours.toFixed(2)}h`);
         });
 
         const hoursUsedByLine = new Map<string, number>();
         for (const [prodCenterKey, totalDemand] of productionNeedsThisMonth.entries()) {
             const [productId, centerId] = prodCenterKey.split('---');
             const invKey = `${productId}---${centerId}`;
+            const itemTimestamp = new Date().toLocaleTimeString();
             
             const currentStock = inventoryState.get(invKey) || 0;
             const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
             
             const netNeed = Math.max(0, (totalDemand + safetyStock) - (currentStock));
             
-            auditLog.push(`\n  [Cálculo Prod] Material: ${productId} en Centro: ${centerId}`);
-            auditLog.push(`    - Stock Inicial Mes: ${currentStock.toFixed(0)}, Demanda Total (Ventas+Traslados): ${totalDemand.toFixed(0)}, Stock Seg: ${safetyStock}`);
-            auditLog.push(`    - NECESIDAD NETA: ${netNeed.toFixed(0)}`);
+            auditLog.push(`\n[${itemTimestamp}] [Cálculo Prod] Material: ${productId} en Centro: ${centerId}`);
+            auditLog.push(`[${itemTimestamp}]   - Stock Inicial Mes: ${currentStock.toFixed(0)}, Demanda Total (Ventas+Traslados): ${totalDemand.toFixed(0)}, Stock Seg: ${safetyStock}`);
+            auditLog.push(`[${itemTimestamp}]   - NECESIDAD NETA: ${netNeed.toFixed(0)}`);
             
             if (netNeed <= 0) {
-                auditLog.push(`    - DECISIÓN: No se requiere producción.`);
+                auditLog.push(`[${itemTimestamp}]   - DECISIÓN: No se requiere producción.`);
                 continue;
             }
 
@@ -413,10 +415,10 @@ export const generateProductionPlan = async (
                 const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
                 const availableHours = (monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0);
 
-                auditLog.push(`    - Línea Asignada: ${relevantLine.name}, Tiempo/Ud: ${timePerUnit.toFixed(4)}h, Horas Disp: ${availableHours.toFixed(2)}h`);
+                auditLog.push(`[${itemTimestamp}]   - Línea Asignada: ${relevantLine.name}, Tiempo/Ud: ${timePerUnit.toFixed(4)}h, Horas Disp: ${availableHours.toFixed(2)}h`);
 
                 if (timePerUnit === Infinity) {
-                    auditLog.push(`    - ADVERTENCIA: Tiempo de fabricación infinito. Pasando ${netNeed.toFixed(0)} uds a backlog.`);
+                    auditLog.push(`[${itemTimestamp}]   - ADVERTENCIA: Tiempo de fabricación infinito. Pasando ${netNeed.toFixed(0)} uds a backlog.`);
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
                     continue;
                 }
@@ -424,24 +426,24 @@ export const generateProductionPlan = async (
                 const capacityInUnits = timePerUnit > 0 ? Math.floor(availableHours / timePerUnit) : Infinity;
                 const actualProduction = Math.min(netNeed, capacityInUnits);
                 
-                auditLog.push(`    - Capacidad en Unidades: ${capacityInUnits === Infinity ? 'Ilimitada' : capacityInUnits.toFixed(0)}, Necesidad Neta: ${netNeed.toFixed(0)}`);
-                auditLog.push(`    - DECISIÓN: Producir ${actualProduction.toFixed(0)} unidades.`);
+                auditLog.push(`[${itemTimestamp}]   - Capacidad en Unidades: ${capacityInUnits === Infinity ? 'Ilimitada' : capacityInUnits.toFixed(0)}, Necesidad Neta: ${netNeed.toFixed(0)}`);
+                auditLog.push(`[${itemTimestamp}]   - DECISIÓN: Producir ${actualProduction.toFixed(0)} unidades.`);
 
                 if(actualProduction > 0) {
                     const hoursForProduction = actualProduction * timePerUnit;
                     getMovements(invKey).production += actualProduction;
                     hoursUsedByLine.set(relevantLine.id, (hoursUsedByLine.get(relevantLine.id) || 0) + hoursForProduction);
-                    auditLog.push(`    - IMPACTO: Horas consumidas: ${hoursForProduction.toFixed(2)}. Horas restantes en línea: ${((monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0)).toFixed(2)}h`);
+                    auditLog.push(`[${itemTimestamp}]   - IMPACTO: Horas consumidas: ${hoursForProduction.toFixed(2)}. Horas restantes en línea: ${((monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0)).toFixed(2)}h`);
                 }
 
                 if (actualProduction < netNeed) {
                     const pendingUnits = netNeed - actualProduction;
-                    auditLog.push(`    - BACKLOG: Se pasan ${pendingUnits.toFixed(0)} unidades para el próximo mes.`);
+                    auditLog.push(`[${itemTimestamp}]   - BACKLOG: Se pasan ${pendingUnits.toFixed(0)} unidades para el próximo mes.`);
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
                 }
             } else {
                  const pendingUnits = netNeed;
-                 auditLog.push(`    - ADVERTENCIA: No se encontró línea para ${productId} en centro ${centerId}. Pasando ${pendingUnits.toFixed(0)} uds a backlog.`);
+                 auditLog.push(`[${itemTimestamp}]   - ADVERTENCIA: No se encontró línea para ${productId} en centro ${centerId}. Pasando ${pendingUnits.toFixed(0)} uds a backlog.`);
                  productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
             }
         }

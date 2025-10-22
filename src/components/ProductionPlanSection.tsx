@@ -311,16 +311,20 @@ export const ProductionPlanSection: React.FC = () => {
                 let totalInitialStockForCenter = 0;
                 const stockDetails: {productId: string, stock: number}[] = [];
 
-                for (const [key, value] of initialInventory.entries()) {
-                    if (key.endsWith(`---${centerId}`)) {
-                        totalInitialStockForCenter += value;
-                        stockDetails.push({ productId: key.split('---')[0], stock: value });
+                if (initialInventory) {
+                    for (const [key, value] of initialInventory.entries()) {
+                        if (key.endsWith(`---${centerId}`)) {
+                            const productId = key.split('---')[0];
+                            totalInitialStockForCenter += value;
+                            stockDetails.push({ productId, stock: value });
+                        }
                     }
                 }
                 
-                console.log(`--- DETALLE SALDO INICIAL para Centro: ${centerId} ---`);
+                const timestamp = new Date().toLocaleTimeString();
+                console.log(`[${timestamp}] --- DETALLE SALDO INICIAL para Centro: ${centerId} ---`);
                 console.table(stockDetails);
-                console.log(`--- TOTAL SALDO INICIAL para Centro ${centerId}: ${totalInitialStockForCenter} ---`);
+                console.log(`[${timestamp}] --- TOTAL SALDO INICIAL para Centro ${centerId}: ${totalInitialStockForCenter} ---`);
                 
                 initialStockForMonth = totalInitialStockForCenter;
             } else {
