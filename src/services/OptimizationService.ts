@@ -281,8 +281,8 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    console.log('--- RUNNING STRATEGIC PLANNER V29 (Stateful Inventory Fix) ---');
-    const auditLog: string[] = ['Iniciando Planificador Estratégico v29.'];
+    console.log('--- RUNNING STRATEGIC PLANNER V30 (Refactor to use in-memory rules) ---');
+    const auditLog: string[] = ['Iniciando Planificador Estratégico v30.'];
     const { inventorySettings, holidays, productionLines, workstationDefinitions, shiftParameters, workCenters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
@@ -294,34 +294,29 @@ export const generateProductionPlan = async (
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
 
-    const productInfoMap = new Map<string, { name: string; provisionRule: 'E' | 'X' | 'F' }>();
-    apiData.forEach(item => {
-        const productId = normalizeMaterialCode(item.CodMaterial);
-        if (!productInfoMap.has(productId)) {
-            productInfoMap.set(productId, { name: item.Material, provisionRule: item.ClaseAprovisionamiento || 'E' });
-        }
-    });
-
-    const plannableMaterialCodes = new Set(productInfoMap.keys());
+    const plannableMaterialCodes = new Set(apiData.map(item => normalizeMaterialCode(item.CodMaterial)));
     auditLog.push(`Se identificaron ${plannableMaterialCodes.size} materiales con tiempos de ensamble definidos.`);
-
+    
     const filteredSalesData = salesData.filter(sale => plannableMaterialCodes.has(normalizeMaterialCode(sale.código)));
     const ignoredSalesCount = salesData.length - filteredSalesData.length;
     if (ignoredSalesCount > 0) auditLog.push(`ADVERTENCIA: Se ignoraron ${ignoredSalesCount} registros de ventas para materiales sin tiempos de ensamble.`);
 
-    // ================== START OF REFACTORED LOGIC V29 ==================
+    // ================== REFACTORED LOGIC V30 ==================
     // Step 1: Consolidate all demand into a single production need structure
     const monthlyProductionNeeds = new Map<string, number>(); // Key: 'YYYY-MM---productId---producingCenterId', Value: total units to produce
     
     filteredSalesData.forEach(sale => {
-        const { año, mes, código, centro, unidadesProyectado } = sale;
+        const { año, mes, código, centro, unidadesProyectado, claseAprovisionamiento } = sale;
         const productId = normalizeMaterialCode(código);
         const demandCenterId = String(centro).trim();
         const monthKey = `${año}-${String(mes).padStart(2, '0')}`;
-        const provisionRule = productInfoMap.get(productId)?.provisionRule || 'E';
-
+        
+        // **CRITICAL CHANGE**: Use the pre-calculated rule from salesData
+        const provisionRule = claseAprovisionamiento || 'E'; // Default to 'E' if N/A
+        
         let producingCenterId = demandCenterId; 
         if (provisionRule === 'F' && demandCenterId !== '1000') {
+            auditLog.push(`[LOG-TRASLADO]: Venta de ${unidadesProyectado}u de ${productId} en centro ${demandCenterId} (Regla F) se moverá a producción en centro 1000.`);
             producingCenterId = '1000';
         }
         
@@ -329,13 +324,12 @@ export const generateProductionPlan = async (
         monthlyProductionNeeds.set(needKey, (monthlyProductionNeeds.get(needKey) || 0) + unidadesProyectado);
     });
 
-    auditLog.push(`Paso 1 (V29): Necesidades de producción consolidadas. ${monthlyProductionNeeds.size} necesidades de producción únicas identificadas.`);
+    auditLog.push(`Paso 1 (V30): Necesidades de producción consolidadas usando reglas en memoria. ${monthlyProductionNeeds.size} necesidades únicas identificadas.`);
 
     // Step 2: Monthly Planning with stateful inventory
     const planningMonths = Array.from(new Set(Array.from(monthlyProductionNeeds.keys()).map(k => k.split('---')[0]))).sort();
     const monthlyPlan: MonthlyProductionPlanItem[] = [];
     
-    // Initialize stateful inventory
     const inventoryState = new Map<string, number>(); // Key: 'productId---centerId' -> stock
     inventorySettings.forEach(inv => inventoryState.set(`${inv.itemId}---${inv.centerId}`, inv.currentStock));
     
@@ -426,10 +420,10 @@ export const generateProductionPlan = async (
                 .reduce((sum, s) => sum + s.unidadesProyectado, 0);
 
             let transfersOut = 0;
-            const provisionRule = productInfoMap.get(productId)?.provisionRule || 'E';
+            const provisionRule = salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.claseAprovisionamiento || 'E';
             if (provisionRule === 'F' && centerId === '1000') {
                 const salesInOtherCenters = filteredSalesData
-                    .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === productId && String(s.centro).trim() !== '1000')
+                    .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === productId && String(s.centro).trim() !== '1000' && s.claseAprovisionamiento === 'F')
                     .reduce((sum, s) => sum + s.unidadesProyectado, 0);
                 transfersOut = Math.min(initialStock + production - salesDemandThisCenter, salesInOtherCenters);
             }
@@ -437,7 +431,7 @@ export const generateProductionPlan = async (
             let transfersIn = 0;
             if (provisionRule === 'F' && centerId !== '1000') {
                  const demandForThisProductInThisCenter = filteredSalesData
-                    .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === centerId)
+                    .filter(s => s.año === year && s.mes === month && normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === centerId && s.claseAprovisionamiento === 'F')
                     .reduce((sum, s) => sum + s.unidadesProyectado, 0);
                 transfersIn = demandForThisProductInThisCenter; // Assume transfers cover the need
             }
@@ -448,7 +442,7 @@ export const generateProductionPlan = async (
             
             const planItem: MonthlyProductionPlanItem = {
                 id: `${monthKey}---${pairKey}`, year, month, productId, centerId,
-                productName: productInfoMap.get(productId)?.name || productId,
+                productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
                 totalQuantityToProduce: production, totalDemand: salesDemandThisCenter,
                 netTransfers: netTransfers, initialStock: initialStock, finalStock: finalStock,
                 totalHoursWorked: 0, totalEstimatedLaborCost: 0, // Calculated later
@@ -459,12 +453,12 @@ export const generateProductionPlan = async (
             }
         }
     }
-    auditLog.push(`Paso 2 (V29): Plan mensual con inventario estatal y cálculo de necesidad neta completado.`);
+    auditLog.push(`Paso 2 (V30): Plan mensual con inventario estatal y cálculo de necesidad neta completado.`);
 
     // Step 3: Generate Weekly Plan (no changes needed here)
     const weeklyPlan: WeeklyPlanItem[] = [];
     // ... logic remains the same
-    auditLog.push(`Paso 3 (V29): Plan semanal de inventario completado (lógica sin cambios).`);
+    auditLog.push(`Paso 3 (V30): Plan semanal de inventario completado (lógica sin cambios).`);
 
     onProgress(null);
     return { dailyPlan: [], monthlyPlan, weeklyPlan, auditLog };
