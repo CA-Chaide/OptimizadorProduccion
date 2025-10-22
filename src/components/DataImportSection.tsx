@@ -187,7 +187,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setTransferNeeds([]);
     
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`\n\n[${timestamp}] --- INICIANDO CARGA DE DATOS ---`);
+    console.log(`[${timestamp}] --- INICIANDO CARGA DE DATOS ---`);
 
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -267,10 +267,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const rules = new Map<string, 'E' | 'X' | 'F'>();
             if (assemblyTimeData) {
               assemblyTimeData.forEach(item => {
-                if (item.CodMaterial && item.Centro && item.ClaseAprovisionam) {
+                if (item.CodMaterial && item.Centro && item.ClaseAprovisionamiento) {
                   const materialCode = normalizeMaterialCode(item.CodMaterial);
                   const center = String(item.Centro).trim();
-                  rules.set(`${materialCode}---${center}`, item.ClaseAprovisionam);
+                  rules.set(`${materialCode}---${center}`, item.ClaseAprovisionamiento);
                 }
               });
             }
@@ -283,10 +283,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 
                 let aprovisionamiento: SalesDataRow['claseAprovisionamiento'] = 'N/A';
                 
+                console.log(`[${ts}] --- [APROV LOG #${index+1}] Mat: ${materialCode}, Centro: ${center} ---`);
+
                 const directRuleKey = `${materialCode}---${center}`;
                 const directRule = rules.get(directRuleKey);
-
-                console.log(`[${ts}] --- [APROV LOG #${index+1}] Mat: ${materialCode}, Centro: ${center} ---`);
                 console.log(`[${ts}]  - Buscando regla directa con key: '${directRuleKey}'. Resultado: ${directRule || 'No encontrada'}`);
 
                 if (directRule) {
@@ -297,7 +297,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     console.log(`[${ts}]  - No hubo regla directa. Buscando fallback en centro 1000 con key: '${fallbackRuleKey}'. Resultado: ${fallbackRule || 'No encontrada'}`);
                     if (fallbackRule && fallbackRule === 'F') {
                         aprovisionamiento = 'F';
-                        console.log(`[${ts}]  - Se aplica regla fallback 'F' del centro 1000.`);
                     }
                 }
                 

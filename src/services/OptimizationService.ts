@@ -282,7 +282,7 @@ export const generateProductionPlan = async (
 ): Promise<ProductionPlan> => {
     const timestamp = new Date().toLocaleTimeString();
     const auditLog: string[] = [];
-    auditLog.push(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V35.1 (Final Fix) ---`);
+    auditLog.push(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V36.0 (Final Fix) ---`);
 
     var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
@@ -435,9 +435,8 @@ export const generateProductionPlan = async (
                     hoursUsedByLine.set(relevantLine.id, (hoursUsedByLine.get(relevantLine.id) || 0) + hoursForProduction);
                     auditLog.push(`[${itemTimestamp}]   - IMPACTO: Horas consumidas: ${hoursForProduction.toFixed(2)}. Horas restantes en línea: ${((monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0)).toFixed(2)}h`);
                 }
-
-                if (actualProduction < netNeed) {
-                    const pendingUnits = netNeed - actualProduction;
+                const pendingUnits = netNeed - actualProduction;
+                if (pendingUnits > 0) {
                     auditLog.push(`[${itemTimestamp}]   - BACKLOG: Se pasan ${pendingUnits.toFixed(0)} unidades para el próximo mes.`);
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
                 }
