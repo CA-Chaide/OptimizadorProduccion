@@ -16,10 +16,16 @@ interface SectorTotal {
     totalStock: number;
 }
 
+interface DisplayRow {
+    type: 'data' | 'subtotal';
+    sector: string;
+    totalStock: number;
+}
+
 export const InventorySummarySection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(true);
-    const [sectorTotals, setSectorTotals] = useState<SectorTotal[]>([]);
+    const [displayRows, setDisplayRows] = useState<DisplayRow[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     const fetchInventorySummary = useCallback(async () => {
@@ -44,12 +50,31 @@ export const InventorySummarySection: React.FC = () => {
                     }
                 });
 
-                const sortedTotals = Object.entries(totals)
-                    .map(([sector, totalStock]) => ({ sector, totalStock }))
-                    .sort((a, b) => b.totalStock - a.totalStock);
+                const allSectorTotals = Object.entries(totals).map(([sector, totalStock]) => ({ sector, totalStock }));
                 
-                setSectorTotals(sortedTotals);
+                const priorityOrder = ['Colchones', 'Bases-cabeceros-cama', 'Muebles de fabricación'];
+                const prioritySectors: DisplayRow[] = [];
+                const otherSectors: SectorTotal[] = [];
+                
+                allSectorTotals.forEach(item => {
+                    if (priorityOrder.includes(item.sector)) {
+                        prioritySectors.push({ type: 'data', ...item });
+                    } else {
+                        otherSectors.push(item);
+                    }
+                });
+                
+                prioritySectors.sort((a, b) => priorityOrder.indexOf(a.sector) - priorityOrder.indexOf(b.sector));
+                
+                const subtotal = prioritySectors.reduce((sum, item) => sum + item.totalStock, 0);
+                const subtotalRow: DisplayRow = { type: 'subtotal', sector: 'Subtotal Fabricación', totalStock: subtotal };
+                
+                otherSectors.sort((a, b) => b.totalStock - a.totalStock);
+                const otherDisplayRows: DisplayRow[] = otherSectors.map(item => ({ type: 'data', ...item }));
+
+                setDisplayRows([...prioritySectors, subtotalRow, ...otherDisplayRows]);
                 addNotification('success', `Resumen de inventario por sector cargado correctamente.`);
+
             } else {
                  addNotification('warning', `La consulta a CuboInventarios no devolvió datos.`);
             }
@@ -68,8 +93,8 @@ export const InventorySummarySection: React.FC = () => {
     }, [fetchInventorySummary]);
     
     const grandTotal = useMemo(() => {
-        return sectorTotals.reduce((sum, item) => sum + item.totalStock, 0);
-    }, [sectorTotals]);
+        return displayRows.filter(row => row.type === 'data').reduce((sum, item) => sum + item.totalStock, 0);
+    }, [displayRows]);
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -107,13 +132,23 @@ export const InventorySummarySection: React.FC = () => {
                                     {error}
                                 </td>
                             </tr>
-                        ) : sectorTotals.length > 0 ? (
-                            sectorTotals.map((item) => (
-                                <tr key={item.sector} className="hover:bg-gray-50">
-                                    <td className="px-4 py-2 whitespace-nowrap font-medium">{item.sector}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-700">{Math.round(item.totalStock).toLocaleString()}</td>
-                                </tr>
-                            ))
+                        ) : displayRows.length > 0 ? (
+                            displayRows.map((row, index) => {
+                                if (row.type === 'subtotal') {
+                                    return (
+                                        <tr key={`subtotal-${index}`} className="bg-gray-100 font-bold">
+                                            <td className="px-4 py-2 text-right text-gray-700">{row.sector}</td>
+                                            <td className="px-4 py-2 whitespace-nowrap font-mono text-right text-gray-800">{Math.round(row.totalStock).toLocaleString()}</td>
+                                        </tr>
+                                    );
+                                }
+                                return (
+                                    <tr key={row.sector} className="hover:bg-gray-50">
+                                        <td className="px-4 py-2 whitespace-nowrap font-medium">{row.sector}</td>
+                                        <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-700">{Math.round(row.totalStock).toLocaleString()}</td>
+                                    </tr>
+                                );
+                            })
                         ) : (
                              <tr>
                                 <td colSpan={2} className="text-center p-8 text-gray-500">
