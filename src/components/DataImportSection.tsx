@@ -78,7 +78,7 @@ const MultiSelect: React.FC<{
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
-                     const opt = options.find(o => o.value.toLowerCase() === currentValue.toLowerCase());
+                     const opt = options.find(o => o.value === currentValue);
                      if (opt) {
                        handleSelect(opt.value);
                      }
