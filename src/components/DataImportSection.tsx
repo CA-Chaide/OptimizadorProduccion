@@ -286,26 +286,26 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
                 const center = sale.centro;
                 
-                console.log(`[${ts}] --- [APROV LOG #${index+1}] Mat: ${sale.código}, Centro: ${center} ---`);
+                // console.log(`[${ts}] --- [APROV LOG #${index+1}] Mat: ${sale.código}, Centro: ${center} ---`);
 
                 let aprovisionamiento: SalesDataRow['claseAprovisionamiento'] = 'N/A';
                 
                 const directRuleKey = `${materialCode18}---${center}`;
                 const directRule = rules.get(directRuleKey);
-                console.log(`[${ts}]  - Buscando regla directa con key: '${directRuleKey}'. Resultado: ${directRule || 'No encontrada'}`);
+                // console.log(`[${ts}]  - Buscando regla directa con key: '${directRuleKey}'. Resultado: ${directRule || 'No encontrada'}`);
 
                 if (directRule) {
                     aprovisionamiento = directRule;
                 } else if (center !== '1000') {
                     const fallbackRuleKey = `${materialCode18}---1000`;
                     const fallbackRule = rules.get(fallbackRuleKey);
-                    console.log(`[${ts}]  - No hubo regla directa. Buscando fallback en centro 1000 con key: '${fallbackRuleKey}'. Resultado: ${fallbackRule || 'No encontrada'}`);
+                    // console.log(`[${ts}]  - No hubo regla directa. Buscando fallback en centro 1000 con key: '${fallbackRuleKey}'. Resultado: ${fallbackRule || 'No encontrada'}`);
                     if (fallbackRule && fallbackRule === 'F') {
                         aprovisionamiento = 'F';
                     }
                 }
                 
-                console.log(`[${ts}]  - Aprovisionamiento Final para venta #${index+1}: ${aprovisionamiento}`);
+                // console.log(`[${ts}]  - Aprovisionamiento Final para venta #${index+1}: ${aprovisionamiento}`);
                 return { ...sale, claseAprovisionamiento: aprovisionamiento };
             });
 

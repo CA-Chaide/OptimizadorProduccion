@@ -295,15 +295,13 @@ export const generateProductionPlan = async (
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
     
-    auditLog.push(`[${new Date().toLocaleTimeString()}] Consultando inventario completo desde CuboInventarios como fuente única de verdad.`);
-    
+    const inventoryState = new Map<string, number>(); 
     const allInventoryData = await queryApi({
       source: 'CuboInventarios',
       operation: 'get_data',
       columns: ['Material', 'Centro', 'StockActual']
     });
 
-    const inventoryState = new Map<string, number>(); // Key: 'productId---centerId' -> stock
     if (allInventoryData) {
         allInventoryData.forEach((inv: any) => {
             if(inv.Material && inv.Centro && inv.StockActual) {
@@ -317,7 +315,6 @@ export const generateProductionPlan = async (
             }
         });
         
-        // --- PUNTO DE DEPURACIÓN 1 ---
         let totalStockCentro1000 = 0;
         for (const [key, value] of inventoryState.entries()) {
             if (key.endsWith('---1000')) {
@@ -326,7 +323,6 @@ export const generateProductionPlan = async (
         }
         const tsPunto1 = new Date().toLocaleTimeString();
         auditLog.push(`[${tsPunto1}] [Punto 1: Motor] Inventario inicial cargado. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`);
-        
         auditLog.push(`[${new Date().toLocaleTimeString()}] Inventario inicial cargado para ${inventoryState.size} combinaciones únicas de producto-centro.`);
     } else {
         auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`);
