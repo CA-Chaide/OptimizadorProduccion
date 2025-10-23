@@ -295,6 +295,7 @@ export const generateProductionPlan = async (
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
     
+    // --- LÓGICA DE CARGA DE INVENTARIO CORREGIDA ---
     const inventoryState = new Map<string, number>(); 
     const allInventoryData = await queryApi({
       source: 'CuboInventarios',
@@ -306,7 +307,7 @@ export const generateProductionPlan = async (
     if (allInventoryData) {
         allInventoryData.forEach((inv: any) => {
             if(inv.Material && inv.Centro && inv.StockActual) {
-                const stock = Number(inv.StockActual)
+                const stock = Number(inv.StockActual);
                 if (stock > 0) {
                     const productId = normalizeMaterialCode(inv.Material);
                     const centerId = String(inv.Centro).trim();
@@ -323,11 +324,11 @@ export const generateProductionPlan = async (
             }
         }
         const tsPunto1 = new Date().toLocaleTimeString();
-        auditLog.push(`[${tsPunto1}] [Punto 1: Motor] Inventario inicial cargado. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`);
-        auditLog.push(`[${new Date().toLocaleTimeString()}] Inventario inicial cargado para ${inventoryState.size} combinaciones únicas de producto-centro.`);
+        auditLog.push(`[${tsPunto1}] [Punto 1: Motor] Inventario inicial cargado DIRECTAMENTE de CuboInventarios. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`);
     } else {
         auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`);
     }
+    // --- FIN DE LÓGICA CORREGIDA ---
     
     const initialInventoryState = new Map(inventoryState);
     const monthlyPlanItems: MonthlyProductionPlanItem[] = [];
@@ -567,3 +568,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
