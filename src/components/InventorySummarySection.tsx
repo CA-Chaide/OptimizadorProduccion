@@ -8,75 +8,76 @@ import { useAppContext } from '@/context/AppProvider';
 
 interface InventoryItem {
     Sector: string;
+    Centro: string;
     StockActual: number;
 }
 
-interface SectorTotal {
+interface SectorRow {
     sector: string;
+    stockByCenter: { [center: string]: number };
     totalStock: number;
 }
 
 interface DisplayRow {
-    type: 'data' | 'subtotal';
+    type: 'data' | 'subtotal' | 'total';
     sector: string;
+    stockByCenter: { [center: string]: number };
     totalStock: number;
 }
 
 export const InventorySummarySection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isProcessing, setIsProcessing] = useState<boolean>(true);
-    const [displayRows, setDisplayRows] = useState<DisplayRow[]>([]);
+    const [allRows, setAllRows] = useState<SectorRow[]>([]);
+    const [centers, setCenters] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     const fetchInventorySummary = useCallback(async () => {
         setIsProcessing(true);
         setError(null);
-        addNotification('info', `Consultando stock total por sector desde CuboInventarios...`);
+        addNotification('info', `Consultando stock total por sector y centro desde CuboInventarios...`);
 
         try {
             const inventoryData: InventoryItem[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
-                columns: ['Sector', 'StockActual'],
-                pagination: { limit: 500000 } // Fetch all data
+                columns: ['Sector', 'Centro', 'StockActual'],
+                pagination: { limit: 500000 }
             });
             
             if (inventoryData) {
-                const totals: { [sector: string]: number } = {};
+                const totals: { [sector: string]: { stockByCenter: { [center: string]: number }, totalStock: number } } = {};
+                const centerSet = new Set<string>();
+
                 inventoryData.forEach(item => {
-                    if (item.Sector && item.StockActual) {
+                    if (item.Sector && item.Centro && item.StockActual) {
                         const sector = item.Sector || 'Sin Sector';
-                        totals[sector] = (totals[sector] || 0) + Number(item.StockActual);
-                    }
-                });
+                        const centro = String(item.Centro).trim();
+                        centerSet.add(centro);
 
-                const allSectorTotals = Object.entries(totals).map(([sector, totalStock]) => ({ sector, totalStock }));
-                
-                const priorityOrder = ['Colchones', 'Bases-cabeceros-cama', 'Muebles de fabricación'];
-                const prioritySectors: DisplayRow[] = [];
-                const otherSectors: SectorTotal[] = [];
-                
-                allSectorTotals.forEach(item => {
-                    if (priorityOrder.includes(item.sector)) {
-                        prioritySectors.push({ type: 'data', ...item });
-                    } else {
-                        otherSectors.push(item);
+                        if (!totals[sector]) {
+                            totals[sector] = { stockByCenter: {}, totalStock: 0 };
+                        }
+                        
+                        totals[sector].stockByCenter[centro] = (totals[sector].stockByCenter[centro] || 0) + Number(item.StockActual);
+                        totals[sector].totalStock += Number(item.StockActual);
                     }
                 });
                 
-                prioritySectors.sort((a, b) => priorityOrder.indexOf(a.sector) - priorityOrder.indexOf(b.sector));
-                
-                const subtotal = prioritySectors.reduce((sum, item) => sum + item.totalStock, 0);
-                const subtotalRow: DisplayRow = { type: 'subtotal', sector: 'Subtotal Fabricación', totalStock: subtotal };
-                
-                otherSectors.sort((a, b) => b.totalStock - a.totalStock);
-                const otherDisplayRows: DisplayRow[] = otherSectors.map(item => ({ type: 'data', ...item }));
+                const sortedCenters = Array.from(centerSet).sort();
+                setCenters(sortedCenters);
 
-                setDisplayRows([...prioritySectors, subtotalRow, ...otherDisplayRows]);
-                addNotification('success', `Resumen de inventario por sector cargado correctamente.`);
+                const sectorRows = Object.entries(totals).map(([sector, data]) => ({
+                    sector,
+                    ...data
+                }));
+                setAllRows(sectorRows);
 
+                addNotification('success', `Resumen de inventario cargado correctamente.`);
             } else {
                  addNotification('warning', `La consulta a CuboInventarios no devolvió datos.`);
+                 setAllRows([]);
+                 setCenters([]);
             }
 
         } catch (err) {
@@ -92,34 +93,94 @@ export const InventorySummarySection: React.FC = () => {
         fetchInventorySummary();
     }, [fetchInventorySummary]);
     
-    const grandTotal = useMemo(() => {
-        return displayRows.filter(row => row.type === 'data').reduce((sum, item) => sum + item.totalStock, 0);
-    }, [displayRows]);
+    const displayRows = useMemo(() => {
+        if (allRows.length === 0) return [];
+        
+        // Use exact names from the database, including prefixes
+        const priorityOrder = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
+        
+        const prioritySectors: SectorRow[] = [];
+        const otherSectors: SectorRow[] = [];
+
+        allRows.forEach(row => {
+            if (priorityOrder.includes(row.sector)) {
+                prioritySectors.push(row);
+            } else {
+                otherSectors.push(row);
+            }
+        });
+        
+        // Sort priority sectors according to the defined order
+        prioritySectors.sort((a, b) => priorityOrder.indexOf(a.sector) - priorityOrder.indexOf(b.sector));
+        
+        const subtotalData: DisplayRow = {
+            type: 'subtotal',
+            sector: 'Subtotal Fabricación',
+            stockByCenter: {},
+            totalStock: 0,
+        };
+
+        prioritySectors.forEach(pSector => {
+            subtotalData.totalStock += pSector.totalStock;
+            Object.entries(pSector.stockByCenter).forEach(([center, stock]) => {
+                subtotalData.stockByCenter[center] = (subtotalData.stockByCenter[center] || 0) + stock;
+            });
+        });
+
+        // Sort other sectors by name
+        otherSectors.sort((a, b) => a.sector.localeCompare(b.sector));
+        
+        const priorityDisplayRows: DisplayRow[] = prioritySectors.map(s => ({...s, type: 'data'}));
+        const otherDisplayRows: DisplayRow[] = otherSectors.map(s => ({...s, type: 'data'}));
+
+        return [...priorityDisplayRows, subtotalData, ...otherDisplayRows];
+
+    }, [allRows]);
+    
+    const footerTotals = useMemo(() => {
+        const grandTotal: DisplayRow = {
+            type: 'total',
+            sector: 'TOTAL GENERAL',
+            stockByCenter: {},
+            totalStock: 0,
+        };
+        allRows.forEach(row => {
+            grandTotal.totalStock += row.totalStock;
+            Object.entries(row.stockByCenter).forEach(([center, stock]) => {
+                grandTotal.stockByCenter[center] = (grandTotal.stockByCenter[center] || 0) + stock;
+            });
+        });
+        return grandTotal;
+    }, [allRows]);
+
 
     return (
         <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
             <div className="flex items-center space-x-3">
                 <Package />
-                <h2 className="text-2xl font-semibold text-gray-700">Resumen de Inventario por Sector</h2>
+                <h2 className="text-2xl font-semibold text-gray-700">Resumen de Inventario por Sector y Centro</h2>
             </div>
             
             <p className="text-gray-600">
-                Este reporte muestra la suma total del campo `StockActual` agrupado por `Sector`, consultado directamente desde la tabla `CuboInventarios` sin ningún filtro.
+                Este reporte muestra la suma total del campo `StockActual` agrupado por `Sector` y `Centro`, consultado directamente desde `CuboInventarios` sin filtros.
                 Utilícelo para verificar el saldo inicial total del plan de producción.
             </p>
 
             <div className="border rounded-lg overflow-auto max-h-[70vh]">
                 <table className="min-w-full text-sm divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0">
+                    <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
-                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Sector</th>
-                            <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Total (Unidades)</th>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider sticky left-0 bg-gray-100">Sector</th>
+                            {centers.map(center => (
+                                <th key={center} className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{center}</th>
+                            ))}
+                            <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider sticky right-0 bg-gray-100">Total General</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {isProcessing ? (
                             <tr>
-                                <td colSpan={2} className="text-center p-8">
+                                <td colSpan={centers.length + 2} className="text-center p-8">
                                     <div className="flex justify-center items-center gap-2 text-gray-500">
                                         <Loader2 className="w-5 h-5 animate-spin" />
                                         <span>Consultando...</span>
@@ -128,30 +189,27 @@ export const InventorySummarySection: React.FC = () => {
                             </tr>
                         ) : error ? (
                             <tr>
-                                <td colSpan={2} className="text-center p-8 text-red-500">
+                                <td colSpan={centers.length + 2} className="text-center p-8 text-red-500">
                                     {error}
                                 </td>
                             </tr>
                         ) : displayRows.length > 0 ? (
-                            displayRows.map((row, index) => {
-                                if (row.type === 'subtotal') {
-                                    return (
-                                        <tr key={`subtotal-${index}`} className="bg-gray-100 font-bold">
-                                            <td className="px-4 py-2 text-right text-gray-700">{row.sector}</td>
-                                            <td className="px-4 py-2 whitespace-nowrap font-mono text-right text-gray-800">{Math.round(row.totalStock).toLocaleString()}</td>
-                                        </tr>
-                                    );
-                                }
-                                return (
-                                    <tr key={row.sector} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2 whitespace-nowrap font-medium">{row.sector}</td>
-                                        <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-700">{Math.round(row.totalStock).toLocaleString()}</td>
-                                    </tr>
-                                );
-                            })
+                            displayRows.map((row, index) => (
+                                <tr key={row.sector + index} className={`${row.type === 'subtotal' ? 'bg-gray-100 font-bold' : 'hover:bg-gray-50'}`}>
+                                    <td className={`px-4 py-2 whitespace-nowrap sticky left-0 ${row.type === 'subtotal' ? 'bg-gray-100 text-right' : 'bg-white group-hover:bg-gray-50'}`}>{row.sector}</td>
+                                    {centers.map(center => (
+                                        <td key={center} className="px-4 py-2 whitespace-nowrap font-mono text-right text-gray-700">
+                                            {Math.round(row.stockByCenter[center] || 0).toLocaleString()}
+                                        </td>
+                                    ))}
+                                    <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-800 sticky right-0 bg-white group-hover:bg-gray-50">
+                                        {Math.round(row.totalStock).toLocaleString()}
+                                    </td>
+                                </tr>
+                            ))
                         ) : (
                              <tr>
-                                <td colSpan={2} className="text-center p-8 text-gray-500">
+                                <td colSpan={centers.length + 2} className="text-center p-8 text-gray-500">
                                     No se encontraron datos de inventario.
                                 </td>
                             </tr>
@@ -159,9 +217,14 @@ export const InventorySummarySection: React.FC = () => {
                     </tbody>
                      <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
                         <tr>
-                            <th className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL GENERAL</th>
-                            <th className="px-3 py-2 text-right font-bold uppercase tracking-wider">
-                                {Math.round(grandTotal).toLocaleString()}
+                            <th className="px-4 py-2 text-left font-bold uppercase tracking-wider sticky left-0 bg-gray-800">{footerTotals.sector}</th>
+                             {centers.map(center => (
+                                <th key={`total-${center}`} className="px-4 py-2 text-right font-bold uppercase tracking-wider">
+                                    {Math.round(footerTotals.stockByCenter[center] || 0).toLocaleString()}
+                                </th>
+                            ))}
+                            <th className="px-4 py-2 text-right font-bold uppercase tracking-wider sticky right-0 bg-gray-800">
+                                {Math.round(footerTotals.totalStock).toLocaleString()}
                             </th>
                         </tr>
                     </tfoot>
