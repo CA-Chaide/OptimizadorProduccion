@@ -30,6 +30,11 @@ const normalizeMaterialCode = (code: string | number): string => {
     return codeStr.slice(-8);
 };
 
+const normalizeMaterialCodeTo18Digits = (code: string | number): string => {
+    const eightDigitCode = String(code).slice(-8);
+    return eightDigitCode.padStart(18, '0');
+};
+
 
 const MultiSelect: React.FC<{
   label: string;
@@ -76,9 +81,9 @@ const MultiSelect: React.FC<{
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.value}
+                  value={option.label} // Compare with label for case-insensitivity
                   onSelect={(currentValue) => {
-                     const opt = options.find(o => o.value === currentValue);
+                     const opt = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
                      if (opt) {
                        handleSelect(opt.value);
                      }
@@ -254,23 +259,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         let mappedAndAggregatedData = Object.values(aggregatedData);
 
         if (mappedAndAggregatedData.length > 0) {
-            addNotification('info', `Consultando reglas de aprovisionamiento desde TiemposEnsamblado...`);
+            addNotification('info', `Consultando reglas de aprovisionamiento desde CuboInventarios...`);
             
-            const assemblyTimeData: TiempoEnsambleItem[] = await queryApi({
-                source: 'TiemposEnsamblado',
+            const inventoryRulesData = await queryApi({
+                source: 'CuboInventarios',
                 operation: 'get_data',
+                columns: ['Material', 'Centro', 'ClaseAprovisionam'],
                 pagination: { limit: 500000 }
             });
             
-            console.log(`[${new Date().toLocaleTimeString()}] --- DEBUG: RESPUESTA DE TiemposEnsamblado OBTENIDA CON ${assemblyTimeData?.length || 0} REGLAS ---`);
+            console.log(`[${new Date().toLocaleTimeString()}] --- DEBUG: RESPUESTA DE CuboInventarios OBTENIDA CON ${inventoryRulesData?.length || 0} REGLAS ---`);
 
             const rules = new Map<string, 'E' | 'X' | 'F'>();
-            if (assemblyTimeData) {
-              assemblyTimeData.forEach(item => {
-                if (item.CodMaterial && item.Centro && item.ClaseAprovisionamiento) {
-                  const materialCode = normalizeMaterialCode(item.CodMaterial);
+            if (inventoryRulesData) {
+              inventoryRulesData.forEach((item: any) => {
+                if (item.Material && item.Centro && item.ClaseAprovisionam) {
+                  const materialCode18 = String(item.Material).trim();
+                  const materialCode8 = materialCode18.slice(-8);
                   const center = String(item.Centro).trim();
-                  rules.set(`${materialCode}---${center}`, item.ClaseAprovisionamiento);
+                  rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
                 }
               });
             }

@@ -14,6 +14,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -511,8 +512,14 @@ export interface TiempoEnsambleItem {
   TamLoteMin: number;
   TamLoteMax: number | null;
   GrupoCompras: string;
-  ClaseAprovisionam: 'E' | 'X' | 'F' | null;
+  ClaseAprovisionamiento: 'E' | 'X' | 'F' | null;
 }
 
-import { ActiveView } from '@/constants/constants';
+export interface CuboInventariosItem {
+    Material: string;
+    Centro: string;
+    ClaseAprovisionam: 'E' | 'X' | 'F' | null;
+}
 
+
+import { ActiveView } from '@/constants/constants';
