@@ -81,11 +81,10 @@ const MultiSelect: React.FC<{
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label} // Compare with label for case-insensitivity
+                  value={option.value}
                   onSelect={(currentValue) => {
-                     const opt = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
-                     if (opt) {
-                       handleSelect(opt.value);
+                     if (option.value.toLowerCase() === currentValue.toLowerCase()) {
+                       handleSelect(option.value);
                      }
                   }}
                 >
@@ -261,7 +260,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         if (mappedAndAggregatedData.length > 0) {
             addNotification('info', `Consultando reglas de aprovisionamiento desde CuboInventarios...`);
             
-            const inventoryRulesData = await queryApi({
+            const inventoryRulesData: any[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
                 columns: ['Material', 'Centro', 'ClaseAprovisionam'],
@@ -275,31 +274,30 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               inventoryRulesData.forEach((item: any) => {
                 if (item.Material && item.Centro && item.ClaseAprovisionam) {
                   const materialCode18 = String(item.Material).trim();
-                  const materialCode8 = materialCode18.slice(-8);
                   const center = String(item.Centro).trim();
-                  rules.set(`${materialCode8}---${center}`, item.ClaseAprovisionam);
+                  rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
                 }
               });
             }
             console.log(`[${new Date().toLocaleTimeString()}] --- DEBUG: Mapa de reglas creado con ${rules.size} entradas.`);
             
             mappedAndAggregatedData = mappedAndAggregatedData.map((sale, index) => {
-                const materialCode = sale.código;
-                const center = sale.centro;
                 const ts = new Date().toLocaleTimeString();
+                const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
+                const center = sale.centro;
                 
+                console.log(`[${ts}] --- [APROV LOG #${index+1}] Mat: ${sale.código}, Centro: ${center} ---`);
+
                 let aprovisionamiento: SalesDataRow['claseAprovisionamiento'] = 'N/A';
                 
-                console.log(`[${ts}] --- [APROV LOG #${index+1}] Mat: ${materialCode}, Centro: ${center} ---`);
-
-                const directRuleKey = `${materialCode}---${center}`;
+                const directRuleKey = `${materialCode18}---${center}`;
                 const directRule = rules.get(directRuleKey);
                 console.log(`[${ts}]  - Buscando regla directa con key: '${directRuleKey}'. Resultado: ${directRule || 'No encontrada'}`);
 
                 if (directRule) {
                     aprovisionamiento = directRule;
                 } else if (center !== '1000') {
-                    const fallbackRuleKey = `${materialCode}---1000`;
+                    const fallbackRuleKey = `${materialCode18}---1000`;
                     const fallbackRule = rules.get(fallbackRuleKey);
                     console.log(`[${ts}]  - No hubo regla directa. Buscando fallback en centro 1000 con key: '${fallbackRuleKey}'. Resultado: ${fallbackRule || 'No encontrada'}`);
                     if (fallbackRule && fallbackRule === 'F') {
