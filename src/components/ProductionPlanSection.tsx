@@ -196,8 +196,6 @@ export const ProductionPlanSection: React.FC = () => {
                   totalStockCentro1000 += value;
               }
           }
-          const timestamp = new Date().toLocaleTimeString();
-          console.log(`[${timestamp}] [Punto 2: Componente] El plan de producción ha llegado al componente. El inventario inicial para el centro 1000 tiene un total de: ${totalStockCentro1000.toLocaleString()}`);
       }
   }, [productionPlan?.initialInventory]);
 
@@ -349,17 +347,16 @@ export const ProductionPlanSection: React.FC = () => {
                 if (initialInventory) {
                     for (const [key, value] of initialInventory.entries()) {
                         const [prodId, cId] = key.split('---');
-                        const sector = productSectorMap.get(prodId);
-                        if (cId === centerId && sector && prioritySectors.has(sector)) {
-                            totalInitialStockForCenter += value;
-                            stockDetails.push({ productId: prodId, stock: value });
+                        if (cId === centerId) {
+                            // Check if the product belongs to a priority sector
+                            const sector = productSectorMap.get(prodId);
+                            if (sector && prioritySectors.has(sector)) {
+                                totalInitialStockForCenter += value;
+                                stockDetails.push({ productId: prodId, stock: value });
+                            }
                         }
                     }
                 }
-                
-                const timestamp = new Date().toLocaleTimeString();
-                console.log(`[${timestamp}] [Punto 3: Visualización] Calculando Saldo Inicial para el primer mes del Centro: ${centerId}. Total: ${totalInitialStockForCenter.toLocaleString()}`);
-                console.table(stockDetails);
                 
                 initialStockForMonth = totalInitialStockForCenter;
             } else {
@@ -709,6 +706,7 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
 
 
 
