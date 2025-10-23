@@ -171,6 +171,19 @@ export const ProductionPlanSection: React.FC = () => {
     productCode: string;
   }>({ month: '', line: '', center: '', product: '', productCode: ''});
 
+  // Mapa para asociar productId con su sector para filtrado
+  const productSectorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    salesData.forEach(sale => {
+      if (!map.has(sale.código)) {
+        map.set(sale.código, sale.sector);
+      }
+    });
+    return map;
+  }, [salesData]);
+  
+  // Sectores de fabricación prioritarios
+  const prioritySectors = useMemo(() => new Set(['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN']), []);
 
   const { dailyPlan = [], monthlyPlan = [], weeklyPlan = [], auditLog = [], initialInventory } = productionPlan || { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [], initialInventory: new Map() };
   
@@ -211,6 +224,12 @@ export const ProductionPlanSection: React.FC = () => {
   const filteredDailyPlan = useMemo(() => {
     if (!dailyPlan) return [];
     
+    // Filtro base por sector
+    const sectorFilteredPlan = dailyPlan.filter(item => {
+        const sector = productSectorMap.get(item.productId);
+        return sector && prioritySectors.has(sector);
+    });
+
     const { product, month, line, center, productCode } = appliedFilters;
     
     const productNameFilter = product.toLowerCase().trim();
@@ -220,12 +239,12 @@ export const ProductionPlanSection: React.FC = () => {
     const centerFilter = center.toLowerCase().trim();
 
     if (!productNameFilter && !productCodeFilter && !monthFilter && !lineFilter && !centerFilter) {
-      return dailyPlan;
+      return sectorFilteredPlan;
     }
 
     const lineNamesMap = new Map(constraints.productionLines.map(l => [l.id, l.name]));
 
-    return dailyPlan.filter(item => {
+    return sectorFilteredPlan.filter(item => {
         if (monthFilter && !MONTH_NAMES[item.month - 1].toLowerCase().includes(monthFilter)) {
             return false;
         }
@@ -254,7 +273,7 @@ export const ProductionPlanSection: React.FC = () => {
 
         return true;
     });
-  }, [dailyPlan, appliedFilters, constraints.productionLines]);
+  }, [dailyPlan, appliedFilters, constraints.productionLines, productSectorMap, prioritySectors]);
 
   const getFilteredLineIds = useMemo(() => {
     if (filterInputs.centers.length === 0 && !filterInputs.processType && filterInputs.lines.length === 0) {
@@ -329,10 +348,11 @@ export const ProductionPlanSection: React.FC = () => {
 
                 if (initialInventory) {
                     for (const [key, value] of initialInventory.entries()) {
-                        if (key.endsWith(`---${centerId}`)) {
+                        const [prodId, cId] = key.split('---');
+                        const sector = productSectorMap.get(prodId);
+                        if (cId === centerId && sector && prioritySectors.has(sector)) {
                             totalInitialStockForCenter += value;
-                            const productId = key.split('---')[0];
-                            stockDetails.push({ productId, stock: value });
+                            stockDetails.push({ productId: prodId, stock: value });
                         }
                     }
                 }
@@ -346,9 +366,21 @@ export const ProductionPlanSection: React.FC = () => {
                 initialStockForMonth = previousMonthFinalStock;
             }
           
-            const production = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
-            const sales = monthItemsForCenter.reduce((sum, item) => sum + item.totalDemand, 0);
-            const netTransfers = monthItemsForCenter.reduce((sum, item) => sum + (item.netTransfers || 0), 0);
+            const production = monthItemsForCenter.reduce((sum, item) => {
+                const sector = productSectorMap.get(item.productId);
+                return (sector && prioritySectors.has(sector)) ? sum + item.totalQuantityToProduce : sum;
+            }, 0);
+
+            const sales = monthItemsForCenter.reduce((sum, item) => {
+                const sector = productSectorMap.get(item.productId);
+                return (sector && prioritySectors.has(sector)) ? sum + item.totalDemand : sum;
+            }, 0);
+
+            const netTransfers = monthItemsForCenter.reduce((sum, item) => {
+                const sector = productSectorMap.get(item.productId);
+                return (sector && prioritySectors.has(sector)) ? sum + (item.netTransfers || 0) : sum;
+            }, 0);
+
             const finalStock = initialStockForMonth + production + netTransfers - sales;
           
             aggregatedData['Saldo Inicial'][monthKey] = initialStockForMonth;
@@ -366,7 +398,7 @@ export const ProductionPlanSection: React.FC = () => {
     }
     
     return result;
-  }, [filterInputs.centers, productionPlan, getFilteredLineIds, constraints.workCenters]);
+  }, [filterInputs.centers, productionPlan, getFilteredLineIds, constraints.workCenters, productSectorMap, prioritySectors]);
   
   const weeklyFlow = useMemo(() => {
       const { weeklyPlan } = productionPlan || { weeklyPlan: [] };
@@ -375,8 +407,13 @@ export const ProductionPlanSection: React.FC = () => {
       const result: Record<string, { weekKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
       const filteredLineIds = getFilteredLineIds;
       
+      const filteredWeeklyPlan = weeklyPlan.filter(item => {
+        const sector = productSectorMap.get(item.productId);
+        return sector && prioritySectors.has(sector);
+      });
+
       for(const centerId of filterInputs.centers) {
-          const filteredData = weeklyPlan.filter(item => 
+          const filteredData = filteredWeeklyPlan.filter(item => 
             (item.workCenterId === centerId) &&
             (filteredLineIds.size === 0 || filteredLineIds.has(item.lineId))
           );
@@ -409,7 +446,7 @@ export const ProductionPlanSection: React.FC = () => {
           result[centerId] = { weekKeys, rows };
       }
       return result;
-  }, [filterInputs.centers, productionPlan, getFilteredLineIds]);
+  }, [filterInputs.centers, productionPlan, getFilteredLineIds, productSectorMap, prioritySectors]);
 
   const availableLinesForFilter = useMemo(() => {
       if (filterInputs.centers.length === 0) return constraints.productionLines;
@@ -672,6 +709,7 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
 
 
 
