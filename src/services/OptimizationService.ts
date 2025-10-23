@@ -429,8 +429,9 @@ export const generateProductionPlan = async (
                 auditLog.push(`[${itemTimestamp}]   - Línea Asignada: ${relevantLine.name}, Tiempo/Ud: ${timePerUnit.toFixed(4)}h, Horas Disp: ${availableHours.toFixed(2)}h`);
 
                 if (timePerUnit === Infinity) {
-                    auditLog.push(`[${itemTimestamp}]   - ADVERTENCIA: Tiempo de fabricación infinito. Pasando ${netNeed.toFixed(0)} uds a backlog.`);
-                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
+                    const pendingUnits = netNeed;
+                    auditLog.push(`[${itemTimestamp}]   - ADVERTENCIA: Tiempo de fabricación infinito. Pasando ${pendingUnits.toFixed(0)} uds a backlog.`);
+                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
                     continue;
                 }
 
@@ -569,5 +570,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
 
