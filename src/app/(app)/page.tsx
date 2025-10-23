@@ -15,6 +15,7 @@ import {
   WorkShiftPlanningSection,
   RealDataSection,
   TransferCalculatorSection,
+  InventorySummarySection,
 } from '@/components';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -60,6 +61,8 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <DataImportSection onDataImported={handleDataImported} />;
             case ActiveView.TRANSFER_CALCULATOR:
                 return <TransferCalculatorSection />;
+            case ActiveView.INVENTORY_SUMMARY:
+                return <InventorySummarySection />;
             case ActiveView.CONSTRAINTS:
                 return <ConstraintConfigurationSection />;
             case ActiveView.PERSONNEL:
@@ -67,7 +70,7 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.MAINTENANCE:
                 return <MaintenanceSection events={maintenanceEvents} setEvents={setEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
             case ActiveView.ABSENTEEISM:
-                return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
+                return <AbsenteeismSection events={absenteeismEvents} setEvents={setEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:
                 return <ProductionPlanSection />;
             case ActiveView.TACTICAL_SCHEDULING:

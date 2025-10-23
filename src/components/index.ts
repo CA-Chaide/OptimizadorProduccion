@@ -14,3 +14,4 @@ export * from './TacticalPlanSection';
 export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
 export * from './TransferCalculatorSection';
+export * from './InventorySummarySection';
