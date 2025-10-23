@@ -282,7 +282,7 @@ export const generateProductionPlan = async (
 ): Promise<ProductionPlan> => {
     const timestamp = new Date().toLocaleTimeString();
     const auditLog: string[] = [];
-    auditLog.push(`[${timestamp}] --- RUNNING STRATEGIC PLANNER V36.0 (Final Fix) ---`);
+    auditLog.push(`[${timestamp}] --- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`);
 
     var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
@@ -299,7 +299,8 @@ export const generateProductionPlan = async (
     const allInventoryData = await queryApi({
       source: 'CuboInventarios',
       operation: 'get_data',
-      columns: ['Material', 'Centro', 'StockActual']
+      columns: ['Material', 'Centro', 'StockActual'],
+      pagination: { limit: 500000 }
     });
 
     if (allInventoryData) {
@@ -566,4 +567,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
