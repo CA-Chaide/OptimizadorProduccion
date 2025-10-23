@@ -66,7 +66,9 @@ const MultiSelect: React.FC<{
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
-                    handleSelect(option.value); // Use option.value directly
+                    if (option.value.toLowerCase() === currentValue.toLowerCase()) {
+                       handleSelect(option.value);
+                     }
                   }}
                 >
                   <Check
@@ -657,3 +659,4 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
