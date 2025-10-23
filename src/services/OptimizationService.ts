@@ -316,6 +316,17 @@ export const generateProductionPlan = async (
                 }
             }
         });
+        
+        // --- PUNTO DE DEPURACIÓN 1 ---
+        let totalStockCentro1000 = 0;
+        for (const [key, value] of inventoryState.entries()) {
+            if (key.endsWith('---1000')) {
+                totalStockCentro1000 += value;
+            }
+        }
+        const tsPunto1 = new Date().toLocaleTimeString();
+        auditLog.push(`[${tsPunto1}] [Punto 1: Motor] Inventario inicial cargado. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`);
+        
         auditLog.push(`[${new Date().toLocaleTimeString()}] Inventario inicial cargado para ${inventoryState.size} combinaciones únicas de producto-centro.`);
     } else {
         auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`);
@@ -437,7 +448,8 @@ export const generateProductionPlan = async (
                 }
                 const pendingUnits = netNeed - actualProduction;
                 if (pendingUnits > 0) {
-                    auditLog.push(`[${itemTimestamp}]   - BACKLOG: Se pasan ${pendingUnits.toFixed(0)} unidades para el próximo mes.`);
+                    const logMessage = `[${itemTimestamp}]   - BACKLOG: Se pasan ${pendingUnits.toFixed(0)} unidades para el próximo mes.`;
+                    auditLog.push(logMessage);
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
                 }
             } else {
@@ -557,3 +569,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+

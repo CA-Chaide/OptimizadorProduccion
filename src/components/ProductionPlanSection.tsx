@@ -174,6 +174,20 @@ export const ProductionPlanSection: React.FC = () => {
 
   const { dailyPlan = [], monthlyPlan = [], weeklyPlan = [], auditLog = [], initialInventory } = productionPlan || { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [], initialInventory: new Map() };
   
+    // --- PUNTO DE DEPURACIÓN 2 ---
+    useEffect(() => {
+      if (productionPlan?.initialInventory && productionPlan.initialInventory.size > 0) {
+          let totalStockCentro1000 = 0;
+          for (const [key, value] of productionPlan.initialInventory.entries()) {
+              if (key.endsWith('---1000')) {
+                  totalStockCentro1000 += value;
+              }
+          }
+          const timestamp = new Date().toLocaleTimeString();
+          console.log(`[${timestamp}] [Punto 2: Componente] El plan de producción ha llegado al componente. El inventario inicial para el centro 1000 tiene un total de: ${totalStockCentro1000.toLocaleString()}`);
+      }
+  }, [productionPlan?.initialInventory]);
+
   const handleExportDaily = () => {
     if (filteredDailyPlan.length > 0) {
       exportDailyPlanToExcel(filteredDailyPlan, constraints);
@@ -316,17 +330,16 @@ export const ProductionPlanSection: React.FC = () => {
                 if (initialInventory) {
                     for (const [key, value] of initialInventory.entries()) {
                         if (key.endsWith(`---${centerId}`)) {
-                            const productId = key.split('---')[0];
                             totalInitialStockForCenter += value;
+                            const productId = key.split('---')[0];
                             stockDetails.push({ productId, stock: value });
                         }
                     }
                 }
                 
                 const timestamp = new Date().toLocaleTimeString();
-                console.log(`[${timestamp}] --- DETALLE SALDO INICIAL para Centro: ${centerId} ---`);
+                console.log(`[${timestamp}] [Punto 3: Visualización] Calculando Saldo Inicial para el primer mes del Centro: ${centerId}. Total: ${totalInitialStockForCenter.toLocaleString()}`);
                 console.table(stockDetails);
-                console.log(`[${timestamp}] --- TOTAL SALDO INICIAL para Centro ${centerId}: ${totalInitialStockForCenter} ---`);
                 
                 initialStockForMonth = totalInitialStockForCenter;
             } else {
@@ -659,4 +672,5 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
 
