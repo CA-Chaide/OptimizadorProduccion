@@ -295,7 +295,6 @@ export const generateProductionPlan = async (
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
     
-    // --- LÓGICA DE CARGA DE INVENTARIO CORREGIDA ---
     const inventoryState = new Map<string, number>(); 
     const allInventoryData = await queryApi({
       source: 'CuboInventarios',
@@ -323,12 +322,10 @@ export const generateProductionPlan = async (
                 totalStockCentro1000 += value;
             }
         }
-        const tsPunto1 = new Date().toLocaleTimeString();
-        auditLog.push(`[${tsPunto1}] [Punto 1: Motor] Inventario inicial cargado DIRECTAMENTE de CuboInventarios. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`);
+        auditLog.push(`[${new Date().toLocaleTimeString()}] [Punto 1: Motor] Inventario inicial cargado DIRECTAMENTE de CuboInventarios. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`);
     } else {
         auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`);
     }
-    // --- FIN DE LÓGICA CORREGIDA ---
     
     const initialInventoryState = new Map(inventoryState);
     const monthlyPlanItems: MonthlyProductionPlanItem[] = [];
@@ -486,8 +483,74 @@ export const generateProductionPlan = async (
     }
     
     auditLog.push(`[${new Date().toLocaleTimeString()}] Plan mensual completado.`);
+    
+    // --- GENERACIÓN DEL PLAN SEMANAL ---
+    const weeklyPlan: WeeklyPlanItem[] = [];
+    const weeklyGrouped = new Map<string, { production: number, sales: number, netTransfers: number, lineId: string, workCenterId: string, initialStocks: Map<string, number> }>();
+    
+    monthlyPlanItems.forEach(item => {
+        const { year, month, productId, centerId, assignedLineId, totalQuantityToProduce, totalDemand, netTransfers, initialStock } = item;
+        
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const productionPerDay = totalQuantityToProduce / daysInMonth;
+        const salesPerDay = totalDemand / daysInMonth;
+        const transfersPerDay = netTransfers / daysInMonth;
+        
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month - 1, day);
+            const { year: weekYear, week: weekNum } = getWeekNumber(date);
+            const weekKey = `${weekYear}-W${String(weekNum).padStart(2, '0')}---${productId}---${centerId}---${assignedLineId}`;
+
+            if (!weeklyGrouped.has(weekKey)) {
+                weeklyGrouped.set(weekKey, { 
+                    production: 0, 
+                    sales: 0, 
+                    netTransfers: 0, 
+                    lineId: assignedLineId || '', 
+                    workCenterId: centerId,
+                    initialStocks: new Map()
+                });
+            }
+            const group = weeklyGrouped.get(weekKey)!;
+            group.production += productionPerDay;
+            group.sales += salesPerDay;
+            group.netTransfers += transfersPerDay;
+            if (!group.initialStocks.has(productId)) {
+                 // Simplification: use the monthly initial stock for the first week it appears.
+                 const weekOneOfMonth = getWeekNumber(new Date(year, month - 1, 1)).week;
+                 if(weekNum === weekOneOfMonth) {
+                    group.initialStocks.set(productId, initialStock);
+                 }
+            }
+        }
+    });
+
+    for (const [key, data] of weeklyGrouped.entries()) {
+        const [week, productId, centerId, lineId] = key.split('---');
+        const [yearStr, weekStr] = week.split('-W');
+        const year = parseInt(yearStr, 10);
+        const weekNum = parseInt(weekStr, 10);
+        
+        const initialStockForWeek = Array.from(data.initialStocks.values()).reduce((sum, stock) => sum + stock, 0);
+
+        weeklyPlan.push({
+            id: `${week}-${productId}-${centerId}`,
+            year: year,
+            week: weekNum,
+            productId: productId,
+            productName: salesData.find(s=> s.código === productId)?.descripciónMaterial || productId,
+            workCenterId: centerId,
+            lineId: data.lineId,
+            initialStock: initialStockForWeek,
+            production: data.production,
+            sales: data.sales,
+            netTransfers: data.netTransfers,
+            finalStock: initialStockForWeek + data.production + data.netTransfers - data.sales,
+        });
+    }
+
     onProgress(null);
-    return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan: [], auditLog, initialInventory: initialInventoryState };
+    return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan, auditLog, initialInventory: initialInventoryState };
 };
 
 

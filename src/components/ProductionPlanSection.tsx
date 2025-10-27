@@ -171,7 +171,6 @@ export const ProductionPlanSection: React.FC = () => {
     productCode: string;
   }>({ month: '', line: '', center: '', product: '', productCode: ''});
 
-  // Mapa para asociar productId con su sector para filtrado
   const productSectorMap = useMemo(() => {
     const map = new Map<string, string>();
     salesData.forEach(sale => {
@@ -182,12 +181,10 @@ export const ProductionPlanSection: React.FC = () => {
     return map;
   }, [salesData]);
   
-  // Sectores de fabricación prioritarios
   const prioritySectors = useMemo(() => new Set(['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN']), []);
 
   const { dailyPlan = [], monthlyPlan = [], weeklyPlan = [], auditLog = [], initialInventory } = productionPlan || { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [], initialInventory: new Map() };
   
-    // --- PUNTO DE DEPURACIÓN 2 ---
     useEffect(() => {
       if (productionPlan?.initialInventory && productionPlan.initialInventory.size > 0) {
           let totalStockCentro1000 = 0;
@@ -222,7 +219,6 @@ export const ProductionPlanSection: React.FC = () => {
   const filteredDailyPlan = useMemo(() => {
     if (!dailyPlan) return [];
     
-    // Filtro base por sector
     const sectorFilteredPlan = dailyPlan.filter(item => {
         const sector = productSectorMap.get(item.productId);
         return sector && prioritySectors.has(sector);
@@ -340,7 +336,7 @@ export const ProductionPlanSection: React.FC = () => {
           
             let initialStockForMonth: number;
           
-            if (previousMonthFinalStock === undefined) { // Is first month of the period
+            if (previousMonthFinalStock === undefined) { 
                 let totalInitialStockForCenter = 0;
                 const stockDetails: {productId: string, stock: number}[] = [];
 
@@ -348,7 +344,7 @@ export const ProductionPlanSection: React.FC = () => {
                     for (const [key, value] of initialInventory.entries()) {
                         const [prodId, cId] = key.split('---');
                         if (cId === centerId) {
-                            // Check if the product belongs to a priority sector
+                            
                             const sector = productSectorMap.get(prodId);
                             if (sector && prioritySectors.has(sector)) {
                                 totalInitialStockForCenter += value;
@@ -446,12 +442,17 @@ export const ProductionPlanSection: React.FC = () => {
   }, [filterInputs.centers, productionPlan, getFilteredLineIds, productSectorMap, prioritySectors]);
 
   const availableLinesForFilter = useMemo(() => {
-      if (filterInputs.centers.length === 0) return constraints.productionLines;
-      let lines = constraints.productionLines.filter(line => filterInputs.centers.includes(line.workCenterId));
-      if (filterInputs.processType) {
-        lines = lines.filter(line => line.processType === filterInputs.processType);
-      }
-      return lines;
+    let lines = constraints.productionLines;
+    if (filterInputs.centers.length > 0) {
+      lines = lines.filter(line => filterInputs.centers.includes(line.workCenterId));
+    }
+    if (filterInputs.processType) {
+      lines = lines.filter(line => line.processType === filterInputs.processType);
+    }
+    return lines.map(line => ({
+        value: line.id,
+        label: `${line.name} (${line.workCenterId})`
+    }));
   }, [filterInputs.centers, filterInputs.processType, constraints.productionLines]);
 
   const renderContentForTab = (tab: 'monthly' | 'weekly' | 'daily') => {
@@ -601,7 +602,7 @@ export const ProductionPlanSection: React.FC = () => {
         <div>
             <MultiSelect
                 label="Línea(s) de Producción"
-                options={availableLinesForFilter.map(l => ({ value: l.id, label: l.name }))}
+                options={availableLinesForFilter}
                 selected={filterInputs.lines}
                 onChange={selectedLines => setFilterInputs({ ...filterInputs, lines: selectedLines })}
                 placeholder="Todas las Líneas"
@@ -706,10 +707,3 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
-
-
-
-
-
-
-
