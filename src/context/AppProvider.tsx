@@ -56,7 +56,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
             console.log("[AppContext] Action: SET_SALES_DATA. Reseteando plan de producción.");
             return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
         case 'SET_CONSTRAINTS':
-            return { ...state, constraints: action.payload };
+            console.log("[AppContext] Action: SET_CONSTRAINTS. Invalidando plan de producción existente.");
+            return { 
+                ...state, 
+                constraints: action.payload,
+                productionPlan: initialState.productionPlan, 
+                detailedProductionPlan: null 
+            };
         case 'SET_EMPLOYEES':
             return { ...state, employees: action.payload };
         case 'SET_EMPLOYEE_SKILLS':
