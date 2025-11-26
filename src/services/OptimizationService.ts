@@ -347,6 +347,13 @@ export const generateProductionPlan = async (
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         auditLog.push(`\n[${monthTimestamp}] --- Planificando Mes ${monthNum}/${year} ---`);
 
+        // Get monthly capacity and create a mutable copy for this month's planning
+        const monthlyCapacityByLine = new Map<string, number>();
+        productionLines.forEach(line => {
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
+            monthlyCapacityByLine.set(line.id, totalHours);
+        });
+
         const monthlyMovements = new Map<string, { production: number; sales: number; transfersIn: number; transfersOut: number }>();
         const getMovements = (key: string) => {
             if (!monthlyMovements.has(key)) {
@@ -387,71 +394,51 @@ export const generateProductionPlan = async (
         });
         productionBacklog.clear();
 
-        const monthlyCapacityByLine = new Map<string, number>();
-        productionLines.forEach(line => {
-            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
-            monthlyCapacityByLine.set(line.id, totalHours);
-            auditLog.push(`[${new Date().toLocaleTimeString()}] - Capacidad Línea ${line.name} (${line.workCenterId}): ${totalHours.toFixed(2)}h`);
-        });
+        const allNeeds = Array.from(productionNeedsThisMonth.entries()).map(([prodCenterKey, totalDemand]) => {
+             const [productId, centerId] = prodCenterKey.split('---');
+             const invKey = `${productId}---${centerId}`;
+             const currentStock = inventoryState.get(invKey) || 0;
+             const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
+             const netNeed = Math.max(0, (totalDemand + safetyStock) - currentStock);
+             return { prodCenterKey, productId, centerId, netNeed, urgency: (currentStock - totalDemand) / (totalDemand || 1) };
+        }).filter(item => item.netNeed > 0).sort((a,b) => a.urgency - b.urgency);
+        
 
-        const hoursUsedByLine = new Map<string, number>();
-        for (const [prodCenterKey, totalDemand] of productionNeedsThisMonth.entries()) {
-            const [productId, centerId] = prodCenterKey.split('---');
-            const invKey = `${productId}---${centerId}`;
-            const itemTimestamp = new Date().toLocaleTimeString();
-            
-            const currentStock = inventoryState.get(invKey) || 0;
-            const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
-            
-            const netNeed = Math.max(0, (totalDemand + safetyStock) - (currentStock));
-            
-            auditLog.push(`\n[${itemTimestamp}] [Cálculo Prod] Material: ${productId} en Centro: ${centerId}`);
-            auditLog.push(`[${itemTimestamp}]   - Stock Inicial Mes: ${currentStock.toFixed(0)}, Demanda Total (Ventas+Traslados): ${totalDemand.toFixed(0)}, Stock Seg: ${safetyStock}`);
-            auditLog.push(`[${itemTimestamp}]   - NECESIDAD NETA: ${netNeed.toFixed(0)}`);
-            
-            if (netNeed <= 0) {
-                auditLog.push(`[${itemTimestamp}]   - DECISIÓN: No se requiere producción.`);
-                continue;
-            }
+        for (const { prodCenterKey, productId, centerId, netNeed } of allNeeds) {
+             const invKey = `${productId}---${centerId}`;
 
             const linesInCenter = productionLines.filter(l => l.workCenterId === centerId && l.materialsHandled.includes(productId));
-            const relevantLine = linesInCenter[0];
+            const relevantLine = linesInCenter[0]; // Simplification: assume first valid line
 
             if (relevantLine) {
                 const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
-                const availableHours = (monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0);
+                const availableHours = monthlyCapacityByLine.get(relevantLine.id) || 0;
 
-                auditLog.push(`[${itemTimestamp}]   - Línea Asignada: ${relevantLine.name}, Tiempo/Ud: ${timePerUnit.toFixed(4)}h, Horas Disp: ${availableHours.toFixed(2)}h`);
-
-                if (timePerUnit === Infinity) {
-                    const pendingUnits = netNeed;
-                    auditLog.push(`[${itemTimestamp}]   - ADVERTENCIA: Tiempo de fabricación infinito. Pasando ${pendingUnits.toFixed(0)} uds a backlog.`);
-                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
+                if (timePerUnit === Infinity || timePerUnit <= 0) {
+                    auditLog.push(`[WARN] Tiempo de fabricación inválido para ${productId} en línea ${relevantLine.name}. Saltando.`);
+                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
                     continue;
                 }
-
-                const capacityInUnits = timePerUnit > 0 ? Math.floor(availableHours / timePerUnit) : Infinity;
+                
+                const capacityInUnits = Math.floor(availableHours / timePerUnit);
                 const actualProduction = Math.min(netNeed, capacityInUnits);
                 
-                auditLog.push(`[${itemTimestamp}]   - Capacidad en Unidades: ${capacityInUnits === Infinity ? 'Ilimitada' : capacityInUnits.toFixed(0)}, Necesidad Neta: ${netNeed.toFixed(0)}`);
-                auditLog.push(`[${itemTimestamp}]   - DECISIÓN: Producir ${actualProduction.toFixed(0)} unidades.`);
-
-                if(actualProduction > 0) {
+                if (actualProduction > 0) {
                     const hoursForProduction = actualProduction * timePerUnit;
                     getMovements(invKey).production += actualProduction;
-                    hoursUsedByLine.set(relevantLine.id, (hoursUsedByLine.get(relevantLine.id) || 0) + hoursForProduction);
-                    auditLog.push(`[${itemTimestamp}]   - IMPACTO: Horas consumidas: ${hoursForProduction.toFixed(2)}. Horas restantes en línea: ${((monthlyCapacityByLine.get(relevantLine.id) || 0) - (hoursUsedByLine.get(relevantLine.id) || 0)).toFixed(2)}h`);
+                    
+                    // Decrease available capacity for the line
+                    monthlyCapacityByLine.set(relevantLine.id, availableHours - hoursForProduction);
                 }
+
                 const pendingUnits = netNeed - actualProduction;
                 if (pendingUnits > 0) {
-                    const logMessage = `[${itemTimestamp}]   - BACKLOG: Se pasan ${pendingUnits.toFixed(0)} unidades para el próximo mes.`;
-                    auditLog.push(logMessage);
+                    auditLog.push(`[BACKLOG] Insuficiente capacidad para ${productId}. Faltantes: ${pendingUnits.toFixed(0)}.`);
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
                 }
             } else {
-                 const pendingUnits = netNeed;
-                 auditLog.push(`[${itemTimestamp}]   - ADVERTENCIA: No se encontró línea para ${productId} en centro ${centerId}. Pasando ${pendingUnits.toFixed(0)} uds a backlog.`);
-                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
+                 auditLog.push(`[WARN] No se encontró línea para ${productId} en centro ${centerId}. Faltantes: ${netNeed.toFixed(0)}.`);
+                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
             }
         }
         
@@ -631,4 +618,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
