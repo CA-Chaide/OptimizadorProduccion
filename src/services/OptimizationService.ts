@@ -542,6 +542,7 @@ export const generateProductionPlan = async (
 
 
 function getMonthlyCapacity(year: number, month: number, lineId: string, holidays: Holiday[], shiftParams: ShiftParameters): { regularHours: number, extraHours: number, saturdayHours: number, totalHours: number } {
+    const EFFICIENCY_FACTOR = 0.84; // Nueva regla de negocio: solo el 84% del tiempo es productivo.
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
     const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -569,7 +570,11 @@ function getMonthlyCapacity(year: number, month: number, lineId: string, holiday
             capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
         }
     }
-    return { ...capacity, totalHours: capacity.regularHours + capacity.extraHours + capacity.saturdayHours };
+    
+    const grossTotalHours = capacity.regularHours + capacity.extraHours + capacity.saturdayHours;
+    const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
+
+    return { ...capacity, totalHours: netTotalHours };
 }
 
 export const exportDailyPlanToExcel = (plan: ProductionPlanItem[], constraints: AppConstraints): void => {
@@ -618,5 +623,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
