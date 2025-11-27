@@ -140,6 +140,12 @@ export function processAndValidateAssemblyData(
         }
     });
 
+    // Log para auditoría de puestos de cerrado
+    const allWorkstationNames = Array.from(discoveredWorkstations.values()).map(ws => ws.name);
+    const cerradoWorkstations = allWorkstationNames.filter(name => name.toLowerCase().includes('cerrado'));
+    console.log(`[Auditoría de Puestos] Se encontraron ${cerradoWorkstations.length} tipos de puestos de 'Cerrado' en los datos de la API:`, cerradoWorkstations);
+
+
     const { updatedLines: linesWithPredefinedQuantities } = applyPredefinedValues(
         Array.from(discoveredWorkCenters.values()),
         Array.from(discoveredLines.values()),
