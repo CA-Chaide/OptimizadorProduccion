@@ -542,7 +542,7 @@ export const generateProductionPlan = async (
 
 
 function getMonthlyCapacity(year: number, month: number, lineId: string, holidays: Holiday[], shiftParams: ShiftParameters): { regularHours: number, extraHours: number, saturdayHours: number, totalHours: number } {
-    const EFFICIENCY_FACTOR = 0.84; // Nueva regla de negocio: solo el 84% del tiempo es productivo.
+    const EFFICIENCY_FACTOR = 0.84;
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
     const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -626,3 +626,6 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
 
+
+
+    
