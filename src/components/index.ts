@@ -15,3 +15,4 @@ export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
 export * from './TransferCalculatorSection';
 export * from './InventorySummarySection';
+export * from './RawStructureReportSection';

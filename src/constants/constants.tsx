@@ -16,6 +16,7 @@ import {
     DatabaseZap,
     Truck,
     Package,
+    Sheet,
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -27,6 +28,7 @@ export enum ActiveView {
   TRANSFER_CALCULATOR = 'TRANSFER_CALCULATOR',
   INVENTORY_SUMMARY = 'INVENTORY_SUMMARY',
   CONSTRAINTS = 'CONSTRAINTS',
+  RAW_STRUCTURE_REPORT = 'RAW_STRUCTURE_REPORT',
   PRODUCTION_PLAN = 'MEDIUM_TERM_PLAN',
   PERSONNEL = 'PERSONNEL_MANAGEMENT',
   MAINTENANCE = 'MAINTENANCE',
@@ -49,6 +51,7 @@ export const WorkShiftIcon = () => <CalendarCheck className="w-5 h-5" />;
 export const RealDataIcon = () => <DatabaseZap className="w-5 h-5" />;
 export const TransferCalculatorIcon = () => <Truck className="w-5 h-5" />;
 export const InventorySummaryIcon = () => <Package className="w-5 h-5" />;
+export const RawStructureReportIcon = () => <Sheet className="w-5 h-5" />;
 
 
 // Common action icons
@@ -87,6 +90,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TRANSFER_CALCULATOR, label: 'Calculador de Traslados', icon: <TransferCalculatorIcon /> },
   { id: ActiveView.INVENTORY_SUMMARY, label: 'Resumen de Inventario (Cubo)', icon: <InventorySummaryIcon /> },
   { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
+  { id: ActiveView.RAW_STRUCTURE_REPORT, label: 'Reporte Estructura Cruda', icon: <RawStructureReportIcon /> },
   { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon /> },
   { id: ActiveView.MAINTENANCE, label: 'Mantenimiento', icon: <MaintenanceIcon /> },
   { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon /> },
