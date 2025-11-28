@@ -19,56 +19,6 @@ const normalizeMaterialCode = (code: string | number): string => {
     return codeStr.slice(-8);
 };
 
-const applyPredefinedValues = (
-    workCenters: WorkCenter[],
-    productionLines: ProductionLine[],
-    workstationDefinitions: WorkstationDefinition[]
-): { updatedLines: ProductionLine[], updatedWorkstations: WorkstationDefinition[] } => {
-    
-    const predefinedQuantities: { [centerId: string]: { [lineName: string]: { [workstationName: string]: number } } } = {
-        '1000': {
-            'LINEA 1': { 'Armado': 12, 'Cerrado': 6 },
-            'LINEA 2': { 'Armado': 6, 'Cerrado': 8 },
-            'LINEA 3': { 'Armado': 1, 'Cerrado': 1 },
-            'LINEA 5': { 'Armado': 2 },
-        },
-        '2000': {
-            'LINEA 1': { 'Armado': 9, 'Cerrado': 5 },
-            'LINEA 2': { 'Armado': 4, 'Cerrado': 4 },
-            'LINEA 5': { 'Armado': 3 },
-        }
-    };
-    
-    let workstationsMap = new Map(workstationDefinitions.map(wd => [wd.id, {...wd}]));
-    let linesMap = new Map(productionLines.map(pl => [pl.id, {...pl, assignedWorkstations: pl.assignedWorkstations.map(as => ({...as}))}]));
-
-    for (const centerId in predefinedQuantities) {
-        const centerLines = predefinedQuantities[centerId];
-        for (const lineName in centerLines) {
-            const line = Array.from(linesMap.values()).find(l => l.workCenterId === centerId && l.name === lineName);
-            if (!line) continue;
-
-            const workstationSettings = centerLines[lineName];
-            for (const workstationName in workstationSettings) {
-                const quantity = workstationSettings[workstationName];
-                const workstation = Array.from(workstationsMap.values()).find(w => w.name === workstationName);
-
-                if (!workstation) continue;
-
-                const assignedWsIndex = line.assignedWorkstations.findIndex(as => as.definitionId === workstation.id);
-                if (assignedWsIndex !== -1) {
-                    line.assignedWorkstations[assignedWsIndex].quantity = quantity;
-                }
-            }
-        }
-    }
-    
-    return {
-        updatedLines: Array.from(linesMap.values()),
-        updatedWorkstations: Array.from(workstationsMap.values())
-    };
-};
-
 export function processAndValidateAssemblyData(
     apiData: TiempoEnsambleItem[],
     currentConstraints: AppConstraints,
@@ -145,26 +95,21 @@ export function processAndValidateAssemblyData(
     const cerradoWorkstations = allWorkstationNames.filter(name => name.toLowerCase().includes('cerrado'));
     console.log(`[Auditoría de Puestos] Se encontraron ${cerradoWorkstations.length} tipos de puestos de 'Cerrado' en los datos de la API:`, cerradoWorkstations);
 
-
-    const { updatedLines: linesWithPredefinedQuantities } = applyPredefinedValues(
-        Array.from(discoveredWorkCenters.values()),
-        Array.from(discoveredLines.values()),
-        Array.from(discoveredWorkstations.values())
-    );
-
-    const finalLines = linesWithPredefinedQuantities.map(line => {
+    const finalLines = Array.from(discoveredLines.values()).map(line => {
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         if (userEditedLine) {
             line.processType = userEditedLine.processType;
+            // Mantener la cantidad de puestos si el usuario ya la editó
             line.assignedWorkstations.forEach(as => {
                 const userEditedAs = userEditedLine.assignedWorkstations.find(uas => uas.definitionId === as.definitionId);
-                if (userEditedAs && userEditedAs.quantity !== 1 && as.quantity !== userEditedAs.quantity) {
+                if (userEditedAs) {
                     as.quantity = userEditedAs.quantity;
                 }
             });
         }
         return line;
     });
+
 
     const finalWorkstations = Array.from(discoveredWorkstations.values()).map(ws => {
         const userEditedWs = currentConstraints.workstationDefinitions.find(w => w.id === ws.id);
@@ -633,5 +578,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
 
+
+    
 
     
