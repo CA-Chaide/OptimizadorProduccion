@@ -375,12 +375,11 @@ export const generateProductionPlan = async (
         deficitNeedsForX.forEach((deficit, gyeKey) => {
             const [productId] = gyeKey.split('---');
             const quitoKey = `${productId}---1000`;
-            const quitoSafetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === '1000')?.minStock || 0;
             const quitoCurrentStock = inventoryState.get(quitoKey) || 0;
             const quitoLocalDemand = productionNeedsThisMonth.get(quitoKey)?.demand || 0;
             const quitoProjectedStock = quitoCurrentStock - quitoLocalDemand;
 
-            const stockAvailableForTransfer = Math.max(0, quitoProjectedStock - quitoSafetyStock);
+            const stockAvailableForTransfer = Math.max(0, quitoProjectedStock - 1);
             const transferAmount = Math.min(deficit, stockAvailableForTransfer);
             
             if (transferAmount > 0) {
@@ -646,3 +645,6 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
     
 
 
+
+
+    
