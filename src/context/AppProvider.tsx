@@ -89,7 +89,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { 
                 ...state, 
                 isLoading: false, 
-                productionPlan: { ...initialState.productionPlan, auditLog: [action.payload || 'Error desconocido'] },
+                productionPlan: { ...initialState.productionPlan, auditLog: action.payload },
                 detailedProductionPlan: null,
                 planningProgress: null,
             };
@@ -237,6 +237,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state.constraints, addNotification]);
 
     const handleGeneratePlan = useCallback(async (): Promise<boolean> => {
+        console.log('[AppProvider] handleGeneratePlan invocado.');
         
         if (!state.year) {
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
@@ -262,14 +263,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback, auditLog);
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
-                 const errorLog = planResult.auditLog.find(log => log.startsWith('Error:')) || "Error desconocido en la planificación.";
-                 dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: errorLog });
+                 dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: planResult.auditLog });
                  addNotification('error', `Error al generar el plan. Revise la bitácora.`);
                  return false;
             }
 
             if (planResult.monthlyPlan.length === 0 && planResult.weeklyPlan.length === 0 && planResult.dailyPlan.length === 0) {
-                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: "El planificador no generó resultados. Revise la bitácora." });
+                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: planResult.auditLog.length > 0 ? planResult.auditLog : ["El planificador no generó resultados. Revise la bitácora."] });
                 addNotification('warning', 'El planificador finalizó pero no generó un plan. Revise la bitácora en la sección del plan.');
                 return false;
             }
@@ -281,7 +281,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } catch (error) {
             const errorMessage = (error as Error).message;
             console.error('[AppProvider] Error en handleGeneratePlan:', error);
-            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: errorMessage });
+            dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: [errorMessage] });
             addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
         }

@@ -17,6 +17,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -55,7 +56,7 @@ export type AppAction =
   | { type: 'SET_SALES_DATA'; payload: SalesDataRow[] }
   | { type: 'GENERATE_PRODUCTION_PLAN_START' }
   | { type: 'GENERATE_PRODUCTION_PLAN_SUCCESS'; payload: ProductionPlan }
-  | { type: 'GENERATE_PRODUCTION_PLAN_ERROR'; payload?: string }
+  | { type: 'GENERATE_PRODUCTION_PLAN_ERROR'; payload: string[] }
   | { type: 'SET_CONSTRAINTS'; payload: AppConstraints }
   | { type: 'SET_EMPLOYEES'; payload: Employee[] }
   | { type: 'SET_EMPLOYEE_SKILLS'; payload: EmployeeSkill[] }
