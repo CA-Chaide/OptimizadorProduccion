@@ -92,10 +92,6 @@ export function processAndValidateAssemblyData(
         }
     });
 
-    const allWorkstationNames = Array.from(discoveredWorkstations.values()).map(ws => ws.name);
-    const cerradoWorkstations = allWorkstationNames.filter(name => name.toLowerCase().includes('cerrado'));
-    console.log(`[Auditoría de Puestos] Se encontraron ${cerradoWorkstations.length} tipos de puestos de 'Cerrado' en los datos de la API:`, cerradoWorkstations);
-
     const finalWorkstations = Array.from(discoveredWorkstations.values()).map(ws => {
         const userEditedWs = currentConstraints.workstationDefinitions.find(w => w.id === ws.id);
         if (userEditedWs) {
@@ -368,37 +364,37 @@ export const generateProductionPlan = async (
                     const netNeed = need.demand - currentStock;
                     if (netNeed > 0) {
                         deficitNeedsForX.set(key, netNeed);
-                        auditLog.push(`[${new Date().toLocaleTimeString()}] Mes ${monthNum}: DÉFICIT para prod 'X' ${productId} en GYE. Necesidad: ${netNeed.toFixed(0)}.`);
                     }
                 }
             }
         });
-
-        // Lógica de transferencia para 'X'
+        
         deficitNeedsForX.forEach((deficit, gyeKey) => {
             const [productId] = gyeKey.split('---');
             const quitoKey = `${productId}---1000`;
             const quitoCurrentStock = inventoryState.get(quitoKey) || 0;
-            const quitoLocalDemand = productionNeedsThisMonth.get(quitoKey)?.demand || 0;
+            const quitoLocalDemand = (productionNeedsThisMonth.get(quitoKey) || { demand: 0 }).demand;
             
-            const stockAvailableForTransfer = Math.max(0, quitoCurrentStock - quitoLocalDemand - 1); // Deja al menos 1 unidad de stock
+            // La nueva regla: el stock de Quito puede bajar hasta 1.
+            const stockAvailableForTransfer = Math.max(0, quitoCurrentStock - quitoLocalDemand - 1);
             const transferAmount = Math.min(deficit, stockAvailableForTransfer);
             
             if (transferAmount > 0) {
                 auditLog.push(`[${new Date().toLocaleTimeString()}] Mes ${monthNum}: Quito (1000) ayudará a GYE (2000) con ${transferAmount.toFixed(0)} unidades de ${productId} (X).`);
                 
                 const gyeNeeds = productionNeedsThisMonth.get(gyeKey)!;
-                gyeNeeds.demand -= transferAmount; // Reducir la demanda de producción local en GYE
+                gyeNeeds.demand -= transferAmount; 
                 productionNeedsThisMonth.set(gyeKey, gyeNeeds);
 
                 const quitoNeeds = productionNeedsThisMonth.get(quitoKey) || { demand: 0, type: 'F' };
-                quitoNeeds.demand += transferAmount; // Añadir la demanda de producción a QTO
+                quitoNeeds.demand += transferAmount; 
                 productionNeedsThisMonth.set(quitoKey, quitoNeeds);
 
                 getMovements(quitoKey).transfersOut += transferAmount;
                 getMovements(gyeKey).transfersIn += transferAmount;
             }
         });
+
 
         auditLog.push(`[${new Date().toLocaleTimeString()}] Mes ${monthNum}: Demanda local y de traslados consolidada.`);
         
@@ -559,7 +555,7 @@ function getMonthlyCapacity(
     lineId: string, 
     holidays: Holiday[], 
     shiftParams: ShiftParameters,
-    productionLines: ProductionLine[]
+    productionLines: ProductionLine[] 
 ): { regularHours: number, extraHours: number, saturdayHours: number, totalHours: number } {
     const EFFICIENCY_FACTOR = 0.85;
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
@@ -570,32 +566,37 @@ function getMonthlyCapacity(
         const checkDate = new Date(year, month - 1, day);
         const dayOfWeek = checkDate.getDay(); 
 
-        let isProdHoliday = false;
+        // Skip Sundays
+        if (dayOfWeek === 0) continue;
+
+        let isNonProductiveHoliday = false;
         const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
+
         if (holidayInfo && !holidayInfo.isProductionAllowed) {
             if (holidayInfo.appliesTo === 'Toda la Planta' || holidayInfo.appliesTo === line?.workCenterId || holidayInfo.appliesTo === line?.processType || holidayInfo.appliesTo === lineId) {
-                isProdHoliday = true;
+                isNonProductiveHoliday = true;
             }
         }
         
-        if (isProdHoliday || dayOfWeek === 0) continue; 
+        // If it's a non-productive holiday for this line, skip adding hours
+        if (isNonProductiveHoliday) continue;
 
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday to Friday
-            if (holidayInfo?.isProductionAllowed) {
+        // Monday to Friday
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+            if (holidayInfo && holidayInfo.isProductionAllowed) { // It's a productive holiday
                 if (holidayInfo.dayType === 'half') {
-                    capacity.saturdayHours += 5; // Treat as special productive day
+                    capacity.saturdayHours += 5; // Treat as a 5-hour special day
                 } else {
                     capacity.regularHours += shiftParams.regularHoursPerDay;
                     capacity.extraHours += shiftParams.extraHoursPerDay;
                 }
-            } else {
+            } else { // It's a regular weekday
                  capacity.regularHours += shiftParams.regularHoursPerDay;
                  capacity.extraHours += shiftParams.extraHoursPerDay;
             }
         } else if (dayOfWeek === 6) { // Saturday
-             if (!holidayInfo || (holidayInfo && holidayInfo.isProductionAllowed)) {
-                capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
-             }
+             // It's a Saturday, it's productive unless it was a non-productive holiday (already handled)
+            capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
         }
     }
     
@@ -664,5 +665,6 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
