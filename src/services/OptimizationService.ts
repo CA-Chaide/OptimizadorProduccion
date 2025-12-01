@@ -164,7 +164,7 @@ export function processAndValidateAssemblyData(
 }
 
 function getPredefinedQuantities(centerId: string, lineName: string): Array<{ definitionId: string; quantity: number }> {
-    const quantities: { [key: string]: { [key: string]: number } } = {
+    const quantities: { [key: string]: { [key: string]: { [key: string]: number } } } = {
         '1000': {
             'LINEA 1': { 'ARMADORES': 12, 'CERRADORA': 6 },
             'LINEA 2': { 'ARMADORES': 6, 'CERRADORA': 4 }
@@ -322,7 +322,7 @@ export const generateProductionPlan = async (
 
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
-            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters, productionLines);
             monthlyCapacityByLine.set(line.id, totalHours);
         });
 
@@ -553,7 +553,14 @@ export const generateProductionPlan = async (
 };
 
 
-function getMonthlyCapacity(year: number, month: number, lineId: string, holidays: Holiday[], shiftParams: ShiftParameters): { regularHours: number, extraHours: number, saturdayHours: number, totalHours: number } {
+function getMonthlyCapacity(
+    year: number, 
+    month: number, 
+    lineId: string, 
+    holidays: Holiday[], 
+    shiftParams: ShiftParameters,
+    productionLines: ProductionLine[]
+): { regularHours: number, extraHours: number, saturdayHours: number, totalHours: number } {
     const EFFICIENCY_FACTOR = 0.85;
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -657,4 +664,5 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
