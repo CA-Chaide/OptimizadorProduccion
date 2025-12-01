@@ -1,9 +1,11 @@
 
 import React, { useState, useCallback, useMemo, ChangeEvent, useEffect, useRef } from 'react';
+import { logger } from '@/services/LogService';
+import { operationTracker } from '@/services/OperationTracker';
 import { 
     AppConstraints, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, 
     Bottleneck, SupplierDeliveryTime, QualityParameter, SalesDataRow, ProductProcessInfo, 
-    NotificationMessage, ProductionTimeImportRow, Holiday, ProcessType, WorkstationDefinition, ShiftParameters, HolidayScope
+    NotificationMessage, Holiday, ProcessType, WorkstationDefinition, ShiftParameters, HolidayScope
 } from '@/types/types';
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
@@ -11,7 +13,7 @@ import { useAppContext } from '@/context/AppProvider';
 
 
 interface ConstraintConfigurationSectionProps {
-  // All props are removed, data will come from context
+  // All props are removidos, data vendrá del contexto
 }
 
 // --- Reusable Form Components ---
@@ -41,6 +43,9 @@ const CheckboxField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { la
 // --- End Reusable Form Components ---
 
 export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSectionProps> = () => {
+    useEffect(() => {
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ConstraintConfigurationSection] Montado.`);
+    }, []);
   const { 
     constraints, 
     setConstraints: onConstraintsUpdate,
@@ -95,7 +100,20 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
 
   const handleSyncClick = async () => {
     setIsSyncing(true);
-    await handleSyncAndValidate();
+    
+    const opId = operationTracker.startOperation(
+      'Constraints',
+      'api_call',
+      'Sincronizando estructura y tiempos de ensamble desde la API...'
+    );
+    
+    try {
+      await handleSyncAndValidate();
+      operationTracker.completeOperation(opId, 'Sincronización completada exitosamente');
+    } catch (error) {
+      operationTracker.failOperation(opId, (error as Error).message);
+    }
+    
     setIsSyncing(false);
   };
 
@@ -129,50 +147,89 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   };
   
   const handleSaveGlobalCosts = () => {
+    const opId = operationTracker.startOperation(
+      'Constraints',
+      'config_update',
+      'Guardando configuración de costos laborales globales'
+    );
+    
     const baseCost = parseFloat(globalBaseCostDisplay);
     const factors: LaborCostSettings = {
         factorAdicionalDiurno: parseFloat(laborFactorsDisplay.factorAdicionalDiurno),
         factorRecargoNocturno: parseFloat(laborFactorsDisplay.factorRecargoNocturno),
         factorFinSemanaFeriado: parseFloat(laborFactorsDisplay.factorFinSemanaFeriado),
     };
-    if (isNaN(baseCost) || baseCost <= 0) { addNotification('warning', 'El costo base por hora debe ser un número positivo.'); return; }
-    if (isNaN(factors.factorAdicionalDiurno) || isNaN(factors.factorRecargoNocturno) || isNaN(factors.factorFinSemanaFeriado)) { addNotification('warning', 'Todos los factores de costo deben ser números válidos.'); return; }
+    if (isNaN(baseCost) || baseCost <= 0) { 
+      addNotification('warning', 'El costo base por hora debe ser un número positivo.');
+      operationTracker.failOperation(opId, 'Invalid base cost value');
+      return;
+    }
+    if (isNaN(factors.factorAdicionalDiurno) || isNaN(factors.factorRecargoNocturno) || isNaN(factors.factorFinSemanaFeriado)) { 
+      addNotification('warning', 'Todos los factores de costo deben ser números válidos.');
+      operationTracker.failOperation(opId, 'Invalid factor values');
+      return;
+    }
     onConstraintsUpdate({ ...constraints, globalBaseCostPerHour: baseCost, laborCostFactors: factors });
+    operationTracker.completeOperation(opId, 'Costos laborales actualizados', { baseCost, factors });
     addNotification('success', 'Costos globales actualizados.');
   };
 
   const handleSaveShiftParams = () => {
+    const opId = operationTracker.startOperation(
+      'Constraints',
+      'config_update',
+      'Guardando parámetros de turnos de trabajo'
+    );
+    
     const params: ShiftParameters = {
         regularHoursPerDay: parseFloat(shiftParamsDisplay.regularHoursPerDay),
         extraHoursPerDay: parseFloat(shiftParamsDisplay.extraHoursPerDay),
         saturdayAndHolidayHours: parseFloat(shiftParamsDisplay.saturdayAndHolidayHours),
     };
     if (isNaN(params.regularHoursPerDay) || isNaN(params.extraHoursPerDay) || isNaN(params.saturdayAndHolidayHours)) {
-        addNotification('warning', 'Todos los parámetros de turno deben ser números válidos.'); return;
+        addNotification('warning', 'Todos los parámetros de turno deben ser números válidos.');
+        operationTracker.failOperation(opId, 'Invalid shift parameters');
+        return;
     }
     if (params.regularHoursPerDay < 0 || params.extraHoursPerDay < 0 || params.saturdayAndHolidayHours < 0) {
-        addNotification('warning', 'Los valores de horas no pueden ser negativos.'); return;
+        addNotification('warning', 'Los valores de horas no pueden ser negativos.');
+        operationTracker.failOperation(opId, 'Negative hour values');
+        return;
     }
     onConstraintsUpdate({ ...constraints, shiftParameters: params });
+    operationTracker.completeOperation(opId, 'Parámetros de turno actualizados', { params });
     addNotification('success', 'Parámetros de turno actualizados.');
   };
 
   // --- Holidays Handlers ---
   const handleSaveHoliday = () => {
-    if (!holidayForm.name.trim() || !holidayForm.date || !holidayForm.appliesTo) { addNotification('warning', 'Nombre, fecha y a qué aplica el feriado son requeridos.'); return; }
+    const opId = operationTracker.startOperation(
+      'Constraints',
+      'config_update',
+      `${editingHoliday ? 'Actualizando' : 'Agregando'} feriado: ${holidayForm.name}`
+    );
+    
+    if (!holidayForm.name.trim() || !holidayForm.date || !holidayForm.appliesTo) { 
+      addNotification('warning', 'Nombre, fecha y a qué aplica el feriado son requeridos.');
+      operationTracker.failOperation(opId, 'Missing required holiday fields');
+      return;
+    }
     
     // Si aplica a ventas (Distribucion), no se permite produccion
     if (holidayForm.appliesTo === 'Distribucion' && holidayForm.isProductionAllowed) {
         addNotification('warning', 'No se puede permitir producción en un feriado que aplica a Ventas/Distribución.');
+        operationTracker.failOperation(opId, 'Invalid holiday configuration');
         return;
     }
 
     if (editingHoliday) {
         onConstraintsUpdate({ ...constraints, holidays: constraints.holidays.map(h => h.id === editingHoliday.id ? { ...editingHoliday, ...holidayForm } : h) });
+        operationTracker.completeOperation(opId, `Feriado '${holidayForm.name}' actualizado`, { holiday: holidayForm });
         addNotification('success', `Feriado '${holidayForm.name}' actualizado.`);
     } else {
         const newHoliday: Holiday = { id: Date.now().toString(), ...holidayForm };
         onConstraintsUpdate({ ...constraints, holidays: [...constraints.holidays, newHoliday] });
+        operationTracker.completeOperation(opId, `Feriado '${holidayForm.name}' agregado`, { holiday: newHoliday });
         addNotification('success', `Feriado '${holidayForm.name}' agregado.`);
     }
     setHolidayForm(initialHolidayFormState);
@@ -184,9 +241,17 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     setHolidayForm({ name: holiday.name, date: holiday.date, appliesTo: holiday.appliesTo, isProductionAllowed: holiday.isProductionAllowed }); 
   };
   
-  const handleDeleteHoliday = (id: string) => { 
-      onConstraintsUpdate({ ...constraints, holidays: constraints.holidays.filter(h => h.id !== id) }); 
-      addNotification('info', 'Feriado eliminado.'); 
+  const handleDeleteHoliday = (id: string) => {
+    const holiday = constraints.holidays.find(h => h.id === id);
+    const opId = operationTracker.startOperation(
+      'Constraints',
+      'config_update',
+      `Eliminando feriado: ${holiday?.name || 'Unknown'}`
+    );
+    
+    onConstraintsUpdate({ ...constraints, holidays: constraints.holidays.filter(h => h.id !== id) });
+    operationTracker.completeOperation(opId, `Feriado eliminado`);
+    addNotification('info', 'Feriado eliminado.');
   };
 
   const dynamicHolidayOptions = useMemo(() => {

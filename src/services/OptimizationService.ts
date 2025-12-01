@@ -11,6 +11,7 @@ import {
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 import { queryApi } from '@/hooks/useApiData';
+import { logger } from './LogService';
 
 declare var XLSX: any; 
 
@@ -28,7 +29,7 @@ export function processAndValidateAssemblyData(
     dataCompletenessErrors: string[]
 } {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] --- INICIANDO PROCESAMIENTO Y VALIDACIÓN DE DATOS DE ENSAMBLE ---`, { receivedDataCount: apiData.length });
+    logger.log(`[${timestamp}] --- INICIANDO PROCESAMIENTO Y VALIDACIÓN DE DATOS DE ENSAMBLE --- (Datos recibidos: ${apiData.length})`, 'info');
     const validationErrors: string[] = [];
     const dataCompletenessErrors: string[] = [];
     
@@ -42,7 +43,7 @@ export function processAndValidateAssemblyData(
     });
 
     if (dataCompletenessErrors.length > 0) {
-        console.error(`[${timestamp}] [VALIDATION ERRORS] Errores de completitud de datos:`, dataCompletenessErrors);
+        logger.log(`[${timestamp}] [VALIDATION ERRORS] Errores de completitud de datos: ${dataCompletenessErrors.join(', ')}`, 'error');
         return { newConstraints: currentConstraints, validationErrors, dataCompletenessErrors };
     }
 
@@ -123,6 +124,7 @@ export function processAndValidateAssemblyData(
     if(discoveredWorkCenters.size === 0 || discoveredLines.size === 0) {
         const structuralError = "Error Crítico: No se pudo descubrir ninguna estructura de producción (Centros o Líneas) a partir de los datos. Revise la fuente de datos 'TiemposEnsamblado'.";
         validationErrors.push(structuralError);
+        logger.log(`[${timestamp}] [STRUCTURE ERROR] ${structuralError}`,'error');
         return { newConstraints: currentConstraints, validationErrors, dataCompletenessErrors };
     }
 
@@ -159,7 +161,7 @@ export function processAndValidateAssemblyData(
         productProcessInfos: [], 
         inventorySettings: inventorySettings, 
     };
-
+    logger.log(`[${timestamp}] Procesamiento y validación completados. Centros: ${discoveredWorkCenters.size}, Líneas: ${discoveredLines.size}, Puestos: ${discoveredWorkstations.size}, Inventario: ${inventorySettings.length}`,'success');
     return { newConstraints, validationErrors: [], dataCompletenessErrors: [] };
 }
 
@@ -233,16 +235,16 @@ export const generateProductionPlan = async (
 ): Promise<ProductionPlan> => {
     const timestamp = new Date().toLocaleTimeString();
     const auditLog: string[] = [];
-    auditLog.push(`[${timestamp}] --- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`);
+    logger.log(`[${timestamp}] --- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`, 'info');
 
     var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
-        auditLog.push("Error: No hay datos de ventas para planificar.");
+        logger.log("Error: No hay datos de ventas para planificar.", 'error');
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
      if (!laborCostFactors || !globalBaseCostPerHour || !shiftParameters) {
-        auditLog.push("Error: No se han definido los parámetros de costo laboral o turnos.");
+        logger.log("Error: No se han definido los parámetros de costo laboral o turnos.", 'error');
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
     
@@ -273,9 +275,9 @@ export const generateProductionPlan = async (
                 totalStockCentro1000 += value;
             }
         }
-        auditLog.push(`[${new Date().toLocaleTimeString()}] [Punto 1: Motor] Inventario inicial cargado DIRECTAMENTE de CuboInventarios. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`);
+        logger.log(`[${new Date().toLocaleTimeString()}] [Punto 1: Motor] Inventario inicial cargado DIRECTAMENTE de CuboInventarios. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`, 'success');
     } else {
-        auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`);
+        logger.log(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`, 'warning');
     }
     
     const initialInventoryState = new Map(inventoryState);
@@ -288,7 +290,7 @@ export const generateProductionPlan = async (
     filteredSalesData.forEach(s => allMonthKeys.add(`${s.año}-${String(s.mes).padStart(2, '0')}`));
     const planningMonths = Array.from(allMonthKeys).sort();
     
-    auditLog.push(`[${new Date().toLocaleTimeString()}] Horizonte de planificación: ${planningMonths.length > 0 ? `${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}` : 'Ninguno'}`);
+    logger.log(`[${new Date().toLocaleTimeString()}] Horizonte de planificación: ${planningMonths.length > 0 ? `${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}` : 'Ninguno'}`, 'info');
 
     for (let i = 0; i < planningMonths.length; i++) {
         const monthKey = planningMonths[i];
@@ -296,7 +298,7 @@ export const generateProductionPlan = async (
         const monthTimestamp = new Date().toLocaleTimeString();
         
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
-        auditLog.push(`\n[${monthTimestamp}] --- Planificando Mes ${monthNum}/${year} ---`);
+        logger.log(`\n[${monthTimestamp}] --- Planificando Mes ${monthNum}/${year} ---`, 'info');
 
         // Get monthly capacity and create a mutable copy for this month's planning
         const monthlyCapacityByLine = new Map<string, number>();
@@ -420,7 +422,7 @@ export const generateProductionPlan = async (
         }
     }
     
-    auditLog.push(`[${new Date().toLocaleTimeString()}] Plan mensual completado.`);
+    logger.log(`[${new Date().toLocaleTimeString()}] Plan mensual completado.`, 'success');
     
     // --- GENERACIÓN DEL PLAN SEMANAL ---
     const weeklyPlan: WeeklyPlanItem[] = [];

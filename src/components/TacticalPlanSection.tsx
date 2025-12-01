@@ -1,5 +1,6 @@
 
-import React, { useState, useCallback, useContext } from 'react';
+import React, { useState, useCallback, useContext, useEffect } from 'react';
+import { logger } from '@/services/LogService';
 import { 
     TacticalRequest, TacticalPlanResult, NotificationMessage, ProvisionalOrder, TacticalOrderItem 
 } from '@/types/types';
@@ -26,14 +27,33 @@ const getTargetDateString = (executionDate: string): string => {
 
 
 export const TacticalPlanSection: React.FC<TacticalPlanSectionProps> = ({ 
-    onGeneratePlan,
+        onGeneratePlan,
 }) => {
-  const [executionDate, setExecutionDate] = useState<string>(getTodayString());
-  const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [tacticalPlanResult, setTacticalPlanResult] = useState<TacticalPlanResult | null>(null);
-  const { addNotification } = useAppContext();
+        const [executionDate, setExecutionDate] = useState<string>(getTodayString());
+        const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
+        const [fileName, setFileName] = useState<string | null>(null);
+        const [isProcessing, setIsProcessing] = useState<boolean>(false);
+        const [tacticalPlanResult, setTacticalPlanResult] = useState<TacticalPlanResult | null>(null);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en executionDate: ${executionDate}`);
+        }, [executionDate]);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en provisionalOrders: ${JSON.stringify(provisionalOrders)}`);
+        }, [provisionalOrders]);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en fileName: ${fileName}`);
+        }, [fileName]);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en isProcessing: ${isProcessing}`);
+        }, [isProcessing]);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en tacticalPlanResult: ${JSON.stringify(tacticalPlanResult)}`);
+        }, [tacticalPlanResult]);
+    const { addNotification } = useAppContext();
+    // Log de montaje del componente
+    useEffect(() => {
+        logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Montado.`);
+    }, []);
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -69,21 +89,41 @@ export const TacticalPlanSection: React.FC<TacticalPlanSectionProps> = ({
   }, [addNotification]);
 
   const handleGenerateClick = () => {
-    if (provisionalOrders.length === 0) {
-        addNotification('warning', 'Por favor, cargue primero el archivo de órdenes previsionales.');
-        return;
-    }
-    setIsProcessing(true);
-    const targetDate = getTargetDateString(executionDate);
-    const request: TacticalRequest = {
-        executionDate,
-        targetDate,
-        provisionalOrders,
+        logger.log(`[TacticalPlanSection] handleGenerateClick iniciado.`);
+        if (provisionalOrders.length === 0) {
+                logger.log(`[TacticalPlanSection] No hay órdenes previsionales cargadas. Abortando generación.`);
+                addNotification('warning', 'Por favor, cargue primero el archivo de órdenes previsionales.');
+                return;
+        }
+        setIsProcessing(true);
+        logger.log(`[TacticalPlanSection] executionDate: ${executionDate}`);
+        const targetDate = getTargetDateString(executionDate);
+        logger.log(`[TacticalPlanSection] targetDate calculado: ${targetDate}`);
+        logger.log(`[TacticalPlanSection] provisionalOrders: ${JSON.stringify(provisionalOrders)}`);
+        const request: TacticalRequest = {
+                executionDate,
+                targetDate,
+                provisionalOrders,
+        };
+        logger.log(`[TacticalPlanSection] request construido: ${JSON.stringify(request)}`);
+        const result = onGeneratePlan(request);
+        logger.log(`[TacticalPlanSection] resultado de onGeneratePlan: ${JSON.stringify(result)}`);
+        if (result && result.plan) {
+            logger.log(`[TacticalPlanSection] Plan generado con ${result.plan.length} órdenes.`);
+            result.plan.forEach((order, idx) => {
+                logger.log(`[TacticalPlanSection] Orden #${idx + 1}: Producto=${order.productName}, Cantidad=${order.quantity}, Línea=${order.assignedLineName}, Horas=${order.requiredHours}`);
+                order.assignedPersonnel.forEach((personnel) => {
+                    logger.log(`[TacticalPlanSection]   Workstation=${personnel.workstationName}, Req=${personnel.required}, Disponibles=${personnel.available.length}`);
+                });
+            });
+        }
+        if (result && result.alerts) {
+            logger.log(`[TacticalPlanSection] Alertas de viabilidad: ${JSON.stringify(result.alerts)}`);
+        }
+        setTacticalPlanResult(result);
+        setIsProcessing(false);
+        logger.log(`[TacticalPlanSection] handleGenerateClick finalizado.`);
     };
-    const result = onGeneratePlan(request);
-    setTacticalPlanResult(result);
-    setIsProcessing(false);
-  };
   
   const targetDate = getTargetDateString(executionDate);
 

@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { logger } from '@/services/LogService';
 import { Employee, EmployeeSkill, NotificationMessage, Machine, AppConstraints, Qualification, WorkCenter } from '@/types/types';
 import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -13,6 +14,7 @@ interface PersonnelManagementSectionProps {
   setSkills: (skills: EmployeeSkill[]) => void;
   constraints: AppConstraints;
 }
+// ...existing code...
 
 const ROLES: Array<Qualification['role']> = ['Operador', 'Ayudante'];
 
@@ -148,12 +150,21 @@ const SkillEditModal: React.FC<{
 
 
 export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProps> = ({
-  employees,
-  setEmployees,
-  skills,
-  setSkills,
-  constraints,
-}) => {
+    employees,
+    setEmployees,
+    skills,
+    setSkills,
+    constraints,
+  }) => {
+    useEffect(() => {
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[PersonnelManagementSection] Montado.`);
+    }, []);
+    useEffect(() => {
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[PersonnelManagementSection] Cambio en employees: ${JSON.stringify(employees)}`);
+    }, [employees]);
+    useEffect(() => {
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[PersonnelManagementSection] Cambio en skills: ${JSON.stringify(skills)}`);
+    }, [skills]);
   const { addNotification } = useAppContext();
   
   const [employeeForm, setEmployeeForm] = useState<Omit<Employee, 'id' | 'isActive'>>({ name: '', employeeCode: '' });
@@ -181,6 +192,9 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
   const handleEmployeeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeForm.name.trim() || !employeeForm.employeeCode.trim()) {
+      logger.log(`[PersonnelManagementSection] Inicializando sección de gestión de personal.`);
+      logger.log(`[PersonnelManagementSection] empleados: ${JSON.stringify(employees)}`);
+      logger.log(`[PersonnelManagementSection] habilidades: ${JSON.stringify(skills)}`);
       addNotification('warning', 'Nombre y código de empleado son requeridos.');
       return;
     }

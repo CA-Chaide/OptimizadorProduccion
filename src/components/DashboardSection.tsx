@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import React, { useMemo, useState, useEffect } from 'react';
+import { logger } from '@/services/LogService';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, LineChart, Line, ScatterChart, Scatter } from 'recharts';
 import { ProductionPlanItem, SalesDataRow, AppConstraints, ChartDataItem, Holiday } from '@/types/types';
 import { DashboardIcon, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -20,7 +21,51 @@ const getDayTypeForProduction = (date: Date, holidays: Holiday[]): 'Weekday' | '
 };
 
 
+interface InteractiveAreaData {
+  barChartData: { sector: string; units: number; dollars: number }[];
+  pieChartData: { family: string; value: number }[];
+  scatterPlotData: { units: number; dollars: number }[];
+}
+
 export const DashboardSection: React.FC<{ plan: ProductionPlanItem[]; salesData: SalesDataRow[]; constraints: AppConstraints; }> = ({ plan, salesData, constraints }) => {
+  const [interactiveAreaContent, setInteractiveAreaContent] = useState<string>('');
+  const [interactiveAreaData, setInteractiveAreaData] = useState<InteractiveAreaData>(() => {
+    const savedData = localStorage.getItem('interactiveAreaData');
+    return savedData ? JSON.parse(savedData) : { barChartData: [], pieChartData: [], scatterPlotData: [] };
+  });
+  // Log de montaje del componente
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DashboardSection] Montado.`);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('interactiveAreaData', JSON.stringify(interactiveAreaData));
+  }, [interactiveAreaData]);
+
+  const handleContentChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInteractiveAreaContent(event.target.value);
+  };
+
+  const handleGenerateCharts = () => {
+    // Simulación de datos para gráficos
+    const barChartData = [
+      { sector: 'Sector A', units: 100, dollars: 200 },
+      { sector: 'Sector B', units: 150, dollars: 300 }
+    ];
+
+    const pieChartData = [
+      { family: 'Family A', value: 400 },
+      { family: 'Family B', value: 600 }
+    ];
+
+    const scatterPlotData = [
+      { units: 100, dollars: 200 },
+      { units: 150, dollars: 300 }
+    ];
+
+    setInteractiveAreaData({ barChartData, pieChartData, scatterPlotData });
+  };
+
   const planComplianceData = useMemo<ChartDataItem[]>(() => {
     if (!plan || !salesData) return [];
     
@@ -231,6 +276,35 @@ export const DashboardSection: React.FC<{ plan: ProductionPlanItem[]; salesData:
           ) : <p className="text-gray-500 text-sm">No hay datos de costos en el plan de producción.</p>}
         </div>
 
+      </div>
+
+      {/* Interactive Area */}
+      <div style={{ marginTop: '20px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+        <h3>Área Interactiva</h3>
+        <button onClick={handleGenerateCharts} style={{ marginBottom: '10px', padding: '10px', borderRadius: '5px' }}>
+          Generar Gráficos
+        </button>
+
+        <h4>Gráfico de Barras</h4>
+        <BarChart width={400} height={300} data={interactiveAreaData.barChartData}>
+          <XAxis dataKey="sector" />
+          <YAxis />
+          <Tooltip />
+          <Bar dataKey="units" fill="#8884d8" />
+          <Bar dataKey="dollars" fill="#82ca9d" />
+        </BarChart>
+
+        <h4>Gráfico de Pastel</h4>
+        <PieChart width={400} height={300}>
+          <Pie data={interactiveAreaData.pieChartData} dataKey="value" nameKey="family" fill="#8884d8" />
+        </PieChart>
+
+        <h4>Gráfico de Dispersión</h4>
+        <ScatterChart width={400} height={300}>
+          <XAxis dataKey="units" />
+          <YAxis dataKey="dollars" />
+          <Scatter data={interactiveAreaData.scatterPlotData} fill="#8884d8" />
+        </ScatterChart>
       </div>
     </div>
   );

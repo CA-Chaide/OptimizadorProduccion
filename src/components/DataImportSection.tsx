@@ -1,6 +1,8 @@
 
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { logger } from '@/services/LogService';
+import { operationTracker } from '@/services/OperationTracker';
 import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
@@ -17,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
 }
+
 
 interface TransferNeed {
     productId: string;
@@ -117,25 +120,34 @@ const MultiSelect: React.FC<{
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
-  const { addNotification, isLoading: isAppLoading } = useAppContext();
-  
-  const [filterOptions, setFilterOptions] = useState({
-      años: [] as {value: string, label: string}[],
-      centros: [] as {value: string, label: string}[],
-      etiquetas: [] as {value: string, label: string}[],
-  });
-
-  const [filters, setFilters] = useState<{
+    const [filterOptions, setFilterOptions] = useState({
+        años: [] as {value: string, label: string}[],
+        centros: [] as {value: string, label: string}[],
+        etiquetas: [] as {value: string, label: string}[],
+    });
+    const [filters, setFilters] = useState<{
       años: string[];
       meses: string[];
       centros: string[];
       etiqueta: string;
-  }>({
+    }>({
       años: [new Date().getFullYear().toString()],
       meses: [],
       centros: [],
       etiqueta: '',
-  });
+    });
+    useEffect(() => {
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Cambio en filterOptions: ${JSON.stringify(filterOptions)}`);
+    }, [filterOptions]);
+    useEffect(() => {
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Cambio en filters: ${JSON.stringify(filters)}`);
+    }, [filters]);
+  const { addNotification, isLoading: isAppLoading } = useAppContext();
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Montado.`);
+  }, []);
+  
+
 
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -189,14 +201,24 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setIsProcessing(true);
     setLoadedData([]);
     setTransferNeeds([]);
-    
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] --- INICIANDO CARGA DE DATOS ---`);
+    
+    // Registrar operación de carga
+    const opId = operationTracker.startOperation(
+      'DataImport',
+      'data_load',
+      `Cargando presupuesto de ventas con filtros: años=${filters.años.join(',')}, centros=${filters.centros.length > 0 ? filters.centros.join(',') : 'todos'}`,
+      { años: filters.años, meses: filters.meses, centros: filters.centros, etiqueta: filters.etiqueta }
+    );
+    
+    logger.log(`[${timestamp}] --- INICIANDO CARGA DE DATOS DE PRESUPUESTO --- Filtros: años=${filters.años.join(',')}, meses=${filters.meses.join(',')}, centros=${filters.centros.join(',')}, etiqueta=${filters.etiqueta}`,'info');
 
     if (filters.años.length === 0) {
-        addNotification('warning', 'Por favor, seleccione al menos un año.');
-        setIsProcessing(false);
-        return;
+      addNotification('warning', 'Por favor, seleccione al menos un año.');
+      logger.log('Carga de datos cancelada: no se seleccionó ningún año.','warning');
+      operationTracker.failOperation(opId, 'No year selected');
+      setIsProcessing(false);
+      return;
     }
 
     let allData: PresupuestoItem[] = [];
@@ -205,138 +227,128 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const currentMonth = new Date().getMonth() + 1;
 
     try {
-        addNotification('info', `Iniciando carga de datos de presupuesto... Años: ${yearsToLoad.join(', ')}.`);
-        
-        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
-
-        const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
-
-        for (const year of yearsToLoad) {
-            for (const month of monthsToLoad) {
-                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
-                    continue;
-                }
-                for (const centro of centrosToLoad) {
-                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
-                    if (filters.etiqueta) {
-                        queryFilters['Etiqueta'] = filters.etiqueta;
-                    }
-                    const promise = queryApi({ source: 'Presupuesto', operation: 'get_data', filters: queryFilters, pagination: { limit: 200000 } });
-                    apiCallPromises.push(promise);
-                }
-            }
-        }
-        
-        addNotification('info', `Realizando ${apiCallPromises.length} consultas de presupuesto a la API. Esto puede tardar...`);
-        const responses = await Promise.all(apiCallPromises);
-        addNotification('info', 'Consultas de presupuesto completadas. Procesando resultados...');
-
-        responses.forEach(response => {
-            if (response && response.length > 0) {
-                allData = [...allData, ...response];
-            }
-        });
+      addNotification('info', `Iniciando carga de datos de presupuesto... Años: ${yearsToLoad.join(', ')}.`);
+      logger.log(`Realizando consultas de presupuesto a la API. Años: ${yearsToLoad.join(', ')}, Meses: ${filters.meses.join(',')}, Centros: ${filters.centros.join(',')}, Etiqueta: ${filters.etiqueta}`,'info');
       
-        const aggregatedData: { [key: string]: SalesDataRow } = {};
-        allData.forEach((item) => {
-            const centro = String(item.Centro || '1000').trim();
-            const key = `${item.Año}-${item.Mes}-${centro}-${normalizeMaterialCode(item.CodMaterial)}`;
-
-            if (!aggregatedData[key]) {
-                aggregatedData[key] = {
-                    id: `agg-${key}`, año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta', código: normalizeMaterialCode(item.CodMaterial),
-                    centro: centro, unidadesProyectado: 0, dolaresProyectado: 0, descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, lineaProduccion: item.LineaProduccion || '',
-                    claseAprovisionamiento: 'N/A'
-                };
+      operationTracker.updateOperation(opId, 'in_progress', 'Consultando API de presupuesto...');
+      
+      const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
+      const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
+      const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
+      for (const year of yearsToLoad) {
+        for (const month of monthsToLoad) {
+          if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
+            continue;
+          }
+          for (const centro of centrosToLoad) {
+            const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
+            if (filters.etiqueta) {
+              queryFilters['Etiqueta'] = filters.etiqueta;
             }
-            aggregatedData[key].unidadesProyectado += item.UnidadesProyectado;
-        });
-
-        let mappedAndAggregatedData = Object.values(aggregatedData);
-
-        if (mappedAndAggregatedData.length > 0) {
-            addNotification('info', `Consultando reglas de aprovisionamiento desde CuboInventarios...`);
-            
-            const inventoryRulesData: any[] = await queryApi({
-                source: 'CuboInventarios',
-                operation: 'get_data',
-                columns: ['Material', 'Centro', 'ClaseAprovisionam'],
-                pagination: { limit: 500000 }
-            });
-            
-            console.log(`[${new Date().toLocaleTimeString()}] --- DEBUG: RESPUESTA DE CuboInventarios OBTENIDA CON ${inventoryRulesData?.length || 0} REGLAS ---`);
-
-            const rules = new Map<string, 'E' | 'X' | 'F'>();
-            if (inventoryRulesData) {
-              inventoryRulesData.forEach((item: any) => {
-                if (item.Material && item.Centro && item.ClaseAprovisionam) {
-                  const materialCode18 = String(item.Material).trim();
-                  const center = String(item.Centro).trim();
-                  rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
-                }
-              });
-            }
-            console.log(`[${new Date().toLocaleTimeString()}] --- DEBUG: Mapa de reglas creado con ${rules.size} entradas.`);
-            
-            mappedAndAggregatedData = mappedAndAggregatedData.map((sale, index) => {
-                const ts = new Date().toLocaleTimeString();
-                const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
-                const center = sale.centro;
-                
-                // console.log(`[${ts}] --- [APROV LOG #${index+1}] Mat: ${sale.código}, Centro: ${center} ---`);
-
-                let aprovisionamiento: SalesDataRow['claseAprovisionamiento'] = 'N/A';
-                
-                const directRuleKey = `${materialCode18}---${center}`;
-                const directRule = rules.get(directRuleKey);
-                // console.log(`[${ts}]  - Buscando regla directa con key: '${directRuleKey}'. Resultado: ${directRule || 'No encontrada'}`);
-
-                if (directRule) {
-                    aprovisionamiento = directRule;
-                } else if (center !== '1000') {
-                    const fallbackRuleKey = `${materialCode18}---1000`;
-                    const fallbackRule = rules.get(fallbackRuleKey);
-                    // console.log(`[${ts}]  - No hubo regla directa. Buscando fallback en centro 1000 con key: '${fallbackRuleKey}'. Resultado: ${fallbackRule || 'No encontrada'}`);
-                    if (fallbackRule && fallbackRule === 'F') {
-                        aprovisionamiento = 'F';
-                    }
-                }
-                
-                // console.log(`[${ts}]  - Aprovisionamiento Final para venta #${index+1}: ${aprovisionamiento}`);
-                return { ...sale, claseAprovisionamiento: aprovisionamiento };
-            });
-
-            console.log(`[${new Date().toLocaleTimeString()}] [DataImportSection] Muestra de datos mapeados y guardados en memoria:`, mappedAndAggregatedData.slice(0,5));
-
-            setLoadedData(mappedAndAggregatedData);
-            onDataImported(mappedAndAggregatedData);
-            addNotification('success', `Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`);
-            
-            const salesRequiringTransfer = mappedAndAggregatedData.filter(sale => sale.claseAprovisionamiento === 'F' && sale.centro !== '1000');
-
-            const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
-            salesRequiringTransfer.forEach(sale => {
-                const productId = sale.código;
-                if (!aggregatedNeeds[productId]) {
-                    aggregatedNeeds[productId] = { productId: productId, productName: sale.descripciónMaterial, sector: sale.sector, unitsToTransfer: 0 };
-                }
-                aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
-            });
-            
-            const transferResults = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
-            setTransferNeeds(transferResults);
-
-        } else {
-            addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
+            const promise = queryApi({ source: 'Presupuesto', operation: 'get_data', filters: queryFilters, pagination: { limit: 200000 } });
+            apiCallPromises.push(promise);
+          }
         }
-
+      }
+      logger.log(`Realizando ${apiCallPromises.length} consultas de presupuesto a la API.`,'info');
+      const responses = await Promise.all(apiCallPromises);
+      logger.log('Consultas de presupuesto completadas. Procesando resultados...','info');
+      
+      operationTracker.updateOperation(opId, 'in_progress', 'Procesando resultados de presupuesto...', { queriesCompleted: apiCallPromises.length });
+      
+      responses.forEach(response => {
+        if (response && response.length > 0) {
+          allData = [...allData, ...response];
+        }
+      });
+      const aggregatedData: { [key: string]: SalesDataRow } = {};
+      allData.forEach((item) => {
+        const centro = String(item.Centro || '1000').trim();
+        const key = `${item.Año}-${item.Mes}-${centro}-${normalizeMaterialCode(item.CodMaterial)}`;
+        if (!aggregatedData[key]) {
+          aggregatedData[key] = {
+            id: `agg-${key}`, año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+            etiqueta: item.Etiqueta || 'Sin Etiqueta', código: normalizeMaterialCode(item.CodMaterial),
+            centro: centro, unidadesProyectado: 0, dolaresProyectado: 0, descripciónMaterial: item.Material,
+            familia: item.Familia, marca: item.Marca, lineaProduccion: item.LineaProduccion || '',
+            claseAprovisionamiento: 'N/A'
+          };
+        }
+        aggregatedData[key].unidadesProyectado += item.UnidadesProyectado;
+      });
+      let mappedAndAggregatedData = Object.values(aggregatedData);
+      if (mappedAndAggregatedData.length > 0) {
+        addNotification('info', `Consultando reglas de aprovisionamiento desde CuboInventarios...`);
+        logger.log(`Consultando reglas de aprovisionamiento desde CuboInventarios. Total de filas: ${mappedAndAggregatedData.length}`,'info');
+        
+        operationTracker.updateOperation(opId, 'in_progress', 'Consultando reglas de aprovisionamiento...', { aggregatedRows: mappedAndAggregatedData.length });
+        
+        const inventoryRulesData: any[] = await queryApi({
+          source: 'CuboInventarios',
+          operation: 'get_data',
+          columns: ['Material', 'Centro', 'ClaseAprovisionam'],
+          pagination: { limit: 500000 }
+        });
+        logger.log(`Respuesta de CuboInventarios obtenida con ${inventoryRulesData?.length || 0} reglas.`,'info');
+        const rules = new Map<string, 'E' | 'X' | 'F'>();
+        if (inventoryRulesData) {
+          inventoryRulesData.forEach((item: any) => {
+          if (item.Material && item.Centro && item.ClaseAprovisionam) {
+            const materialCode18 = String(item.Material).trim();
+            const center = String(item.Centro).trim();
+            rules.set(`${materialCode18}---${center}`, item.ClaseAprovisionam);
+          }
+          });
+        }
+        logger.log(`Mapa de reglas creado con ${rules.size} entradas.`,'info');
+        mappedAndAggregatedData = mappedAndAggregatedData.map((sale, index) => {
+          const ts = new Date().toLocaleTimeString();
+          const materialCode18 = normalizeMaterialCodeTo18Digits(sale.código);
+          const center = sale.centro;
+          let aprovisionamiento: SalesDataRow['claseAprovisionamiento'] = 'N/A';
+          const directRuleKey = `${materialCode18}---${center}`;
+          const directRule = rules.get(directRuleKey);
+          if (directRule) {
+            aprovisionamiento = directRule;
+          } else if (center !== '1000') {
+            const fallbackRuleKey = `${materialCode18}---1000`;
+            const fallbackRule = rules.get(fallbackRuleKey);
+            if (fallbackRule && fallbackRule === 'F') {
+              aprovisionamiento = 'F';
+            }
+          }
+          return { ...sale, claseAprovisionamiento: aprovisionamiento };
+        });
+        logger.log(`Datos mapeados y guardados en memoria. Muestra: ${JSON.stringify(mappedAndAggregatedData.slice(0,2))}`,'info');
+        setLoadedData(mappedAndAggregatedData);
+        onDataImported(mappedAndAggregatedData);
+        addNotification('success', `Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`);
+        logger.log(`Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`,'success');
+        
+        operationTracker.completeOperation(opId, `Presupuesto cargado exitosamente: ${mappedAndAggregatedData.length} filas consolidadas`, { importedRecords: allData.length, consolidatedRows: mappedAndAggregatedData.length });
+        
+        const salesRequiringTransfer = mappedAndAggregatedData.filter(sale => sale.claseAprovisionamiento === 'F' && sale.centro !== '1000');
+        const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
+        salesRequiringTransfer.forEach(sale => {
+          const productId = sale.código;
+          if (!aggregatedNeeds[productId]) {
+            aggregatedNeeds[productId] = { productId: productId, productName: sale.descripciónMaterial, sector: sale.sector, unitsToTransfer: 0 };
+          }
+          aggregatedNeeds[productId].unitsToTransfer += sale.unidadesProyectado;
+        });
+        const transferResults = Object.values(aggregatedNeeds).sort((a,b) => a.productName.localeCompare(b.productName));
+        setTransferNeeds(transferResults);
+      } else {
+        addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
+        logger.log('No se encontraron registros con los filtros seleccionados.','warning');
+        operationTracker.failOperation(opId, 'No records found with selected filters');
+      }
     } catch (error) {
-        addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
+      addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
+      logger.log(`Error durante la carga de datos: ${(error as Error).message}`,'error');
+      operationTracker.failOperation(opId, (error as Error).message);
     } finally {
-        setIsProcessing(false);
+      setIsProcessing(false);
     }
   };
 

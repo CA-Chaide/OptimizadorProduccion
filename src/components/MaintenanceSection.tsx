@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MaintenanceEvent, ProductionLine, WorkstationDefinition, NotificationMessage, AppConstraints, Machine, ProcessType } from '@/types/types';
 import { MaintenanceIcon, PlusIcon, EditIcon, DeleteIcon, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
+import { logger } from '@/services/LogService';
 
 interface MaintenanceSectionProps {
   events: MaintenanceEvent[];
@@ -29,8 +30,17 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   onConstraintsUpdate,
   addNotification
 }) => {
+  React.useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[MaintenanceSection] Montado.`);
+  }, []);
   const [formState, setFormState] = useState<Partial<MaintenanceEvent>>(initialFormState);
   const [editingEvent, setEditingEvent] = useState<MaintenanceEvent | null>(null);
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[MaintenanceSection] Cambio en formState: ${JSON.stringify(formState)}`);
+  }, [formState]);
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[MaintenanceSection] Cambio en editingEvent: ${JSON.stringify(editingEvent)}`);
+  }, [editingEvent]);
   
   const { productionLines, workstationDefinitions } = constraints;
 

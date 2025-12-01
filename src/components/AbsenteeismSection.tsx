@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { logger } from '@/services/LogService';
 import { AbsenteeismEvent, Employee } from '@/types/types';
 import { AbsenteeismIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -26,39 +27,63 @@ const initialFormState: Omit<AbsenteeismEvent, 'id'> = {
 export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, setEvents, employees }) => {
   const [formState, setFormState] = useState(initialFormState);
   const [editingEvent, setEditingEvent] = useState<AbsenteeismEvent | null>(null);
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Cambio en formState: ${JSON.stringify(formState)}`);
+  }, [formState]);
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Cambio en editingEvent: ${JSON.stringify(editingEvent)}`);
+  }, [editingEvent]);
   const { addNotification } = useAppContext();
+  // Log inicial
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Montado. formState: ${JSON.stringify(formState)}`);
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormState(prev => ({ ...prev, [name]: value }));
+    setFormState(prev => {
+      const newState = { ...prev, [name]: value };
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Cambio en formState: ${name} = ${value}. Nuevo estado: ${JSON.stringify(newState)}`);
+      return newState;
+    });
   };
 
   const handleEmployeeSelectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (formState.reason === 'Capacitaciones') {
       const selectedIds = Array.from(e.target.selectedOptions, option => option.value);
-      setFormState(prev => ({ ...prev, employeeIds: selectedIds }));
+      setFormState(prev => {
+        const newState = { ...prev, employeeIds: selectedIds };
+        logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Cambio en employeeIds: ${JSON.stringify(selectedIds)}. Nuevo estado: ${JSON.stringify(newState)}`);
+        return newState;
+      });
     } else {
-      setFormState(prev => ({ ...prev, employeeIds: [e.target.value] }));
+      setFormState(prev => {
+        const newState = { ...prev, employeeIds: [e.target.value] };
+        logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Cambio en employeeIds: ${JSON.stringify([e.target.value])}. Nuevo estado: ${JSON.stringify(newState)}`);
+        return newState;
+      });
     }
   };
 
   const resetForm = () => {
     setFormState(initialFormState);
     setEditingEvent(null);
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Formulario reseteado.`);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Submit. formState: ${JSON.stringify(formState)}`);
     if (!formState.reason || !formState.startDate || !formState.startTime || !formState.endDate || !formState.endTime || formState.employeeIds.length === 0) {
       addNotification('warning', 'Motivo, fechas, horas y al menos un empleado son requeridos.');
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Submit fallido: campos requeridos faltantes.`);
       return;
     }
-    
     const startDateTime = new Date(`${formState.startDate}T${formState.startTime}`);
     const endDateTime = new Date(`${formState.endDate}T${formState.endTime}`);
-
     if (startDateTime >= endDateTime) {
       addNotification('warning', 'La fecha y hora de fin deben ser posteriores a la de inicio.');
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Submit fallido: fecha/hora inválida.`);
       return;
     }
 

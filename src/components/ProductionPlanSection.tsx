@@ -1,6 +1,8 @@
 
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { logger } from '@/services/LogService';
+import { operationTracker } from '@/services/OperationTracker';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
     PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem 
@@ -18,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 
 
 // --- Reusable MultiSelect Component ---
+// ...existing code...
 const MultiSelect: React.FC<{
   label: string;
   options: { value: string; label: string }[];
@@ -143,6 +146,20 @@ DailyPlanRow.displayName = 'DailyPlanRow';
 
 
 export const ProductionPlanSection: React.FC = () => {
+      // Ejemplo: log de cambios en filtros y generación de plan
+      const [localFilter, setLocalFilter] = useState<string>("");
+      useEffect(() => {
+        logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Cambio en localFilter: ${localFilter}`);
+      }, [localFilter]);
+
+      // Instrumentar handler de generación de plan
+      const handleGeneratePlanClick = () => {
+        logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] handleGeneratePlanClick ejecutado. Estado actual: { localFilter: ${localFilter} }`);
+        if (handleGeneratePlan) handleGeneratePlan();
+      };
+    useEffect(() => {
+      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Montado.`);
+    }, []);
   const { 
     productionPlan, 
     handleGeneratePlan, 
@@ -198,18 +215,54 @@ export const ProductionPlanSection: React.FC = () => {
 
   const handleExportDaily = () => {
     if (filteredDailyPlan.length > 0) {
+      const { logger } = require('@/services/LogService');
+      const opId = operationTracker.startOperation(
+        'ProductionPlan',
+        'data_export',
+        `Exportando plan diario a Excel (${filteredDailyPlan.length} filas)`
+      );
+      logger.log(`Exportando plan diario a Excel. Filas: ${filteredDailyPlan.length}`,'info');
       exportDailyPlanToExcel(filteredDailyPlan, constraints);
+      operationTracker.completeOperation(opId, 'Plan diario exportado a Excel');
+      logger.log('Exportación de plan diario completada.','success');
     }
   };
 
   const handleExportMonthly = () => {
     if (monthlyPlan.length > 0) {
+      const { logger } = require('@/services/LogService');
+      const opId = operationTracker.startOperation(
+        'ProductionPlan',
+        'data_export',
+        `Exportando plan mensual a Excel (${monthlyPlan.length} filas)`
+      );
+      logger.log(`Exportando plan mensual a Excel. Filas: ${monthlyPlan.length}`,'info');
       exportMonthlyPlanToExcel(monthlyPlan);
+      operationTracker.completeOperation(opId, 'Plan mensual exportado a Excel');
+      logger.log('Exportación de plan mensual completada.','success');
     }
   };
 
   const handleStartPlanning = async () => {
+    const { logger } = require('@/services/LogService');
+    logger.log('Iniciando generación de plan de producción.','info');
+    
+    const opId = operationTracker.startOperation(
+      'ProductionPlan',
+      'plan_generation',
+      'Generando plan de producción mensual, semanal y diario...',
+      { year: new Date().getFullYear() }
+    );
+    
     const success = await handleGeneratePlan();
+    
+    if (success) {
+      operationTracker.completeOperation(opId, 'Plan de producción generado exitosamente');
+    } else {
+      operationTracker.failOperation(opId, 'Plan generation failed');
+    }
+    
+    logger.log(`Generación de plan de producción finalizada. Éxito: ${success}`,'success');
   };
   
   const handleApplyDailyFilters = () => {

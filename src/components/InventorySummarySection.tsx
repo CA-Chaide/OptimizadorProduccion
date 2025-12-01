@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { logger } from '@/services/LogService';
 import { queryApi } from '@/hooks/useApiData';
 import { Package, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
@@ -27,10 +28,26 @@ interface DisplayRow {
 
 export const InventorySummarySection: React.FC = () => {
     const { addNotification } = useAppContext();
-    const [isProcessing, setIsProcessing] = useState<boolean>(true);
-    const [allRows, setAllRows] = useState<SectorRow[]>([]);
-    const [centers, setCenters] = useState<string[]>([]);
-    const [error, setError] = useState<string | null>(null);
+        const [isProcessing, setIsProcessing] = useState<boolean>(true);
+        const [allRows, setAllRows] = useState<SectorRow[]>([]);
+        const [centers, setCenters] = useState<string[]>([]);
+        const [error, setError] = useState<string | null>(null);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Cambio en isProcessing: ${isProcessing}`);
+        }, [isProcessing]);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Cambio en allRows: ${JSON.stringify(allRows)}`);
+        }, [allRows]);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Cambio en centers: ${JSON.stringify(centers)}`);
+        }, [centers]);
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Cambio en error: ${error}`);
+        }, [error]);
+        // Log de montaje del componente
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Montado.`);
+        }, []);
 
     const fetchInventorySummary = useCallback(async () => {
         setIsProcessing(true);

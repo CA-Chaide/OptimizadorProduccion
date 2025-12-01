@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { logger } from '@/services/LogService';
 import { RealDataIcon } from '@/constants/constants';
 import { queryApi } from '@/hooks/useApiData';
 
@@ -27,6 +28,7 @@ interface DataDictionaryProps {
     sourceInfo: SourceInfo | undefined;
     isLoading: boolean;
 }
+// ...existing code...
 
 const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLoading }) => {
     if (isLoading) {
@@ -79,6 +81,9 @@ const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLo
 
 
 export const RealDataSection: React.FC = () => {
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[RealDataSection] Montado.`);
+        }, []);
     const [documentation, setDocumentation] = useState<Documentation | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<Error | null>(null);

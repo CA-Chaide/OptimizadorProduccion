@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { logger } from '@/services/LogService';
 import { queryApi } from '@/hooks/useApiData';
 import { Truck, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
@@ -22,6 +23,10 @@ export const TransferCalculatorSection: React.FC = () => {
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [inventoryRules, setInventoryRules] = useState<InventoryRule[]>([]);
     const [error, setError] = useState<string | null>(null);
+        // Log de montaje del componente
+        useEffect(() => {
+            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TransferCalculatorSection] Montado.`);
+        }, []);
 
     const fetchInventoryRules = useCallback(async () => {
         setIsProcessing(true);

@@ -71,9 +71,9 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.PERSONNEL:
                 return <PersonnelManagementSection employees={employees} setEmployees={setEmployees} skills={employeeSkills} setSkills={setSkills} constraints={constraints} />;
             case ActiveView.MAINTENANCE:
-                return <MaintenanceSection events={maintenanceEvents} setEvents={setEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
+                return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
             case ActiveView.ABSENTEEISM:
-                return <AbsenteeismSection events={absenteeismEvents} setEvents={setEvents} employees={employees} />;
+                return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:
                 return <ProductionPlanSection />;
             case ActiveView.TACTICAL_SCHEDULING:
@@ -116,9 +116,5 @@ const ProductionOptimizerClient: React.FC = () => {
 // This is the default export for the page, which is a Server Component.
 // It wraps the Client Component in the provider.
 export default function ProductionOptimizerPage() {
-    return (
-        <ClientProvider>
-            <ProductionOptimizerClient />
-        </ClientProvider>
-    );
+    return <ProductionOptimizerClient />;
 }
