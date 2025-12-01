@@ -591,3 +591,49 @@ Full: {
   "message": "Please pass in the API key or set the GEMINI_API_KEY or GOOGLE_API_KEY environment variable.\nFor more details see https://genkit.dev/docs/plugins/google-genai"
 }
 
+[2025-12-01T19:48:18.373Z] Error: FAILED_PRECONDITION: Please pass in the API key or set the GEMINI_API_KEY or GOOGLE_API_KEY environment variable.
+For more details see https://genkit.dev/docs/plugins/google-genai
+Stack: GenkitError: FAILED_PRECONDITION: Please pass in the API key or set the GEMINI_API_KEY or GOOGLE_API_KEY environment variable.
+For more details see https://genkit.dev/docs/plugins/google-genai
+    at defineGoogleAIModel (/home/user/studio/.next/server/chunks/ssr/node_modules_8cbda666._.js:24256:19)
+    at /home/user/studio/.next/server/chunks/ssr/node_modules_8cbda666._.js:25151:404
+    at Array.forEach (<anonymous>)
+    at initializer (/home/user/studio/.next/server/chunks/ssr/node_modules_8cbda666._.js:25151:205)
+    at /home/user/studio/.next/server/chunks/ssr/node_modules_8cbda666._.js:25277:200
+    at Object.initializer (/home/user/studio/.next/server/chunks/ssr/node_modules_8cbda666._.js:22506:23)
+    at Object.initializer (/home/user/studio/.next/server/chunks/ssr/node_modules_8cbda666._.js:22371:40)
+    at Object.initializer (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_core_lib_b4b8dea8._.js:2297:39)
+    at /home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_core_lib_b4b8dea8._.js:2344:111
+    at AsyncLocalStorage.run (node:async_hooks:346:14)
+    at AsyncStore.run (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_core_lib_b4b8dea8._.js:2394:31)
+    at runOutsideActionRuntimeContext (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_core_lib_b4b8dea8._.js:1865:32)
+    at Registry.initializePlugin (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_core_lib_b4b8dea8._.js:2344:75)
+    at Registry.lookupAction (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_core_lib_b4b8dea8._.js:2173:24)
+    at lookupModel (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_ai_lib_3128529a._.js:2290:27)
+    at resolveModel (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_ai_lib_3128529a._.js:2260:32)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async toGenerateActionOptions (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_ai_lib_3128529a._.js:4840:27)
+    at async generate (/home/user/studio/.next/server/chunks/ssr/node_modules_@genkit-ai_ai_lib_3128529a._.js:4772:20)
+    at async /home/user/studio/.next/server/chunks/ssr/[root-of-the-server]__3c179c1c._.js:824:30
+    at async /home/user/studio/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.dev.js:417:2449
+    at async handleAction (/home/user/studio/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.dev.js:416:21371)
+    at async renderToHTMLOrFlightImpl (/home/user/studio/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.dev.js:422:27153)
+    at async doRender (/home/user/studio/node_modules/next/dist/server/base-server.js:1655:34)
+    at async DevServer.renderToResponseWithComponentsImpl (/home/user/studio/node_modules/next/dist/server/base-server.js:1920:28)
+    at async DevServer.renderPageComponent (/home/user/studio/node_modules/next/dist/server/base-server.js:2408:24)
+    at async DevServer.renderToResponseImpl (/home/user/studio/node_modules/next/dist/server/base-server.js:2445:32)
+    at async DevServer.pipeImpl (/home/user/studio/node_modules/next/dist/server/base-server.js:1008:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/home/user/studio/node_modules/next/dist/server/next-server.js:305:17)
+    at async DevServer.handleRequestImpl (/home/user/studio/node_modules/next/dist/server/base-server.js:900:17)
+    at async /home/user/studio/node_modules/next/dist/server/dev/next-dev-server.js:371:20
+    at async Span.traceAsyncFn (/home/user/studio/node_modules/next/dist/trace/trace.js:157:20)
+    at async DevServer.handleRequest (/home/user/studio/node_modules/next/dist/server/dev/next-dev-server.js:368:24)
+    at async invokeRender (/home/user/studio/node_modules/next/dist/server/lib/router-server.js:237:21)
+    at async handleRequest (/home/user/studio/node_modules/next/dist/server/lib/router-server.js:428:24)
+    at async requestHandlerImpl (/home/user/studio/node_modules/next/dist/server/lib/router-server.js:452:13)
+    at async Server.requestListener (/home/user/studio/node_modules/next/dist/server/lib/start-server.js:158:13)
+Full: {
+  "status": "FAILED_PRECONDITION",
+  "message": "Please pass in the API key or set the GEMINI_API_KEY or GOOGLE_API_KEY environment variable.\nFor more details see https://genkit.dev/docs/plugins/google-genai"
+}
+

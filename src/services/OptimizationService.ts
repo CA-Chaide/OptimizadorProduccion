@@ -512,7 +512,7 @@ export const generateProductionPlan = async (
 
 
 function getMonthlyCapacity(year: number, month: number, lineId: string, holidays: Holiday[], shiftParams: ShiftParameters): { regularHours: number, extraHours: number, saturdayHours: number, totalHours: number } {
-    const EFFICIENCY_FACTOR = 0.84;
+    const EFFICIENCY_FACTOR = 0.85;
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
     const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -603,3 +603,4 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
     
 
     
+
