@@ -15,6 +15,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -226,14 +227,15 @@ export interface SupplyInfo {
   aprovisionamiento: 'E' | 'X' | 'F';
 }
 
-export type HolidayScope = 'Distribucion' | 'Toda la Planta' | ProcessType | string; // string for lineId
+export type HolidayScope = 'Distribucion' | 'Toda la Planta' | ProcessType | string; // string for lineId or workCenterId
 
 export interface Holiday {
   id: string;
   date: string; 
   name: string;
   appliesTo: HolidayScope;
-  isProductionAllowed: boolean; // Kept for backward compatibility or specific use cases
+  isProductionAllowed: boolean;
+  dayType: 'full' | 'half';
 }
 
 

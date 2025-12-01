@@ -94,7 +94,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     }
   }, [constraints.globalBaseCostPerHour, constraints.laborCostFactors, constraints.shiftParameters]);
   
-  const initialHolidayFormState: Omit<Holiday, 'id'> = { date: '', name: '', appliesTo: 'Toda la Planta', isProductionAllowed: false };
+  const initialHolidayFormState: Omit<Holiday, 'id'> = { date: '', name: '', appliesTo: 'Toda la Planta', isProductionAllowed: false, dayType: 'full' };
   const [holidayForm, setHolidayForm] = useState<Omit<Holiday, 'id'>>(initialHolidayFormState);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
 
@@ -238,7 +238,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   
   const handleEditHoliday = (holiday: Holiday) => { 
     setEditingHoliday(holiday); 
-    setHolidayForm({ name: holiday.name, date: holiday.date, appliesTo: holiday.appliesTo, isProductionAllowed: holiday.isProductionAllowed }); 
+    setHolidayForm({ name: holiday.name, date: holiday.date, appliesTo: holiday.appliesTo, isProductionAllowed: holiday.isProductionAllowed, dayType: holiday.dayType || 'full' }); 
   };
   
   const handleDeleteHoliday = (id: string) => {
@@ -255,12 +255,17 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   };
 
   const dynamicHolidayOptions = useMemo(() => {
+    const plantOptions = constraints.workCenters.map(wc => ({
+        value: wc.id,
+        label: `Producción (${wc.name})`
+    }));
+
     const lineOptions = constraints.productionLines.map(line => ({
         value: line.id,
         label: `Línea: ${line.name} (${line.workCenterId})`
     }));
-    return [...HOLIDAY_APPLIES_TO_OPTIONS, ...lineOptions];
-  }, [constraints.productionLines]);
+    return [...HOLIDAY_APPLIES_TO_OPTIONS, ...plantOptions, ...lineOptions];
+  }, [constraints.productionLines, constraints.workCenters]);
 
   const getHolidayAppliesToLabel = (appliesTo: HolidayScope) => {
     const option = dynamicHolidayOptions.find(opt => opt.value === appliesTo);
@@ -428,6 +433,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                       <InputField label="Nombre del Feriado" id="holidayName" value={holidayForm.name} onChange={e => setHolidayForm({...holidayForm, name: e.target.value})} placeholder="Año Nuevo" />
                       <InputField label="Fecha" id="holidayDate" type="date" value={holidayForm.date} onChange={e => setHolidayForm({...holidayForm, date: e.target.value})} />
                       <SelectField label="Aplica a" id="holidayAppliesTo" value={holidayForm.appliesTo} onChange={e => setHolidayForm({...holidayForm, appliesTo: e.target.value as HolidayScope})} options={dynamicHolidayOptions} />
+                      <SelectField label="Tipo de Jornada" id="holidayDayType" value={holidayForm.dayType} onChange={e => setHolidayForm({...holidayForm, dayType: e.target.value as 'full' | 'half'})} options={[{value: 'full', label: 'Jornada Completa'}, {value: 'half', label: 'Media Jornada'}]} />
                       <CheckboxField
                         label="Permitir producción en este feriado"
                         id="isProductionAllowed"
@@ -449,7 +455,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                               <div>
                                 <p className="font-medium text-gray-900">{h.name}</p>
                                 <p className="text-sm text-gray-500">{h.date} (Aplica: {getHolidayAppliesToLabel(h.appliesTo)})</p>
-                                {h.appliesTo !== 'Distribucion' && h.isProductionAllowed && <p className="text-xs text-green-600 font-semibold">Producción permitida</p>}
+                                {h.isProductionAllowed && <p className="text-xs text-green-600 font-semibold">Producción permitida ({h.dayType === 'half' ? 'Media Jornada' : 'Jornada Completa'})</p>}
                               </div>
                               <div className="flex items-center space-x-3">
                                 <button onClick={() => handleEditHoliday(h)} className="text-indigo-600 hover:text-indigo-800"><EditIcon/></button>

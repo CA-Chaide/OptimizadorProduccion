@@ -20,23 +20,6 @@ const normalizeMaterialCode = (code: string | number): string => {
     return codeStr.slice(-8);
 };
 
-const applyPredefinedValues = (line: ProductionLine, workstations: WorkstationDefinition[]) => {
-    const predefinedQuantities: { [lineName: string]: { [workstationName: string]: number } } = {
-        'LINEA 1': { 'Armado': 12, 'Cerrado': 6 },
-        'LINEA 2': { 'Armado': 6, 'Cerrado': 4 },
-    };
-
-    const lineConfig = predefinedQuantities[line.name];
-    if (lineConfig && (line.workCenterId === '1000' || line.workCenterId === '2000')) {
-        line.assignedWorkstations.forEach(as => {
-            const workstationDef = workstations.find(wd => wd.id === as.definitionId);
-            if (workstationDef && lineConfig[workstationDef.name]) {
-                as.quantity = lineConfig[workstationDef.name];
-            }
-        });
-    }
-};
-
 export function processAndValidateAssemblyData(
     apiData: TiempoEnsambleItem[],
     currentConstraints: AppConstraints,
@@ -74,7 +57,7 @@ export function processAndValidateAssemblyData(
         const workstationName = String(row.PuestoTrabajo).trim();
 
         if (!discoveredWorkCenters.has(centerId)) {
-            discoveredWorkCenters.set(centerId, { id: centerId, name: centerId, productionLineIds: [], isActive: true });
+            discoveredWorkCenters.set(centerId, { id: centerId, name: `Planta ${centerId}`, productionLineIds: [], isActive: true });
         }
         
         const workstationId = `wd---${workstationName}`;
@@ -123,7 +106,6 @@ export function processAndValidateAssemblyData(
     });
 
     const finalLines = Array.from(discoveredLines.values()).map(line => {
-        applyPredefinedValues(line, finalWorkstations);
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         if (userEditedLine) {
             line.processType = userEditedLine.processType;
@@ -377,9 +359,8 @@ export const generateProductionPlan = async (
             const quitoKey = `${productId}---1000`;
             const quitoCurrentStock = inventoryState.get(quitoKey) || 0;
             const quitoLocalDemand = productionNeedsThisMonth.get(quitoKey)?.demand || 0;
-            const quitoProjectedStock = quitoCurrentStock - quitoLocalDemand;
-
-            const stockAvailableForTransfer = Math.max(0, quitoProjectedStock - 1);
+            
+            const stockAvailableForTransfer = Math.max(0, quitoCurrentStock - quitoLocalDemand - 1); // Deja al menos 1 unidad de stock
             const transferAmount = Math.min(deficit, stockAvailableForTransfer);
             
             if (transferAmount > 0) {
@@ -555,31 +536,39 @@ function getMonthlyCapacity(year: number, month: number, lineId: string, holiday
     const EFFICIENCY_FACTOR = 0.85;
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
     const daysInMonth = new Date(year, month, 0).getDate();
-
+    const line = productionLines.find(l => l.id === lineId);
+    
     for (let day = 1; day <= daysInMonth; day++) {
         const checkDate = new Date(year, month - 1, day);
         const dayOfWeek = checkDate.getDay(); 
 
         let isProdHoliday = false;
         const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
-        if (holidayInfo) {
-            if (holidayInfo.appliesTo === 'Toda la Planta' && !holidayInfo.isProductionAllowed) {
-                isProdHoliday = true;
-            } else if (holidayInfo.appliesTo === lineId && !holidayInfo.isProductionAllowed) {
+        if (holidayInfo && !holidayInfo.isProductionAllowed) {
+            if (holidayInfo.appliesTo === 'Toda la Planta' || holidayInfo.appliesTo === line?.workCenterId || holidayInfo.appliesTo === line?.processType || holidayInfo.appliesTo === lineId) {
                 isProdHoliday = true;
             }
         }
+        
         if (isProdHoliday || dayOfWeek === 0) continue; 
 
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) { 
-            capacity.regularHours += shiftParams.regularHoursPerDay;
-            capacity.extraHours += shiftParams.extraHoursPerDay;
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+            if (holidayInfo?.dayType === 'half' && holidayInfo.isProductionAllowed) {
+                 capacity.saturdayHours += 5; // Use same category as saturday hours
+            } else {
+                capacity.regularHours += shiftParams.regularHoursPerDay;
+                capacity.extraHours += shiftParams.extraHoursPerDay;
+            }
         } else if (dayOfWeek === 6) { 
              if (!holidayInfo || (holidayInfo && holidayInfo.isProductionAllowed)) {
                 capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
              }
         } else if (holidayInfo && holidayInfo.isProductionAllowed) { 
-            capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
+            if (holidayInfo.dayType === 'half') {
+                 capacity.saturdayHours += 5;
+            } else {
+                capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
+            }
         }
     }
     
