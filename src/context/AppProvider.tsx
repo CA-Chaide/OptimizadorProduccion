@@ -237,7 +237,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state.constraints, addNotification]);
 
     const handleGeneratePlan = useCallback(async (): Promise<boolean> => {
-        console.log('[AppProvider] handleGeneratePlan invocado.');
         
         if (!state.year) {
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
@@ -258,8 +257,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const progressCallback = (progress: PlanningProgress | null) => {
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
+            const auditLog: string[] = [];
             
-            const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
+            const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback, auditLog);
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
                  const errorLog = planResult.auditLog.find(log => log.startsWith('Error:')) || "Error desconocido en la planificación.";
