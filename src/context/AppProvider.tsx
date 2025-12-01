@@ -268,6 +268,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                  return false;
             }
 
+            if (planResult.monthlyPlan.length === 0 && planResult.weeklyPlan.length === 0 && planResult.dailyPlan.length === 0) {
+                dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: "El planificador no generó resultados. Revise la bitácora." });
+                addNotification('warning', 'El planificador finalizó pero no generó un plan. Revise la bitácora en la sección del plan.');
+                return false;
+            }
+
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: planResult });
             addNotification('success', 'Proceso de planificación completado. Revise los resultados.');
             return true;

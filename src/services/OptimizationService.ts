@@ -249,17 +249,19 @@ export const generateProductionPlan = async (
     salesData: SalesDataRow[],
     onProgress: (progress: PlanningProgress | null) => void,
 ): Promise<ProductionPlan> => {
-    const timestamp = new Date().toLocaleTimeString();
     const auditLog: string[] = [];
-    logger.log(`[${timestamp}] --- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`, 'info');
+    logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`, 'info');
+    auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan de producción.`);
 
     var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
+        auditLog.push(`Error: No hay datos de ventas para planificar.`);
         logger.log("Error: No hay datos de ventas para planificar.", 'error');
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
      if (!laborCostFactors || !globalBaseCostPerHour || !shiftParameters) {
+        auditLog.push(`Error: No se han definido los parámetros de costo laboral o turnos.`);
         logger.log("Error: No se han definido los parámetros de costo laboral o turnos.", 'error');
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
@@ -291,9 +293,13 @@ export const generateProductionPlan = async (
                 totalStockCentro1000 += value;
             }
         }
-        logger.log(`[${new Date().toLocaleTimeString()}] [Punto 1: Motor] Inventario inicial cargado DIRECTAMENTE de CuboInventarios. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`, 'success');
+        const logMsg = `Inventario inicial cargado DIRECTAMENTE de CuboInventarios. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`;
+        auditLog.push(`[${new Date().toLocaleTimeString()}] INFO: ${logMsg}`);
+        logger.log(`[${new Date().toLocaleTimeString()}] [Punto 1: Motor] ${logMsg}`, 'success');
     } else {
-        logger.log(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`, 'warning');
+        const logMsg = `ADVERTENCIA: No se pudo cargar el inventario inicial desde CuboInventarios. La planificación puede ser imprecisa.`;
+        auditLog.push(`[${new Date().toLocaleTimeString()}] ${logMsg}`);
+        logger.log(`[${new Date().toLocaleTimeString()}] ${logMsg}`, 'warning');
     }
     
     const initialInventoryState = new Map(inventoryState);
@@ -306,20 +312,22 @@ export const generateProductionPlan = async (
     filteredSalesData.forEach(s => allMonthKeys.add(`${s.año}-${String(s.mes).padStart(2, '0')}`));
     const planningMonths = Array.from(allMonthKeys).sort();
     
-    logger.log(`[${new Date().toLocaleTimeString()}] Horizonte de planificación: ${planningMonths.length > 0 ? `${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}` : 'Ninguno'}`, 'info');
+    const horizonMsg = `Horizonte de planificación: ${planningMonths.length > 0 ? `${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}` : 'Ninguno'}`;
+    auditLog.push(`[${new Date().toLocaleTimeString()}] INFO: ${horizonMsg}`);
+    logger.log(`[${new Date().toLocaleTimeString()}] ${horizonMsg}`, 'info');
 
     for (let i = 0; i < planningMonths.length; i++) {
         const monthKey = planningMonths[i];
         const [year, monthNum] = monthKey.split('-').map(Number);
-        const monthTimestamp = new Date().toLocaleTimeString();
         
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
-        logger.log(`\n[${monthTimestamp}] --- Planificando Mes ${monthNum}/${year} ---`, 'info');
+        auditLog.push(`\n[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
 
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
-            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters, productionLines);
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters, productionLines, auditLog);
             monthlyCapacityByLine.set(line.id, totalHours);
+            auditLog.push(`[${new Date().toLocaleTimeString()}]   Capacidad para línea ${line.name} (${line.workCenterId}): ${totalHours.toFixed(2)} horas netas.`);
         });
 
         const monthlyMovements = new Map<string, { production: number; sales: number; transfersIn: number; transfersOut: number }>();
@@ -380,7 +388,7 @@ export const generateProductionPlan = async (
             const transferAmount = Math.min(deficit, stockAvailableForTransfer);
             
             if (transferAmount > 0) {
-                auditLog.push(`[${new Date().toLocaleTimeString()}] Mes ${monthNum}: Quito (1000) ayudará a GYE (2000) con ${transferAmount.toFixed(0)} unidades de ${productId} (X).`);
+                auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Quito (1000) ayudará a GYE (2000) con ${transferAmount.toFixed(0)} unidades de ${productId} (X).`);
                 
                 const gyeNeeds = productionNeedsThisMonth.get(gyeKey)!;
                 gyeNeeds.demand -= transferAmount; 
@@ -396,13 +404,13 @@ export const generateProductionPlan = async (
         });
 
 
-        auditLog.push(`[${new Date().toLocaleTimeString()}] Mes ${monthNum}: Demanda local y de traslados consolidada.`);
+        auditLog.push(`[${new Date().toLocaleTimeString()}]   Demanda local y de traslados consolidada para el mes.`);
         
         productionBacklog.forEach((qty, key) => {
             const needs = productionNeedsThisMonth.get(key) || { demand: 0, type: 'E' };
             needs.demand += qty;
             productionNeedsThisMonth.set(key, needs);
-            auditLog.push(`[${new Date().toLocaleTimeString()}] -> Añadiendo ${qty.toFixed(0)} unidades de backlog para ${key}`);
+            auditLog.push(`[${new Date().toLocaleTimeString()}]   -> Añadiendo ${qty.toFixed(0)} unidades de backlog para ${key}`);
         });
         productionBacklog.clear();
 
@@ -412,6 +420,7 @@ export const generateProductionPlan = async (
              const currentStock = inventoryState.get(invKey) || 0;
              const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
              const netNeed = Math.max(0, (need.demand + safetyStock) - currentStock);
+             auditLog.push(`[${new Date().toLocaleTimeString()}]     - Need for ${prodCenterKey}: Demand=${need.demand}, Safety=${safetyStock}, Stock=${currentStock} -> NetNeed=${netNeed.toFixed(0)}`);
              return { prodCenterKey, productId, centerId, netNeed, urgency: (currentStock - need.demand) / (need.demand || 1) };
         }).filter(item => item.netNeed > 0).sort((a,b) => a.urgency - b.urgency);
         
@@ -426,28 +435,30 @@ export const generateProductionPlan = async (
                 const availableHours = monthlyCapacityByLine.get(relevantLine.id) || 0;
 
                 if (timePerUnit === Infinity || timePerUnit <= 0) {
-                    auditLog.push(`[WARN] Tiempo de fabricación inválido para ${productId} en línea ${relevantLine.name}. Saltando.`);
+                    auditLog.push(`[${new Date().toLocaleTimeString()}]     [WARN] Tiempo de fabricación inválido para ${productId} en línea ${relevantLine.name}. Saltando.`);
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
                     continue;
                 }
                 
                 const capacityInUnits = Math.floor(availableHours / timePerUnit);
                 const actualProduction = Math.min(netNeed, capacityInUnits);
+                auditLog.push(`[${new Date().toLocaleTimeString()}]     - Asignación para ${productId} en ${relevantLine.name}: Necesita ${netNeed.toFixed(0)}, Capacidad en unidades ${capacityInUnits.toFixed(0)} -> Producirá ${actualProduction.toFixed(0)}`);
                 
                 if (actualProduction > 0) {
                     const hoursForProduction = actualProduction * timePerUnit;
                     getMovements(invKey).production += actualProduction;
                     
                     monthlyCapacityByLine.set(relevantLine.id, availableHours - hoursForProduction);
+                    auditLog.push(`[${new Date().toLocaleTimeString()}]       - Horas consumidas: ${hoursForProduction.toFixed(2)}. Horas restantes en línea: ${(availableHours - hoursForProduction).toFixed(2)}`);
                 }
 
                 const pendingUnits = netNeed - actualProduction;
                 if (pendingUnits > 0) {
-                    auditLog.push(`[BACKLOG] Insuficiente capacidad para ${productId}. Faltantes: ${pendingUnits.toFixed(0)}.`);
+                    auditLog.push(`[${new Date().toLocaleTimeString()}]     [BACKLOG] Insuficiente capacidad para ${productId}. Faltantes: ${pendingUnits.toFixed(0)}.`);
                     productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
                 }
             } else {
-                 auditLog.push(`[WARN] No se encontró línea para ${productId} en centro ${centerId}. Faltantes: ${netNeed.toFixed(0)}.`);
+                 auditLog.push(`[${new Date().toLocaleTimeString()}]     [WARN] No se encontró línea para ${productId} en centro ${centerId}. Faltantes: ${netNeed.toFixed(0)}.`);
                  productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
             }
         }
@@ -479,6 +490,7 @@ export const generateProductionPlan = async (
         }
     }
     
+    auditLog.push(`[${new Date().toLocaleTimeString()}] FIN: Plan mensual completado.`);
     logger.log(`[${new Date().toLocaleTimeString()}] Plan mensual completado.`, 'success');
     
     const weeklyPlan: WeeklyPlanItem[] = [];
@@ -555,53 +567,67 @@ function getMonthlyCapacity(
     lineId: string, 
     holidays: Holiday[], 
     shiftParams: ShiftParameters,
-    productionLines: ProductionLine[] 
+    productionLines: ProductionLine[],
+    auditLog: string[]
 ): { regularHours: number, extraHours: number, saturdayHours: number, totalHours: number } {
     const EFFICIENCY_FACTOR = 0.85;
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
     const daysInMonth = new Date(year, month, 0).getDate();
     const line = productionLines.find(l => l.id === lineId);
     
+    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Calculando capacidad para línea ${line?.name || lineId} en mes ${month}:`);
+    
     for (let day = 1; day <= daysInMonth; day++) {
         const checkDate = new Date(year, month - 1, day);
         const dayOfWeek = checkDate.getDay(); 
 
-        // Skip Sundays
-        if (dayOfWeek === 0) continue;
+        if (dayOfWeek === 0) { // Sunday
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Domingo. Se ignora.`);
+            continue;
+        }
 
         let isNonProductiveHoliday = false;
         const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
 
         if (holidayInfo && !holidayInfo.isProductionAllowed) {
-            if (holidayInfo.appliesTo === 'Toda la Planta' || holidayInfo.appliesTo === line?.workCenterId || holidayInfo.appliesTo === line?.processType || holidayInfo.appliesTo === lineId) {
+             if (holidayInfo.appliesTo === 'Toda la Planta' || 
+                 holidayInfo.appliesTo === line?.workCenterId || 
+                 holidayInfo.appliesTo === line?.processType ||
+                 holidayInfo.appliesTo === lineId
+             ) {
                 isNonProductiveHoliday = true;
             }
         }
         
-        // If it's a non-productive holiday for this line, skip adding hours
-        if (isNonProductiveHoliday) continue;
-
-        // Monday to Friday
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-            if (holidayInfo && holidayInfo.isProductionAllowed) { // It's a productive holiday
-                if (holidayInfo.dayType === 'half') {
-                    capacity.saturdayHours += 5; // Treat as a 5-hour special day
-                } else {
-                    capacity.regularHours += shiftParams.regularHoursPerDay;
-                    capacity.extraHours += shiftParams.extraHoursPerDay;
-                }
-            } else { // It's a regular weekday
-                 capacity.regularHours += shiftParams.regularHoursPerDay;
-                 capacity.extraHours += shiftParams.extraHoursPerDay;
+        if (isNonProductiveHoliday) {
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Feriado no productivo ('${holidayInfo?.name}'). Horas: 0.`);
+            continue;
+        }
+        
+        if (holidayInfo && holidayInfo.isProductionAllowed) {
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Feriado productivo ('${holidayInfo?.name}').`);
+            if (holidayInfo.dayType === 'half') {
+                capacity.saturdayHours += 5; // Special 5-hour day
+                auditLog.push(`[${new Date().toLocaleTimeString()}]         +5 horas (media jornada).`);
+            } else {
+                capacity.regularHours += shiftParams.regularHoursPerDay;
+                capacity.extraHours += shiftParams.extraHoursPerDay;
+                auditLog.push(`[${new Date().toLocaleTimeString()}]         +${shiftParams.regularHoursPerDay}h normales, +${shiftParams.extraHoursPerDay}h extra.`);
             }
+        } else if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday to Friday (not a holiday)
+             capacity.regularHours += shiftParams.regularHoursPerDay;
+             capacity.extraHours += shiftParams.extraHoursPerDay;
+             auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: L-V normal. +${shiftParams.regularHoursPerDay}h normales, +${shiftParams.extraHoursPerDay}h extra.`);
         } else if (dayOfWeek === 6) { // Saturday
-             // It's a Saturday, it's productive unless it was a non-productive holiday (already handled)
             capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Sábado. +${shiftParams.saturdayAndHolidayHours}h.`);
         }
     }
     
     const grossTotalHours = capacity.regularHours + capacity.extraHours + capacity.saturdayHours;
     const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
+
+    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Total Bruto Mes: ${grossTotalHours.toFixed(2)}h. Total Neto (x${EFFICIENCY_FACTOR}): ${netTotalHours.toFixed(2)}h.`);
 
     return { ...capacity, totalHours: netTotalHours };
 }
@@ -665,6 +691,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
