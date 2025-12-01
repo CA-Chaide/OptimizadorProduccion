@@ -20,6 +20,23 @@ const normalizeMaterialCode = (code: string | number): string => {
     return codeStr.slice(-8);
 };
 
+const applyPredefinedValues = (line: ProductionLine, workstations: WorkstationDefinition[]) => {
+    const predefinedQuantities: { [lineName: string]: { [workstationName: string]: number } } = {
+        'LINEA 1': { 'Armado': 12, 'Cerrado': 6 },
+        'LINEA 2': { 'Armado': 4, 'Cerrado': 4 },
+    };
+
+    const lineConfig = predefinedQuantities[line.name];
+    if (lineConfig && (line.workCenterId === '1000' || line.workCenterId === '2000')) {
+        line.assignedWorkstations.forEach(as => {
+            const workstationDef = workstations.find(wd => wd.id === as.definitionId);
+            if (workstationDef && lineConfig[workstationDef.name]) {
+                as.quantity = lineConfig[workstationDef.name];
+            }
+        });
+    }
+};
+
 export function processAndValidateAssemblyData(
     apiData: TiempoEnsambleItem[],
     currentConstraints: AppConstraints,
@@ -96,7 +113,17 @@ export function processAndValidateAssemblyData(
     const cerradoWorkstations = allWorkstationNames.filter(name => name.toLowerCase().includes('cerrado'));
     console.log(`[Auditoría de Puestos] Se encontraron ${cerradoWorkstations.length} tipos de puestos de 'Cerrado' en los datos de la API:`, cerradoWorkstations);
 
+    const finalWorkstations = Array.from(discoveredWorkstations.values()).map(ws => {
+        const userEditedWs = currentConstraints.workstationDefinitions.find(w => w.id === ws.id);
+        if (userEditedWs) {
+            ws.employeesPerWorkstation = userEditedWs.employeesPerWorkstation > 0 ? userEditedWs.employeesPerWorkstation : 1;
+            ws.machineCode = userEditedWs.machineCode;
+        }
+        return ws;
+    });
+
     const finalLines = Array.from(discoveredLines.values()).map(line => {
+        applyPredefinedValues(line, finalWorkstations);
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         if (userEditedLine) {
             line.processType = userEditedLine.processType;
@@ -109,16 +136,6 @@ export function processAndValidateAssemblyData(
             });
         }
         return line;
-    });
-
-
-    const finalWorkstations = Array.from(discoveredWorkstations.values()).map(ws => {
-        const userEditedWs = currentConstraints.workstationDefinitions.find(w => w.id === ws.id);
-        if (userEditedWs) {
-            ws.employeesPerWorkstation = userEditedWs.employeesPerWorkstation > 0 ? userEditedWs.employeesPerWorkstation : 1;
-            ws.machineCode = userEditedWs.machineCode;
-        }
-        return ws;
     });
     
     if(discoveredWorkCenters.size === 0 || discoveredLines.size === 0) {
@@ -506,9 +523,11 @@ function getMonthlyCapacity(year: number, month: number, lineId: string, holiday
         let isProdHoliday = false;
         const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
         if (holidayInfo) {
-             if ((holidayInfo.appliesTo === 'Toda la Planta' || holidayInfo.appliesTo === lineId) && !holidayInfo.isProductionAllowed) {
-                 isProdHoliday = true;
-             }
+            if (holidayInfo.appliesTo === 'Toda la Planta' && !holidayInfo.isProductionAllowed) {
+                isProdHoliday = true;
+            } else if (holidayInfo.appliesTo === lineId && !holidayInfo.isProductionAllowed) {
+                isProdHoliday = true;
+            }
         }
         if (isProdHoliday || dayOfWeek === 0) continue; 
 

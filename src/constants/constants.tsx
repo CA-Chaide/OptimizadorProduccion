@@ -25,7 +25,6 @@ export const APP_TITLE = "Optimizador de Producción";
 export enum ActiveView {
   DASHBOARD = 'DASHBOARD',
   DATA_IMPORT = 'DATA_IMPORT',
-  TRANSFER_CALCULATOR = 'TRANSFER_CALCULATOR',
   INVENTORY_SUMMARY = 'INVENTORY_SUMMARY',
   CONSTRAINTS = 'CONSTRAINTS',
   RAW_STRUCTURE_REPORT = 'RAW_STRUCTURE_REPORT',
@@ -49,7 +48,6 @@ export const PlanIcon = () => <ListChecks className="w-5 h-5" />;
 export const TacticalSchedulingIcon = () => <CalendarClock className="w-5 h-5" />;
 export const WorkShiftIcon = () => <CalendarCheck className="w-5 h-5" />;
 export const RealDataIcon = () => <DatabaseZap className="w-5 h-5" />;
-export const TransferCalculatorIcon = () => <Truck className="w-5 h-5" />;
 export const InventorySummaryIcon = () => <Package className="w-5 h-5" />;
 export const RawStructureReportIcon = () => <Sheet className="w-5 h-5" />;
 
@@ -87,7 +85,6 @@ export const APP_VERSION = '1.0.0-next';
 const NAVIGATION_ITEMS = [
   { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon /> },
   { id: ActiveView.DATA_IMPORT, label: 'Importar Ventas', icon: <DataImportIcon /> },
-  { id: ActiveView.TRANSFER_CALCULATOR, label: 'Calculador de Traslados', icon: <TransferCalculatorIcon /> },
   { id: ActiveView.INVENTORY_SUMMARY, label: 'Resumen de Inventario (Cubo)', icon: <InventorySummaryIcon /> },
   { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
   { id: ActiveView.RAW_STRUCTURE_REPORT, label: 'Reporte Estructura Cruda', icon: <RawStructureReportIcon /> },

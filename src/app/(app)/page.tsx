@@ -14,7 +14,6 @@ import {
   TacticalPlanSection,
   WorkShiftPlanningSection,
   RealDataSection,
-  TransferCalculatorSection,
   InventorySummarySection,
   RawStructureReportSection,
 } from '@/components';
@@ -60,8 +59,6 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <DashboardSection plan={productionPlan.dailyPlan} salesData={salesData} constraints={constraints} />;
             case ActiveView.DATA_IMPORT:
                 return <DataImportSection onDataImported={handleDataImported} />;
-            case ActiveView.TRANSFER_CALCULATOR:
-                return <TransferCalculatorSection />;
             case ActiveView.INVENTORY_SUMMARY:
                 return <InventorySummarySection />;
             case ActiveView.CONSTRAINTS:
