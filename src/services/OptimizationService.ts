@@ -23,7 +23,7 @@ const normalizeMaterialCode = (code: string | number): string => {
 const applyPredefinedValues = (line: ProductionLine, workstations: WorkstationDefinition[]) => {
     const predefinedQuantities: { [lineName: string]: { [workstationName: string]: number } } = {
         'LINEA 1': { 'Armado': 12, 'Cerrado': 6 },
-        'LINEA 2': { 'Armado': 4, 'Cerrado': 4 },
+        'LINEA 2': { 'Armado': 6, 'Cerrado': 4 },
     };
 
     const lineConfig = predefinedQuantities[line.name];
