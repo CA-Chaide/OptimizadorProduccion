@@ -60,7 +60,7 @@ export function processAndValidateAssemblyData(
             discoveredWorkCenters.set(centerId, { id: centerId, name: `Planta ${centerId}`, productionLineIds: [], isActive: true });
         }
         
-        const workstationId = `wd---${workstationName}`;
+        const workstationId = `wd---${centerId}---${workstationName}`;
         if (!discoveredWorkstations.has(workstationId)) {
             discoveredWorkstations.set(workstationId, {
                 id: workstationId, name: workstationName,
@@ -71,17 +71,18 @@ export function processAndValidateAssemblyData(
         
         const lineId = `pl---${centerId}---${lineName}`;
         if (!discoveredLines.has(lineId)) {
+            const predefinedQuantities = getPredefinedQuantities(centerId, lineName);
             discoveredLines.set(lineId, {
                 id: lineId, name: lineName, workCenterId: centerId,
                 processType: 'Colchones', 
-                assignedWorkstations: [],
+                assignedWorkstations: predefinedQuantities,
                 capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
                 materialsHandled: [], isActive: true
             });
         }
         
         const line = discoveredLines.get(lineId)!;
-        if (!line.assignedWorkstations.some(as => as.definitionId === workstationId)) {
+        if (!line.assignedWorkstations.some(as => as.definitionId.endsWith(`---${workstationName}`))) {
              line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 }); 
         }
         
@@ -91,7 +92,6 @@ export function processAndValidateAssemblyData(
         }
     });
 
-    // Log para auditoría de puestos de cerrado
     const allWorkstationNames = Array.from(discoveredWorkstations.values()).map(ws => ws.name);
     const cerradoWorkstations = allWorkstationNames.filter(name => name.toLowerCase().includes('cerrado'));
     console.log(`[Auditoría de Puestos] Se encontraron ${cerradoWorkstations.length} tipos de puestos de 'Cerrado' en los datos de la API:`, cerradoWorkstations);
@@ -109,7 +109,6 @@ export function processAndValidateAssemblyData(
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         if (userEditedLine) {
             line.processType = userEditedLine.processType;
-            // Mantener la cantidad de puestos si el usuario ya la editó
             line.assignedWorkstations.forEach(as => {
                 const userEditedAs = userEditedLine.assignedWorkstations.find(uas => uas.definitionId === as.definitionId);
                 if (userEditedAs) {
@@ -163,6 +162,28 @@ export function processAndValidateAssemblyData(
     logger.log(`[${timestamp}] Procesamiento y validación completados. Centros: ${discoveredWorkCenters.size}, Líneas: ${discoveredLines.size}, Puestos: ${discoveredWorkstations.size}, Inventario: ${inventorySettings.length}`,'success');
     return { newConstraints, validationErrors: [], dataCompletenessErrors: [] };
 }
+
+function getPredefinedQuantities(centerId: string, lineName: string): Array<{ definitionId: string; quantity: number }> {
+    const quantities: { [key: string]: { [key: string]: number } } = {
+        '1000': {
+            'LINEA 1': { 'ARMADORES': 12, 'CERRADORA': 6 },
+            'LINEA 2': { 'ARMADORES': 6, 'CERRADORA': 4 }
+        },
+        '2000': {
+            'LINEA 1': { 'ARMADORES': 8, 'CERRADORA': 4 }
+        }
+    };
+
+    const centerConfig = quantities[centerId];
+    if (centerConfig && centerConfig[lineName]) {
+        return Object.entries(centerConfig[lineName]).map(([wsName, qty]) => ({
+            definitionId: `wd---${centerId}---${wsName}`,
+            quantity: qty
+        }));
+    }
+    return [];
+}
+
 
 const getDayType = (date: Date, holidays: Holiday[], appliesToFilter: 'Produccion' | 'Distribucion' | 'Toda la Planta', lineId?: string): boolean => {
     const yyyyMmDd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -552,23 +573,22 @@ function getMonthlyCapacity(year: number, month: number, lineId: string, holiday
         
         if (isProdHoliday || dayOfWeek === 0) continue; 
 
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-            if (holidayInfo?.dayType === 'half' && holidayInfo.isProductionAllowed) {
-                 capacity.saturdayHours += 5; // Use same category as saturday hours
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday to Friday
+            if (holidayInfo?.isProductionAllowed) {
+                if (holidayInfo.dayType === 'half') {
+                    capacity.saturdayHours += 5; // Treat as special productive day
+                } else {
+                    capacity.regularHours += shiftParams.regularHoursPerDay;
+                    capacity.extraHours += shiftParams.extraHoursPerDay;
+                }
             } else {
-                capacity.regularHours += shiftParams.regularHoursPerDay;
-                capacity.extraHours += shiftParams.extraHoursPerDay;
+                 capacity.regularHours += shiftParams.regularHoursPerDay;
+                 capacity.extraHours += shiftParams.extraHoursPerDay;
             }
-        } else if (dayOfWeek === 6) { 
+        } else if (dayOfWeek === 6) { // Saturday
              if (!holidayInfo || (holidayInfo && holidayInfo.isProductionAllowed)) {
                 capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
              }
-        } else if (holidayInfo && holidayInfo.isProductionAllowed) { 
-            if (holidayInfo.dayType === 'half') {
-                 capacity.saturdayHours += 5;
-            } else {
-                capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
-            }
         }
     }
     
@@ -637,3 +657,4 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
