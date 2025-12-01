@@ -72,10 +72,14 @@ export function processAndValidateAssemblyData(
         const lineId = `pl---${centerId}---${lineName}`;
         if (!discoveredLines.has(lineId)) {
             const predefinedQuantities = getPredefinedQuantities(centerId, lineName);
+            const assignedWorkstations = predefinedQuantities.length > 0 
+                ? predefinedQuantities 
+                : [];
+            
             discoveredLines.set(lineId, {
                 id: lineId, name: lineName, workCenterId: centerId,
                 processType: 'Colchones', 
-                assignedWorkstations: predefinedQuantities,
+                assignedWorkstations: assignedWorkstations,
                 capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
                 materialsHandled: [], isActive: true
             });
@@ -112,6 +116,8 @@ export function processAndValidateAssemblyData(
                 }
             });
         }
+        // Reset materials handled to be repopulated
+        line.materialsHandled = [];
         return line;
     });
     
@@ -124,6 +130,18 @@ export function processAndValidateAssemblyData(
 
     const uniqueProductCenterPairs = new Set(apiData.map(row => `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`));
     const inventorySettings: InventorySetting[] = [];
+    
+    apiData.forEach(row => {
+        const productId = normalizeMaterialCode(row.CodMaterial);
+        const centerId = String(row.Centro).trim();
+        const lineName = String(row.Linea).trim();
+        const lineId = `pl---${centerId}---${lineName}`;
+        
+        const line = finalLines.find(l => l.id === lineId);
+        if (line && !line.materialsHandled.includes(productId)) {
+            line.materialsHandled.push(productId);
+        }
+    });
     
     uniqueProductCenterPairs.forEach(pairKey => {
         const [productId, centerId] = pairKey.split('---');
@@ -139,12 +157,6 @@ export function processAndValidateAssemblyData(
                 lotMax: inventoryDataSource.TamLoteMax ? parseInt(String(inventoryDataSource.TamLoteMax), 10) : null,
             });
         }
-        rowsForPair.forEach(row => {
-            const lineName = String(row.Linea).trim();
-            const lineId = `pl---${centerId}---${lineName}`;
-            const line = finalLines.find(l => l.id === lineId);
-            if (line && !line.materialsHandled.includes(productId)) line.materialsHandled.push(productId);
-        });
     });
 
     const newConstraints: AppConstraints = {
@@ -155,7 +167,7 @@ export function processAndValidateAssemblyData(
         productProcessInfos: [], 
         inventorySettings: inventorySettings, 
     };
-    logger.log(`[${timestamp}] Procesamiento y validación completados. Centros: ${discoveredWorkCenters.size}, Líneas: ${discoveredLines.size}, Puestos: ${discoveredWorkstations.size}, Inventario: ${inventorySettings.length}`,'success');
+    logger.log(`[${timestamp}] Procesamiento y validación completados. Centros: ${discoveredWorkCenters.size}, Líneas: ${discoveredLines.size}, Puestos: ${finalWorkstations.length}, Inventario: ${inventorySettings.length}`,'success');
     return { newConstraints, validationErrors: [], dataCompletenessErrors: [] };
 }
 
@@ -325,7 +337,7 @@ export const generateProductionPlan = async (
 
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
-            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters, productionLines, auditLog);
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line, holidays, shiftParameters, auditLog);
             monthlyCapacityByLine.set(line.id, totalHours);
             auditLog.push(`[${new Date().toLocaleTimeString()}]   Capacidad para línea ${line.name} (${line.workCenterId}): ${totalHours.toFixed(2)} horas netas.`);
         });
@@ -383,7 +395,6 @@ export const generateProductionPlan = async (
             const quitoCurrentStock = inventoryState.get(quitoKey) || 0;
             const quitoLocalDemand = (productionNeedsThisMonth.get(quitoKey) || { demand: 0 }).demand;
             
-            // La nueva regla: el stock de Quito puede bajar hasta 1.
             const stockAvailableForTransfer = Math.max(0, quitoCurrentStock - quitoLocalDemand - 1);
             const transferAmount = Math.min(deficit, stockAvailableForTransfer);
             
@@ -564,25 +575,22 @@ export const generateProductionPlan = async (
 function getMonthlyCapacity(
     year: number, 
     month: number, 
-    lineId: string, 
+    line: ProductionLine, 
     holidays: Holiday[], 
     shiftParams: ShiftParameters,
-    productionLines: ProductionLine[],
     auditLog: string[]
 ): { regularHours: number, extraHours: number, saturdayHours: number, totalHours: number } {
     const EFFICIENCY_FACTOR = 0.85;
     const capacity = { regularHours: 0, extraHours: 0, saturdayHours: 0 };
     const daysInMonth = new Date(year, month, 0).getDate();
-    const line = productionLines.find(l => l.id === lineId);
     
-    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Calculando capacidad para línea ${line?.name || lineId} en mes ${month}:`);
+    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Calculando capacidad para línea ${line.name} en mes ${month}:`);
     
     for (let day = 1; day <= daysInMonth; day++) {
         const checkDate = new Date(year, month - 1, day);
         const dayOfWeek = checkDate.getDay(); 
 
         if (dayOfWeek === 0) { // Sunday
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Domingo. Se ignora.`);
             continue;
         }
 
@@ -591,9 +599,9 @@ function getMonthlyCapacity(
 
         if (holidayInfo && !holidayInfo.isProductionAllowed) {
              if (holidayInfo.appliesTo === 'Toda la Planta' || 
-                 holidayInfo.appliesTo === line?.workCenterId || 
-                 holidayInfo.appliesTo === line?.processType ||
-                 holidayInfo.appliesTo === lineId
+                 holidayInfo.appliesTo === line.workCenterId || 
+                 holidayInfo.appliesTo === line.processType ||
+                 holidayInfo.appliesTo === line.id
              ) {
                 isNonProductiveHoliday = true;
             }
@@ -617,10 +625,8 @@ function getMonthlyCapacity(
         } else if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday to Friday (not a holiday)
              capacity.regularHours += shiftParams.regularHoursPerDay;
              capacity.extraHours += shiftParams.extraHoursPerDay;
-             auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: L-V normal. +${shiftParams.regularHoursPerDay}h normales, +${shiftParams.extraHoursPerDay}h extra.`);
         } else if (dayOfWeek === 6) { // Saturday
             capacity.saturdayHours += shiftParams.saturdayAndHolidayHours;
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Sábado. +${shiftParams.saturdayAndHolidayHours}h.`);
         }
     }
     
@@ -691,6 +697,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
