@@ -41,7 +41,7 @@ export default function DebugPanel() {
   }, [selectedSection]);
 
   const summary = runtimeInspector.getSummary();
-  const sections = ['all', ...summary.sections];
+  const sections = [...new Set(['all', ...summary.sections])];
 
   const renderValue = (value: any, depth = 0): React.ReactNode => {
     if (depth > 3) return '...';
