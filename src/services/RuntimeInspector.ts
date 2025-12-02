@@ -319,7 +319,7 @@ class RuntimeInspector {
       totalVariables: totalVars,
       totalContexts: this.contexts.length,
       activeContexts: this.activeContexts.size,
-      sections: Array.from(sections),
+      sections: Array.from(sections).sort(),
       recentActivity,
     };
   }
