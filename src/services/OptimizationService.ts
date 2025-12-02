@@ -48,48 +48,55 @@ export function processAndValidateAssemblyData(
     }
 
     const discoveredWorkCenters = new Map<string, WorkCenter>();
-    const discoveredLines = new Map<string, ProductionLine>();
     const discoveredWorkstations = new Map<string, WorkstationDefinition>();
-
+    
+    // Step 1: Discover all unique WorkstationDefinitions first to avoid redundancy
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
-        const lineName = String(row.Linea).trim();
         const workstationName = String(row.PuestoTrabajo).trim();
-
-        if (!discoveredWorkCenters.has(centerId)) {
-            discoveredWorkCenters.set(centerId, { id: centerId, name: `Planta ${centerId}`, productionLineIds: [], isActive: true });
-        }
-        
         const workstationId = `wd---${centerId}---${workstationName}`;
         if (!discoveredWorkstations.has(workstationId)) {
             discoveredWorkstations.set(workstationId, {
-                id: workstationId, name: workstationName,
-                employeesPerWorkstation: 1, 
-                machineCode: null, isActive: true
+                id: workstationId,
+                name: workstationName,
+                employeesPerWorkstation: 1, // Default, might be overridden
+                machineCode: null,
+                isActive: true
             });
         }
-        
+    });
+
+    // Step 2: Discover lines and work centers, and assign workstations with correct quantities
+    const discoveredLines = new Map<string, ProductionLine>();
+    apiData.forEach(row => {
+        const centerId = String(row.Centro).trim();
+        const lineName = String(row.Linea).trim();
         const lineId = `pl---${centerId}---${lineName}`;
+
         if (!discoveredLines.has(lineId)) {
-            const predefinedQuantities = getPredefinedQuantities(centerId, lineName);
+            const userEditedLine = currentConstraints.productionLines.find(l => l.id === lineId);
             
+            // Use predefined quantities as the source of truth for workstation assignments.
+            const assignedWorkstations = getPredefinedQuantities(centerId, lineName);
+
             discoveredLines.set(lineId, {
-                id: lineId, name: lineName, workCenterId: centerId,
-                processType: 'Colchones', 
-                assignedWorkstations: predefinedQuantities, // Usar cantidades predefinidas
+                id: lineId,
+                name: lineName,
+                workCenterId: centerId,
+                processType: userEditedLine?.processType || 'Colchones',
+                assignedWorkstations: assignedWorkstations.length > 0 ? assignedWorkstations : [],
                 capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
-                materialsHandled: [], isActive: true
+                materialsHandled: [],
+                isActive: true
             });
         }
         
-        const line = discoveredLines.get(lineId)!;
-        // Solo añadir si no fue predefinido
-        if (!line.assignedWorkstations.some(as => as.definitionId.endsWith(`---${workstationName}`))) {
-             line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 }); 
+        // Ensure the work center exists and has the line ID
+        if (!discoveredWorkCenters.has(centerId)) {
+            discoveredWorkCenters.set(centerId, { id: centerId, name: `Planta ${centerId}`, productionLineIds: [], isActive: true });
         }
-        
         const center = discoveredWorkCenters.get(centerId)!;
-        if(!center.productionLineIds.includes(lineId)){
+        if (!center.productionLineIds.includes(lineId)) {
             center.productionLineIds.push(lineId);
         }
     });
@@ -103,27 +110,12 @@ export function processAndValidateAssemblyData(
         return ws;
     });
 
-    const finalLines = Array.from(discoveredLines.values()).map(line => {
-        const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
-        if (userEditedLine) {
-            line.processType = userEditedLine.processType;
-            // No sobreescribir las cantidades predefinidas, a menos que el usuario las haya editado explícitamente
-            if(userEditedLine.assignedWorkstations.length > 0){
-                line.assignedWorkstations.forEach(as => {
-                    const userEditedAs = userEditedLine.assignedWorkstations.find(uas => uas.definitionId === as.definitionId);
-                    if (userEditedAs) {
-                        as.quantity = userEditedAs.quantity;
-                    }
-                });
-            }
-        }
-        return line;
-    });
+    const finalLines = Array.from(discoveredLines.values());
     
-    if(discoveredWorkCenters.size === 0 || discoveredLines.size === 0) {
+    if (discoveredWorkCenters.size === 0 || discoveredLines.size === 0) {
         const structuralError = "Error Crítico: No se pudo descubrir ninguna estructura de producción (Centros o Líneas) a partir de los datos. Revise la fuente de datos 'TiemposEnsamblado'.";
         validationErrors.push(structuralError);
-        logger.log(`[${timestamp}] [STRUCTURE ERROR] ${structuralError}`,'error');
+        logger.log(`[${timestamp}] [STRUCTURE ERROR] ${structuralError}`, 'error');
         return { newConstraints: currentConstraints, validationErrors, dataCompletenessErrors };
     }
 
@@ -164,7 +156,7 @@ export function processAndValidateAssemblyData(
         productProcessInfos: [], 
         inventorySettings: inventorySettings, 
     };
-    logger.log(`[${timestamp}] Procesamiento y validación completados. Centros: ${discoveredWorkCenters.size}, Líneas: ${discoveredLines.size}, Puestos: ${discoveredWorkstations.size}, Inventario: ${inventorySettings.length}`,'success');
+    logger.log(`[${timestamp}] Procesamiento y validación completados. Centros: ${discoveredWorkCenters.size}, Líneas: ${discoveredLines.size}, Puestos: ${discoveredWorkstations.size}, Inventario: ${inventorySettings.length}`, 'success');
     return { newConstraints, validationErrors: [], dataCompletenessErrors: [] };
 }
 
@@ -256,10 +248,10 @@ export const generateProductionPlan = async (
     constraints: AppConstraints, 
     apiData: TiempoEnsambleItem[], 
     salesData: SalesDataRow[],
-    onProgress: (progress: PlanningProgress | null) => void,
-    auditLog: string[]
+    onProgress: (progress: PlanningProgress | null) => void
 ): Promise<ProductionPlan> => {
     
+    const auditLog: string[] = [];
     logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`, 'info');
     auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan de producción.`);
 
@@ -336,8 +328,9 @@ export const generateProductionPlan = async (
 
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
-            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters, productionLines, auditLog);
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters);
             monthlyCapacityByLine.set(line.id, totalHours);
+            auditLog.push(`[${new Date().toLocaleTimeString()}]   Capacidad para línea ${line.name} (${line.workCenterId}): ${totalHours.toFixed(2)} horas netas.`);
         });
 
         const monthlyMovements = new Map<string, { production: number; sales: number; transfersIn: number; transfersOut: number }>();
@@ -576,60 +569,44 @@ function getMonthlyCapacity(
     month: number,
     lineId: string,
     holidays: Holiday[],
-    shiftParams: ShiftParameters,
-    productionLines: ProductionLine[],
-    auditLog: string[]
+    shiftParams: ShiftParameters
 ): { totalHours: number } {
     const EFFICIENCY_FACTOR = 0.85;
     let grossTotalHours = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
-    const line = productionLines.find(l => l.id === lineId);
-    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Calculando capacidad para línea ${line?.name || lineId} en mes ${month}:`);
+
     for (let day = 1; day <= daysInMonth; day++) {
         const checkDate = new Date(year, month - 1, day);
         const dayOfWeek = checkDate.getDay();
 
         if (dayOfWeek === 0) { // Sunday
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Domingo. Se ignora.`);
             continue;
         }
         
         let isNonProductiveHoliday = false;
         const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
         if (holidayInfo && !holidayInfo.isProductionAllowed) {
-            if (holidayInfo.appliesTo === 'Toda la Planta' || 
-                holidayInfo.appliesTo === line?.workCenterId || 
-                holidayInfo.appliesTo === line?.processType ||
-                holidayInfo.appliesTo === lineId) {
-                isNonProductiveHoliday = true;
-            }
+             isNonProductiveHoliday = true;
         }
 
         if (isNonProductiveHoliday) {
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Feriado no productivo ('${holidayInfo?.name}'). Horas: 0.`);
             continue; 
         }
 
         if (holidayInfo && holidayInfo.isProductionAllowed) {
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Feriado productivo ('${holidayInfo.name}').`);
-            if (holidayInfo.dayType === 'half') {
-                grossTotalHours += 5; // Special 5-hour day
-                auditLog.push(`[${new Date().toLocaleTimeString()}]         +5 horas (media jornada).`);
+             if (holidayInfo.dayType === 'half') {
+                grossTotalHours += 5; 
             } else {
                 grossTotalHours += shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
-                auditLog.push(`[${new Date().toLocaleTimeString()}]         +${shiftParams.regularHoursPerDay}h normales, +${shiftParams.extraHoursPerDay}h extra.`);
             }
         } else if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday to Friday
             grossTotalHours += shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: L-V normal. +${shiftParams.regularHoursPerDay}h normales, +${shiftParams.extraHoursPerDay}h extra.`);
         } else if (dayOfWeek === 6) { // Saturday
             grossTotalHours += shiftParams.saturdayAndHolidayHours;
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Sábado. +${shiftParams.saturdayAndHolidayHours}h.`);
         }
     }
 
     const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
-    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Total Bruto Mes: ${grossTotalHours.toFixed(2)}h. Total Neto (x${EFFICIENCY_FACTOR}): ${netTotalHours.toFixed(2)}h.`);
     return { totalHours: netTotalHours };
 }
 
@@ -692,6 +669,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
