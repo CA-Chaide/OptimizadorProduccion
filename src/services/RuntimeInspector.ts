@@ -343,45 +343,31 @@ class RuntimeInspector {
   /**
    * Serializar valores para almacenamiento seguro
    */
-  private serializeValue(value: any): any {
+  private serializeValue(value: any, depth = 0): any {
     try {
-      // Evitar referencias circulares y objetos demasiado grandes
+      if (depth > 5) {
+        return '[Depth Limit Exceeded]';
+      }
       if (value === null || value === undefined) return value;
-      
-      if (typeof value === 'function') {
-        return '[Function]';
-      }
-
-      if (value instanceof Date) {
-        return value.toISOString();
-      }
-
+      if (typeof value === 'function') return '[Function]';
+      if (value instanceof Date) return value.toISOString();
       if (Array.isArray(value)) {
-        // Limitar arrays grandes
-        if (value.length > 100) {
-          return `[Array(${value.length}) - truncated to first 100]`;
+        if (value.length > 50) {
+          return `[Array(${value.length})]`;
         }
-        return value.map(v => this.serializeValue(v));
+        return value.map(v => this.serializeValue(v, depth + 1));
       }
-
       if (typeof value === 'object') {
-        // Limitar profundidad de objetos
         const keys = Object.keys(value);
         if (keys.length > 50) {
-          return `[Object with ${keys.length} keys - too large to serialize]`;
+          return `[Object with ${keys.length} keys]`;
         }
-
         const serialized: any = {};
         for (const key of keys) {
-          try {
-            serialized[key] = this.serializeValue(value[key]);
-          } catch {
-            serialized[key] = '[Unserializable]';
-          }
+          serialized[key] = this.serializeValue(value[key], depth + 1);
         }
         return serialized;
       }
-
       return value;
     } catch {
       return '[Serialization Error]';

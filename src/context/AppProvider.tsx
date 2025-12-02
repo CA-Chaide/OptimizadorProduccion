@@ -164,71 +164,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // HYPERVISOR: Capturar automáticamente TODO el estado del AppContext
     useEffect(() => {
         // Capturar estado completo cada vez que cambia
-        runtimeInspector.captureState({
-            year: state.year,
-            activeView: state.activeView,
-            isLoading: state.isLoading,
-            salesDataCount: state.salesData.length,
-            hasProductionPlan: !!(state.productionPlan.monthlyPlan.length || state.productionPlan.weeklyPlan.length || state.productionPlan.dailyPlan.length),
-            hasDetailedPlan: !!state.detailedProductionPlan,
-            employeesCount: state.employees.length,
-            skillsCount: state.employeeSkills.length,
-            maintenanceEventsCount: state.maintenanceEvents.length,
-            absenteeismEventsCount: state.absenteeismEvents.length,
-            workShiftsCount: state.workShifts.length,
-            isSynced: state.syncStatus?.isSynced || false,
-            hasTacticalPlan: !!state.tacticalPlanResult,
-            constraintsConfigured: !!(state.constraints.productionLines.length && state.constraints.workstationDefinitions.length)
-        }, 'AppContext');
-        
-        // Capturar variables clave con detalles
-        if (state.salesData.length > 0) {
-            runtimeInspector.captureVariable('salesData', state.salesData, {
-                count: state.salesData.length,
-                sample: state.salesData.slice(0, 3),
-                totalProducts: new Set(state.salesData.map(s => s.producto)).size
-            }, 'AppContext');
-        }
-        
-        if (state.constraints.productionLines.length > 0) {
-            runtimeInspector.captureVariable('constraints', state.constraints, {
-                productionLines: state.constraints.productionLines.length,
-                workstations: state.constraints.workstationDefinitions.length,
-                workCenters: state.constraints.workCenters.length,
-                linesByCenter: state.constraints.productionLines.reduce((acc: any, line) => {
-                    const center = line.workCenterId;
-                    acc[center] = (acc[center] || 0) + 1;
-                    return acc;
-                }, {})
-            }, 'AppContext');
-        }
-        
-        if (state.productionPlan.monthlyPlan.length > 0) {
-            runtimeInspector.captureVariable('productionPlan', state.productionPlan, {
-                monthlyCount: state.productionPlan.monthlyPlan.length,
-                weeklyCount: state.productionPlan.weeklyPlan.length,
-                dailyCount: state.productionPlan.dailyPlan.length,
-                auditLogLines: state.productionPlan.auditLog.length
-            }, 'AppContext');
-        }
-        
-        if (state.employees.length > 0) {
-            runtimeInspector.captureVariable('employees', state.employees, {
-                count: state.employees.length,
-                sample: state.employees.slice(0, 5).map(e => ({ id: e.id, name: e.name, code: e.employeeCode }))
-            }, 'AppContext');
-        }
-        
-        if (state.employeeSkills.length > 0) {
-            runtimeInspector.captureVariable('employeeSkills', state.employeeSkills, {
-                count: state.employeeSkills.length,
-                uniqueEmployees: new Set(state.employeeSkills.map(s => s.employeeId)).size,
-                uniqueMachines: new Set(state.employeeSkills.map(s => s.machineCode)).size
-            }, 'AppContext');
-        }
-        
-        console.log('[AppProvider HYPERVISOR] Estado capturado en RuntimeInspector');
-    }, [state]); // Se ejecuta cada vez que cambia el estado completo
+        runtimeInspector.captureState('AppContext', state);
+    }, [state]);
     
     // HYPERVISOR: Sincronizar automáticamente TODO al DataStore
     useEffect(() => {
