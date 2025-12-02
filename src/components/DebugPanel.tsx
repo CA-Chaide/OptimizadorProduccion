@@ -263,8 +263,8 @@ export default function DebugPanel() {
                   fontSize: 13
                 }}
               >
-                {sections.map(sec => (
-                  <option key={sec} value={sec}>
+                {sections.map((sec, index) => (
+                  <option key={`${sec}-${index}`} value={sec}>
                     {sec === 'all' ? 'All Sections' : sec}
                   </option>
                 ))}

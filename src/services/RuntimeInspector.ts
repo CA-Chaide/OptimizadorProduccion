@@ -296,16 +296,16 @@ class RuntimeInspector {
       timestamp: Date;
     }>;
   } {
-    const sections = new Set<string>();
+    const sectionNames = new Set<string>();
     let totalVars = 0;
     
     this.variables.forEach((vars, section) => {
-      sections.add(section);
+      sectionNames.add(section);
       totalVars += vars.length;
     });
 
-    this.contexts.forEach(ctx => sections.add(ctx.section));
-    this.states.forEach((_, section) => sections.add(section));
+    this.contexts.forEach(ctx => sectionNames.add(ctx.section));
+    this.states.forEach((_, section) => sectionNames.add(section));
 
     const recentActivity = this.contexts
       .slice(-10)
@@ -319,7 +319,7 @@ class RuntimeInspector {
       totalVariables: totalVars,
       totalContexts: this.contexts.length,
       activeContexts: this.activeContexts.size,
-      sections: Array.from(sections).sort(),
+      sections: Array.from(sectionNames).sort(),
       recentActivity,
     };
   }
@@ -410,8 +410,8 @@ export function useRuntimeInspector(section: string) {
       runtimeInspector.captureVariable(section, 'component', name, value, metadata);
     },
     
-    captureState: (state: Record<string, any>, props?: Record<string, any>) => {
-      runtimeInspector.captureState(section, state, props);
+    captureState: (state: Record<string, any>, props?: Record<string, any>, computed?: Record<string, any>) => {
+      runtimeInspector.captureState(section, state, props, computed);
     },
     
     startContext: (action: string, inputs?: Record<string, any>) => {
