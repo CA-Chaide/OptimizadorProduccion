@@ -300,14 +300,7 @@ export const generateProductionPlan = async (
                 }
             }
         });
-        
-        let totalStockCentro1000 = 0;
-        for (const [key, value] of inventoryState.entries()) {
-            if (key.endsWith('---1000')) {
-                totalStockCentro1000 += value;
-            }
-        }
-        const logMsg = `Inventario inicial cargado DIRECTAMENTE de CuboInventarios. Total para centro 1000: ${totalStockCentro1000.toLocaleString()}`;
+        const logMsg = `Inventario inicial cargado desde CuboInventarios. Se encontraron ${inventoryState.size} pares producto-centro con stock.`;
         auditLog.push(`[${new Date().toLocaleTimeString()}] INFO: ${logMsg}`);
         logger.log(`[${new Date().toLocaleTimeString()}] [Punto 1: Motor] ${logMsg}`, 'success');
 
@@ -428,8 +421,15 @@ export const generateProductionPlan = async (
                     }
                 }
                 if (netNeed > 0) {
-                    gyeXDeficits.set(productId, (gyeXDeficits.get(productId) || 0) + netNeed);
-                    auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000): ${netNeed.toFixed(0)} unidades. Solicitando a UIO (1000).`);
+                    const quitoStock = inventoryState.get(`${productId}---1000`) || 0;
+                    if (quitoStock > 1) { // Quito helps only if it has more than 1 unit
+                        const helpAmount = Math.min(netNeed, quitoStock - 1);
+                        gyeXDeficits.set(productId, (gyeXDeficits.get(productId) || 0) + helpAmount);
+                        auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000). Solicitando ${helpAmount.toFixed(0)} unidades a UIO (1000).`);
+                    } else {
+                         productionBacklog.set(key, (productionBacklog.get(key) || 0) + netNeed);
+                         auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000): ${netNeed.toFixed(0)} unidades. Quito no puede ayudar. Enviado a Backlog.`);
+                    }
                 }
             }
         });
@@ -660,7 +660,7 @@ export const generateProductionPlan = async (
     }
 
     onProgress(null);
-    return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan, auditLog, initialInventory: initialInventoryState };
+    return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan, auditLog };
 };
 
 
@@ -792,6 +792,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
