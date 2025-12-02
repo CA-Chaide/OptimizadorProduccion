@@ -1,5 +1,6 @@
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -468,71 +469,72 @@ export const generateProductionPlan = async (
           .sort((a,b) => a.urgency - b.urgency);
         
         for (const { prodCenterKey, productId, centerId, netNeed } of allNeeds) {
-             const invKey = `${productId}---${centerId}`;
+            const invKey = `${productId}---${centerId}`;
 
-            const linesInCenter = productionLines.filter(l => l.workCenterId === centerId && l.materialsHandled.includes(productId));
-            const relevantLine = linesInCenter[0];
+            const findLineForProduct = (pId: string, cId: string): ProductionLine | undefined => {
+                // This logic should be more sophisticated, e.g., based on priority or load.
+                // For now, it mimics the old logic of finding the first suitable line.
+                return productionLines.find(l => l.workCenterId === cId && l.materialsHandled.includes(pId));
+            };
 
-            if (relevantLine) {
-                const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
-                const availableHours = monthlyCapacityByLine.get(relevantLine.id) || 0;
+            let primaryLine = findLineForProduct(productId, centerId);
+            let remainingNeed = netNeed;
+            
+            if (primaryLine) {
+                let availableHours = monthlyCapacityByLine.get(primaryLine.id) || 0;
+                const timePerUnit = calculateEffectiveManufacturingTime(productId, primaryLine, apiData, workstationDefinitions);
 
-                if (timePerUnit === Infinity || timePerUnit <= 0) {
-                    auditLog.push(`[${new Date().toLocaleTimeString()}]     [WARN] Tiempo de fabricación inválido para ${productId} en línea ${relevantLine.name}. Saltando.`);
-                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
-                    continue;
-                }
-                
-                let quantityToProduce = netNeed;
-
-                // For Quito, check if this production is for a GYE deficit
-                if (centerId === '1000' && gyeXDeficits.has(productId)) {
-                    const deficitForGye = gyeXDeficits.get(productId)!;
+                if (timePerUnit !== Infinity && timePerUnit > 0) {
+                    const capacityInUnits = Math.floor(availableHours / timePerUnit);
+                    const actualProduction = Math.min(remainingNeed, capacityInUnits);
                     
-                    // What would be the final stock in quito if we produce EVERYTHING (local demand + gye deficit)?
-                    const quitoStock = inventoryState.get(invKey) || 0;
-                    const quitoSales = getMovements(invKey).sales;
-                    const quitoTransfersOutF = getMovements(invKey).transfersOut; // Transfers for 'F' materials
-                    const projectedFinalStockIfAllProduced = quitoStock + quantityToProduce - quitoSales - quitoTransfersOutF;
+                    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Asignación para ${productId} en ${primaryLine.name}: Necesita ${remainingNeed.toFixed(0)}, Capacidad ${capacityInUnits.toFixed(0)} -> Producirá ${actualProduction.toFixed(0)}`);
                     
-                    const minStockForQuito = 1; // The rule is >= 1
-
-                    if (projectedFinalStockIfAllProduced < minStockForQuito) {
-                        const allowableProduction = quantityToProduce - (minStockForQuito - projectedFinalStockIfAllProduced);
-                        quantityToProduce = Math.max(0, allowableProduction);
-                        auditLog.push(`[${new Date().toLocaleTimeString()}]     - UIO (1000) limita producción de ${productId} a ${quantityToProduce.toFixed(0)} para no bajar de 1 unidad de stock.`);
+                    if (actualProduction > 0) {
+                        const hoursForProduction = actualProduction * timePerUnit;
+                        getMovements(invKey).production += actualProduction;
+                        monthlyCapacityByLine.set(primaryLine.id, availableHours - hoursForProduction);
+                        auditLog.push(`[${new Date().toLocaleTimeString()}]       - Horas consumidas: ${hoursForProduction.toFixed(2)}. Horas restantes en línea: ${(availableHours - hoursForProduction).toFixed(2)}`);
                     }
+                    remainingNeed -= actualProduction;
+                } else {
+                    auditLog.push(`[${new Date().toLocaleTimeString()}]     [WARN] Tiempo de fabricación inválido para ${productId} en línea ${primaryLine.name}.`);
+                }
+
+                // --- Overflow Logic ---
+                if (remainingNeed > 0 && primaryLine.name === 'LINEA 1' && centerId === '1000') {
+                    auditLog.push(`[${new Date().toLocaleTimeString()}]     - [OVERFLOW] Déficit en LINEA 1 de ${remainingNeed.toFixed(0)} para ${productId}. Buscando capacidad en LINEA 3.`);
                     
-                    // The amount produced for GYE is the lesser of the deficit or the part of production that corresponds to it
-                    const productionForGye = Math.min(deficitForGye, quantityToProduce);
-                    if (productionForGye > 0) {
-                         getMovements(invKey).transfersOut += productionForGye;
-                         getMovements(`${productId}---2000`).transfersIn += productionForGye;
+                    const overflowLine = productionLines.find(l => l.workCenterId === '1000' && l.name === 'LINEA 3');
+                    if (overflowLine) {
+                        let overflowHours = monthlyCapacityByLine.get(overflowLine.id) || 0;
+                        const overflowTimePerUnit = calculateEffectiveManufacturingTime(productId, overflowLine, apiData, workstationDefinitions);
+                        
+                        if (overflowTimePerUnit !== Infinity && overflowTimePerUnit > 0) {
+                            const overflowCapacityInUnits = Math.floor(overflowHours / overflowTimePerUnit);
+                            const overflowProduction = Math.min(remainingNeed, overflowCapacityInUnits);
+
+                            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Capacidad en LINEA 3: ${overflowCapacityInUnits.toFixed(0)}. Produciendo en overflow: ${overflowProduction.toFixed(0)}`);
+
+                            if (overflowProduction > 0) {
+                                const hoursForOverflow = overflowProduction * overflowTimePerUnit;
+                                getMovements(invKey).production += overflowProduction; // Add to total production
+                                monthlyCapacityByLine.set(overflowLine.id, overflowHours - hoursForOverflow);
+                                auditLog.push(`[${new Date().toLocaleTimeString()}]       - Horas consumidas en LINEA 3: ${hoursForOverflow.toFixed(2)}. Horas restantes: ${(overflowHours - hoursForOverflow).toFixed(2)}`);
+                            }
+                            remainingNeed -= overflowProduction;
+                        } else {
+                             auditLog.push(`[${new Date().toLocaleTimeString()}]       - [WARN] No se puede producir ${productId} en LINEA 3 (tiempo inválido).`);
+                        }
+                    } else {
+                         auditLog.push(`[${new Date().toLocaleTimeString()}]     - [OVERFLOW] No se encontró la LINEA 3 para manejar el déficit.`);
                     }
-                    gyeXDeficits.delete(productId); // Mark as handled
                 }
+            }
 
-
-                const capacityInUnits = Math.floor(availableHours / timePerUnit);
-                const actualProduction = Math.min(quantityToProduce, capacityInUnits);
-                auditLog.push(`[${new Date().toLocaleTimeString()}]     - Asignación para ${productId} en ${relevantLine.name}: Necesita ${quantityToProduce.toFixed(0)}, Capacidad en unidades ${capacityInUnits.toFixed(0)} -> Producirá ${actualProduction.toFixed(0)}`);
-                
-                if (actualProduction > 0) {
-                    const hoursForProduction = actualProduction * timePerUnit;
-                    getMovements(invKey).production += actualProduction;
-                    
-                    monthlyCapacityByLine.set(relevantLine.id, availableHours - hoursForProduction);
-                    auditLog.push(`[${new Date().toLocaleTimeString()}]       - Horas consumidas: ${hoursForProduction.toFixed(2)}. Horas restantes en línea: ${(availableHours - hoursForProduction).toFixed(2)}`);
-                }
-
-                const pendingUnits = netNeed - actualProduction;
-                if (pendingUnits > 0) {
-                    auditLog.push(`[${new Date().toLocaleTimeString()}]     [BACKLOG] Insuficiente capacidad para ${productId}. Faltantes: ${pendingUnits.toFixed(0)}.`);
-                    productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + pendingUnits);
-                }
-            } else {
-                 auditLog.push(`[${new Date().toLocaleTimeString()}]     [WARN] No se encontró línea para ${productId} en centro ${centerId}. Faltantes: ${netNeed.toFixed(0)}.`);
-                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + netNeed);
+            if (remainingNeed > 0) {
+                 auditLog.push(`[${new Date().toLocaleTimeString()}]     [BACKLOG] Insuficiente capacidad para ${productId}. Faltantes: ${remainingNeed.toFixed(0)}.`);
+                 productionBacklog.set(prodCenterKey, (productionBacklog.get(prodCenterKey) || 0) + remainingNeed);
             }
         }
         
@@ -790,6 +792,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
