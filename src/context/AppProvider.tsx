@@ -363,9 +363,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const progressCallback = (progress: PlanningProgress | null) => {
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
-            const auditLog: string[] = [];
             
-            const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback, auditLog);
+            const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
                  dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: planResult.auditLog });

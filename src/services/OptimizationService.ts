@@ -52,77 +52,69 @@ export function processAndValidateAssemblyData(
     const discoveredLines = new Map<string, ProductionLine>();
     const discoveredWorkstations = new Map<string, WorkstationDefinition>();
 
-    // Step 2: Discover all unique entities (WorkCenters, Lines, Workstations)
+    // Step 2: Discover all unique entities
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
-        const lineName = String(row.Linea).trim();
-        const workstationName = String(row.PuestoTrabajo).trim();
-
         if (!discoveredWorkCenters.has(centerId)) {
-            discoveredWorkCenters.set(centerId, { 
-                id: centerId, name: `Planta ${centerId}`, productionLineIds: [], isActive: true 
-            });
+            discoveredWorkCenters.set(centerId, { id: centerId, name: `Planta ${centerId}`, productionLineIds: [], isActive: true });
         }
-        
+
+        const workstationName = String(row.PuestoTrabajo).trim();
         const workstationId = `wd---${centerId}---${workstationName}`;
         if (!discoveredWorkstations.has(workstationId)) {
-            discoveredWorkstations.set(workstationId, {
-                id: workstationId, name: workstationName, employeesPerWorkstation: 1, machineCode: null, isActive: true
-            });
+            discoveredWorkstations.set(workstationId, { id: workstationId, name: workstationName, employeesPerWorkstation: 1, machineCode: null, isActive: true });
         }
 
+        const lineName = String(row.Linea).trim();
         const lineId = `pl---${centerId}---${lineName}`;
         if (!discoveredLines.has(lineId)) {
-            const userEditedLine = currentConstraints.productionLines.find(l => l.id === lineId);
+             const userEditedLine = currentConstraints.productionLines.find(l => l.id === lineId);
             discoveredLines.set(lineId, {
                 id: lineId, name: lineName, workCenterId: centerId,
                 processType: userEditedLine?.processType || 'Colchones',
-                assignedWorkstations: [],
-                capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
-                materialsHandled: [],
-                isActive: true
+                assignedWorkstations: [], capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
+                materialsHandled: [], isActive: true
             });
             const center = discoveredWorkCenters.get(centerId);
-            if (center && !center.productionLineIds.includes(lineId)) {
-                center.productionLineIds.push(lineId);
-            }
+            if (center && !center.productionLineIds.includes(lineId)) center.productionLineIds.push(lineId);
         }
     });
 
-    // Step 3: Assign workstations to lines based on data
+    // Step 3: Assign workstations to lines
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
         const lineName = String(row.Linea).trim();
-        const workstationName = String(row.PuestoTrabajo).trim();
         const lineId = `pl---${centerId}---${lineName}`;
-        const workstationId = `wd---${centerId}---${workstationName}`;
-        
         const line = discoveredLines.get(lineId);
-        if (line && !line.assignedWorkstations.some(ws => ws.definitionId === workstationId)) {
-            line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 });
-        }
-    });
 
-    // Step 4: Override workstation quantities with predefined values where they exist
-    discoveredLines.forEach(line => {
-        const predefinedQuantities = getPredefinedQuantities(line.workCenterId, line.name);
-        if (predefinedQuantities.length > 0) {
-            const newAssignedWorkstations = line.assignedWorkstations.map(currentAs => {
-                const predefined = predefinedQuantities.find(p => p.definitionId === currentAs.definitionId);
-                return { ...currentAs, quantity: predefined ? predefined.quantity : currentAs.quantity };
-            });
-            
-            // Add any predefined workstations that were not discovered, just in case
-            predefinedQuantities.forEach(predefined => {
-                if (!newAssignedWorkstations.some(as => as.definitionId === predefined.definitionId)) {
-                    newAssignedWorkstations.push(predefined);
-                }
-            });
-            
-            line.assignedWorkstations = newAssignedWorkstations;
+        if (line) {
+            const workstationName = String(row.PuestoTrabajo).trim();
+            const workstationId = `wd---${centerId}---${workstationName}`;
+            if (!line.assignedWorkstations.some(ws => ws.definitionId === workstationId)) {
+                line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 });
+            }
         }
     });
     
+    // Step 4: Apply predefined quantities and user overrides
+    discoveredLines.forEach(line => {
+        const predefinedQuantities = getPredefinedQuantities(line.workCenterId, line.name);
+        const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
+        
+        line.assignedWorkstations = line.assignedWorkstations.map(currentAs => {
+            let quantity = 1;
+            const predefined = predefinedQuantities.find(p => p.definitionId === currentAs.definitionId);
+            if (predefined) {
+                quantity = predefined.quantity;
+            }
+            const userEditedAs = userEditedLine?.assignedWorkstations.find(uas => uas.definitionId === currentAs.definitionId);
+            if(userEditedAs && userEditedAs.quantity > 0) {
+                quantity = userEditedAs.quantity;
+            }
+            return { ...currentAs, quantity };
+        });
+    });
+
     // Step 5: Populate materials handled and create inventory settings
     const finalLines = Array.from(discoveredLines.values());
     const inventorySettings: InventorySetting[] = [];
@@ -262,10 +254,10 @@ export const generateProductionPlan = async (
     constraints: AppConstraints, 
     apiData: TiempoEnsambleItem[], 
     salesData: SalesDataRow[],
-    onProgress: (progress: PlanningProgress | null) => void,
-    auditLog: string[]
+    onProgress: (progress: PlanningProgress | null) => void
 ): Promise<ProductionPlan> => {
     
+    const auditLog: string[] = [];
     logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`, 'info');
     auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan de producción.`);
 
@@ -587,10 +579,21 @@ function getMonthlyCapacity(
     const EFFICIENCY_FACTOR = 0.85;
     let grossTotalHours = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
-
+    
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const currentDay = today.getDate();
+    
+    // El bucle de cálculo de días comenzará en el día actual si estamos en el mes y año corrientes.
+    const startDay = (year === currentYear && month === currentMonth) ? currentDay : 1;
+    
+    if(startDay > 1) {
+        auditLog.push(`[${new Date().toLocaleTimeString()}]     - Mes corriente detectado. Calculando capacidad desde el día ${startDay}.`);
+    }
     auditLog.push(`[${new Date().toLocaleTimeString()}]     - Calculando capacidad para línea ${line.name} en mes ${month}:`);
     
-    for (let day = 1; day <= daysInMonth; day++) {
+    for (let day = startDay; day <= daysInMonth; day++) {
         const checkDate = new Date(year, month - 1, day);
         const dayOfWeek = checkDate.getDay(); 
         
@@ -696,6 +699,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
