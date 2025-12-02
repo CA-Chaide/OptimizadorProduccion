@@ -694,7 +694,8 @@ function getMonthlyCapacity(
         } else {
             const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
             let isNonProductiveHoliday = false;
-            if (holidayInfo && !holidayInfo.isProductionAllowed) {
+            
+            if (holidayInfo && holidayInfo.dayType === 'asueto') {
                 const appliesTo = holidayInfo.appliesTo;
                 if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
                     isNonProductiveHoliday = true;
@@ -702,7 +703,15 @@ function getMonthlyCapacity(
             }
 
             if (isNonProductiveHoliday) {
-                logMsg = `Día ${day}: Feriado no productivo ('${holidayInfo?.name}'). Horas: 0.`;
+                logMsg = `Día ${day}: Feriado (Asueto) no productivo ('${holidayInfo?.name}'). Horas: 0.`;
+            } else if (holidayInfo && holidayInfo.isProductionAllowed) {
+                if (holidayInfo.dayType === 'full') {
+                    dailyHours = shiftParams.regularHoursPerDay;
+                    logMsg = `Día ${day}: Feriado (Jornada Completa - '${holidayInfo.name}'). Horas: ${dailyHours}.`;
+                } else if (holidayInfo.dayType === 'half') {
+                    dailyHours = 5; // Fixed 5 hours for half day
+                    logMsg = `Día ${day}: Feriado (Media Jornada - '${holidayInfo.name}'). Horas: ${dailyHours}.`;
+                }
             } else {
                 if (dayOfWeek === 6) { // Saturday
                     dailyHours = shiftParams.saturdayAndHolidayHours;
@@ -710,12 +719,6 @@ function getMonthlyCapacity(
                 } else { // Weekday
                     dailyHours = shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
                     logMsg = `Día ${day}: L-V normal. +${dailyHours}h.`;
-                }
-                
-                if (holidayInfo && holidayInfo.isProductionAllowed) {
-                   const holidayHours = holidayInfo.dayType === 'half' ? 5 : shiftParams.saturdayAndHolidayHours;
-                   dailyHours = holidayHours; // Override with holiday hours
-                   logMsg = `Día ${day}: Feriado productivo ('${holidayInfo.name}'). Horas: ${dailyHours}.`;
                 }
             }
         }
@@ -789,6 +792,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 

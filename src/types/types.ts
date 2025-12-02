@@ -19,6 +19,7 @@
 
 
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -238,7 +239,7 @@ export interface Holiday {
   name: string;
   appliesTo: HolidayScope;
   isProductionAllowed: boolean;
-  dayType: 'full' | 'half';
+  dayType: 'full' | 'half' | 'asueto';
 }
 
 
