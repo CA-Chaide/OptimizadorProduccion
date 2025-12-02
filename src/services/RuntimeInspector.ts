@@ -1,3 +1,4 @@
+
 /**
  * RuntimeInspector: Sistema de observabilidad profunda para rastrear
  * variables, estados, operaciones y contexto de ejecución en tiempo real.
@@ -37,9 +38,9 @@ export interface ExecutionContext {
 export interface StateSnapshot {
   section: string;
   timestamp: Date;
-  state: Record<string, any>;
-  props?: Record<string, any>;
-  computed?: Record<string, any>;
+  state: Record<string, any> | string;
+  props?: Record<string, any> | string;
+  computed?: Record<string, any> | string;
 }
 
 type InspectorListener = (event: {
@@ -203,9 +204,9 @@ class RuntimeInspector {
     const snapshot: StateSnapshot = {
       section,
       timestamp: new Date(),
-      state: this.serializeValue(state),
-      props: props ? this.serializeValue(props) : undefined,
-      computed: computed ? this.serializeValue(computed) : undefined,
+      state: JSON.stringify(this.serializeValue(state), null, 2),
+      props: props ? JSON.stringify(this.serializeValue(props), null, 2) : undefined,
+      computed: computed ? JSON.stringify(this.serializeValue(computed), null, 2) : undefined,
     };
 
     this.states.set(section, snapshot);

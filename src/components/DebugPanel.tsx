@@ -1,3 +1,4 @@
+
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -41,7 +42,7 @@ export default function DebugPanel() {
   }, [selectedSection]);
 
   const summary = runtimeInspector.getSummary();
-  const sections = [...new Set(['all', ...summary.sections])];
+  const sections = summary.sections ? [...new Set(['all', ...summary.sections])] : ['all'];
 
   const renderValue = (value: any, depth = 0): React.ReactNode => {
     if (depth > 3) return '...';
@@ -475,7 +476,7 @@ export default function DebugPanel() {
                           <div style={{ marginTop: 8 }}>
                             <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>State:</div>
                             <div style={{ marginLeft: 10, fontFamily: 'monospace', fontSize: 11 }}>
-                              {renderValue(state.state)}
+                              {renderValue(JSON.parse(state.state as string))}
                             </div>
                           </div>
                           
@@ -483,7 +484,7 @@ export default function DebugPanel() {
                             <div style={{ marginTop: 8 }}>
                               <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>Props:</div>
                               <div style={{ marginLeft: 10, fontFamily: 'monospace', fontSize: 11 }}>
-                                {renderValue(state.props)}
+                                {renderValue(JSON.parse(state.props as string))}
                               </div>
                             </div>
                           )}
@@ -492,7 +493,7 @@ export default function DebugPanel() {
                             <div style={{ marginTop: 8 }}>
                               <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>Computed:</div>
                               <div style={{ marginLeft: 10, fontFamily: 'monospace', fontSize: 11 }}>
-                                {renderValue(state.computed)}
+                                {renderValue(JSON.parse(state.computed as string))}
                               </div>
                             </div>
                           )}

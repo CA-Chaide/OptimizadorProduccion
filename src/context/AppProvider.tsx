@@ -164,7 +164,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // HYPERVISOR: Capturar automáticamente TODO el estado del AppContext
     useEffect(() => {
         // Capturar estado completo cada vez que cambia
-        runtimeInspector.captureState('AppContext', state);
+        runtimeInspector.captureState('AppContext', JSON.parse(JSON.stringify(state)));
     }, [state]);
     
     // HYPERVISOR: Sincronizar automáticamente TODO al DataStore
