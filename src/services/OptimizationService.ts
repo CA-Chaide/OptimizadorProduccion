@@ -76,13 +76,14 @@ export function processAndValidateAssemblyData(
             discoveredLines.set(lineId, {
                 id: lineId, name: lineName, workCenterId: centerId,
                 processType: 'Colchones', 
-                assignedWorkstations: predefinedQuantities,
+                assignedWorkstations: predefinedQuantities, // Usar cantidades predefinidas
                 capacity: { maxUnitsPerHour: 0, normalUnitsPerHour: 0, minUnitsPerHour: 0 },
                 materialsHandled: [], isActive: true
             });
         }
         
         const line = discoveredLines.get(lineId)!;
+        // Solo añadir si no fue predefinido
         if (!line.assignedWorkstations.some(as => as.definitionId.endsWith(`---${workstationName}`))) {
              line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 }); 
         }
@@ -106,12 +107,15 @@ export function processAndValidateAssemblyData(
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         if (userEditedLine) {
             line.processType = userEditedLine.processType;
-            line.assignedWorkstations.forEach(as => {
-                const userEditedAs = userEditedLine.assignedWorkstations.find(uas => uas.definitionId === as.definitionId);
-                if (userEditedAs) {
-                    as.quantity = userEditedAs.quantity;
-                }
-            });
+            // No sobreescribir las cantidades predefinidas, a menos que el usuario las haya editado explícitamente
+            if(userEditedLine.assignedWorkstations.length > 0){
+                line.assignedWorkstations.forEach(as => {
+                    const userEditedAs = userEditedLine.assignedWorkstations.find(uas => uas.definitionId === as.definitionId);
+                    if (userEditedAs) {
+                        as.quantity = userEditedAs.quantity;
+                    }
+                });
+            }
         }
         return line;
     });
@@ -332,10 +336,8 @@ export const generateProductionPlan = async (
 
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
-            const totalGrossHours = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters, auditLog);
-            const totalNetHours = totalGrossHours * 0.85; // Apply efficiency here
-            monthlyCapacityByLine.set(line.id, totalNetHours);
-            auditLog.push(`[${new Date().toLocaleTimeString()}]   Capacidad para línea ${line.name} (${line.workCenterId}): ${totalGrossHours.toFixed(2)}h brutas -> ${totalNetHours.toFixed(2)}h netas (eficiencia 85%).`);
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line.id, holidays, shiftParameters, productionLines, auditLog);
+            monthlyCapacityByLine.set(line.id, totalHours);
         });
 
         const monthlyMovements = new Map<string, { production: number; sales: number; transfersIn: number; transfersOut: number }>();
@@ -570,58 +572,65 @@ export const generateProductionPlan = async (
 
 
 function getMonthlyCapacity(
-    year: number, 
-    month: number, 
-    lineId: string, 
-    holidays: Holiday[], 
+    year: number,
+    month: number,
+    lineId: string,
+    holidays: Holiday[],
     shiftParams: ShiftParameters,
+    productionLines: ProductionLine[],
     auditLog: string[]
-): number {
-    let totalGrossHours = 0;
+): { totalHours: number } {
+    const EFFICIENCY_FACTOR = 0.85;
+    let grossTotalHours = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
-    const line = constraints.productionLines.find(l => l.id === lineId);
-
+    const line = productionLines.find(l => l.id === lineId);
+    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Calculando capacidad para línea ${line?.name || lineId} en mes ${month}:`);
     for (let day = 1; day <= daysInMonth; day++) {
         const checkDate = new Date(year, month - 1, day);
-        const dayOfWeek = checkDate.getDay(); 
+        const dayOfWeek = checkDate.getDay();
 
-        if (dayOfWeek === 0) continue; // Sunday, no production
-
-        let isNonProductiveHoliday = false;
-        const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
-
-        if (holidayInfo && !holidayInfo.isProductionAllowed) {
-             if (holidayInfo.appliesTo === 'Toda la Planta' || 
-                 holidayInfo.appliesTo === line?.workCenterId || 
-                 holidayInfo.appliesTo === line?.processType ||
-                 holidayInfo.appliesTo === lineId
-             ) {
-                isNonProductiveHoliday = true;
-            }
-        }
-        
-        if (isNonProductiveHoliday) {
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Feriado no productivo ('${holidayInfo?.name}'). Horas: 0.`);
+        if (dayOfWeek === 0) { // Sunday
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Domingo. Se ignora.`);
             continue;
         }
         
+        let isNonProductiveHoliday = false;
+        const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
+        if (holidayInfo && !holidayInfo.isProductionAllowed) {
+            if (holidayInfo.appliesTo === 'Toda la Planta' || 
+                holidayInfo.appliesTo === line?.workCenterId || 
+                holidayInfo.appliesTo === line?.processType ||
+                holidayInfo.appliesTo === lineId) {
+                isNonProductiveHoliday = true;
+            }
+        }
+
+        if (isNonProductiveHoliday) {
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Feriado no productivo ('${holidayInfo?.name}'). Horas: 0.`);
+            continue; 
+        }
+
         if (holidayInfo && holidayInfo.isProductionAllowed) {
-            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Feriado productivo ('${holidayInfo?.name}').`);
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Feriado productivo ('${holidayInfo.name}').`);
             if (holidayInfo.dayType === 'half') {
-                totalGrossHours += 5;
+                grossTotalHours += 5; // Special 5-hour day
                 auditLog.push(`[${new Date().toLocaleTimeString()}]         +5 horas (media jornada).`);
             } else {
-                totalGrossHours += shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
+                grossTotalHours += shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
                 auditLog.push(`[${new Date().toLocaleTimeString()}]         +${shiftParams.regularHoursPerDay}h normales, +${shiftParams.extraHoursPerDay}h extra.`);
             }
-        } else if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday to Friday (not a holiday)
-             totalGrossHours += shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
+        } else if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday to Friday
+            grossTotalHours += shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: L-V normal. +${shiftParams.regularHoursPerDay}h normales, +${shiftParams.extraHoursPerDay}h extra.`);
         } else if (dayOfWeek === 6) { // Saturday
-            totalGrossHours += shiftParams.saturdayAndHolidayHours;
+            grossTotalHours += shiftParams.saturdayAndHolidayHours;
+            auditLog.push(`[${new Date().toLocaleTimeString()}]       - Día ${day}: Sábado. +${shiftParams.saturdayAndHolidayHours}h.`);
         }
     }
-    
-    return totalGrossHours;
+
+    const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
+    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Total Bruto Mes: ${grossTotalHours.toFixed(2)}h. Total Neto (x${EFFICIENCY_FACTOR}): ${netTotalHours.toFixed(2)}h.`);
+    return { totalHours: netTotalHours };
 }
 
 export const exportDailyPlanToExcel = (plan: ProductionPlanItem[], constraints: AppConstraints): void => {
@@ -683,6 +692,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
