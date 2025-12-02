@@ -180,7 +180,8 @@ function getPredefinedQuantities(centerId: string, lineName: string): Array<{ de
             'LINEA 2': { 'Armado': 6, 'Cerrado': 4 }
         },
         '2000': {
-            'LINEA 1': { 'Armado': 8, 'Cerrado': 4 }
+            'LINEA 1': { 'Armado': 8, 'Cerrado': 4 },
+            'LINEA 2': { 'Armado': 4, 'Cerrado': 4 }
         }
     };
 
@@ -695,6 +696,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
