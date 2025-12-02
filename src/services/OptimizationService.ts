@@ -52,7 +52,7 @@ export function processAndValidateAssemblyData(
     const discoveredLines = new Map<string, ProductionLine>();
     const discoveredWorkstations = new Map<string, WorkstationDefinition>();
 
-    // Step 2: Discover all unique entities
+    // Step 1: Discover all unique entities
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
         if (!discoveredWorkCenters.has(centerId)) {
@@ -79,58 +79,47 @@ export function processAndValidateAssemblyData(
             if (center && !center.productionLineIds.includes(lineId)) center.productionLineIds.push(lineId);
         }
     });
-
-    // Step 3: Assign workstations to lines based on TiemposEnsamblado data
-    apiData.forEach(row => {
-        const centerId = String(row.Centro).trim();
-        const lineName = String(row.Linea).trim();
-        const lineId = `pl---${centerId}---${lineName}`;
-        const line = discoveredLines.get(lineId);
-
-        if (line) {
-            const workstationName = String(row.PuestoTrabajo).trim();
-            const workstationId = `wd---${centerId}---${workstationName}`;
-            if (!line.assignedWorkstations.some(ws => ws.definitionId === workstationId)) {
-                // Initialize with quantity 0, to be determined in the next step.
-                line.assignedWorkstations.push({ definitionId: workstationId, quantity: 0 });
-            }
-        }
-    });
     
-    // Step 4: Apply predefined quantities and user overrides
+    // Step 2: Assign workstations to lines
+    discoveredLines.forEach(line => {
+        const workstationIdsForLine = new Set<string>();
+        apiData.forEach(row => {
+            const centerId = String(row.Centro).trim();
+            const lineName = String(row.Linea).trim();
+            
+            if (centerId === line.workCenterId && lineName === line.name) {
+                const workstationName = String(row.PuestoTrabajo).trim();
+                const workstationId = `wd---${centerId}---${workstationName}`;
+                workstationIdsForLine.add(workstationId);
+            }
+        });
+        
+        line.assignedWorkstations = Array.from(workstationIdsForLine).map(wsId => ({
+            definitionId: wsId,
+            quantity: 1 // Default quantity, will be overridden
+        }));
+    });
+
+    // Step 3: Apply predefined quantities and user overrides
     discoveredLines.forEach(line => {
         const predefinedQuantities = getPredefinedQuantities(line.workCenterId, line.name);
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         
-        // Use a map to handle all workstations related to the line
-        const workstationsInLine = new Map<string, { definitionId: string, quantity: number }>();
-        
-        // First, add all workstations discovered for the line
         line.assignedWorkstations.forEach(as => {
-            workstationsInLine.set(as.definitionId, { ...as, quantity: 1 }); // Default to 1 if no other info is found
-        });
-        
-        // Apply predefined quantities
-        predefinedQuantities.forEach(predefined => {
-            if (workstationsInLine.has(predefined.definitionId)) {
-                workstationsInLine.get(predefined.definitionId)!.quantity = predefined.quantity;
+            const predefined = predefinedQuantities.find(p => p.definitionId === as.definitionId);
+            const userDefined = userEditedLine?.assignedWorkstations.find(u => u.definitionId === as.definitionId);
+            
+            if (userDefined) {
+                as.quantity = userDefined.quantity;
+            } else if (predefined) {
+                as.quantity = predefined.quantity;
+            } else {
+                as.quantity = 1;
             }
         });
-
-        // Apply user overrides, which have the highest precedence
-        if (userEditedLine) {
-            userEditedLine.assignedWorkstations.forEach(userAs => {
-                if (workstationsInLine.has(userAs.definitionId)) {
-                    workstationsInLine.get(userAs.definitionId)!.quantity = userAs.quantity;
-                }
-            });
-        }
-        
-        // Filter out workstations that ended up with 0 quantity
-        line.assignedWorkstations = Array.from(workstationsInLine.values()).filter(ws => ws.quantity > 0);
     });
 
-    // Step 5: Populate materials handled and create inventory settings
+    // Step 4: Populate materials handled and create inventory settings
     const finalLines = Array.from(discoveredLines.values());
     const inventorySettings: InventorySetting[] = [];
     const uniqueProductCenterPairs = new Set(apiData.map(row => `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`));
@@ -581,12 +570,21 @@ export const generateProductionPlan = async (
     auditLog.push(`[${new Date().toLocaleTimeString()}] FIN: Plan mensual completado.`);
     logger.log(`[${new Date().toLocaleTimeString()}] Plan mensual completado.`, 'success');
     
+    // --- WEEKLY PLAN GENERATION ---
     const weeklyPlan: WeeklyPlanItem[] = [];
-    const weeklyGrouped = new Map<string, { production: number, sales: number, netTransfers: number, lineId: string, workCenterId: string, initialStocks: Map<string, number>, unmetDemand: number }>();
-    
+    const weeklyGrouped = new Map<string, {
+        production: number; sales: number; netTransfers: number;
+        lineId: string; workCenterId: string; unmetDemand: number;
+    }>();
+
+    // 1. Distribute monthly values to daily values
+    const dailyValues: Array<{
+        date: Date; productId: string; centerId: string; lineId: string;
+        production: number; sales: number; netTransfers: number; unmetDemand: number;
+    }> = [];
+
     monthlyPlanItems.forEach(item => {
-        const { year, month, productId, centerId, assignedLineId, totalQuantityToProduce, totalDemand, netTransfers, initialStock, unmetDemand } = item;
-        
+        const { year, month, productId, centerId, assignedLineId, totalQuantityToProduce, totalDemand, netTransfers, unmetDemand } = item;
         const daysInMonth = new Date(year, month, 0).getDate();
         const productionPerDay = totalQuantityToProduce / daysInMonth;
         const salesPerDay = totalDemand / daysInMonth;
@@ -594,59 +592,71 @@ export const generateProductionPlan = async (
         const unmetDemandPerDay = unmetDemand / daysInMonth;
         
         for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(year, month - 1, day);
-            const { year: weekYear, week: weekNum } = getWeekNumber(date);
-            const weekKey = `${weekYear}-W${String(weekNum).padStart(2, '0')}---${productId}---${centerId}---${assignedLineId}`;
-
-            if (!weeklyGrouped.has(weekKey)) {
-                weeklyGrouped.set(weekKey, { 
-                    production: 0, 
-                    sales: 0, 
-                    netTransfers: 0, 
-                    lineId: assignedLineId || '', 
-                    workCenterId: centerId,
-                    initialStocks: new Map(),
-                    unmetDemand: 0,
-                });
-            }
-            const group = weeklyGrouped.get(weekKey)!;
-            group.production += productionPerDay;
-            group.sales += salesPerDay;
-            group.netTransfers += transfersPerDay;
-            group.unmetDemand += unmetDemandPerDay;
-
-            if (!group.initialStocks.has(productId)) {
-                 const weekOneOfMonth = getWeekNumber(new Date(year, month - 1, 1)).week;
-                 if(weekNum === weekOneOfMonth) {
-                    group.initialStocks.set(productId, initialStock);
-                 }
-            }
+            dailyValues.push({
+                date: new Date(year, month - 1, day), productId, centerId, lineId: assignedLineId || '',
+                production: productionPerDay, sales: salesPerDay, netTransfers: transfersPerDay, unmetDemand: unmetDemandPerDay
+            });
         }
     });
 
-    for (const [key, data] of weeklyGrouped.entries()) {
-        const [week, productId, centerId, lineId] = key.split('---');
-        const [yearStr, weekStr] = week.split('-W');
-        const year = parseInt(yearStr, 10);
-        const weekNum = parseInt(weekStr, 10);
+    // 2. Group daily values into weeks
+    dailyValues.forEach(dv => {
+        const { year, week } = getWeekNumber(dv.date);
+        const weekKey = `${year}-W${String(week).padStart(2,'0')}---${dv.productId}---${dv.centerId}`;
         
-        const initialStockForWeek = Array.from(data.initialStocks.values()).reduce((sum, stock) => sum + stock, 0);
-        const realBalance = initialStockForWeek + data.production + data.netTransfers - data.sales;
+        if (!weeklyGrouped.has(weekKey)) {
+            weeklyGrouped.set(weekKey, {
+                production: 0, sales: 0, netTransfers: 0, unmetDemand: 0,
+                lineId: dv.lineId, workCenterId: dv.centerId
+            });
+        }
+        const group = weeklyGrouped.get(weekKey)!;
+        group.production += dv.production;
+        group.sales += dv.sales;
+        group.netTransfers += dv.netTransfers;
+        group.unmetDemand += dv.unmetDemand;
+    });
+
+    // 3. Create the final weekly plan, calculating stocks sequentially
+    const weeklyInventoryState = new Map<string, number>(); // Key: 'productId---centerId'
+    
+    // Sort weeks chronologically
+    const sortedWeeks = Array.from(weeklyGrouped.keys()).sort();
+
+    for (const weekKey of sortedWeeks) {
+        const [week, productId, centerId] = weekKey.split('---');
+        const [yearStr, weekStr] = week.split('-W');
+        
+        const inventoryKey = `${productId}---${centerId}`;
+        let initialStock = weeklyInventoryState.get(inventoryKey);
+
+        if (initialStock === undefined) {
+            // First time we see this product, get initial stock from the monthly plan for the correct month
+            const monthOfFirstWeek = new Date(parseInt(yearStr), 0, 1 + (parseInt(weekStr) - 1) * 7).getMonth() + 1;
+            const correspondingMonthItem = monthlyPlanItems.find(m => m.year === parseInt(yearStr) && m.month === monthOfFirstWeek && m.productId === productId && m.centerId === centerId);
+            initialStock = correspondingMonthItem?.initialStock ?? (initialInventoryState.get(inventoryKey) || 0);
+        }
+        
+        const data = weeklyGrouped.get(weekKey)!;
+        const realBalance = initialStock + data.production + data.netTransfers - data.sales;
+        const finalStock = Math.max(0, realBalance);
+        
+        weeklyInventoryState.set(inventoryKey, finalStock); // Update stock for next week
 
         weeklyPlan.push({
-            id: `${week}-${productId}-${centerId}`,
-            year: year,
-            week: weekNum,
-            productId: productId,
+            id: weekKey,
+            year: parseInt(yearStr, 10),
+            week: parseInt(weekStr, 10),
+            productId,
             productName: salesData.find(s=> s.código === productId)?.descripciónMaterial || productId,
-            workCenterId: centerId,
+            workCenterId: data.workCenterId,
             lineId: data.lineId,
-            initialStock: initialStockForWeek,
+            initialStock: initialStock,
             production: data.production,
             sales: data.sales,
             netTransfers: data.netTransfers,
-            finalStock: Math.max(0, realBalance),
-            unmetDemand: Math.abs(Math.min(0, realBalance)),
+            finalStock: finalStock,
+            unmetDemand: data.unmetDemand,
         });
     }
 
@@ -780,6 +790,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
