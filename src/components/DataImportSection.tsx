@@ -130,11 +130,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         etiquetas: [] as {value: string, label: string}[],
     });
 
-    const [filters, setFilters] = useState({
-        startYear: new Date().getFullYear(),
-        startMonth: new Date().getMonth() + 1,
-        monthsForward: 6,
-        centros: [] as string[],
+    const [filters, setFilters] = useState<{
+        años: string[];
+        meses: string[];
+        centros: string[];
+        etiqueta: string;
+    }>({
+        años: [new Date().getFullYear().toString()],
+        meses: [],
+        centros: [],
         etiqueta: '',
     });
 
@@ -219,13 +223,20 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setIsProcessing(true);
     setLoadedData([]);
     setTransferNeeds([]);
+    
+    if (filters.años.length === 0) {
+        addNotification('warning', 'Por favor, seleccione al menos un año.');
+        setIsProcessing(false);
+        return;
+    }
+    
     const timestamp = new Date().toLocaleTimeString();
     
     // Registrar operación de carga
     const opId = operationTracker.startOperation(
       'DataImport',
       'data_load',
-      `Cargando presupuesto de ventas desde ${filters.startMonth}/${filters.startYear} por ${filters.monthsForward} meses.`,
+      `Cargando presupuesto de ventas. Años: ${filters.años.join(', ')}`,
       { ...filters }
     );
     
@@ -238,29 +249,44 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     logger.log(`[${timestamp}] --- INICIANDO CARGA DE DATOS DE PRESUPUESTO --- Filtros: ${JSON.stringify(filters)}`,'info');
 
     let allData: PresupuestoItem[] = [];
+    const yearsToLoad = filters.años.map(Number);
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
 
     try {
-      addNotification('info', `Iniciando carga de datos...`);
-      operationTracker.updateOperation(opId, 'in_progress', 'Consultando API de presupuesto...');
+        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
+        operationTracker.updateOperation(opId, 'in_progress', 'Consultando API de presupuesto...');
+        
+        // Define loops for iteration
+        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
+        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-      const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
-      const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
+        // Array to hold all promises
+        const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
-      for (let i = 0; i < filters.monthsForward; i++) {
-          const targetMonth = filters.startMonth + i;
-          const yearOffset = Math.floor((targetMonth - 1) / 12);
-          const month = ((targetMonth - 1) % 12) + 1;
-          const year = filters.startYear + yearOffset;
-
-          for (const centro of centrosToLoad) {
-              const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
-              if (filters.etiqueta) {
-                  queryFilters['Etiqueta'] = filters.etiqueta;
-              }
-              const promise = queryApi({ source: 'Presupuesto', operation: 'get_data', filters: queryFilters, pagination: { limit: 200000 } });
-              apiCallPromises.push(promise);
-          }
-      }
+        for (const year of yearsToLoad) {
+            for (const month of monthsToLoad) {
+                // Skip past months of the current year if all months are being loaded
+                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
+                    continue;
+                }
+                
+                for (const centro of centrosToLoad) {
+                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
+                    if (filters.etiqueta) {
+                        queryFilters['Etiqueta'] = filters.etiqueta;
+                    }
+                    
+                    const promise = queryApi({
+                        source: 'Presupuesto',
+                        operation: 'get_data',
+                        filters: queryFilters,
+                        pagination: { limit: 200000 }
+                    });
+                    apiCallPromises.push(promise);
+                }
+            }
+        }
       
       logger.log(`Realizando ${apiCallPromises.length} consultas de presupuesto a la API.`,'info');
       const responses = await Promise.all(apiCallPromises);
@@ -431,52 +457,46 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Defina el período de carga y los filtros. Si no selecciona centros, se cargarán todos para el período seleccionado.
+        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
       </p>
 
       {/* --- Filtros --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end p-4 border rounded-lg bg-gray-50">
-          <div>
-              <label htmlFor="startYear" className="block text-sm font-medium text-gray-700 mb-1">Año de Inicio</label>
-              <select id="startYear" value={filters.startYear} onChange={e => handleFilterChange('startYear', Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
-                  {filterOptions.años.length > 0 ? filterOptions.años.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>) : <option>{new Date().getFullYear()}</option>}
-              </select>
-          </div>
-          <div>
-              <label htmlFor="startMonth" className="block text-sm font-medium text-gray-700 mb-1">Mes de Inicio</label>
-              <select id="startMonth" value={filters.startMonth} onChange={e => handleFilterChange('startMonth', Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
-                  {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-              </select>
-          </div>
-          <div>
-              <label htmlFor="monthsForward" className="block text-sm font-medium text-gray-700 mb-1">Meses a Cargar</label>
-              <input type="number" id="monthsForward" value={filters.monthsForward} min="1" max="24" onChange={e => handleFilterChange('monthsForward', Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10"/>
-          </div>
-          <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MultiSelect 
-                  label="Centro(s)"
-                  options={filterOptions.centros}
-                  selected={filters.centros}
-                  onChange={value => handleFilterChange('centros', value)}
-              />
-              <div>
-                   <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
-                   <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
-                      <option value="">Todas</option>
-                      {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                  </select>
-              </div>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
+        <MultiSelect 
+            label="Año(s)"
+            options={filterOptions.años}
+            selected={filters.años}
+            onChange={value => handleFilterChange('años', value)}
+        />
+        <MultiSelect 
+            label="Mes(es)"
+            options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))}
+            selected={filters.meses}
+            onChange={value => handleFilterChange('meses', value)}
+        />
+        <MultiSelect 
+            label="Centro(s)"
+            options={filterOptions.centros}
+            selected={filters.centros}
+            onChange={value => handleFilterChange('centros', value)}
+        />
+        <div>
+             <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
+             <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
+                <option value="">Todas</option>
+                {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+        </div>
         
-          <div className="lg:col-start-5 flex flex-col justify-end">
-              <button
-                  onClick={handleLoadData}
-                  disabled={isProcessing || isAppLoading}
-                  className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                  {isProcessing ? 'Cargando...' : 'Cargar Datos'}
-              </button>
-          </div>
+        <div className="flex flex-col pt-5">
+            <button
+                onClick={handleLoadData}
+                disabled={isProcessing || isAppLoading || filters.años.length === 0}
+                className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+                {isProcessing ? 'Cargando...' : 'Cargar Datos'}
+            </button>
+        </div>
       </div>
 
        {loadedData.length > 0 && (
