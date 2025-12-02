@@ -121,39 +121,37 @@ const MultiSelect: React.FC<{
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
-    // Inicializar RuntimeInspector para este componente
     const inspector = useRuntimeInspector('DataImport');
     
     const [filterOptions, setFilterOptions] = useState({
-        años: [] as {value: string, label: string}[],
         centros: [] as {value: string, label: string}[],
         etiquetas: [] as {value: string, label: string}[],
     });
 
     const [filters, setFilters] = useState<{
-        años: string[];
-        meses: string[];
+        startYear: number;
+        startMonth: number;
+        monthsToLoad: number;
         centros: string[];
         etiqueta: string;
     }>({
-        años: [new Date().getFullYear().toString()],
-        meses: [],
+        startYear: new Date().getFullYear(),
+        startMonth: new Date().getMonth() + 1,
+        monthsToLoad: 12,
         centros: [],
         etiqueta: '',
     });
-
+    
     useEffect(() => {
       logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Cambio en filterOptions: ${JSON.stringify(filterOptions)}`);
-      // Capturar variable en RuntimeInspector
       inspector.captureVariable('filterOptions', filterOptions, {
-        description: 'Opciones disponibles para filtros (años, centros, etiquetas)',
+        description: 'Opciones disponibles para filtros (centros, etiquetas)',
         source: 'state'
       });
     }, [filterOptions]);
     
     useEffect(() => {
       logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Cambio en filters: ${JSON.stringify(filters)}`);
-      // Capturar variable en RuntimeInspector
       inspector.captureVariable('filters', filters, {
         description: 'Filtros activos aplicados por el usuario',
         source: 'user'
@@ -164,7 +162,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Montado.`);
-    // Capturar estado inicial
     inspector.captureState({ mounted: true, isProcessing: false }, {}, {
       filterOptionsCount: 0,
       filtersActive: 0
@@ -200,14 +197,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   useEffect(() => {
     const loadFilterOptions = async () => {
       try {
-        const [añosData, centrosData, etiquetasData] = await Promise.all([
-            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' }),
+        const [centrosData, etiquetasData] = await Promise.all([
             queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' }),
             queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' })
         ]);
 
         const newFilterOptions = {
-          años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
           centros: centrosData.map((item: any) => ({ value: String(item['Centro']), label: String(item['Centro']) })),
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
         };
@@ -224,67 +219,49 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     setLoadedData([]);
     setTransferNeeds([]);
     
-    if (filters.años.length === 0) {
-        addNotification('warning', 'Por favor, seleccione al menos un año.');
-        setIsProcessing(false);
-        return;
-    }
-    
     const timestamp = new Date().toLocaleTimeString();
     
-    // Registrar operación de carga
     const opId = operationTracker.startOperation(
-      'DataImport',
-      'data_load',
-      `Cargando presupuesto de ventas. Años: ${filters.años.join(', ')}`,
+      'DataImport', 'data_load',
+      `Cargando ${filters.monthsToLoad} meses de presupuesto desde ${filters.startMonth}/${filters.startYear}`,
       { ...filters }
     );
     
-    // Capturar contexto de ejecución en RuntimeInspector
-    const ctxId = inspector.startContext('load_budget_data', {
-      filters: filters,
-      timestamp: timestamp
-    });
+    const ctxId = inspector.startContext('load_budget_data', { filters, timestamp });
     
     logger.log(`[${timestamp}] --- INICIANDO CARGA DE DATOS DE PRESUPUESTO --- Filtros: ${JSON.stringify(filters)}`,'info');
 
     let allData: PresupuestoItem[] = [];
-    const yearsToLoad = filters.años.map(Number);
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
 
     try {
-        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
+        addNotification('info', `Iniciando carga para ${filters.monthsToLoad} meses...`);
         operationTracker.updateOperation(opId, 'in_progress', 'Consultando API de presupuesto...');
         
-        // Define loops for iteration
-        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
-
-        // Array to hold all promises
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
-        for (const year of yearsToLoad) {
-            for (const month of monthsToLoad) {
-                // Skip past months of the current year if all months are being loaded
-                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
-                    continue;
+        for (let i = 0; i < filters.monthsToLoad; i++) {
+            let currentMonth = filters.startMonth + i;
+            let currentYear = filters.startYear;
+
+            while (currentMonth > 12) {
+                currentMonth -= 12;
+                currentYear += 1;
+            }
+
+            for (const centro of centrosToLoad) {
+                const queryFilters: { [key: string]: any } = { 'Año': currentYear, 'Mes': currentMonth, 'Centro': centro };
+                if (filters.etiqueta) {
+                    queryFilters['Etiqueta'] = filters.etiqueta;
                 }
                 
-                for (const centro of centrosToLoad) {
-                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
-                    if (filters.etiqueta) {
-                        queryFilters['Etiqueta'] = filters.etiqueta;
-                    }
-                    
-                    const promise = queryApi({
-                        source: 'Presupuesto',
-                        operation: 'get_data',
-                        filters: queryFilters,
-                        pagination: { limit: 200000 }
-                    });
-                    apiCallPromises.push(promise);
-                }
+                const promise = queryApi({
+                    source: 'Presupuesto',
+                    operation: 'get_data',
+                    filters: queryFilters,
+                    pagination: { limit: 200000 }
+                });
+                apiCallPromises.push(promise);
             }
         }
       
@@ -448,6 +425,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         return filteredTransferNeeds.reduce((sum, item) => sum + item.unitsToTransfer, 0);
     }, [filteredTransferNeeds]);
 
+    const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i);
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -457,41 +435,47 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
+        Use los filtros para definir el alcance de los datos. Si no selecciona centros, se cargarán todos.
       </p>
 
       {/* --- Filtros --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
-        <MultiSelect 
-            label="Año(s)"
-            options={filterOptions.años}
-            selected={filters.años}
-            onChange={value => handleFilterChange('años', value)}
-        />
-        <MultiSelect 
-            label="Mes(es)"
-            options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))}
-            selected={filters.meses}
-            onChange={value => handleFilterChange('meses', value)}
-        />
-        <MultiSelect 
-            label="Centro(s)"
-            options={filterOptions.centros}
-            selected={filters.centros}
-            onChange={value => handleFilterChange('centros', value)}
-        />
         <div>
-             <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
-             <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
-                <option value="">Todas</option>
-                {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Año de Inicio</label>
+            <select value={filters.startYear} onChange={e => handleFilterChange('startYear', Number(e.target.value))} className="w-full h-10 px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm sm:text-sm">
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
         </div>
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mes de Inicio</label>
+            <select value={filters.startMonth} onChange={e => handleFilterChange('startMonth', Number(e.target.value))} className="w-full h-10 px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm sm:text-sm">
+                {MONTH_NAMES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+            </select>
+        </div>
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Meses a Cargar</label>
+            <input type="number" value={filters.monthsToLoad} onChange={e => handleFilterChange('monthsToLoad', Number(e.target.value))} className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" min="1" max="24" />
+        </div>
+        <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+            <MultiSelect 
+                label="Centro(s)"
+                options={filterOptions.centros}
+                selected={filters.centros}
+                onChange={value => handleFilterChange('centros', value)}
+            />
+            <div>
+                 <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
+                 <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
+                    <option value="">Todas</option>
+                    {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+            </div>
+        </div>
         
-        <div className="flex flex-col pt-5">
+        <div className="lg:col-start-5 flex flex-col justify-end">
             <button
                 onClick={handleLoadData}
-                disabled={isProcessing || isAppLoading || filters.años.length === 0}
+                disabled={isProcessing || isAppLoading}
                 className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
                 {isProcessing ? 'Cargando...' : 'Cargar Datos'}
@@ -599,3 +583,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     </div>
   );
 };
+
+    
