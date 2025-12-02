@@ -371,7 +371,7 @@ export const generateProductionPlan = async (
         }
 
 
-        const productionNeedsThisMonth = new Map<string, { demand: number, type: 'E' | 'X' | 'F' }>();
+        const productionNeedsThisMonth = new Map<string, { demand: number, type: 'E' | 'X' | 'F' | 'N/A' }>();
         
         salesThisMonth.forEach(sale => {
             const productId = normalizeMaterialCode(sale.código);
@@ -394,46 +394,53 @@ export const generateProductionPlan = async (
             }
              getMovements(`${productId}---${demandCenterId}`).sales += sale.unidadesProyectado;
         });
-        
-        const deficitNeedsForX = new Map<string, number>();
+
+        // Start 'X' logic: Identify deficits in Guayaquil for 'X' products
+        const gyeXDeficits = new Map<string, number>();
+
+        // First pass: plan local production for GYE and identify deficits
         productionNeedsThisMonth.forEach((need, key) => {
-            if (need.type === 'X') {
+            if (need.type === 'X' && key.endsWith('---2000')) {
                 const [productId, centerId] = key.split('---');
-                if (centerId === '2000') { // Asumimos Guayaquil
-                    const currentStock = inventoryState.get(key) || 0;
-                    const netNeed = need.demand - currentStock;
-                    if (netNeed > 0) {
-                        deficitNeedsForX.set(key, netNeed);
+                const invKey = key;
+                const currentStock = inventoryState.get(invKey) || 0;
+                const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
+                let netNeed = Math.max(0, (need.demand + safetyStock) - currentStock);
+
+                const linesInGye = productionLines.filter(l => l.workCenterId === '2000' && l.materialsHandled.includes(productId));
+                const relevantLine = linesInGye[0];
+
+                if (relevantLine && netNeed > 0) {
+                    const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
+                    const availableHours = monthlyCapacityByLine.get(relevantLine.id) || 0;
+                    
+                    if (timePerUnit !== Infinity && timePerUnit > 0) {
+                        const capacityInUnits = Math.floor(availableHours / timePerUnit);
+                        const actualProduction = Math.min(netNeed, capacityInUnits);
+
+                        if (actualProduction > 0) {
+                             const hoursForProduction = actualProduction * timePerUnit;
+                             getMovements(invKey).production += actualProduction;
+                             monthlyCapacityByLine.set(relevantLine.id, availableHours - hoursForProduction);
+                             netNeed -= actualProduction; // Reduce the need
+                        }
                     }
+                }
+                // If there's still a need, it's a deficit for Quito to potentially handle
+                if (netNeed > 0) {
+                    gyeXDeficits.set(productId, (gyeXDeficits.get(productId) || 0) + netNeed);
+                    auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000): ${netNeed.toFixed(0)} unidades. Solicitando a UIO (1000).`);
                 }
             }
         });
         
-        deficitNeedsForX.forEach((deficit, gyeKey) => {
-            const [productId] = gyeKey.split('---');
+        // Add GYE deficits to Quito's demand
+        gyeXDeficits.forEach((deficit, productId) => {
             const quitoKey = `${productId}---1000`;
-            const quitoCurrentStock = inventoryState.get(quitoKey) || 0;
-            const quitoLocalDemand = (productionNeedsThisMonth.get(quitoKey) || { demand: 0 }).demand;
-            
-            const stockAvailableForTransfer = Math.max(0, quitoCurrentStock - quitoLocalDemand - 1);
-            const transferAmount = Math.min(deficit, stockAvailableForTransfer);
-            
-            if (transferAmount > 0) {
-                auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Quito (1000) ayudará a GYE (2000) con ${transferAmount.toFixed(0)} unidades de ${productId} (X).`);
-                
-                const gyeNeeds = productionNeedsThisMonth.get(gyeKey)!;
-                gyeNeeds.demand -= transferAmount; 
-                productionNeedsThisMonth.set(gyeKey, gyeNeeds);
-
-                const quitoNeeds = productionNeedsThisMonth.get(quitoKey) || { demand: 0, type: 'F' };
-                quitoNeeds.demand += transferAmount; 
-                productionNeedsThisMonth.set(quitoKey, quitoNeeds);
-
-                getMovements(quitoKey).transfersOut += transferAmount;
-                getMovements(gyeKey).transfersIn += transferAmount;
-            }
+            const quitoNeeds = productionNeedsThisMonth.get(quitoKey) || { demand: 0, type: 'E' }; // Assume 'E' or whatever is correct for Quito
+            quitoNeeds.demand += deficit;
+            productionNeedsThisMonth.set(quitoKey, quitoNeeds);
         });
-
 
         auditLog.push(`[${new Date().toLocaleTimeString()}]   Demanda local y de traslados consolidada para el mes.`);
         
@@ -446,6 +453,10 @@ export const generateProductionPlan = async (
         productionBacklog.clear();
 
         const allNeeds = Array.from(productionNeedsThisMonth.entries()).map(([prodCenterKey, need]) => {
+             // Exclude 'X' needs from GYE as they were handled already or sent to Quito
+             if (need.type === 'X' && prodCenterKey.endsWith('---2000')) {
+                return null;
+             }
              const [productId, centerId] = prodCenterKey.split('---');
              const invKey = `${productId}---${centerId}`;
              const currentStock = inventoryState.get(invKey) || 0;
@@ -453,7 +464,8 @@ export const generateProductionPlan = async (
              const netNeed = Math.max(0, (need.demand + safetyStock) - currentStock);
              auditLog.push(`[${new Date().toLocaleTimeString()}]     - Need for ${prodCenterKey}: Demand=${need.demand.toFixed(2)}, Safety=${safetyStock}, Stock=${currentStock.toFixed(2)} -> NetNeed=${netNeed.toFixed(2)}`);
              return { prodCenterKey, productId, centerId, netNeed, urgency: (currentStock - need.demand) / (need.demand || 1) };
-        }).filter(item => item.netNeed > 0).sort((a,b) => a.urgency - b.urgency);
+        }).filter((item): item is NonNullable<typeof item> => item !== null)
+          .sort((a,b) => a.urgency - b.urgency);
         
         for (const { prodCenterKey, productId, centerId, netNeed } of allNeeds) {
              const invKey = `${productId}---${centerId}`;
@@ -471,9 +483,39 @@ export const generateProductionPlan = async (
                     continue;
                 }
                 
+                let quantityToProduce = netNeed;
+
+                // For Quito, check if this production is for a GYE deficit
+                if (centerId === '1000' && gyeXDeficits.has(productId)) {
+                    const deficitForGye = gyeXDeficits.get(productId)!;
+                    
+                    // What would be the final stock in quito if we produce EVERYTHING (local demand + gye deficit)?
+                    const quitoStock = inventoryState.get(invKey) || 0;
+                    const quitoSales = getMovements(invKey).sales;
+                    const quitoTransfersOutF = getMovements(invKey).transfersOut; // Transfers for 'F' materials
+                    const projectedFinalStockIfAllProduced = quitoStock + quantityToProduce - quitoSales - quitoTransfersOutF;
+                    
+                    const minStockForQuito = 1; // The rule is >= 1
+
+                    if (projectedFinalStockIfAllProduced < minStockForQuito) {
+                        const allowableProduction = quantityToProduce - (minStockForQuito - projectedFinalStockIfAllProduced);
+                        quantityToProduce = Math.max(0, allowableProduction);
+                        auditLog.push(`[${new Date().toLocaleTimeString()}]     - UIO (1000) limita producción de ${productId} a ${quantityToProduce.toFixed(0)} para no bajar de 1 unidad de stock.`);
+                    }
+                    
+                    // The amount produced for GYE is the lesser of the deficit or the part of production that corresponds to it
+                    const productionForGye = Math.min(deficitForGye, quantityToProduce);
+                    if (productionForGye > 0) {
+                         getMovements(invKey).transfersOut += productionForGye;
+                         getMovements(`${productId}---2000`).transfersIn += productionForGye;
+                    }
+                    gyeXDeficits.delete(productId); // Mark as handled
+                }
+
+
                 const capacityInUnits = Math.floor(availableHours / timePerUnit);
-                const actualProduction = Math.min(netNeed, capacityInUnits);
-                auditLog.push(`[${new Date().toLocaleTimeString()}]     - Asignación para ${productId} en ${relevantLine.name}: Necesita ${netNeed.toFixed(0)}, Capacidad en unidades ${capacityInUnits.toFixed(0)} -> Producirá ${actualProduction.toFixed(0)}`);
+                const actualProduction = Math.min(quantityToProduce, capacityInUnits);
+                auditLog.push(`[${new Date().toLocaleTimeString()}]     - Asignación para ${productId} en ${relevantLine.name}: Necesita ${quantityToProduce.toFixed(0)}, Capacidad en unidades ${capacityInUnits.toFixed(0)} -> Producirá ${actualProduction.toFixed(0)}`);
                 
                 if (actualProduction > 0) {
                     const hoursForProduction = actualProduction * timePerUnit;
@@ -716,6 +758,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
