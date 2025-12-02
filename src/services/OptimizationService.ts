@@ -1,6 +1,5 @@
 
 
-
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -396,10 +395,8 @@ export const generateProductionPlan = async (
              getMovements(`${productId}---${demandCenterId}`).sales += sale.unidadesProyectado;
         });
 
-        // Start 'X' logic: Identify deficits in Guayaquil for 'X' products
         const gyeXDeficits = new Map<string, number>();
 
-        // First pass: plan local production for GYE and identify deficits
         productionNeedsThisMonth.forEach((need, key) => {
             if (need.type === 'X' && key.endsWith('---2000')) {
                 const [productId, centerId] = key.split('---');
@@ -407,27 +404,29 @@ export const generateProductionPlan = async (
                 const currentStock = inventoryState.get(invKey) || 0;
                 const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
                 let netNeed = Math.max(0, (need.demand + safetyStock) - currentStock);
-
+        
                 const linesInGye = productionLines.filter(l => l.workCenterId === '2000' && l.materialsHandled.includes(productId));
-                const relevantLine = linesInGye[0];
+                
+                if (linesInGye.length > 0 && netNeed > 0) {
+                    // Try to produce in GYE first
+                    for (const line of linesInGye) {
+                        if (netNeed <= 0) break;
+                        const timePerUnit = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
+                        const availableHours = monthlyCapacityByLine.get(line.id) || 0;
 
-                if (relevantLine && netNeed > 0) {
-                    const timePerUnit = calculateEffectiveManufacturingTime(productId, relevantLine, apiData, workstationDefinitions);
-                    const availableHours = monthlyCapacityByLine.get(relevantLine.id) || 0;
-                    
-                    if (timePerUnit !== Infinity && timePerUnit > 0) {
-                        const capacityInUnits = Math.floor(availableHours / timePerUnit);
-                        const actualProduction = Math.min(netNeed, capacityInUnits);
+                        if (timePerUnit !== Infinity && timePerUnit > 0) {
+                            const capacityInUnits = Math.floor(availableHours / timePerUnit);
+                            const actualProduction = Math.min(netNeed, capacityInUnits);
 
-                        if (actualProduction > 0) {
-                             const hoursForProduction = actualProduction * timePerUnit;
-                             getMovements(invKey).production += actualProduction;
-                             monthlyCapacityByLine.set(relevantLine.id, availableHours - hoursForProduction);
-                             netNeed -= actualProduction; // Reduce the need
+                            if (actualProduction > 0) {
+                                const hoursForProduction = actualProduction * timePerUnit;
+                                getMovements(invKey).production += actualProduction;
+                                monthlyCapacityByLine.set(line.id, availableHours - hoursForProduction);
+                                netNeed -= actualProduction; // Reduce the need
+                            }
                         }
                     }
                 }
-                // If there's still a need, it's a deficit for Quito to potentially handle
                 if (netNeed > 0) {
                     gyeXDeficits.set(productId, (gyeXDeficits.get(productId) || 0) + netNeed);
                     auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000): ${netNeed.toFixed(0)} unidades. Solicitando a UIO (1000).`);
@@ -435,12 +434,14 @@ export const generateProductionPlan = async (
             }
         });
         
-        // Add GYE deficits to Quito's demand
         gyeXDeficits.forEach((deficit, productId) => {
             const quitoKey = `${productId}---1000`;
-            const quitoNeeds = productionNeedsThisMonth.get(quitoKey) || { demand: 0, type: 'E' }; // Assume 'E' or whatever is correct for Quito
+            const quitoNeeds = productionNeedsThisMonth.get(quitoKey) || { demand: 0, type: 'E' };
             quitoNeeds.demand += deficit;
             productionNeedsThisMonth.set(quitoKey, quitoNeeds);
+
+            getMovements(`${productId}---1000`).transfersOut += deficit;
+            getMovements(`${productId}---2000`).transfersIn += deficit;
         });
 
         auditLog.push(`[${new Date().toLocaleTimeString()}]   Demanda local y de traslados consolidada para el mes.`);
@@ -454,7 +455,6 @@ export const generateProductionPlan = async (
         productionBacklog.clear();
 
         const allNeeds = Array.from(productionNeedsThisMonth.entries()).map(([prodCenterKey, need]) => {
-             // Exclude 'X' needs from GYE as they were handled already or sent to Quito
              if (need.type === 'X' && prodCenterKey.endsWith('---2000')) {
                 return null;
              }
@@ -472,8 +472,6 @@ export const generateProductionPlan = async (
             const invKey = `${productId}---${centerId}`;
 
             const findLineForProduct = (pId: string, cId: string): ProductionLine | undefined => {
-                // This logic should be more sophisticated, e.g., based on priority or load.
-                // For now, it mimics the old logic of finding the first suitable line.
                 return productionLines.find(l => l.workCenterId === cId && l.materialsHandled.includes(pId));
             };
 
@@ -501,7 +499,6 @@ export const generateProductionPlan = async (
                     auditLog.push(`[${new Date().toLocaleTimeString()}]     [WARN] Tiempo de fabricación inválido para ${productId} en línea ${primaryLine.name}.`);
                 }
 
-                // --- Overflow Logic ---
                 if (remainingNeed > 0 && primaryLine.name === 'LINEA 1' && centerId === '1000') {
                     auditLog.push(`[${new Date().toLocaleTimeString()}]     - [OVERFLOW] Déficit en LINEA 1 de ${remainingNeed.toFixed(0)} para ${productId}. Buscando capacidad en LINEA 3.`);
                     
@@ -518,7 +515,7 @@ export const generateProductionPlan = async (
 
                             if (overflowProduction > 0) {
                                 const hoursForOverflow = overflowProduction * overflowTimePerUnit;
-                                getMovements(invKey).production += overflowProduction; // Add to total production
+                                getMovements(invKey).production += overflowProduction;
                                 monthlyCapacityByLine.set(overflowLine.id, overflowHours - hoursForOverflow);
                                 auditLog.push(`[${new Date().toLocaleTimeString()}]       - Horas consumidas en LINEA 3: ${hoursForOverflow.toFixed(2)}. Horas restantes: ${(overflowHours - hoursForOverflow).toFixed(2)}`);
                             }
@@ -792,6 +789,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
