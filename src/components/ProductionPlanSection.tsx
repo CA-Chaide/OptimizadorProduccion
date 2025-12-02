@@ -394,7 +394,7 @@ export const ProductionPlanSection: React.FC = () => {
 
     for(const centerId of centerIdsToDisplay) {
         const aggregatedData: Record<string, Record<string, number>> = {
-            'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Saldo Final': {}
+            'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Saldo Final': {}, 'Faltante (Backlog)': {}
         };
         
         let previousMonthFinalStock: number | undefined = undefined;
@@ -446,18 +446,24 @@ export const ProductionPlanSection: React.FC = () => {
                 return (sector && prioritySectors.has(sector)) ? sum + (item.netTransfers || 0) : sum;
             }, 0);
 
-            const finalStock = initialStockForMonth + production + netTransfers - sales;
+            const unmetDemand = monthItemsForCenter.reduce((sum, item) => {
+                const sector = productSectorMap.get(item.productId);
+                return (sector && prioritySectors.has(sector)) ? sum + (item.unmetDemand || 0) : sum;
+            }, 0);
+
+            const finalStock = initialStockForMonth + production + netTransfers - sales - unmetDemand;
           
             aggregatedData['Saldo Inicial'][monthKey] = initialStockForMonth;
             aggregatedData['Producción'][monthKey] = production;
             aggregatedData['Ventas'][monthKey] = sales;
             aggregatedData['Traslados (Neto)'][monthKey] = netTransfers;
             aggregatedData['Saldo Final'][monthKey] = finalStock;
+            aggregatedData['Faltante (Backlog)'][monthKey] = unmetDemand;
           
             previousMonthFinalStock = finalStock;
         }
 
-        const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Saldo Final'];
+        const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Faltante (Backlog)', 'Saldo Final'];
         const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
         result[centerId] = { monthKeys, rows };
     }
@@ -486,7 +492,7 @@ export const ProductionPlanSection: React.FC = () => {
 
           const weekKeys = Array.from(new Set(filteredData.map(d => `${d.year}-W${String(d.week).padStart(2,'0')}`))).sort();
           const aggregatedData: Record<string, Record<string, number>> = {
-              'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Saldo Final': {}
+              'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Faltante (Backlog)': {}, 'Saldo Final': {}
           };
 
           weekKeys.forEach(weekKey => {
@@ -494,6 +500,7 @@ export const ProductionPlanSection: React.FC = () => {
             aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
             aggregatedData['Ventas'][weekKey] = weekItems.reduce((sum, item) => sum + item.sales, 0);
             aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
+            aggregatedData['Faltante (Backlog)'][weekKey] = weekItems.reduce((sum, item) => sum + (item.unmetDemand || 0), 0);
             
             const uniqueProductStocks = new Map<string, number>();
             weekItems.forEach(item => {
@@ -503,10 +510,10 @@ export const ProductionPlanSection: React.FC = () => {
             });
             aggregatedData['Saldo Inicial'][weekKey] = Array.from(uniqueProductStocks.values()).reduce((sum, stock) => sum + stock, 0);
             
-            aggregatedData['Saldo Final'][weekKey] = aggregatedData['Saldo Inicial'][weekKey] + aggregatedData['Producción'][weekKey] + aggregatedData['Traslados (Neto)'][weekKey] - aggregatedData['Ventas'][weekKey];
+            aggregatedData['Saldo Final'][weekKey] = aggregatedData['Saldo Inicial'][weekKey] + aggregatedData['Producción'][weekKey] + aggregatedData['Traslados (Neto)'][weekKey] - aggregatedData['Ventas'][weekKey] - aggregatedData['Faltante (Backlog)'][weekKey];
           });
           
-          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Saldo Final'];
+          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Faltante (Backlog)', 'Saldo Final'];
           const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
           result[centerId] = { weekKeys, rows };
       }
@@ -617,10 +624,10 @@ export const ProductionPlanSection: React.FC = () => {
                             <tbody className="divide-y divide-gray-200">
                               {flow.rows.map((row: any) => (
                                 <tr key={row.label} className="hover:bg-gray-50 group">
-                                  <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''}`}>{row.label}</td>
+                                  <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''} ${row.label === 'Faltante (Backlog)' ? 'text-red-700' : ''}`}>{row.label}</td>
                                   {keys.map((key: string) => (
-                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-red-600' : (row.label === 'Traslados (Neto)' && (row.values[key] || 0) > 0 ? 'text-blue-600' : 'text-gray-700')}`}>
-                                       {(isNaN(row.values[key])) ? 'N/A' : Math.round(row.values[key] || 0).toLocaleString()}
+                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-orange-600' : (row.label === 'Traslados (Neto)' && (row.values[key] || 0) > 0 ? 'text-blue-600' : (row.label === 'Faltante (Backlog)' && (row.values[key] || 0) > 0 ? 'text-red-700 font-bold' : 'text-gray-700'))}`}>
+                                       {(isNaN(row.values[key])) ? 'N/A' : (row.label === 'Faltante (Backlog)' && (row.values[key] || 0) > 0 ? '-' : '') + Math.round(row.values[key] || 0).toLocaleString()}
                                     </td>
                                   ))}
                                 </tr>

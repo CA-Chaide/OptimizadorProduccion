@@ -91,7 +91,8 @@ export function processAndValidateAssemblyData(
             const workstationName = String(row.PuestoTrabajo).trim();
             const workstationId = `wd---${centerId}---${workstationName}`;
             if (!line.assignedWorkstations.some(ws => ws.definitionId === workstationId)) {
-                line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 }); // Start with quantity 1
+                // Initialize with quantity 0, to be determined in the next step.
+                line.assignedWorkstations.push({ definitionId: workstationId, quantity: 0 });
             }
         }
     });
@@ -101,23 +102,32 @@ export function processAndValidateAssemblyData(
         const predefinedQuantities = getPredefinedQuantities(line.workCenterId, line.name);
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         
-        line.assignedWorkstations = line.assignedWorkstations.map(currentAs => {
-            let quantity = currentAs.quantity; // Keep the discovered default of 1
-
-            // Check for predefined quantities
-            const predefined = predefinedQuantities.find(p => p.definitionId === currentAs.definitionId);
-            if (predefined) {
-                quantity = predefined.quantity;
-            }
-
-            // User overrides take highest precedence
-            const userEditedAs = userEditedLine?.assignedWorkstations.find(uas => uas.definitionId === currentAs.definitionId);
-            if(userEditedAs && userEditedAs.quantity > 0) {
-                quantity = userEditedAs.quantity;
-            }
-
-            return { ...currentAs, quantity };
+        // Use a map to handle all workstations related to the line
+        const workstationsInLine = new Map<string, { definitionId: string, quantity: number }>();
+        
+        // First, add all workstations discovered for the line
+        line.assignedWorkstations.forEach(as => {
+            workstationsInLine.set(as.definitionId, { ...as, quantity: 1 }); // Default to 1 if no other info is found
         });
+        
+        // Apply predefined quantities
+        predefinedQuantities.forEach(predefined => {
+            if (workstationsInLine.has(predefined.definitionId)) {
+                workstationsInLine.get(predefined.definitionId)!.quantity = predefined.quantity;
+            }
+        });
+
+        // Apply user overrides, which have the highest precedence
+        if (userEditedLine) {
+            userEditedLine.assignedWorkstations.forEach(userAs => {
+                if (workstationsInLine.has(userAs.definitionId)) {
+                    workstationsInLine.get(userAs.definitionId)!.quantity = userAs.quantity;
+                }
+            });
+        }
+        
+        // Filter out workstations that ended up with 0 quantity
+        line.assignedWorkstations = Array.from(workstationsInLine.values()).filter(ws => ws.quantity > 0);
     });
 
     // Step 5: Populate materials handled and create inventory settings
@@ -543,7 +553,10 @@ export const generateProductionPlan = async (
             const [productId, centerId] = pairKey.split('---');
             const initialStock = inventoryState.get(pairKey) || 0;
             const movements = getMovements(pairKey);
-            const finalStock = initialStock + movements.production + movements.transfersIn - movements.transfersOut - movements.sales;
+            const realBalance = initialStock + movements.production + movements.transfersIn - movements.transfersOut - movements.sales;
+            const finalStock = Math.max(0, realBalance);
+            const unmetDemand = Math.abs(Math.min(0, realBalance));
+
             inventoryState.set(pairKey, finalStock); 
 
             if (Object.values(movements).some(v => v !== 0) || (initialInventoryState.get(pairKey) || 0) > 0) {
@@ -555,6 +568,7 @@ export const generateProductionPlan = async (
                     netTransfers: movements.transfersIn - movements.transfersOut,
                     initialStock: initialStock,
                     finalStock: finalStock,
+                    unmetDemand: unmetDemand,
                     totalHoursWorked: 0, 
                     totalEstimatedLaborCost: 0, 
                     assignedLineId: productionLines.find(l => l.workCenterId === centerId && l.materialsHandled.includes(productId))?.id,
@@ -567,15 +581,16 @@ export const generateProductionPlan = async (
     logger.log(`[${new Date().toLocaleTimeString()}] Plan mensual completado.`, 'success');
     
     const weeklyPlan: WeeklyPlanItem[] = [];
-    const weeklyGrouped = new Map<string, { production: number, sales: number, netTransfers: number, lineId: string, workCenterId: string, initialStocks: Map<string, number> }>();
+    const weeklyGrouped = new Map<string, { production: number, sales: number, netTransfers: number, lineId: string, workCenterId: string, initialStocks: Map<string, number>, unmetDemand: number }>();
     
     monthlyPlanItems.forEach(item => {
-        const { year, month, productId, centerId, assignedLineId, totalQuantityToProduce, totalDemand, netTransfers, initialStock } = item;
+        const { year, month, productId, centerId, assignedLineId, totalQuantityToProduce, totalDemand, netTransfers, initialStock, unmetDemand } = item;
         
         const daysInMonth = new Date(year, month, 0).getDate();
         const productionPerDay = totalQuantityToProduce / daysInMonth;
         const salesPerDay = totalDemand / daysInMonth;
         const transfersPerDay = netTransfers / daysInMonth;
+        const unmetDemandPerDay = unmetDemand / daysInMonth;
         
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month - 1, day);
@@ -589,13 +604,16 @@ export const generateProductionPlan = async (
                     netTransfers: 0, 
                     lineId: assignedLineId || '', 
                     workCenterId: centerId,
-                    initialStocks: new Map()
+                    initialStocks: new Map(),
+                    unmetDemand: 0,
                 });
             }
             const group = weeklyGrouped.get(weekKey)!;
             group.production += productionPerDay;
             group.sales += salesPerDay;
             group.netTransfers += transfersPerDay;
+            group.unmetDemand += unmetDemandPerDay;
+
             if (!group.initialStocks.has(productId)) {
                  const weekOneOfMonth = getWeekNumber(new Date(year, month - 1, 1)).week;
                  if(weekNum === weekOneOfMonth) {
@@ -612,6 +630,7 @@ export const generateProductionPlan = async (
         const weekNum = parseInt(weekStr, 10);
         
         const initialStockForWeek = Array.from(data.initialStocks.values()).reduce((sum, stock) => sum + stock, 0);
+        const realBalance = initialStockForWeek + data.production + data.netTransfers - data.sales;
 
         weeklyPlan.push({
             id: `${week}-${productId}-${centerId}`,
@@ -625,7 +644,8 @@ export const generateProductionPlan = async (
             production: data.production,
             sales: data.sales,
             netTransfers: data.netTransfers,
-            finalStock: initialStockForWeek + data.production + data.netTransfers - data.sales,
+            finalStock: Math.max(0, realBalance),
+            unmetDemand: Math.abs(Math.min(0, realBalance)),
         });
     }
 
@@ -732,9 +752,10 @@ export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[]): voi
         'Ventas': Math.round(item.totalDemand),
         'Traslados (Neto)': Math.round(item.netTransfers),
         'Stock Final': Math.round(item.finalStock),
+        'Faltante (Backlog)': Math.round(item.unmetDemand || 0)
     }));
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    worksheet['!cols'] = [ { wch: 6 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 12 } ];
+    worksheet['!cols'] = [ { wch: 6 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 } ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Resumen Mensual');
     XLSX.writeFile(workbook, 'Resumen_Inventario_Mensual.xlsx');
@@ -758,6 +779,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
