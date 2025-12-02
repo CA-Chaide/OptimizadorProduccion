@@ -80,7 +80,7 @@ export function processAndValidateAssemblyData(
         }
     });
 
-    // Step 3: Assign workstations to lines
+    // Step 3: Assign workstations to lines based on TiemposEnsamblado data
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
         const lineName = String(row.Linea).trim();
@@ -91,7 +91,7 @@ export function processAndValidateAssemblyData(
             const workstationName = String(row.PuestoTrabajo).trim();
             const workstationId = `wd---${centerId}---${workstationName}`;
             if (!line.assignedWorkstations.some(ws => ws.definitionId === workstationId)) {
-                line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 });
+                line.assignedWorkstations.push({ definitionId: workstationId, quantity: 1 }); // Start with quantity 1
             }
         }
     });
@@ -102,15 +102,20 @@ export function processAndValidateAssemblyData(
         const userEditedLine = currentConstraints.productionLines.find(l => l.id === line.id);
         
         line.assignedWorkstations = line.assignedWorkstations.map(currentAs => {
-            let quantity = 1;
+            let quantity = currentAs.quantity; // Keep the discovered default of 1
+
+            // Check for predefined quantities
             const predefined = predefinedQuantities.find(p => p.definitionId === currentAs.definitionId);
             if (predefined) {
                 quantity = predefined.quantity;
             }
+
+            // User overrides take highest precedence
             const userEditedAs = userEditedLine?.assignedWorkstations.find(uas => uas.definitionId === currentAs.definitionId);
             if(userEditedAs && userEditedAs.quantity > 0) {
                 quantity = userEditedAs.quantity;
             }
+
             return { ...currentAs, quantity };
         });
     });
@@ -167,11 +172,11 @@ export function processAndValidateAssemblyData(
 
 function getPredefinedQuantities(centerId: string, lineName: string): Array<{ definitionId: string; quantity: number }> {
     const quantities: { [key: string]: { [key: string]: { [key: string]: number } } } = {
-        '1000': {
+        '1000': { // Quito
             'LINEA 1': { 'Armado': 12, 'Cerrado': 6 },
             'LINEA 2': { 'Armado': 6, 'Cerrado': 4 }
         },
-        '2000': {
+        '2000': { // Guayaquil
             'LINEA 1': { 'Armado': 8, 'Cerrado': 4 },
             'LINEA 2': { 'Armado': 4, 'Cerrado': 4 }
         }
@@ -254,12 +259,13 @@ export const generateProductionPlan = async (
     constraints: AppConstraints, 
     apiData: TiempoEnsambleItem[], 
     salesData: SalesDataRow[],
+    prorateCurrentMonth: boolean,
     onProgress: (progress: PlanningProgress | null) => void
 ): Promise<ProductionPlan> => {
     
     const auditLog: string[] = [];
-    logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN ---`, 'info');
-    auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan de producción.`);
+    logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN (Prorrateo: ${prorateCurrentMonth}) ---`, 'info');
+    auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan (Prorrateo mes actual: ${prorateCurrentMonth}).`);
 
     var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
@@ -332,9 +338,12 @@ export const generateProductionPlan = async (
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         auditLog.push(`\n[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
 
+        const isCurrentMonth = year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1;
+        const startDayForCalc = (prorateCurrentMonth && isCurrentMonth) ? new Date().getDate() : 1;
+
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
-            const { totalHours } = getMonthlyCapacity(year, monthNum, line, holidays, shiftParameters, auditLog);
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line, holidays, shiftParameters, auditLog, startDayForCalc);
             monthlyCapacityByLine.set(line.id, totalHours);
         });
 
@@ -345,8 +354,23 @@ export const generateProductionPlan = async (
             }
             return monthlyMovements.get(key)!;
         };
+        
+        let salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
 
-        const salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
+        if (prorateCurrentMonth && isCurrentMonth) {
+            const today = new Date();
+            const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+            const daysPassed = today.getDate() - 1;
+            const remainingProportion = (daysInMonth - daysPassed) / daysInMonth;
+            auditLog.push(`[${new Date().toLocaleTimeString()}] INFO: Prorrateando demanda para el mes actual. Proporción restante: ${remainingProportion.toFixed(2)}`);
+            
+            salesThisMonth = salesThisMonth.map(sale => ({
+                ...sale,
+                unidadesProyectado: sale.unidadesProyectado * remainingProportion
+            }));
+        }
+
+
         const productionNeedsThisMonth = new Map<string, { demand: number, type: 'E' | 'X' | 'F' }>();
         
         salesThisMonth.forEach(sale => {
@@ -427,7 +451,7 @@ export const generateProductionPlan = async (
              const currentStock = inventoryState.get(invKey) || 0;
              const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
              const netNeed = Math.max(0, (need.demand + safetyStock) - currentStock);
-             auditLog.push(`[${new Date().toLocaleTimeString()}]     - Need for ${prodCenterKey}: Demand=${need.demand}, Safety=${safetyStock}, Stock=${currentStock} -> NetNeed=${netNeed.toFixed(0)}`);
+             auditLog.push(`[${new Date().toLocaleTimeString()}]     - Need for ${prodCenterKey}: Demand=${need.demand.toFixed(2)}, Safety=${safetyStock}, Stock=${currentStock.toFixed(2)} -> NetNeed=${netNeed.toFixed(2)}`);
              return { prodCenterKey, productId, centerId, netNeed, urgency: (currentStock - need.demand) / (need.demand || 1) };
         }).filter(item => item.netNeed > 0).sort((a,b) => a.urgency - b.urgency);
         
@@ -574,21 +598,14 @@ function getMonthlyCapacity(
     line: ProductionLine,
     holidays: Holiday[],
     shiftParams: ShiftParameters,
-    auditLog: string[]
+    auditLog: string[],
+    startDay: number = 1
 ): { totalHours: number } {
     const EFFICIENCY_FACTOR = 0.85;
     let grossTotalHours = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
     
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
-    const currentDay = today.getDate();
-    
-    // El bucle de cálculo de días comenzará en el día actual si estamos en el mes y año corrientes.
-    const startDay = (year === currentYear && month === currentMonth) ? currentDay : 1;
-    
-    if(startDay > 1) {
+    if (startDay > 1) {
         auditLog.push(`[${new Date().toLocaleTimeString()}]     - Mes corriente detectado. Calculando capacidad desde el día ${startDay}.`);
     }
     auditLog.push(`[${new Date().toLocaleTimeString()}]     - Calculando capacidad para línea ${line.name} en mes ${month}:`);
@@ -632,7 +649,7 @@ function getMonthlyCapacity(
         }
         
         grossTotalHours += dailyHours;
-        auditLog.push(`[${new Date().toLocaleTimeString()}]       - ${logMsg}`);
+        if(startDay <= 1) auditLog.push(`[${new Date().toLocaleTimeString()}]       - ${logMsg}`);
     }
 
     const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
@@ -699,6 +716,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 

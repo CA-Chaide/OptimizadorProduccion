@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 // --- Reusable MultiSelect Component ---
@@ -147,23 +148,24 @@ DailyPlanRow.displayName = 'DailyPlanRow';
 
 
 export const ProductionPlanSection: React.FC = () => {
-      const inspector = useRuntimeInspector('ProductionPlan');
-      
-      // Ejemplo: log de cambios en filtros y generación de plan
-      const [localFilter, setLocalFilter] = useState<string>("");
-      useEffect(() => {
-        logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Cambio en localFilter: ${localFilter}`);
-        inspector.captureVariable('localFilter', localFilter);
-      }, [localFilter]);
+  const inspector = useRuntimeInspector('ProductionPlan');
+  
+  // Ejemplo: log de cambios en filtros y generación de plan
+  const [localFilter, setLocalFilter] = useState<string>("");
+  const [prorateCurrentMonth, setProrateCurrentMonth] = useState<boolean>(true);
 
-      // Instrumentar handler de generación de plan
-      const handleGeneratePlanClick = () => {
-        logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] handleGeneratePlanClick ejecutado. Estado actual: { localFilter: ${localFilter} }`);
-        if (handleGeneratePlan) handleGeneratePlan();
-      };
-    useEffect(() => {
-      logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Montado.`);
-    }, []);
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Cambio en localFilter: ${localFilter}`);
+    inspector.captureVariable('localFilter', localFilter);
+  }, [localFilter]);
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Cambio en prorateCurrentMonth: ${prorateCurrentMonth}`);
+    inspector.captureVariable('prorateCurrentMonth', prorateCurrentMonth);
+  }, [prorateCurrentMonth]);
+
+  useEffect(() => {
+    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Montado.`);
+  }, []);
   const { 
     productionPlan, 
     handleGeneratePlan, 
@@ -180,13 +182,14 @@ export const ProductionPlanSection: React.FC = () => {
     inspector.captureState({
       isDataSynced,
       isLoading,
+      prorateCurrentMonth,
       hasPlan: !!(productionPlan.monthlyPlan.length || productionPlan.weeklyPlan.length || productionPlan.dailyPlan.length),
       monthlyPlanCount: productionPlan.monthlyPlan.length,
       weeklyPlanCount: productionPlan.weeklyPlan.length,
       dailyPlanCount: productionPlan.dailyPlan.length,
       salesDataCount: salesData.length
     });
-  }, [isDataSynced, isLoading, productionPlan, salesData]);
+  }, [isDataSynced, isLoading, prorateCurrentMonth, productionPlan, salesData]);
 
   const [activeTab, setActiveTab] = useState<'monthly' | 'weekly' | 'daily'>('monthly');
   
@@ -261,16 +264,16 @@ export const ProductionPlanSection: React.FC = () => {
 
   const handleStartPlanning = async () => {
     const { logger } = require('@/services/LogService');
-    logger.log('Iniciando generación de plan de producción.','info');
+    logger.log(`Iniciando generación de plan de producción (prorrateo: ${prorateCurrentMonth}).`,'info');
     
     const opId = operationTracker.startOperation(
       'ProductionPlan',
       'plan_generation',
-      'Generando plan de producción mensual, semanal y diario...',
-      { year: new Date().getFullYear() }
+      `Generando plan (prorrateo: ${prorateCurrentMonth ? 'activado' : 'desactivado'})`,
+      { year: new Date().getFullYear(), prorate: prorateCurrentMonth }
     );
     
-    const success = await handleGeneratePlan();
+    const success = await handleGeneratePlan(prorateCurrentMonth);
     
     if (success) {
       operationTracker.completeOperation(opId, 'Plan de producción generado exitosamente');
@@ -745,7 +748,18 @@ export const ProductionPlanSection: React.FC = () => {
             <PlanIcon />
             <h2 className="text-2xl font-semibold text-gray-700">Plan de Producción a Mediano Plazo</h2>
         </div>
-        <div className="flex items-center space-x-2 mt-4 md:mt-0">
+        <div className="flex items-center space-x-4 mt-4 md:mt-0">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="prorate-checkbox"
+                checked={prorateCurrentMonth}
+                onCheckedChange={(checked) => setProrateCurrentMonth(checked as boolean)}
+                disabled={isLoading}
+              />
+              <label htmlFor="prorate-checkbox" className="text-sm font-medium text-gray-700 cursor-pointer">
+                Prorratear mes actual según días restantes
+              </label>
+            </div>
             <Button
                 onClick={handleStartPlanning}
                 disabled={isLoading || !isDataSynced || salesData.length === 0}

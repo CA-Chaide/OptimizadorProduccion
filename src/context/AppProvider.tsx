@@ -128,7 +128,7 @@ type AppContextType = {
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
-    handleGeneratePlan: () => Promise<boolean>;
+    handleGeneratePlan: (prorateCurrentMonth: boolean) => Promise<boolean>;
     handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
     setEmployees: (employees: Employee[]) => Promise<void>;
     setSkills: (skills: EmployeeSkill[]) => Promise<void>;
@@ -341,8 +341,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state.constraints, addNotification]);
 
-    const handleGeneratePlan = useCallback(async (): Promise<boolean> => {
-        console.log('[AppProvider] handleGeneratePlan invocado.');
+    const handleGeneratePlan = useCallback(async (prorateCurrentMonth: boolean): Promise<boolean> => {
+        console.log(`[AppProvider] handleGeneratePlan invocado con prorrateo: ${prorateCurrentMonth}.`);
         
         if (!state.year) {
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
@@ -364,7 +364,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
             
-            const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, progressCallback);
+            const planResult = await generateProductionPlan(state.year, state.constraints, apiAssemblyData, state.salesData, prorateCurrentMonth, progressCallback);
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
                  dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: planResult.auditLog });
