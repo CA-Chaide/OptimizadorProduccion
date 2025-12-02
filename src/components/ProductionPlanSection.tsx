@@ -349,7 +349,7 @@ export const ProductionPlanSection: React.FC = () => {
     let relevantLineIds: Set<string> | null = null; // Use null to signify "all lines from selected centers"
 
     if (filterInputs.centers.length > 0) {
-        relevantLineIds = new Set(
+        relevantLineIds = new Set<string>(
             constraints.productionLines
                 .filter(line => filterInputs.centers.includes(line.workCenterId))
                 .map(line => line.id)
@@ -357,7 +357,7 @@ export const ProductionPlanSection: React.FC = () => {
     }
     
     if (filterInputs.processType) {
-        const linesForProcess = new Set(
+        const linesForProcess = new Set<string>(
             constraints.productionLines
                 .filter(line => line.processType === filterInputs.processType)
                 .map(line => line.id)
@@ -383,8 +383,8 @@ export const ProductionPlanSection: React.FC = () => {
 }, [filterInputs.centers, filterInputs.processType, filterInputs.lines, constraints.productionLines]);
 
   const monthlyFlowByCenter = useMemo(() => {
-    const { monthlyPlan, initialInventory } = productionPlan || { monthlyPlan: [], initialInventory: new Map() };
-    if (!monthlyPlan || monthlyPlan.length === 0 || !initialInventory) return null;
+    const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
+    if (!monthlyPlan || monthlyPlan.length === 0) return null;
 
     const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
     const centerIdsToDisplay = filterInputs.centers.length > 0 ? filterInputs.centers : constraints.workCenters.map(c => c.id);
@@ -396,71 +396,21 @@ export const ProductionPlanSection: React.FC = () => {
         const aggregatedData: Record<string, Record<string, number>> = {
             'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Saldo Final': {}, 'Faltante (Backlog)': {}
         };
-        
-        let previousMonthFinalStock: number | undefined = undefined;
 
         for (const monthKey of monthKeys) {
             const monthItemsForCenter = monthlyPlan.filter(item => 
                 item.centerId === centerId &&
                 `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey &&
-                (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId))
+                (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId)) &&
+                (productSectorMap.get(item.productId) && prioritySectors.has(productSectorMap.get(item.productId)!))
             );
-          
-            let initialStockForMonth: number;
-          
-            if (previousMonthFinalStock === undefined) { 
-                let totalInitialStockForCenter = 0;
-                const stockDetails: {productId: string, stock: number}[] = [];
 
-                if (initialInventory) {
-                    for (const [key, value] of initialInventory.entries()) {
-                        const [prodId, cId] = key.split('---');
-                        if (cId === centerId) {
-                            
-                            const sector = productSectorMap.get(prodId);
-                            if (sector && prioritySectors.has(sector)) {
-                                totalInitialStockForCenter += value;
-                                stockDetails.push({ productId: prodId, stock: value });
-                            }
-                        }
-                    }
-                }
-                
-                initialStockForMonth = totalInitialStockForCenter;
-            } else {
-                initialStockForMonth = previousMonthFinalStock;
-            }
-          
-            const production = monthItemsForCenter.reduce((sum, item) => {
-                const sector = productSectorMap.get(item.productId);
-                return (sector && prioritySectors.has(sector)) ? sum + item.totalQuantityToProduce : sum;
-            }, 0);
-
-            const sales = monthItemsForCenter.reduce((sum, item) => {
-                const sector = productSectorMap.get(item.productId);
-                return (sector && prioritySectors.has(sector)) ? sum + item.totalDemand : sum;
-            }, 0);
-
-            const netTransfers = monthItemsForCenter.reduce((sum, item) => {
-                const sector = productSectorMap.get(item.productId);
-                return (sector && prioritySectors.has(sector)) ? sum + (item.netTransfers || 0) : sum;
-            }, 0);
-
-            const unmetDemand = monthItemsForCenter.reduce((sum, item) => {
-                const sector = productSectorMap.get(item.productId);
-                return (sector && prioritySectors.has(sector)) ? sum + (item.unmetDemand || 0) : sum;
-            }, 0);
-
-            const finalStock = initialStockForMonth + production + netTransfers - sales - unmetDemand;
-          
-            aggregatedData['Saldo Inicial'][monthKey] = initialStockForMonth;
-            aggregatedData['Producción'][monthKey] = production;
-            aggregatedData['Ventas'][monthKey] = sales;
-            aggregatedData['Traslados (Neto)'][monthKey] = netTransfers;
-            aggregatedData['Saldo Final'][monthKey] = finalStock;
-            aggregatedData['Faltante (Backlog)'][monthKey] = unmetDemand;
-          
-            previousMonthFinalStock = finalStock;
+            aggregatedData['Saldo Inicial'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.initialStock, 0);
+            aggregatedData['Producción'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+            aggregatedData['Ventas'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalDemand, 0);
+            aggregatedData['Traslados (Neto)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.netTransfers, 0);
+            aggregatedData['Faltante (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.unmetDemand, 0);
+            aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
         }
 
         const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Faltante (Backlog)', 'Saldo Final'];
@@ -502,15 +452,8 @@ export const ProductionPlanSection: React.FC = () => {
             aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
             aggregatedData['Faltante (Backlog)'][weekKey] = weekItems.reduce((sum, item) => sum + (item.unmetDemand || 0), 0);
             
-            const uniqueProductStocks = new Map<string, number>();
-            weekItems.forEach(item => {
-                if(!uniqueProductStocks.has(item.productId)) {
-                    uniqueProductStocks.set(item.productId, item.initialStock);
-                }
-            });
-            aggregatedData['Saldo Inicial'][weekKey] = Array.from(uniqueProductStocks.values()).reduce((sum, stock) => sum + stock, 0);
-            
-            aggregatedData['Saldo Final'][weekKey] = aggregatedData['Saldo Inicial'][weekKey] + aggregatedData['Producción'][weekKey] + aggregatedData['Traslados (Neto)'][weekKey] - aggregatedData['Ventas'][weekKey] - aggregatedData['Faltante (Backlog)'][weekKey];
+            aggregatedData['Saldo Inicial'][weekKey] = weekItems.reduce((sum, item) => sum + item.initialStock, 0);
+            aggregatedData['Saldo Final'][weekKey] = weekItems.reduce((sum, item) => sum + item.finalStock, 0);
           });
           
           const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Faltante (Backlog)', 'Saldo Final'];
