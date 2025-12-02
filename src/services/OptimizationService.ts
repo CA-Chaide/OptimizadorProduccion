@@ -184,7 +184,8 @@ function getPredefinedQuantities(centerId: string, lineName: string): Array<{ de
     const quantities: { [key: string]: { [key: string]: { [key: string]: number } } } = {
         '1000': { // Quito
             'LINEA 1': { 'Armado': 12, 'Cerrado': 6 },
-            'LINEA 2': { 'Armado': 6, 'Cerrado': 4 }
+            'LINEA 2': { 'Armado': 6, 'Cerrado': 4 },
+            'LINEA 3': { 'Armado': 2, 'Cerrado': 1 }
         },
         '2000': { // Guayaquil
             'LINEA 1': { 'Armado': 8, 'Cerrado': 4 },
@@ -779,6 +780,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
