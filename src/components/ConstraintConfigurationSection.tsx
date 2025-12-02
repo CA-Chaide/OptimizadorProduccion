@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useMemo, ChangeEvent, useEffect, useRef } from 'react';
 import { logger } from '@/services/LogService';
 import { operationTracker } from '@/services/OperationTracker';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { 
     AppConstraints, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, 
     Bottleneck, SupplierDeliveryTime, QualityParameter, SalesDataRow, ProductProcessInfo, 
@@ -43,6 +44,8 @@ const CheckboxField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { la
 // --- End Reusable Form Components ---
 
 export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSectionProps> = () => {
+    const inspector = useRuntimeInspector('ConstraintConfiguration');
+    
     useEffect(() => {
       logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ConstraintConfigurationSection] Montado.`);
     }, []);
@@ -55,6 +58,16 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   } = useAppContext();
   
   const isDataSynced = syncStatus?.isSynced || false;
+  
+  // Capturar estado inicial
+  useEffect(() => {
+    inspector.captureState({
+      isDataSynced,
+      constraintsLoaded: !!constraints,
+      workstationsCount: constraints?.workstationDefinitions?.length || 0,
+      productionLinesCount: constraints?.productionLines?.length || 0
+    });
+  }, [isDataSynced, constraints]);
 
   const [activeTab, setActiveTab] = useState<string>('syncAndConfig');
   const [isSyncing, setIsSyncing] = useState(false);

@@ -1,6 +1,7 @@
 
 import React, { useState, useCallback, useContext, useEffect } from 'react';
 import { logger } from '@/services/LogService';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { 
     TacticalRequest, TacticalPlanResult, NotificationMessage, ProvisionalOrder, TacticalOrderItem 
 } from '@/types/types';
@@ -29,6 +30,8 @@ const getTargetDateString = (executionDate: string): string => {
 export const TacticalPlanSection: React.FC<TacticalPlanSectionProps> = ({ 
         onGeneratePlan,
 }) => {
+        const inspector = useRuntimeInspector('TacticalPlan');
+        
         const [executionDate, setExecutionDate] = useState<string>(getTodayString());
         const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
         const [fileName, setFileName] = useState<string | null>(null);
@@ -36,24 +39,38 @@ export const TacticalPlanSection: React.FC<TacticalPlanSectionProps> = ({
         const [tacticalPlanResult, setTacticalPlanResult] = useState<TacticalPlanResult | null>(null);
         useEffect(() => {
             logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en executionDate: ${executionDate}`);
+            inspector.captureVariable('executionDate', executionDate);
         }, [executionDate]);
         useEffect(() => {
             logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en provisionalOrders: ${JSON.stringify(provisionalOrders)}`);
+            inspector.captureVariable('provisionalOrders', provisionalOrders, { count: provisionalOrders.length });
         }, [provisionalOrders]);
         useEffect(() => {
             logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en fileName: ${fileName}`);
+            inspector.captureVariable('fileName', fileName);
         }, [fileName]);
         useEffect(() => {
             logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en isProcessing: ${isProcessing}`);
+            inspector.captureVariable('isProcessing', isProcessing);
         }, [isProcessing]);
         useEffect(() => {
             logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Cambio en tacticalPlanResult: ${JSON.stringify(tacticalPlanResult)}`);
+            inspector.captureVariable('tacticalPlanResult', tacticalPlanResult);
         }, [tacticalPlanResult]);
     const { addNotification } = useAppContext();
     // Log de montaje del componente
     useEffect(() => {
         logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[TacticalPlanSection] Montado.`);
     }, []);
+    
+    useEffect(() => {
+        inspector.captureState({
+            hasFile: !!fileName,
+            ordersCount: provisionalOrders.length,
+            isProcessing,
+            hasPlanResult: !!tacticalPlanResult
+        });
+    }, [fileName, provisionalOrders, isProcessing, tacticalPlanResult]);
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

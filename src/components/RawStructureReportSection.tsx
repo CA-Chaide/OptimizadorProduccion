@@ -6,6 +6,7 @@ import { queryApi } from '@/hooks/useApiData';
 import { Loader2, Sheet } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
 import { TiempoEnsambleItem } from '@/types/types';
+import { syncDataToStore } from '@/app/actions/datastore';
 
 interface FilterState {
     CodMaterial: string;
@@ -41,6 +42,51 @@ export const RawStructureReportSection: React.FC = () => {
             if (data) {
                 setRawData(data);
                 addNotification('success', `Carga completada. Se encontraron ${data.length} registros crudos.`);
+                
+                // Sincronizar con DataStore para que la IA pueda acceder
+                try {
+                    // Extraer información de líneas únicas
+                    const linesMap = new Map();
+                    const centersMap = new Map();
+                    
+                    data.forEach(item => {
+                        const lineKey = `${item.Centro}-${item.Linea}`;
+                        if (!linesMap.has(lineKey)) {
+                            linesMap.set(lineKey, {
+                                id: `pl---${item.Centro}---${item.Linea}`,
+                                name: item.Linea,
+                                workCenterId: String(item.Centro),
+                                processType: 'Colchones',
+                                isActive: true
+                            });
+                        }
+                        
+                        if (!centersMap.has(item.Centro)) {
+                            centersMap.set(item.Centro, {
+                                id: String(item.Centro),
+                                name: `Planta ${item.Centro}`,
+                                lines: []
+                            });
+                        }
+                    });
+                    
+                    const rawStructureData = {
+                        productionLines: Array.from(linesMap.values()),
+                        workCenters: Array.from(centersMap.values()),
+                        rawAssemblyData: data.slice(0, 100) // Muestra de los primeros 100
+                    };
+                    
+                    await syncDataToStore('rawStructure', rawStructureData, 'RawStructureReportSection', {
+                        totalRecords: data.length,
+                        uniqueLines: linesMap.size,
+                        uniqueCenters: centersMap.size,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    console.log('[RawStructureReportSection] Datos sincronizados con DataStore');
+                } catch (syncError) {
+                    console.error('[RawStructureReportSection] Error sincronizando con DataStore:', syncError);
+                }
             } else {
                  addNotification('warning', `La consulta a TiemposEnsamblado no devolvió datos.`);
                  setRawData([]);

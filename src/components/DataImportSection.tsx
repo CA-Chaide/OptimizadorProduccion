@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { logger } from '@/services/LogService';
 import { operationTracker } from '@/services/OperationTracker';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { SalesDataRow, NotificationMessage, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
@@ -120,6 +121,9 @@ const MultiSelect: React.FC<{
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
+    // Inicializar RuntimeInspector para este componente
+    const inspector = useRuntimeInspector('DataImport');
+    
     const [filterOptions, setFilterOptions] = useState({
         años: [] as {value: string, label: string}[],
         centros: [] as {value: string, label: string}[],
@@ -138,13 +142,28 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     });
     useEffect(() => {
       logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Cambio en filterOptions: ${JSON.stringify(filterOptions)}`);
+      // Capturar variable en RuntimeInspector
+      inspector.captureVariable('filterOptions', filterOptions, {
+        description: 'Opciones disponibles para filtros (años, centros, etiquetas)',
+        source: 'state'
+      });
     }, [filterOptions]);
     useEffect(() => {
       logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Cambio en filters: ${JSON.stringify(filters)}`);
+      // Capturar variable en RuntimeInspector
+      inspector.captureVariable('filters', filters, {
+        description: 'Filtros activos aplicados por el usuario',
+        source: 'user'
+      });
     }, [filters]);
   const { addNotification, isLoading: isAppLoading } = useAppContext();
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DataImportSection] Montado.`);
+    // Capturar estado inicial
+    inspector.captureState({ mounted: true, isProcessing: false }, {}, {
+      filterOptionsCount: 0,
+      filtersActive: 0
+    });
   }, []);
   
 
@@ -211,12 +230,19 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       { años: filters.años, meses: filters.meses, centros: filters.centros, etiqueta: filters.etiqueta }
     );
     
+    // Capturar contexto de ejecución en RuntimeInspector
+    const ctxId = inspector.startContext('load_budget_data', {
+      filters: filters,
+      timestamp: timestamp
+    });
+    
     logger.log(`[${timestamp}] --- INICIANDO CARGA DE DATOS DE PRESUPUESTO --- Filtros: años=${filters.años.join(',')}, meses=${filters.meses.join(',')}, centros=${filters.centros.join(',')}, etiqueta=${filters.etiqueta}`,'info');
 
     if (filters.años.length === 0) {
       addNotification('warning', 'Por favor, seleccione al menos un año.');
       logger.log('Carga de datos cancelada: no se seleccionó ningún año.','warning');
       operationTracker.failOperation(opId, 'No year selected');
+      inspector.updateContext(ctxId, 'failed', { error: 'No year selected' });
       setIsProcessing(false);
       return;
     }
@@ -320,12 +346,37 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           return { ...sale, claseAprovisionamiento: aprovisionamiento };
         });
         logger.log(`Datos mapeados y guardados en memoria. Muestra: ${JSON.stringify(mappedAndAggregatedData.slice(0,2))}`,'info');
+        
+        // Capturar variables importantes en RuntimeInspector
+        inspector.captureVariable('loadedData', mappedAndAggregatedData, {
+          description: `Datos de presupuesto cargados (${mappedAndAggregatedData.length} filas)`,
+          source: 'api',
+          dependencies: ['filters', 'filterOptions']
+        });
+        inspector.captureVariable('totalRecords', allData.length, {
+          description: 'Total de registros importados antes de consolidar',
+          source: 'calculation'
+        });
+        inspector.captureVariable('consolidatedRows', mappedAndAggregatedData.length, {
+          description: 'Total de filas después de consolidar',
+          source: 'calculation'
+        });
+        
         setLoadedData(mappedAndAggregatedData);
         onDataImported(mappedAndAggregatedData);
         addNotification('success', `Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`);
         logger.log(`Carga completada. Se importaron ${allData.length} registros que se consolidaron en ${mappedAndAggregatedData.length} filas.`,'success');
         
         operationTracker.completeOperation(opId, `Presupuesto cargado exitosamente: ${mappedAndAggregatedData.length} filas consolidadas`, { importedRecords: allData.length, consolidatedRows: mappedAndAggregatedData.length });
+        
+        // Completar contexto de ejecución
+        inspector.updateContext(ctxId, 'completed', {
+          outputs: {
+            totalRecords: allData.length,
+            consolidatedRows: mappedAndAggregatedData.length,
+            sampleData: mappedAndAggregatedData.slice(0, 2)
+          }
+        });
         
         const salesRequiringTransfer = mappedAndAggregatedData.filter(sale => sale.claseAprovisionamiento === 'F' && sale.centro !== '1000');
         const aggregatedNeeds: { [productId: string]: TransferNeed } = {};
@@ -342,11 +393,16 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
         logger.log('No se encontraron registros con los filtros seleccionados.','warning');
         operationTracker.failOperation(opId, 'No records found with selected filters');
+        inspector.updateContext(ctxId, 'failed', { error: 'No records found with selected filters' });
       }
     } catch (error) {
       addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
       logger.log(`Error durante la carga de datos: ${(error as Error).message}`,'error');
       operationTracker.failOperation(opId, (error as Error).message);
+      inspector.updateContext(ctxId, 'failed', { 
+        error: (error as Error).message,
+        stackTrace: (error as Error).stack?.split('\n')
+      });
     } finally {
       setIsProcessing(false);
     }

@@ -172,8 +172,30 @@ export default function ChatInterface() {
       contextData.planningProgress = planningProgress;
       contextData.includeFull = shareFullData;
       
+      // Agregar datos del RuntimeInspector SIEMPRE (incluso sin shareContext)
+      // Esto permite al agente acceder a variables en tiempo real
+      try {
+        const { runtimeInspector } = await import('@/services/RuntimeInspector');
+        const inspectorSummary = runtimeInspector.getSummary();
+        const recentVariables = runtimeInspector.getVariables(undefined, 20);
+        const allStates = runtimeInspector.getAllStates();
+        
+        contextData.runtimeInspector = {
+          summary: inspectorSummary,
+          variables: recentVariables,
+          states: allStates
+        };
+      } catch (error) {
+        console.error('[ChatInterface] Error loading RuntimeInspector data:', error);
+      }
+      
+      // NOTA: El DataStore es accesible directamente por las herramientas del chat
+      // No necesitamos enviarlo en el contexto, ya que es un singleton
+      
       console.log('[ChatInterface] Sending context data keys:', Object.keys(contextData));
       if (contextData.salesDataSample) console.log('[ChatInterface] Sales sample size:', contextData.salesDataSample.length);
+      if (contextData.runtimeInspector) console.log('[ChatInterface] RuntimeInspector variables:', contextData.runtimeInspector.variables.length);
+      console.log('[ChatInterface] DataStore is accessible via tools');
       
       const response = await sendMessage([...messages, userMessage], recentLogs, shareContext ? contextData : undefined);
 

@@ -7,6 +7,7 @@ import { AppProvider } from '@/context/AppProvider';
 import { WidgetsStateProvider } from '@/context/WidgetsStateContext';
 import FloatingChatWidget from '@/components/FloatingChatWidget';
 import FloatingLogsWidget from '@/components/FloatingLogsWidget';
+import DebugPanel from '@/components/DebugPanel';
 
 interface RootLayoutWrapperProps {
   children: React.ReactNode;
@@ -21,6 +22,7 @@ function RootLayoutWrapper({ children }: RootLayoutWrapperProps) {
             {children}
             <FloatingChatWidget />
             <FloatingLogsWidget />
+            <DebugPanel />
           </WidgetsStateProvider>
         </AppProvider>
       </OperationProvider>

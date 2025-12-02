@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { logger } from '@/services/LogService';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { AbsenteeismEvent, Employee } from '@/types/types';
 import { AbsenteeismIcon, PlusIcon, EditIcon, DeleteIcon } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -25,19 +26,31 @@ const initialFormState: Omit<AbsenteeismEvent, 'id'> = {
 };
 
 export const AbsenteeismSection: React.FC<AbsenteeismSectionProps> = ({ events, setEvents, employees }) => {
+  const inspector = useRuntimeInspector('Absenteeism');
+  
   const [formState, setFormState] = useState(initialFormState);
   const [editingEvent, setEditingEvent] = useState<AbsenteeismEvent | null>(null);
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Cambio en formState: ${JSON.stringify(formState)}`);
+    inspector.captureVariable('formState', formState);
   }, [formState]);
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Cambio en editingEvent: ${JSON.stringify(editingEvent)}`);
+    inspector.captureVariable('editingEvent', editingEvent);
   }, [editingEvent]);
   const { addNotification } = useAppContext();
   // Log inicial
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[AbsenteeismSection] Montado. formState: ${JSON.stringify(formState)}`);
   }, []);
+  
+  useEffect(() => {
+    inspector.captureState({
+      eventsCount: events.length,
+      employeesCount: employees.length,
+      isEditing: !!editingEvent
+    });
+  }, [events, employees, editingEvent]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

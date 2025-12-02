@@ -4,6 +4,7 @@ import { MaintenanceEvent, ProductionLine, WorkstationDefinition, NotificationMe
 import { MaintenanceIcon, PlusIcon, EditIcon, DeleteIcon, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { logger } from '@/services/LogService';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
 
 interface MaintenanceSectionProps {
   events: MaintenanceEvent[];
@@ -30,6 +31,8 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   onConstraintsUpdate,
   addNotification
 }) => {
+  const inspector = useRuntimeInspector('Maintenance');
+  
   React.useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[MaintenanceSection] Montado.`);
   }, []);
@@ -37,10 +40,19 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   const [editingEvent, setEditingEvent] = useState<MaintenanceEvent | null>(null);
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[MaintenanceSection] Cambio en formState: ${JSON.stringify(formState)}`);
+    inspector.captureVariable('formState', formState);
   }, [formState]);
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[MaintenanceSection] Cambio en editingEvent: ${JSON.stringify(editingEvent)}`);
+    inspector.captureVariable('editingEvent', editingEvent);
   }, [editingEvent]);
+  
+  useEffect(() => {
+    inspector.captureState({
+      eventsCount: events.length,
+      isEditing: !!editingEvent
+    });
+  }, [events, editingEvent]);
   
   const { productionLines, workstationDefinitions } = constraints;
 

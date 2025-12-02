@@ -6,6 +6,7 @@ import React, {
   useEffect,
 } from "react";
 import { logger } from "@/services/LogService";
+import { useRuntimeInspector } from "@/services/RuntimeInspector";
 import {
   WorkShift,
   AppConstraints,
@@ -45,15 +46,19 @@ export const WorkShiftPlanningSection: React.FC<
   absenteeismEvents,
   employeeSkills,
 }) => {
+  const inspector = useRuntimeInspector('WorkShiftPlanning');
+  
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedProcessType, setSelectedProcessType] = useState<
     ProcessType | ""
   >("");
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[WorkShiftPlanningSection] Cambio en currentDate: ${currentDate}`);
+    inspector.captureVariable('currentDate', currentDate);
   }, [currentDate]);
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[WorkShiftPlanningSection] Cambio en selectedProcessType: ${selectedProcessType}`);
+    inspector.captureVariable('selectedProcessType', selectedProcessType);
   }, [selectedProcessType]);
   const { addNotification } = useAppContext();
   // Log de montaje del componente
@@ -62,6 +67,15 @@ export const WorkShiftPlanningSection: React.FC<
       `\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[WorkShiftPlanningSection] Montado.`
     );
   }, []);
+  
+  useEffect(() => {
+    inspector.captureState({
+      shiftsCount: shifts.length,
+      employeesCount: employees.length,
+      absenteeismEventsCount: absenteeismEvents.length,
+      selectedProcessType
+    });
+  }, [shifts, employees, absenteeismEvents, selectedProcessType]);
 
   const weekStart = getWeekStart(currentDate);
   const weekDates = Array.from({ length: 7 }, (_, i) => {

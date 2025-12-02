@@ -237,28 +237,34 @@ export default function FloatingLogsWidget() {
                     {activeOperations.length > 0 && (
                       <>
                         <div style={{ color: '#10b981', fontWeight: 'bold', marginBottom: 8, fontSize: 12 }}>Active Operations</div>
-                        {activeOperations.map((op) => (
-                          <div key={op.id} style={{ marginBottom: '8px', padding: '8px', background: '#232326', borderRadius: 8, borderLeft: '3px solid #fbbf24', fontSize: 12 }}>
-                            <div style={{ color: '#fbbf24', fontWeight: 'bold' }}>
-                              [{op.section}] {op.description}
+                        {activeOperations.map((op) => {
+                          // Usar id + timestamp para clave única y estable
+                          const uniqueKey = `active-${op.id}-${op.timestamp.getTime()}`;
+                          return (
+                            <div key={uniqueKey} style={{ marginBottom: '8px', padding: '8px', background: '#232326', borderRadius: 8, borderLeft: '3px solid #fbbf24', fontSize: 12 }}>
+                              <div style={{ color: '#fbbf24', fontWeight: 'bold' }}>
+                                [{op.section}] {op.description}
+                              </div>
+                              <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>
+                                Type: {op.type} | Status: {op.status}
+                              </div>
                             </div>
-                            <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>
-                              Type: {op.type} | Status: {op.status}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </>
                     )}
 
                     {/* Mostrar operaciones recientes */}
                     <div style={{ color: '#e53935', fontWeight: 'bold', marginBottom: 8, fontSize: 12, marginTop: 12 }}>Recent Operations</div>
-                    {operations.slice(-15).map((op) => {
+                    {operations.slice(-15).map((op, idx) => {
                       const statusColor = op.status === 'completed' ? '#10b981' : op.status === 'failed' ? '#ef4444' : '#fbbf24';
                       const duration = op.duration ? ` [${op.duration}ms]` : '';
                       const error = op.error ? ` - ERROR: ${op.error}` : '';
+                      // Usar índice + id para crear clave única y estable
+                      const uniqueKey = `${op.id}-${op.timestamp.getTime()}`;
 
                       return (
-                        <div key={op.id} style={{ marginBottom: '8px', padding: '8px', background: '#232326', borderRadius: 8, borderLeft: `3px solid ${statusColor}`, fontSize: 11 }}>
+                        <div key={uniqueKey} style={{ marginBottom: '8px', padding: '8px', background: '#232326', borderRadius: 8, borderLeft: `3px solid ${statusColor}`, fontSize: 11 }}>
                           <div style={{ color: statusColor, fontWeight: 'bold' }}>
                             [{op.section}] {op.status.toUpperCase()}
                           </div>
@@ -283,8 +289,10 @@ export default function FloatingLogsWidget() {
                           timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
                         }
                       }
+                      // Usar id + timestamp para clave única y estable
+                      const uniqueKey = `log-${log.id}-${typeof log.timestamp === 'object' ? log.timestamp.getTime() : log.timestamp}`;
                       return (
-                        <div key={log.id} style={{ marginBottom: '8px', padding: '8px', background: '#232326', borderRadius: 8, fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <div key={uniqueKey} style={{ marginBottom: '8px', padding: '8px', background: '#232326', borderRadius: 8, fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                           <span style={{ color: '#e53935', fontSize: 10, minWidth: 70, flexShrink: 0 }}>{timeStr}</span>
                           <span>{log.message}</span>
                         </div>

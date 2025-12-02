@@ -2,6 +2,8 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { getRequestContext } from '@/lib/request-context';
+import { runtimeInspector } from '@/services/RuntimeInspector';
+import { dataStore } from '@/services/DataStore';
 
 /**
  * Herramientas de análisis para el Production Assistant
@@ -458,6 +460,241 @@ export const getOperationsSummaryTool = ai.defineTool({
   };
 });
 
+export const inspectVariablesTool = ai.defineTool({
+  name: 'inspectVariables',
+  description: 'Inspects runtime variables and their values in a specific section or across the entire system. Use this when the user asks "what is the value of X?", "show me the variables", "what data do you have?", or wants to debug specific variables.',
+  inputSchema: z.object({
+    section: z.string().optional().describe('Filter variables by section (e.g., DataImport, ProductionPlan)'),
+    variableName: z.string().optional().describe('Search for specific variable by name (partial match)'),
+    limit: z.number().optional().describe('Limit number of results (default 20)')
+  }),
+}, async (params) => {
+  const limit = params.limit || 20;
+  
+  let variables;
+  if (params.variableName) {
+    variables = runtimeInspector.searchVariables(params.variableName, params.section);
+  } else {
+    variables = runtimeInspector.getVariables(params.section, limit);
+  }
+  
+  return {
+    totalFound: variables.length,
+    variables: variables.slice(-limit).map(v => ({
+      section: v.section,
+      scope: v.scope,
+      name: v.name,
+      value: v.value,
+      type: v.type,
+      timestamp: v.timestamp,
+      metadata: v.metadata
+    }))
+  };
+});
+
+export const inspectExecutionContextTool = ai.defineTool({
+  name: 'inspectExecutionContext',
+  description: 'Inspects the execution context of operations including inputs, outputs, and stack traces. Use this when the user asks "what happened?", "why did this fail?", "show me the execution details", or wants to debug operations.',
+  inputSchema: z.object({
+    section: z.string().optional().describe('Filter by section'),
+    limit: z.number().optional().describe('Limit number of results (default 10)')
+  }),
+}, async (params) => {
+  const limit = params.limit || 10;
+  const contexts = runtimeInspector.getContexts(params.section, limit);
+  const activeContexts = runtimeInspector.getActiveContexts();
+  
+  return {
+    activeContexts: activeContexts.map(ctx => ({
+      section: ctx.section,
+      action: ctx.action,
+      status: ctx.status,
+      inputs: ctx.inputs,
+      startTime: ctx.timestamp,
+      duration: ctx.duration
+    })),
+    recentContexts: contexts.map(ctx => ({
+      section: ctx.section,
+      action: ctx.action,
+      status: ctx.status,
+      inputs: ctx.inputs,
+      outputs: ctx.outputs,
+      error: ctx.error,
+      stackTrace: ctx.stackTrace,
+      duration: ctx.duration,
+      timestamp: ctx.timestamp
+    }))
+  };
+});
+
+export const inspectStateTool = ai.defineTool({
+  name: 'inspectState',
+  description: 'Inspects the current state of components including their props and computed values. Use this when the user asks "what is the current state?", "show me the component state", or wants to see the full application state.',
+  inputSchema: z.object({
+    section: z.string().optional().describe('Specific section to inspect (optional, shows all if not provided)')
+  }),
+}, async (params) => {
+  if (params.section) {
+    const state = runtimeInspector.getState(params.section);
+    if (!state) {
+      return {
+        found: false,
+        message: `No state found for section: ${params.section}`
+      };
+    }
+    return {
+      found: true,
+      section: params.section,
+      timestamp: state.timestamp,
+      state: state.state,
+      props: state.props,
+      computed: state.computed
+    };
+  }
+  
+  // Obtener todos los estados
+  const allStates = runtimeInspector.getAllStates();
+  const summary = runtimeInspector.getSummary();
+  
+  return {
+    found: true,
+    sections: Object.keys(allStates),
+    totalVariables: summary.totalVariables,
+    totalContexts: summary.totalContexts,
+    activeContexts: summary.activeContexts,
+    states: Object.entries(allStates).map(([section, state]) => ({
+      section,
+      timestamp: state.timestamp,
+      stateKeys: Object.keys(state.state || {}),
+      propsKeys: Object.keys(state.props || {}),
+      computedKeys: Object.keys(state.computed || {})
+    })),
+    recentActivity: summary.recentActivity
+  };
+});
+
+export const getDataFromStoreTool = ai.defineTool({
+  name: 'getDataFromStore',
+  description: `Access data from the centralized DataStore. Use this to retrieve:
+- salesData: Budget/sales data with products, quantities, amounts
+- constraints: Production constraints including productionLines (with workCenter info), workstationDefinitions, holidays
+- productionPlan: Generated production plans (monthly, weekly, daily)
+- employees: Employee list
+- employeeSkills: Employee skills and qualifications
+- maintenanceEvents: Maintenance schedules
+- absenteeismEvents: Employee absence records
+- workShifts: Work shift schedules
+
+When user asks about "lines", "production lines", "work centers", use key='constraints' and access the productionLines array.`,
+  inputSchema: z.object({
+    key: z.string().optional().describe('Specific data key to retrieve (salesData, constraints, productionPlan, employees, employeeSkills, maintenanceEvents, absenteeismEvents, workShifts). If omitted, returns summary of all available data.'),
+    limit: z.number().optional().describe('Limit number of records returned (default 10, max 100)'),
+    filter: z.string().optional().describe('Optional filter criteria (e.g., "workCenterId=1000" to filter production lines by center)')
+  }),
+}, async (params) => {
+  const limit = Math.min(params.limit || 10, 100);
+  
+  if (params.key) {
+    // Obtener datos específicos
+    const snapshot = dataStore.getData(params.key);
+    
+    if (!snapshot) {
+      return {
+        found: false,
+        message: `No data found for key: ${params.key}. Available keys: ${dataStore.getSummary().availableKeys.join(', ')}`
+      };
+    }
+    
+    let dataToReturn = snapshot.data;
+    
+    // Aplicar filtros especiales para constraints.productionLines
+    if (params.key === 'constraints' && params.filter && dataToReturn.productionLines) {
+      const filterMatch = params.filter.match(/workCenterId=(\w+)/);
+      if (filterMatch) {
+        const centerId = filterMatch[1];
+        const filteredLines = dataToReturn.productionLines.filter((line: any) => line.workCenterId === centerId);
+        return {
+          found: true,
+          key: params.key,
+          timestamp: snapshot.timestamp,
+          source: snapshot.source,
+          filtered: true,
+          filterCriteria: params.filter,
+          data: {
+            productionLines: filteredLines,
+            totalLines: filteredLines.length,
+            workCenterId: centerId,
+            lineNames: filteredLines.map((l: any) => l.name),
+            lineIds: filteredLines.map((l: any) => l.id)
+          }
+        };
+      }
+    }
+    
+    // Si es constraints, proporcionar estructura útil
+    if (params.key === 'constraints' && dataToReturn.productionLines) {
+      const lines = dataToReturn.productionLines;
+      return {
+        found: true,
+        key: params.key,
+        timestamp: snapshot.timestamp,
+        source: snapshot.source,
+        data: {
+          productionLines: lines.slice(0, limit),
+          totalProductionLines: lines.length,
+          workstationDefinitions: dataToReturn.workstationDefinitions?.length || 0,
+          workCenters: dataToReturn.workCenters?.length || 0,
+          linesByCenter: lines.reduce((acc: any, line: any) => {
+            const center = line.workCenterId || 'unknown';
+            if (!acc[center]) acc[center] = [];
+            acc[center].push({ id: line.id, name: line.name, processType: line.processType });
+            return acc;
+          }, {}),
+          sampleLines: lines.slice(0, 5).map((l: any) => ({
+            id: l.id,
+            name: l.name,
+            workCenterId: l.workCenterId,
+            processType: l.processType,
+            isActive: l.isActive
+          }))
+        }
+      };
+    }
+    
+    // Limitar si es array
+    if (Array.isArray(dataToReturn) && dataToReturn.length > limit) {
+      dataToReturn = {
+        totalRecords: dataToReturn.length,
+        showing: limit,
+        sample: dataToReturn.slice(0, limit),
+        note: `Showing ${limit} of ${dataToReturn.length} records`
+      };
+    }
+    
+    return {
+      found: true,
+      key: params.key,
+      timestamp: snapshot.timestamp,
+      source: snapshot.source,
+      metadata: snapshot.metadata,
+      data: dataToReturn
+    };
+  }
+  
+  // Retornar resumen de todos los datos
+  const summary = dataStore.getSummary();
+  
+  return {
+    found: true,
+    summary: {
+      availableKeys: summary.availableKeys,
+      totalDatasets: summary.availableKeys.length,
+      datasets: summary.dataByKey
+    },
+    message: `Available datasets: ${summary.availableKeys.join(', ')}. Use this tool again with a specific key to get the data.`
+  };
+});
+
 // Export all tools as an array for easy usage
 export const analysisTools = [
   analyzeSalesTool,
@@ -465,5 +702,9 @@ export const analysisTools = [
   analyzeEmployeeAvailabilityTool,
   analyzeBottlenecksTool,
   getSummaryStatsTool,
-  getOperationsSummaryTool
+  getOperationsSummaryTool,
+  inspectVariablesTool,
+  inspectExecutionContextTool,
+  inspectStateTool,
+  getDataFromStoreTool  // Nueva herramienta principal para acceder a datos
 ];

@@ -15,3 +15,8 @@ export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
 export * from './InventorySummarySection';
 export * from './RawStructureReportSection';
+
+// Widgets y paneles
+export { default as FloatingChatWidget } from './FloatingChatWidget';
+export { default as FloatingLogsWidget } from './FloatingLogsWidget';
+export { default as DebugPanel } from './DebugPanel';

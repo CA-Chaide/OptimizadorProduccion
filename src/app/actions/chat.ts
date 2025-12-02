@@ -4,6 +4,8 @@ import { ai } from '@/ai/genkit';
 import { LogEntry } from '@/services/LogService';
 import { analysisTools } from './chat-tools';
 import { requestContext } from '@/lib/request-context';
+import { runtimeInspector } from '@/services/RuntimeInspector';
+import { dataStore } from '@/services/DataStore';
 
 export interface ChatMessage {
   role: 'user' | 'model';
@@ -77,6 +79,64 @@ System Operations Summary:
 - Failed operations: ${contextData.operationsSummary.failed}
 - Operations by section: ${JSON.stringify(contextData.operationsSummary.bySection)}
 ` : ''}
+
+RUNTIME INSPECTOR DATA (Variables & State):
+${contextData?.runtimeInspector ? (() => {
+  const { summary, variables, states } = contextData.runtimeInspector;
+  
+  return `
+Available Variables (${summary.totalVariables} total, last ${variables.length} shown):
+${variables.map((v: any) => {
+  let valuePreview = '';
+  if (Array.isArray(v.value)) {
+    valuePreview = `Array(${v.value.length}) - First item: ${JSON.stringify(v.value[0] || {}).substring(0, 100)}`;
+  } else if (typeof v.value === 'object' && v.value !== null) {
+    valuePreview = `Object with keys: ${Object.keys(v.value).join(', ')}`;
+  } else {
+    valuePreview = JSON.stringify(v.value);
+  }
+  return `- [${v.section}] ${v.name}: ${valuePreview}${v.metadata?.description ? ` (${v.metadata.description})` : ''}`;
+}).join('\n')}
+
+Current States (${Object.keys(states).length} sections):
+${Object.entries(states).map(([section, state]: [string, any]) => `- ${section}: ${Object.keys(state.state || {}).join(', ')}`).join('\n')}
+
+Recent Activity (last 5):
+${summary.recentActivity.slice(-5).map((a: any) => `- [${a.section}] ${a.action} at ${new Date(a.timestamp).toLocaleTimeString()}`).join('\n')}
+
+**IMPORTANT**: When user asks for data samples (like "dame una muestra de los datos"):
+1. FIRST use getDataFromStore tool - this is the PRIMARY data source
+2. If not found in DataStore, then check RuntimeInspector variables
+3. Show actual data samples, not just summaries
+`;
+})() : 'No RuntimeInspector data available yet. Load data in the application first.'}
+
+DATASTORE (Centralized Data Zone):
+${(() => {
+  const storeSummary = dataStore.getSummary();
+  if (storeSummary.availableKeys.length === 0) {
+    return 'No data in DataStore yet. Ask user to load data first.';
+  }
+  
+  return `
+Available Datasets (${storeSummary.availableKeys.length}):
+${Object.entries(storeSummary.dataByKey).map(([key, info]: [string, any]) => 
+  `- ${key}: ${info.description || 'No description'} (${info.rowCount || 'N/A'} records) - Updated: ${new Date(info.lastUpdate).toLocaleTimeString()} by ${info.source}`
+).join('\n')}
+
+**PRIMARY DATA ACCESS**: Use getDataFromStore tool to retrieve actual data from these datasets.
+
+**KEY DATASET MAPPINGS** (ALWAYS use these when user asks):
+- "líneas" / "production lines" / "líneas de producción" → getDataFromStore with key='constraints', access productionLines array
+- "centros" / "work centers" / "plantas" → getDataFromStore with key='constraints', access workCenters array  
+- "productos" / "ventas" / "presupuesto" → getDataFromStore with key='salesData'
+- "empleados" / "personal" → getDataFromStore with key='employees'
+- "plan" / "producción" → getDataFromStore with key='productionPlan'
+
+**FILTERING LINES BY CENTER**: When user asks "cuántas líneas tiene el centro 1000" or "lista líneas del centro X":
+→ Use getDataFromStore with key='constraints' and filter='workCenterId=1000' (or appropriate center ID)
+`;
+})()}
 
 IMPORTANT GUIDELINES:
 1. **Operational Questions**: If user asks "what are you doing?", "what's happening?", analyze the recent logs for operation entries

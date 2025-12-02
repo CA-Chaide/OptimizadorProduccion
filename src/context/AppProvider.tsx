@@ -13,6 +13,8 @@ import {
 import { ActiveView, MONTH_NAMES } from '@/constants/constants';
 import { generateProductionPlan, processAndValidateAssemblyData } from '@/services/OptimizationService';
 import { queryApi } from '@/hooks/useApiData';
+import { syncDataToStore } from '@/app/actions/datastore';
+import { runtimeInspector } from '@/services/RuntimeInspector';
 
 const initialState: AppState = {
     year: null,
@@ -128,12 +130,12 @@ type AppContextType = {
     handleDataImported: (data: SalesDataRow[]) => void;
     handleGeneratePlan: () => Promise<boolean>;
     handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
-    setEmployees: (employees: Employee[]) => void;
-    setSkills: (skills: EmployeeSkill[]) => void;
-    setAbsenteeismEvents: (events: AbsenteeismEvent[]) => void;
-    setMaintenanceEvents: (events: MaintenanceEvent[]) => void;
-    setWorkShifts: (shifts: WorkShift[]) => void;
-    setConstraints: (constraints: AppConstraints) => void;
+    setEmployees: (employees: Employee[]) => Promise<void>;
+    setSkills: (skills: EmployeeSkill[]) => Promise<void>;
+    setAbsenteeismEvents: (events: AbsenteeismEvent[]) => Promise<void>;
+    setMaintenanceEvents: (events: MaintenanceEvent[]) => Promise<void>;
+    setWorkShifts: (shifts: WorkShift[]) => Promise<void>;
+    setConstraints: (constraints: AppConstraints) => Promise<void>;
     handleSyncAndValidate: () => Promise<boolean>;
 };
 
@@ -158,6 +160,146 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_YEAR', payload: year });
         dispatch({ type: 'SET_ACTIVE_VIEW', payload: ActiveView.DATA_IMPORT });
     }, []);
+    
+    // HYPERVISOR: Capturar automáticamente TODO el estado del AppContext
+    useEffect(() => {
+        // Capturar estado completo cada vez que cambia
+        runtimeInspector.captureState({
+            year: state.year,
+            activeView: state.activeView,
+            isLoading: state.isLoading,
+            salesDataCount: state.salesData.length,
+            hasProductionPlan: !!(state.productionPlan.monthlyPlan.length || state.productionPlan.weeklyPlan.length || state.productionPlan.dailyPlan.length),
+            hasDetailedPlan: !!state.detailedProductionPlan,
+            employeesCount: state.employees.length,
+            skillsCount: state.employeeSkills.length,
+            maintenanceEventsCount: state.maintenanceEvents.length,
+            absenteeismEventsCount: state.absenteeismEvents.length,
+            workShiftsCount: state.workShifts.length,
+            isSynced: state.syncStatus?.isSynced || false,
+            hasTacticalPlan: !!state.tacticalPlanResult,
+            constraintsConfigured: !!(state.constraints.productionLines.length && state.constraints.workstationDefinitions.length)
+        }, 'AppContext');
+        
+        // Capturar variables clave con detalles
+        if (state.salesData.length > 0) {
+            runtimeInspector.captureVariable('salesData', state.salesData, {
+                count: state.salesData.length,
+                sample: state.salesData.slice(0, 3),
+                totalProducts: new Set(state.salesData.map(s => s.producto)).size
+            }, 'AppContext');
+        }
+        
+        if (state.constraints.productionLines.length > 0) {
+            runtimeInspector.captureVariable('constraints', state.constraints, {
+                productionLines: state.constraints.productionLines.length,
+                workstations: state.constraints.workstationDefinitions.length,
+                workCenters: state.constraints.workCenters.length,
+                linesByCenter: state.constraints.productionLines.reduce((acc: any, line) => {
+                    const center = line.workCenterId;
+                    acc[center] = (acc[center] || 0) + 1;
+                    return acc;
+                }, {})
+            }, 'AppContext');
+        }
+        
+        if (state.productionPlan.monthlyPlan.length > 0) {
+            runtimeInspector.captureVariable('productionPlan', state.productionPlan, {
+                monthlyCount: state.productionPlan.monthlyPlan.length,
+                weeklyCount: state.productionPlan.weeklyPlan.length,
+                dailyCount: state.productionPlan.dailyPlan.length,
+                auditLogLines: state.productionPlan.auditLog.length
+            }, 'AppContext');
+        }
+        
+        if (state.employees.length > 0) {
+            runtimeInspector.captureVariable('employees', state.employees, {
+                count: state.employees.length,
+                sample: state.employees.slice(0, 5).map(e => ({ id: e.id, name: e.name, code: e.employeeCode }))
+            }, 'AppContext');
+        }
+        
+        if (state.employeeSkills.length > 0) {
+            runtimeInspector.captureVariable('employeeSkills', state.employeeSkills, {
+                count: state.employeeSkills.length,
+                uniqueEmployees: new Set(state.employeeSkills.map(s => s.employeeId)).size,
+                uniqueMachines: new Set(state.employeeSkills.map(s => s.machineCode)).size
+            }, 'AppContext');
+        }
+        
+        console.log('[AppProvider HYPERVISOR] Estado capturado en RuntimeInspector');
+    }, [state]); // Se ejecuta cada vez que cambia el estado completo
+    
+    // HYPERVISOR: Sincronizar automáticamente TODO al DataStore
+    useEffect(() => {
+        const syncAllData = async () => {
+            try {
+                // Sincronizar datos principales solo si existen
+                if (state.salesData.length > 0) {
+                    await syncDataToStore('salesData', state.salesData, 'AppContext-AutoSync', {
+                        count: state.salesData.length,
+                        autoSync: true
+                    });
+                }
+                
+                if (state.constraints.productionLines.length > 0) {
+                    await syncDataToStore('constraints', state.constraints, 'AppContext-AutoSync', {
+                        productionLines: state.constraints.productionLines.length,
+                        autoSync: true
+                    });
+                }
+                
+                if (state.productionPlan.monthlyPlan.length > 0 || state.productionPlan.weeklyPlan.length > 0 || state.productionPlan.dailyPlan.length > 0) {
+                    await syncDataToStore('productionPlan', state.productionPlan, 'AppContext-AutoSync', {
+                        autoSync: true
+                    });
+                }
+                
+                if (state.employees.length > 0) {
+                    await syncDataToStore('employees', state.employees, 'AppContext-AutoSync', {
+                        count: state.employees.length,
+                        autoSync: true
+                    });
+                }
+                
+                if (state.employeeSkills.length > 0) {
+                    await syncDataToStore('employeeSkills', state.employeeSkills, 'AppContext-AutoSync', {
+                        count: state.employeeSkills.length,
+                        autoSync: true
+                    });
+                }
+                
+                if (state.maintenanceEvents.length > 0) {
+                    await syncDataToStore('maintenanceEvents', state.maintenanceEvents, 'AppContext-AutoSync', {
+                        count: state.maintenanceEvents.length,
+                        autoSync: true
+                    });
+                }
+                
+                if (state.absenteeismEvents.length > 0) {
+                    await syncDataToStore('absenteeismEvents', state.absenteeismEvents, 'AppContext-AutoSync', {
+                        count: state.absenteeismEvents.length,
+                        autoSync: true
+                    });
+                }
+                
+                if (state.workShifts.length > 0) {
+                    await syncDataToStore('workShifts', state.workShifts, 'AppContext-AutoSync', {
+                        count: state.workShifts.length,
+                        autoSync: true
+                    });
+                }
+                
+                console.log('[AppProvider HYPERVISOR] Todos los datos sincronizados con DataStore');
+            } catch (error) {
+                console.error('[AppProvider HYPERVISOR] Error en auto-sincronización:', error);
+            }
+        };
+        
+        // Debounce: solo sincronizar después de 500ms de inactividad
+        const timeoutId = setTimeout(syncAllData, 500);
+        return () => clearTimeout(timeoutId);
+    }, [state.salesData, state.constraints, state.productionPlan, state.employees, state.employeeSkills, state.maintenanceEvents, state.absenteeismEvents, state.workShifts]);
 
     const addNotification = useCallback((type: NotificationMessage['type'], text: string, errors: string[] = []) => {
         let description: React.ReactNode = text;
@@ -179,9 +321,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
     }, [toast]);
 
-    const handleDataImported = useCallback((data: SalesDataRow[]) => {
+    const handleDataImported = useCallback(async (data: SalesDataRow[]) => {
         console.log(`[AppProvider] handleDataImported llamado con ${data.length} registros.`);
         dispatch({ type: 'SET_SALES_DATA', payload: data });
+        
+        // Sincronizar con DataStore del servidor
+        if (data.length > 0) {
+            try {
+                await syncDataToStore('salesData', data, 'AppProvider', {
+                    count: data.length,
+                    timestamp: new Date().toISOString()
+                });
+                console.log(`[AppProvider] salesData sincronizado con DataStore: ${data.length} registros`);
+            } catch (error) {
+                console.error('[AppProvider] Error sincronizando salesData con DataStore:', error);
+            }
+        }
+        
         if (data.length > 0) {
             addNotification('success', `Éxito: Se han cargado ${data.length} registros de ventas. Ahora puede proceder a la planificación.`);
         } else {
@@ -223,6 +379,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             
             dispatch({ type: 'SET_CONSTRAINTS', payload: newConstraints });
+            
+            // Sincronizar constraints con DataStore del servidor
+            try {
+                await syncDataToStore('constraints', newConstraints, 'AppProvider', {
+                    assemblyDataCount: assemblyData.length,
+                    timestamp: new Date().toISOString()
+                });
+                console.log('[AppProvider] constraints sincronizado con DataStore');
+            } catch (error) {
+                console.error('[AppProvider] Error sincronizando constraints con DataStore:', error);
+            }
+            
             dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: true, lastSyncTimestamp: new Date().toISOString(), errors: [] }});
             addNotification('success', `Sincronización exitosa. Se descubrieron y validaron ${assemblyData.length} registros.`);
             return true;
@@ -275,6 +443,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: planResult });
+            
+            // Sincronizar productionPlan con DataStore del servidor
+            try {
+                await syncDataToStore('productionPlan', planResult, 'AppProvider', {
+                    monthlyCount: planResult.monthlyPlan.length,
+                    weeklyCount: planResult.weeklyPlan.length,
+                    dailyCount: planResult.dailyPlan.length,
+                    timestamp: new Date().toISOString()
+                });
+                console.log('[AppProvider] productionPlan sincronizado con DataStore');
+            } catch (error) {
+                console.error('[AppProvider] Error sincronizando productionPlan con DataStore:', error);
+            }
+            
             addNotification('success', 'Proceso de planificación completado. Revise los resultados.');
             return true;
 
@@ -306,12 +488,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [addNotification]);
 
-    const setEmployees = (employees: Employee[]) => dispatch({ type: 'SET_EMPLOYEES', payload: employees });
-    const setSkills = (skills: EmployeeSkill[]) => dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: skills });
-    const setAbsenteeismEvents = (events: AbsenteeismEvent[]) => dispatch({ type: 'SET_ABSENTEEISM_EVENTS', payload: events });
-    const setMaintenanceEvents = (events: MaintenanceEvent[]) => dispatch({ type: 'SET_MAINTENANCE_EVENTS', payload: events });
-    const setWorkShifts = (shifts: WorkShift[]) => dispatch({ type: 'SET_WORK_SHIFTS', payload: shifts });
-    const setConstraints = (constraints: AppConstraints) => dispatch({ type: 'SET_CONSTRAINTS', payload: constraints });
+    const setEmployees = async (employees: Employee[]) => {
+        dispatch({ type: 'SET_EMPLOYEES', payload: employees });
+        try {
+            await syncDataToStore('employees', employees, 'AppProvider', { count: employees.length });
+            console.log('[AppProvider] employees sincronizado con DataStore');
+        } catch (error) {
+            console.error('[AppProvider] Error sincronizando employees:', error);
+        }
+    };
+    
+    const setSkills = async (skills: EmployeeSkill[]) => {
+        dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: skills });
+        try {
+            await syncDataToStore('employeeSkills', skills, 'AppProvider', { count: skills.length });
+            console.log('[AppProvider] employeeSkills sincronizado con DataStore');
+        } catch (error) {
+            console.error('[AppProvider] Error sincronizando employeeSkills:', error);
+        }
+    };
+    
+    const setAbsenteeismEvents = async (events: AbsenteeismEvent[]) => {
+        dispatch({ type: 'SET_ABSENTEEISM_EVENTS', payload: events });
+        try {
+            await syncDataToStore('absenteeismEvents', events, 'AppProvider', { count: events.length });
+            console.log('[AppProvider] absenteeismEvents sincronizado con DataStore');
+        } catch (error) {
+            console.error('[AppProvider] Error sincronizando absenteeismEvents:', error);
+        }
+    };
+    
+    const setMaintenanceEvents = async (events: MaintenanceEvent[]) => {
+        dispatch({ type: 'SET_MAINTENANCE_EVENTS', payload: events });
+        try {
+            await syncDataToStore('maintenanceEvents', events, 'AppProvider', { count: events.length });
+            console.log('[AppProvider] maintenanceEvents sincronizado con DataStore');
+        } catch (error) {
+            console.error('[AppProvider] Error sincronizando maintenanceEvents:', error);
+        }
+    };
+    
+    const setWorkShifts = async (shifts: WorkShift[]) => {
+        dispatch({ type: 'SET_WORK_SHIFTS', payload: shifts });
+        try {
+            await syncDataToStore('workShifts', shifts, 'AppProvider', { count: shifts.length });
+            console.log('[AppProvider] workShifts sincronizado con DataStore');
+        } catch (error) {
+            console.error('[AppProvider] Error sincronizando workShifts:', error);
+        }
+    };
+    
+    const setConstraints = async (constraints: AppConstraints) => {
+        dispatch({ type: 'SET_CONSTRAINTS', payload: constraints });
+        try {
+            await syncDataToStore('constraints', constraints, 'AppProvider', { source: 'manual' });
+            console.log('[AppProvider] constraints sincronizado con DataStore');
+        } catch (error) {
+            console.error('[AppProvider] Error sincronizando constraints:', error);
+        }
+    };
     
     const value = {
         ...state,

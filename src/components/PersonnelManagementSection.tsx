@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { logger } from '@/services/LogService';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { Employee, EmployeeSkill, NotificationMessage, Machine, AppConstraints, Qualification, WorkCenter } from '@/types/types';
 import { PersonnelIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -156,16 +157,29 @@ export const PersonnelManagementSection: React.FC<PersonnelManagementSectionProp
     setSkills,
     constraints,
   }) => {
+    const inspector = useRuntimeInspector('PersonnelManagement');
+    
     useEffect(() => {
       logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[PersonnelManagementSection] Montado.`);
     }, []);
     useEffect(() => {
       logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[PersonnelManagementSection] Cambio en employees: ${JSON.stringify(employees)}`);
+      inspector.captureVariable('employees', employees, { count: employees.length });
     }, [employees]);
     useEffect(() => {
       logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[PersonnelManagementSection] Cambio en skills: ${JSON.stringify(skills)}`);
+      inspector.captureVariable('employeeSkills', skills, { count: skills.length });
     }, [skills]);
   const { addNotification } = useAppContext();
+  
+  // Capturar estado
+  useEffect(() => {
+    inspector.captureState({
+      employeesCount: employees.length,
+      skillsCount: skills.length,
+      availableMachinesCount: MACHINE_CATALOG.length
+    });
+  }, [employees, skills]);
   
   const [employeeForm, setEmployeeForm] = useState<Omit<Employee, 'id' | 'isActive'>>({ name: '', employeeCode: '' });
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);

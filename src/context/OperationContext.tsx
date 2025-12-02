@@ -20,13 +20,14 @@ interface OperationContextType {
 const OperationContext = createContext<OperationContextType | undefined>(undefined);
 
 export function OperationProvider({ children }: { children: React.ReactNode }) {
-  const [operations, setOperations] = useState<Operation[]>([]);
+  const [, setTrigger] = useState(0);
 
   useEffect(() => {
     const unsubscribe = operationTracker.subscribe((operation) => {
-      setOperations((prevOps) => [...prevOps, operation]);
+      // Solo disparar re-render sin mantener estado duplicado
+      setTrigger(prev => prev + 1);
       
-      // También registrar en logs para que el agente pueda verlas
+      // Registrar en logs
       const statusEmoji = {
         'started': '▶️',
         'in_progress': '⏳',
@@ -44,12 +45,14 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Obtener datos directamente de operationTracker (single source of truth)
+  const operations = operationTracker.getLatestOperations(50);
   const activeOperations = operationTracker.getActiveOperations();
   const summary = operationTracker.getSummary();
 
   const clearOperations = () => {
     operationTracker.clearOperations();
-    setOperations([]);
+    setTrigger(prev => prev + 1);
   };
 
   return (

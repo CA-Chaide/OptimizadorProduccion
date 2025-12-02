@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { logger } from '@/services/LogService';
 import { operationTracker } from '@/services/OperationTracker';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
     PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem 
@@ -146,10 +147,13 @@ DailyPlanRow.displayName = 'DailyPlanRow';
 
 
 export const ProductionPlanSection: React.FC = () => {
+      const inspector = useRuntimeInspector('ProductionPlan');
+      
       // Ejemplo: log de cambios en filtros y generación de plan
       const [localFilter, setLocalFilter] = useState<string>("");
       useEffect(() => {
         logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Cambio en localFilter: ${localFilter}`);
+        inspector.captureVariable('localFilter', localFilter);
       }, [localFilter]);
 
       // Instrumentar handler de generación de plan
@@ -171,6 +175,18 @@ export const ProductionPlanSection: React.FC = () => {
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
+  
+  useEffect(() => {
+    inspector.captureState({
+      isDataSynced,
+      isLoading,
+      hasPlan: !!(productionPlan.monthlyPlan.length || productionPlan.weeklyPlan.length || productionPlan.dailyPlan.length),
+      monthlyPlanCount: productionPlan.monthlyPlan.length,
+      weeklyPlanCount: productionPlan.weeklyPlan.length,
+      dailyPlanCount: productionPlan.dailyPlan.length,
+      salesDataCount: salesData.length
+    });
+  }, [isDataSynced, isLoading, productionPlan, salesData]);
 
   const [activeTab, setActiveTab] = useState<'monthly' | 'weekly' | 'daily'>('monthly');
   
