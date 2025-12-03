@@ -248,13 +248,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 currentMonth -= 12;
                 currentYear += 1;
             }
-
+            
             for (const centro of centrosToLoad) {
                 const queryFilters: { [key: string]: any } = { 'Año': currentYear, 'Mes': currentMonth, 'Centro': centro };
                 if (filters.etiqueta) {
                     queryFilters['Etiqueta'] = filters.etiqueta;
                 }
                 
+                logger.log(`Cargando datos para ${MONTH_NAMES[currentMonth-1]} ${currentYear} - Centro: ${centro}`, 'info');
+
                 const promise = queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
@@ -584,4 +586,5 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   );
 };
 
+    
     
