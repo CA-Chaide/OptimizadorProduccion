@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useMemo, ChangeEvent, useEffect, useRef } from 'react';
 import { logger } from '@/services/LogService';
 import { operationTracker } from '@/services/OperationTracker';
@@ -440,7 +441,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                     <h3 className="text-lg font-semibold text-gray-800">Parámetros de Turnos de Trabajo</h3>
                      <p className="text-sm text-gray-600">Define las horas base para cada tipo de día. Estos valores serán usados por el planificador de producción.</p>
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <InputField label="Horas Jornada Normal (L-V)" id="regularHours" type="number" placeholder="8" value={shiftParamsDisplay.regularHoursPerDay} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, regularHoursPerDay: e.target.value})} />
+                        <InputField label="Horas Jornada Normal (L-V)" id="regularHours" type="number" placeholder="9" value={shiftParamsDisplay.regularHoursPerDay} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, regularHoursPerDay: e.target.value})} />
                         <InputField label="Horas Extra Máximas (L-V)" id="extraHours" type="number" placeholder="2" value={shiftParamsDisplay.extraHoursPerDay} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, extraHoursPerDay: e.target.value})} />
                         <InputField label="Horas en Sábado/Feriado" id="holidayHours" type="number" placeholder="5" value={shiftParamsDisplay.saturdayAndHolidayHours} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, saturdayAndHolidayHours: e.target.value})} />
                      </div>
