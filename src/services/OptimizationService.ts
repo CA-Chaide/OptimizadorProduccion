@@ -673,7 +673,7 @@ function getMonthlyCapacity(
     auditLog: string[],
     startDay: number = 1
 ): { totalHours: number } {
-    const EFFICIENCY_FACTOR = 0.85;
+    const EFFICIENCY_FACTOR = 1.0;
     let grossTotalHours = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
     
@@ -792,6 +792,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
