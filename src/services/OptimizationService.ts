@@ -397,32 +397,32 @@ export const generateProductionPlan = async (
                     const invKey = key;
                     const currentStock = inventoryState.get(invKey) || 0;
                     const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
-                    let netNeed = Math.max(0, (need.demandVentas + safetyStock) - currentStock);
+                    let needForProd = Math.max(0, (need.demandVentas + safetyStock) - currentStock);
             
                     const linesInGye = productionLines.filter(l => l.workCenterId === '2000' && l.materialsHandled.includes(productId));
                     
-                    if (linesInGye.length > 0 && netNeed > 0) {
+                    if (linesInGye.length > 0 && needForProd > 0) {
                         for (const line of linesInGye) {
-                            if (netNeed <= 0) break;
+                            if (needForProd <= 0) break;
                             const timePerUnit = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
                             const availableHours = monthlyCapacityByLine.get(line.id) || 0;
 
                             if (timePerUnit !== Infinity && timePerUnit > 0) {
                                 const capacityInUnits = Math.floor(availableHours / timePerUnit);
-                                const actualProduction = Math.min(netNeed, capacityInUnits);
+                                const actualProduction = Math.min(needForProd, capacityInUnits);
 
                                 if (actualProduction > 0) {
                                     const hoursForProduction = actualProduction * timePerUnit;
                                     getMovements(invKey).production += actualProduction;
                                     monthlyCapacityByLine.set(line.id, availableHours - hoursForProduction);
-                                    netNeed -= actualProduction;
+                                    needForProd -= actualProduction;
                                 }
                             }
                         }
                     }
-                    if (netNeed > 0) {
-                        gyeXDeficits.set(productId, (gyeXDeficits.get(productId) || 0) + netNeed);
-                        auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000). Solicitando ${netNeed.toFixed(0)} unidades a UIO (1000).`);
+                    if (needForProd > 0) {
+                        gyeXDeficits.set(productId, (gyeXDeficits.get(productId) || 0) + needForProd);
+                        auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000). Solicitando ${needForProd.toFixed(0)} unidades a UIO (1000).`);
                     }
                 }
             }
@@ -454,20 +454,20 @@ export const generateProductionPlan = async (
              const currentStock = inventoryState.get(invKey) || 0;
              const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
              const totalDemand = needs.demandVentas + needs.demandTrasladosF + needs.demandTrasladosX;
-             const netNeed = Math.max(0, (totalDemand + safetyStock) - currentStock);
-             auditLog.push(`[${new Date().toLocaleTimeString()}]     - Need for ${prodCenterKey}: TotalDemand=${totalDemand.toFixed(2)}, Safety=${safetyStock}, Stock=${currentStock.toFixed(2)} -> NetNeed=${netNeed.toFixed(2)}`);
-             return { prodCenterKey, productId, centerId, needs, netNeed, urgency: (currentStock - totalDemand) / (totalDemand || 1) };
+             const netNeedForProduction = Math.max(0, (totalDemand + safetyStock) - currentStock);
+             auditLog.push(`[${new Date().toLocaleTimeString()}]     - Need for ${prodCenterKey}: TotalDemand=${totalDemand.toFixed(2)}, Safety=${safetyStock}, Stock=${currentStock.toFixed(2)} -> NetNeedForProd=${netNeedForProduction.toFixed(2)}`);
+             return { prodCenterKey, productId, centerId, needs, netNeedForProduction, urgency: (currentStock - totalDemand) / (totalDemand || 1) };
         }).sort((a,b) => a.urgency - b.urgency);
         
-        for (const { prodCenterKey, productId, centerId, needs, netNeed } of allNeeds) {
-            let remainingNeed = netNeed;
+        for (const { prodCenterKey, productId, centerId, needs, netNeedForProduction } of allNeeds) {
+            let remainingNeed = netNeedForProduction;
             const invKey = `${productId}---${centerId}`;
 
             const findLineForProduct = (pId: string, cId: string): ProductionLine | undefined => {
                 return productionLines.find(l => l.workCenterId === cId && l.materialsHandled.includes(pId));
             };
 
-            const assignToLine = (line: ProductionLine, amountToProduce: number) => {
+            const assignToLine = (line: ProductionLine, amountToProduce: number): number => {
                 if (amountToProduce <= 0) return 0;
 
                 let availableHours = monthlyCapacityByLine.get(line.id) || 0;
@@ -503,25 +503,40 @@ export const generateProductionPlan = async (
                     remainingNeed = assignToLine(overflowLine, remainingNeed);
                 }
             }
+            
+            // ** START: CORE LOGIC CHANGE FOR BACKLOG **
+            const totalDemandForProduct = needs.demandVentas + needs.demandTrasladosF + needs.demandTrasladosX;
+            const physicalBalance = (inventoryState.get(invKey) || 0) + getMovements(invKey).production - totalDemandForProduct;
+            
+            if (physicalBalance < 0) {
+                auditLog.push(`[${new Date().toLocaleTimeString()}]     [BACKLOG] Insuficiente capacidad física para ${productId}. Faltantes: ${Math.abs(physicalBalance).toFixed(0)}.`);
 
-            if (remainingNeed > 0) {
-                auditLog.push(`[${new Date().toLocaleTimeString()}]     [BACKLOG] Insuficiente capacidad para ${productId}. Faltantes: ${remainingNeed.toFixed(0)}.`);
-                const currentStock = inventoryState.get(invKey) || 0;
-                const produced = getMovements(invKey).production;
+                let unmetDemand = Math.abs(physicalBalance);
+                const backlog = { backlogVentas: 0, backlogTrasladosF: 0, backlogTrasladosX: 0 };
                 
-                let coveredDemand = currentStock + produced;
-                
-                const backlogVentas = Math.max(0, needs.demandVentas - coveredDemand);
-                coveredDemand = Math.max(0, coveredDemand - needs.demandVentas);
+                // Prioritize covering sales demand first
+                const salesBacklog = Math.min(unmetDemand, needs.demandVentas);
+                if (salesBacklog > 0) {
+                    backlog.backlogVentas = salesBacklog;
+                    unmetDemand -= salesBacklog;
+                }
 
-                const backlogTrasladosF = Math.max(0, needs.demandTrasladosF - coveredDemand);
-                coveredDemand = Math.max(0, coveredDemand - needs.demandTrasladosF);
-                
-                const backlogTrasladosX = Math.max(0, needs.demandTrasladosX - coveredDemand);
+                // Then F transfers
+                const fTransfersBacklog = Math.min(unmetDemand, needs.demandTrasladosF);
+                 if (fTransfersBacklog > 0) {
+                    backlog.backlogTrasladosF = fTransfersBacklog;
+                    unmetDemand -= fTransfersBacklog;
+                }
 
-                const newBacklog = { backlogVentas, backlogTrasladosF, backlogTrasladosX };
-                productionBacklog.set(prodCenterKey, newBacklog);
+                // Then X transfers
+                const xTransfersBacklog = Math.min(unmetDemand, needs.demandTrasladosX);
+                if (xTransfersBacklog > 0) {
+                    backlog.backlogTrasladosX = xTransfersBacklog;
+                }
+                
+                productionBacklog.set(prodCenterKey, backlog);
             }
+            // ** END: CORE LOGIC CHANGE FOR BACKLOG **
         }
         
         const allProductCenterPairsThisMonth = new Set<string>(Array.from(inventoryState.keys()));
@@ -531,11 +546,10 @@ export const generateProductionPlan = async (
             const [productId, centerId] = pairKey.split('---');
             const initialStock = inventoryState.get(pairKey) || 0;
             const movements = getMovements(pairKey);
-            const needs = getNeeds(pairKey);
             const backlogs = productionBacklog.get(pairKey) || { backlogVentas: 0, backlogTrasladosF: 0, backlogTrasladosX: 0 };
             
-            const realBalance = initialStock + movements.production + movements.transfersIn - movements.transfersOut - movements.sales;
-            const finalStock = Math.max(0, realBalance);
+            const physicalBalance = initialStock + movements.production + movements.transfersIn - movements.transfersOut - movements.sales;
+            const finalStock = Math.max(0, physicalBalance);
 
             inventoryState.set(pairKey, finalStock); 
 
