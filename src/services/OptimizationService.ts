@@ -401,7 +401,6 @@ export const generateProductionPlan = async (
                 const linesInGye = productionLines.filter(l => l.workCenterId === '2000' && l.materialsHandled.includes(productId));
                 
                 if (linesInGye.length > 0 && netNeed > 0) {
-                    // Try to produce in GYE first
                     for (const line of linesInGye) {
                         if (netNeed <= 0) break;
                         const timePerUnit = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
@@ -421,15 +420,9 @@ export const generateProductionPlan = async (
                     }
                 }
                 if (netNeed > 0) {
-                    const quitoStock = inventoryState.get(`${productId}---1000`) || 0;
-                    if (quitoStock > 1) { // Quito helps only if it has more than 1 unit
-                        const helpAmount = Math.min(netNeed, quitoStock - 1);
-                        gyeXDeficits.set(productId, (gyeXDeficits.get(productId) || 0) + helpAmount);
-                        auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000). Solicitando ${helpAmount.toFixed(0)} unidades a UIO (1000).`);
-                    } else {
-                         productionBacklog.set(key, (productionBacklog.get(key) || 0) + netNeed);
-                         auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000): ${netNeed.toFixed(0)} unidades. Quito no puede ayudar. Enviado a Backlog.`);
-                    }
+                    // This is the deficit that GYE cannot cover. Request it from UIO.
+                    gyeXDeficits.set(productId, (gyeXDeficits.get(productId) || 0) + netNeed);
+                    auditLog.push(`[${new Date().toLocaleTimeString()}]   - Mes ${monthNum}: Déficit de capacidad para material 'X' ${productId} en GYE (2000). Solicitando ${netNeed.toFixed(0)} unidades a UIO (1000).`);
                 }
             }
         });
@@ -440,6 +433,7 @@ export const generateProductionPlan = async (
             quitoNeeds.demand += deficit;
             productionNeedsThisMonth.set(quitoKey, quitoNeeds);
 
+            // Register the transfer movement
             getMovements(`${productId}---1000`).transfersOut += deficit;
             getMovements(`${productId}---2000`).transfersIn += deficit;
         });
@@ -792,6 +786,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
 
 
     
+
 
 
 
