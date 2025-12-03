@@ -1,25 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -280,7 +259,9 @@ export interface MonthlyProductionPlanItem {
     netTransfers: number;
     initialStock: number;
     finalStock: number;
-    unmetDemand: number;
+    backlogVentas: number;
+    backlogTrasladosF: number;
+    backlogTrasladosX: number;
     totalHoursWorked: number;
     totalEstimatedLaborCost: number;
     assignedLineId?: string;

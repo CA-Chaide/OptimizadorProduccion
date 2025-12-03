@@ -6,7 +6,7 @@ import { operationTracker } from '@/services/OperationTracker';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
-    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem 
+    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem, MonthlyProductionPlanItem 
 } from '@/types/types';
 import { PlanIcon, DataImportIcon, MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel } from '@/services/OptimizationService';
@@ -386,7 +386,8 @@ export const ProductionPlanSection: React.FC = () => {
     const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
     if (!monthlyPlan || monthlyPlan.length === 0) return null;
 
-    const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
+    const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number>, isBacklog?: boolean }[] }> = {};
+
     const centerIdsToDisplay = filterInputs.centers.length > 0 ? filterInputs.centers : constraints.workCenters.map(c => c.id);
     const filteredLineIds = getFilteredLineIds;
     
@@ -394,7 +395,7 @@ export const ProductionPlanSection: React.FC = () => {
 
     for(const centerId of centerIdsToDisplay) {
         const aggregatedData: Record<string, Record<string, number>> = {
-            'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Saldo Final': {}, 'Faltante (Backlog)': {}
+            'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Faltante Ventas (Backlog)': {}, 'Traslados Mat. Prod. UIO (Backlog)': {}, 'Traslados Mat. Prod. GYE (Backlog)': {}, 'Saldo Final': {}
         };
 
         for (const monthKey of monthKeys) {
@@ -409,12 +410,31 @@ export const ProductionPlanSection: React.FC = () => {
             aggregatedData['Producción'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
             aggregatedData['Ventas'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalDemand, 0);
             aggregatedData['Traslados (Neto)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.netTransfers, 0);
-            aggregatedData['Faltante (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.unmetDemand, 0);
+            aggregatedData['Faltante Ventas (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogVentas, 0);
+            aggregatedData['Traslados Mat. Prod. UIO (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosF, 0);
+            aggregatedData['Traslados Mat. Prod. GYE (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosX, 0);
             aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
         }
 
-        const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Faltante (Backlog)', 'Saldo Final'];
-        const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
+        let rowOrder = [
+            { label: 'Saldo Inicial', isBacklog: false }, 
+            { label: 'Producción', isBacklog: false }, 
+            { label: 'Traslados (Neto)', isBacklog: false }, 
+            { label: 'Ventas', isBacklog: false },
+        ];
+        
+        if (centerId === '1000') {
+            rowOrder.push({ label: 'Faltante Ventas (Backlog)', isBacklog: true });
+            rowOrder.push({ label: 'Traslados Mat. Prod. UIO (Backlog)', isBacklog: true });
+            rowOrder.push({ label: 'Traslados Mat. Prod. GYE (Backlog)', isBacklog: true });
+        } else {
+            rowOrder.push({ label: 'Faltante (Backlog)', isBacklog: true });
+            aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)']; // Para otros centros, es solo un tipo.
+        }
+
+        rowOrder.push({ label: 'Saldo Final', isBacklog: false });
+
+        const rows = rowOrder.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label], isBacklog }));
         result[centerId] = { monthKeys, rows };
     }
     
@@ -605,7 +625,7 @@ export const ProductionPlanSection: React.FC = () => {
   );
 
   const renderSummaryView = (
-      flowByCenter: Record<string, { dayKeys?: string[], monthKeys?: string[], weekKeys?: string[], rows: { label: string, values: Record<string, number> }[] }> | null,
+      flowByCenter: Record<string, { dayKeys?: string[], monthKeys?: string[], weekKeys?: string[], rows: { label: string, values: Record<string, number>, isBacklog?: boolean }[] }> | null,
       type: 'daily' | 'monthly' | 'weekly'
   ) => {
     if (filterInputs.centers.length === 0) {
@@ -656,10 +676,10 @@ export const ProductionPlanSection: React.FC = () => {
                             <tbody className="divide-y divide-gray-200">
                               {flow.rows.map((row: any) => (
                                 <tr key={row.label} className="hover:bg-gray-50 group">
-                                  <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''} ${row.label === 'Faltante (Backlog)' ? 'text-red-700' : ''}`}>{row.label}</td>
+                                  <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''} ${row.isBacklog ? 'text-red-700' : ''}`}>{row.label}</td>
                                   {keys.map((key: string) => (
-                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-orange-600' : (row.label === 'Traslados (Neto)' && (row.values[key] || 0) > 0 ? 'text-blue-600' : (row.label === 'Faltante (Backlog)' && (row.values[key] || 0) > 0 ? 'text-red-700 font-bold' : 'text-gray-700'))}`}>
-                                       {(isNaN(row.values[key])) ? 'N/A' : (row.label === 'Faltante (Backlog)' && (row.values[key] || 0) > 0 ? '' : '') + Math.round(row.values[key] || 0).toLocaleString()}
+                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.isBacklog && (row.values[key] || 0) > 0 ? 'text-red-700 font-bold' : 'text-gray-700'} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-orange-600' : (row.label === 'Traslados (Neto)' && (row.values[key] || 0) > 0 ? 'text-blue-600' : '')}`}>
+                                       {(isNaN(row.values[key])) ? 'N/A' : Math.round(row.values[key] || 0).toLocaleString()}
                                     </td>
                                   ))}
                                 </tr>
