@@ -1,3 +1,4 @@
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -170,13 +171,15 @@ export function processAndValidateAssemblyData(
 function getPredefinedQuantities(centerId: string, lineName: string): Array<{ definitionId: string; quantity: number }> {
     const quantities: { [key: string]: { [key: string]: { [key: string]: number } } } = {
         '1000': { // Quito
-            'LINEA 1': { 'Armado': 12, 'Cerrado': 6 },
-            'LINEA 2': { 'Armado': 6, 'Cerrado': 4 },
-            'LINEA 3': { 'Armado': 2, 'Cerrado': 1 }
+            'LINEA 1': { 'Armado': 12, 'Cerrado L1': 6 },
+            'LINEA 2': { 'Armado': 6, 'Pegado 1 L2': 2, 'Pegado2 L2': 2, 'Cerrado1 L2': 4, 'Cerrado2 L2': 4 },
+            'LINEA 3': { 'Armado': 2, 'Cerrado': 1 },
+            'LINEA 5': { 'Armado': 2 }
         },
         '2000': { // Guayaquil
-            'LINEA 1': { 'Armado': 8, 'Cerrado': 4 },
-            'LINEA 2': { 'Armado': 4, 'Cerrado': 4 }
+            'LINEA 1': { 'Armado': 8, 'Cerrado L1': 6 },
+            'LINEA 2': { 'Armado': 4, 'Pegado1 L2': 2, 'Cerrado1 L2': 2, 'Cerrado2 L2': 2 },
+            'LINEA 5': { 'Armado': 3 }
         }
     };
 
@@ -504,7 +507,6 @@ export const generateProductionPlan = async (
                 }
             }
             
-            // ** START: CORE LOGIC CHANGE FOR BACKLOG **
             const totalDemandForProduct = needs.demandVentas + needs.demandTrasladosF + needs.demandTrasladosX;
             const physicalBalance = (inventoryState.get(invKey) || 0) + getMovements(invKey).production - totalDemandForProduct;
             
@@ -514,21 +516,18 @@ export const generateProductionPlan = async (
                 let unmetDemand = Math.abs(physicalBalance);
                 const backlog = { backlogVentas: 0, backlogTrasladosF: 0, backlogTrasladosX: 0 };
                 
-                // Prioritize covering sales demand first
                 const salesBacklog = Math.min(unmetDemand, needs.demandVentas);
                 if (salesBacklog > 0) {
                     backlog.backlogVentas = salesBacklog;
                     unmetDemand -= salesBacklog;
                 }
 
-                // Then F transfers
                 const fTransfersBacklog = Math.min(unmetDemand, needs.demandTrasladosF);
                  if (fTransfersBacklog > 0) {
                     backlog.backlogTrasladosF = fTransfersBacklog;
                     unmetDemand -= fTransfersBacklog;
                 }
 
-                // Then X transfers
                 const xTransfersBacklog = Math.min(unmetDemand, needs.demandTrasladosX);
                 if (xTransfersBacklog > 0) {
                     backlog.backlogTrasladosX = xTransfersBacklog;
@@ -536,7 +535,6 @@ export const generateProductionPlan = async (
                 
                 productionBacklog.set(prodCenterKey, backlog);
             }
-            // ** END: CORE LOGIC CHANGE FOR BACKLOG **
         }
         
         const allProductCenterPairsThisMonth = new Set<string>(Array.from(inventoryState.keys()));
