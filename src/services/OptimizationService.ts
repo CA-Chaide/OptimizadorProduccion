@@ -507,8 +507,7 @@ export const generateProductionPlan = async (
                 }
             }
             
-            const totalDemandForProduct = needs.demandVentas + needs.demandTrasladosF + needs.demandTrasladosX;
-            const physicalBalance = (inventoryState.get(invKey) || 0) + getMovements(invKey).production - totalDemandForProduct;
+            const physicalBalance = (inventoryState.get(invKey) || 0) + getMovements(invKey).production - (needs.demandVentas + needs.demandTrasladosF + needs.demandTrasladosX);
             
             if (physicalBalance < 0) {
                 auditLog.push(`[${new Date().toLocaleTimeString()}]     [BACKLOG] Insuficiente capacidad física para ${productId}. Faltantes: ${Math.abs(physicalBalance).toFixed(0)}.`);
