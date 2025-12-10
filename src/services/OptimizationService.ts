@@ -1,4 +1,5 @@
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -507,32 +508,34 @@ export const generateProductionPlan = async (
                 }
             }
             
-            const physicalBalance = (inventoryState.get(invKey) || 0) + getMovements(invKey).production - (needs.demandVentas + needs.demandTrasladosF + needs.demandTrasladosX);
+            // --- CÁLCULO DE BACKLOG POR SEPARADO ---
+            const currentStock = inventoryState.get(invKey) || 0;
+            const actualProduction = getMovements(invKey).production;
+            const backlogs = { backlogVentas: 0, backlogTrasladosF: 0, backlogTrasladosX: 0 };
             
+            // 1. Balance contra ventas
+            let physicalBalance = currentStock + actualProduction - needs.demandVentas;
             if (physicalBalance < 0) {
-                auditLog.push(`[${new Date().toLocaleTimeString()}]     [BACKLOG] Insuficiente capacidad física para ${productId}. Faltantes: ${Math.abs(physicalBalance).toFixed(0)}.`);
+                backlogs.backlogVentas = Math.abs(physicalBalance);
+                physicalBalance = 0; // El inventario se agota
+            }
 
-                let unmetDemand = Math.abs(physicalBalance);
-                const backlog = { backlogVentas: 0, backlogTrasladosF: 0, backlogTrasladosX: 0 };
-                
-                const salesBacklog = Math.min(unmetDemand, needs.demandVentas);
-                if (salesBacklog > 0) {
-                    backlog.backlogVentas = salesBacklog;
-                    unmetDemand -= salesBacklog;
-                }
+            // 2. Balance contra traslados 'F'
+            physicalBalance -= needs.demandTrasladosF;
+            if (physicalBalance < 0) {
+                backlogs.backlogTrasladosF = Math.abs(physicalBalance);
+                physicalBalance = 0;
+            }
 
-                const fTransfersBacklog = Math.min(unmetDemand, needs.demandTrasladosF);
-                 if (fTransfersBacklog > 0) {
-                    backlog.backlogTrasladosF = fTransfersBacklog;
-                    unmetDemand -= fTransfersBacklog;
-                }
-
-                const xTransfersBacklog = Math.min(unmetDemand, needs.demandTrasladosX);
-                if (xTransfersBacklog > 0) {
-                    backlog.backlogTrasladosX = xTransfersBacklog;
-                }
-                
-                productionBacklog.set(prodCenterKey, backlog);
+            // 3. Balance contra traslados 'X'
+            physicalBalance -= needs.demandTrasladosX;
+            if (physicalBalance < 0) {
+                backlogs.backlogTrasladosX = Math.abs(physicalBalance);
+            }
+            
+            if (backlogs.backlogVentas > 0 || backlogs.backlogTrasladosF > 0 || backlogs.backlogTrasladosX > 0) {
+                productionBacklog.set(prodCenterKey, backlogs);
+                auditLog.push(`[${new Date().toLocaleTimeString()}]     [BACKLOG DETECTADO] para ${productId}: Ventas=${backlogs.backlogVentas.toFixed(0)}, Traslados F=${backlogs.backlogTrasladosF.toFixed(0)}, Traslados X=${backlogs.backlogTrasladosX.toFixed(0)}`);
             }
         }
         
@@ -697,4 +700,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
