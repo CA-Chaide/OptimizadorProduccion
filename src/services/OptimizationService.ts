@@ -172,7 +172,7 @@ function getPredefinedQuantities(centerId: string, lineName: string): Array<{ de
     const quantities: { [key: string]: { [key: string]: { [key: string]: number } } } = {
         '1000': { // Quito
             'LINEA 1': { 'Armado': 12, 'Cerrado L1': 6 },
-            'LINEA 2': { 'Armado': 6, 'Pegado 1 L2': 2, 'Pegado2 L2': 2, 'Cerrado1 L2': 4, 'Cerrado2 L2': 4 },
+            'LINEA 2': { 'Armado': 6, 'Pegado1 L2': 2, 'Pegado2 L2': 2, 'Cerrado1 L2': 4, 'Cerrado2 L2': 4 },
             'LINEA 3': { 'Armado': 2 },
             'LINEA 5': { 'Armado': 2 }
         },
