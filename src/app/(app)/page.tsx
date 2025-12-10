@@ -15,7 +15,6 @@ import {
   WorkShiftPlanningSection,
   RealDataSection,
   InventorySummarySection,
-  RawStructureReportSection,
 } from '@/components';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -63,8 +62,6 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <InventorySummarySection />;
             case ActiveView.CONSTRAINTS:
                 return <ConstraintConfigurationSection />;
-            case ActiveView.RAW_STRUCTURE_REPORT:
-                return <RawStructureReportSection />;
             case ActiveView.PERSONNEL:
                 return <PersonnelManagementSection employees={employees} setEmployees={setEmployees} skills={employeeSkills} setSkills={setSkills} constraints={constraints} />;
             case ActiveView.MAINTENANCE:
