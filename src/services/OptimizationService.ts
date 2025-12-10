@@ -173,7 +173,7 @@ function getPredefinedQuantities(centerId: string, lineName: string): Array<{ de
         '1000': { // Quito
             'LINEA 1': { 'Armado': 12, 'Cerrado L1': 6 },
             'LINEA 2': { 'Armado': 6, 'Pegado 1 L2': 2, 'Pegado2 L2': 2, 'Cerrado1 L2': 4, 'Cerrado2 L2': 4 },
-            'LINEA 3': { 'Armado': 2, 'Cerrado': 1 },
+            'LINEA 3': { 'Armado': 2 },
             'LINEA 5': { 'Armado': 2 }
         },
         '2000': { // Guayaquil
@@ -697,3 +697,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
