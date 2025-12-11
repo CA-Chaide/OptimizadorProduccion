@@ -172,26 +172,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
   
-  const [tableFilters, setTableFilters] = useState({
-    etiqueta: '', mes: '', código: '', centro: '', descripciónMaterial: '', claseAprovisionamiento: ''
-  });
-  
-  const [transferFilters, setTransferFilters] = useState({
-    productId: '',
-    productName: '',
-    sector: '',
-  });
-
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleTableFilterChange = (name: keyof typeof tableFilters, value: string) => {
-    setTableFilters(prev => ({ ...prev, [name]: value }));
-  };
-  
-  const handleTransferFilterChange = (name: keyof typeof transferFilters, value: string) => {
-    setTransferFilters(prev => ({ ...prev, [name]: value }));
   };
 
   useEffect(() => {
@@ -397,35 +379,53 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   };
 
-    const filteredData = useMemo(() => {
-        if (loadedData.length === 0) return [];
-        return loadedData.filter(item => {
-            return (
-                item.etiqueta.toLowerCase().includes(tableFilters.etiqueta.toLowerCase()) &&
-                MONTH_NAMES[item.mes - 1].toLowerCase().includes(tableFilters.mes.toLowerCase()) &&
-                item.código.toLowerCase().includes(tableFilters.código.toLowerCase()) &&
-                item.centro.toLowerCase().includes(tableFilters.centro.toLowerCase()) &&
-                item.descripciónMaterial.toLowerCase().includes(tableFilters.descripciónMaterial.toLowerCase()) &&
-                (item.claseAprovisionamiento || 'N/A').toLowerCase().includes(tableFilters.claseAprovisionamiento.toLowerCase())
-            );
-        });
-    }, [loadedData, tableFilters]);
+  const { tableData, monthColumns, footerTotals, grandTotal } = useMemo(() => {
+    if (loadedData.length === 0) {
+      return { tableData: [], monthColumns: [], footerTotals: {}, grandTotal: 0 };
+    }
 
-    const grandTotal = useMemo(() => {
-        return filteredData.reduce((sum, row) => sum + row.unidadesProyectado, 0);
-    }, [filteredData]);
+    const dataBySectorAndMonth: { [sector: string]: { [month: number]: number } } = {};
+    const monthSet = new Set<number>();
+
+    loadedData.forEach(row => {
+      const sector = row.sector || 'Sin Sector';
+      const month = row.mes;
+      
+      monthSet.add(month);
+
+      if (!dataBySectorAndMonth[sector]) {
+        dataBySectorAndMonth[sector] = {};
+      }
+      dataBySectorAndMonth[sector][month] = (dataBySectorAndMonth[sector][month] || 0) + row.unidadesProyectado;
+    });
+
+    const sortedMonths = Array.from(monthSet).sort((a, b) => a - b);
     
-    const filteredTransferNeeds = useMemo(() => {
-        return transferNeeds.filter(item => 
-            item.productId.toLowerCase().includes(transferFilters.productId.toLowerCase()) &&
-            item.productName.toLowerCase().includes(transferFilters.productName.toLowerCase()) &&
-            item.sector.toLowerCase().includes(transferFilters.sector.toLowerCase())
-        );
-    }, [transferNeeds, transferFilters]);
+    const tableRows = Object.entries(dataBySectorAndMonth).map(([sector, monthData]) => {
+      const totalSector = sortedMonths.reduce((sum, month) => sum + (monthData[month] || 0), 0);
+      return {
+        sector,
+        ...monthData,
+        totalSector,
+      };
+    });
+    
+    const monthTotals: { [month: number]: number } = {};
+    let totalOfTotals = 0;
 
-    const transferTotal = useMemo(() => {
-        return filteredTransferNeeds.reduce((sum, item) => sum + item.unitsToTransfer, 0);
-    }, [filteredTransferNeeds]);
+    sortedMonths.forEach(month => {
+      const monthSum = tableRows.reduce((sum, row) => sum + (row[month] || 0), 0);
+      monthTotals[month] = monthSum;
+      totalOfTotals += monthSum;
+    });
+
+    return {
+      tableData: tableRows.sort((a, b) => a.sector.localeCompare(b.sector)),
+      monthColumns: sortedMonths,
+      footerTotals: monthTotals,
+      grandTotal: totalOfTotals,
+    };
+  }, [loadedData]);
 
     const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i);
 
@@ -485,106 +485,48 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         </div>
       </div>
 
-       {loadedData.length > 0 && (
-         <div className="space-y-8">
-            <div>
-                <h3 className="text-lg font-semibold text-gray-800">Datos de Ventas Cargados y Consolidados</h3>
-                <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-2">
-                    <table className="min-w-full text-xs divide-y divide-gray-200">
-                        <thead className="bg-gray-100 sticky top-0 z-10">
-                            <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Etiqueta</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción Material</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase de Aprovisionamiento</th>
-                                <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades</th>
-                            </tr>
-                            <tr>
-                                <th className="p-1"><input type="text" value={tableFilters.etiqueta} onChange={e => handleTableFilterChange('etiqueta', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                <th className="p-1"><input type="text" value={tableFilters.mes} onChange={e => handleTableFilterChange('mes', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                <th className="p-1"><input type="text" value={tableFilters.código} onChange={e => handleTableFilterChange('código', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                <th className="p-1"><input type="text" value={tableFilters.centro} onChange={e => handleTableFilterChange('centro', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                <th className="p-1"><input type="text" value={tableFilters.descripciónMaterial} onChange={e => handleTableFilterChange('descripciónMaterial', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                <th className="p-1"><input type="text" value={tableFilters.claseAprovisionamiento} onChange={e => handleTableFilterChange('claseAprovisionamiento', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                <th className="p-1"></th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                           {filteredData.map((item) => (
-                              <tr key={item.id}>
-                                  <td className="px-3 py-2 whitespace-nowrap text-gray-800">{item.etiqueta}</td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-gray-500">{MONTH_NAMES[item.mes - 1]}</td>
-                                  <td className="px-3 py-2 whitespace-nowrap font-mono text-gray-700">{item.código}</td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-gray-500">{item.centro}</td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-gray-800">{item.descripciónMaterial}</td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-center font-semibold text-gray-700">{item.claseAprovisionamiento}</td>
-                                  <td className="px-3 py-2 text-right font-medium text-gray-900">{item.unidadesProyectado.toLocaleString()}</td>
-                              </tr>
+      {loadedData.length > 0 && (
+         <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-800">Datos de Ventas Consolidados por Sector y Mes</h3>
+            <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
+                <table className="min-w-full text-xs divide-y divide-gray-200">
+                    <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Sector</th>
+                            {monthColumns.map(month => (
+                                <th key={month} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{MONTH_NAMES[month - 1]}</th>
                             ))}
-                        </tbody>
-                         <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
-                            <tr>
-                                <th colSpan={6} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL FILTRADO</th>
-                                <th className="px-3 py-2 text-right font-bold uppercase tracking-wider">
-                                    {grandTotal.toLocaleString()}
-                                </th>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-
-            {transferNeeds.length > 0 && (
-                <div>
-                    <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                        <Truck className="w-5 h-5"/>
-                        Reporte de Necesidades de Traslado (Aprov. 'F')
-                    </h3>
-                    <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner mt-2">
-                        <table className="min-w-full text-sm divide-y divide-gray-200">
-                             <thead className="bg-gray-100 sticky top-0">
-                                <tr>
-                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código Material</th>
-                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
-                                    <th className="px-4 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Sector</th>
-                                    <th className="px-4 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Unidades a Trasladar</th>
-                                </tr>
-                                <tr>
-                                  <th className="p-1"><input type="text" placeholder="Filtrar código..." value={transferFilters.productId} onChange={e => handleTransferFilterChange('productId', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                  <th className="p-1"><input type="text" placeholder="Filtrar descripción..." value={transferFilters.productName} onChange={e => handleTransferFilterChange('productName', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                  <th className="p-1"><input type="text" placeholder="Filtrar sector..." value={transferFilters.sector} onChange={e => handleTransferFilterChange('sector', e.target.value)} className="w-full text-xs p-1 border border-gray-300 rounded" /></th>
-                                  <th className="p-1"></th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredTransferNeeds.map((item) => (
-                                    <tr key={item.productId} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2 whitespace-nowrap font-mono">{item.productId}</td>
-                                        <td className="px-4 py-2 whitespace-nowrap">{item.productName}</td>
-                                        <td className="px-4 py-2 whitespace-nowrap">{item.sector}</td>
-                                        <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-700">{item.unitsToTransfer.toLocaleString()}</td>
-                                    </tr>
+                            <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Sector</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                       {tableData.map(row => (
+                            <tr key={row.sector}>
+                                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{row.sector}</td>
+                                {monthColumns.map(month => (
+                                    <td key={`${row.sector}-${month}`} className="px-3 py-2 text-right text-gray-600">{(row[month] || 0).toLocaleString()}</td>
                                 ))}
-                            </tbody>
-                             <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
-                                <tr>
-                                    <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase tracking-wider">TOTAL FILTRADO</th>
-                                    <th className="px-3 py-2 text-right font-bold uppercase tracking-wider">
-                                        {transferTotal.toLocaleString()}
-                                    </th>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
-            )}
+                                <td className="px-3 py-2 text-right font-bold text-gray-900">{row.totalSector.toLocaleString()}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                    <tfoot className="bg-gray-200 sticky bottom-0 z-10">
+                        <tr>
+                            <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
+                             {monthColumns.map(month => (
+                                <th key={`total-${month}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
+                                    {(footerTotals[month] || 0).toLocaleString()}
+                                </th>
+                            ))}
+                             <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
+                                {grandTotal.toLocaleString()}
+                            </th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         </div>
       )}
     </div>
   );
 };
-
-    
-    
