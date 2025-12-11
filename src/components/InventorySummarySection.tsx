@@ -113,7 +113,6 @@ export const InventorySummarySection: React.FC = () => {
     const displayRows = useMemo(() => {
         if (allRows.length === 0) return [];
         
-        // Use exact names from the database, including prefixes
         const priorityOrder = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
         
         const prioritySectors: SectorRow[] = [];
@@ -127,30 +126,42 @@ export const InventorySummarySection: React.FC = () => {
             }
         });
         
-        // Sort priority sectors according to the defined order
         prioritySectors.sort((a, b) => priorityOrder.indexOf(a.sector) - priorityOrder.indexOf(b.sector));
         
-        const subtotalData: DisplayRow = {
-            type: 'subtotal',
-            sector: 'Subtotal Fabricación',
-            stockByCenter: {},
-            totalStock: 0,
+        const subtotalFabricacion: DisplayRow = {
+            type: 'subtotal', sector: 'Subtotal Fabricación', stockByCenter: {}, totalStock: 0,
         };
-
         prioritySectors.forEach(pSector => {
-            subtotalData.totalStock += pSector.totalStock;
+            subtotalFabricacion.totalStock += pSector.totalStock;
             Object.entries(pSector.stockByCenter).forEach(([center, stock]) => {
-                subtotalData.stockByCenter[center] = (subtotalData.stockByCenter[center] || 0) + stock;
+                subtotalFabricacion.stockByCenter[center] = (subtotalFabricacion.stockByCenter[center] || 0) + stock;
             });
         });
 
-        // Sort other sectors by name
         otherSectors.sort((a, b) => a.sector.localeCompare(b.sector));
         
+        const subtotalOtros: DisplayRow = {
+            type: 'subtotal', sector: 'Subtotal Otros', stockByCenter: {}, totalStock: 0,
+        };
+        otherSectors.forEach(oSector => {
+            subtotalOtros.totalStock += oSector.totalStock;
+            Object.entries(oSector.stockByCenter).forEach(([center, stock]) => {
+                subtotalOtros.stockByCenter[center] = (subtotalOtros.stockByCenter[center] || 0) + stock;
+            });
+        });
+
         const priorityDisplayRows: DisplayRow[] = prioritySectors.map(s => ({...s, type: 'data'}));
         const otherDisplayRows: DisplayRow[] = otherSectors.map(s => ({...s, type: 'data'}));
 
-        return [...priorityDisplayRows, subtotalData, ...otherDisplayRows];
+        const finalRows: DisplayRow[] = [];
+        if (priorityDisplayRows.length > 0) {
+            finalRows.push(...priorityDisplayRows, subtotalFabricacion);
+        }
+        if (otherDisplayRows.length > 0) {
+            finalRows.push(...otherDisplayRows, subtotalOtros);
+        }
+
+        return finalRows;
 
     }, [allRows]);
     
@@ -212,14 +223,14 @@ export const InventorySummarySection: React.FC = () => {
                             </tr>
                         ) : displayRows.length > 0 ? (
                             displayRows.map((row, index) => (
-                                <tr key={row.sector + index} className={`${row.type === 'subtotal' ? 'bg-gray-100 font-bold' : 'hover:bg-gray-50'}`}>
-                                    <td className={`px-4 py-2 whitespace-nowrap sticky left-0 ${row.type === 'subtotal' ? 'bg-gray-100 text-right' : 'bg-white group-hover:bg-gray-50'}`}>{row.sector}</td>
+                                <tr key={row.sector + index} className={`group ${row.type === 'subtotal' ? 'bg-blue-50 font-bold' : 'hover:bg-gray-50'}`}>
+                                    <td className={`px-4 py-2 whitespace-nowrap sticky left-0 group-hover:bg-gray-50 ${row.type === 'subtotal' ? 'bg-blue-50' : 'bg-white'}`}>{row.sector}</td>
                                     {centers.map(center => (
                                         <td key={center} className="px-4 py-2 whitespace-nowrap font-mono text-right text-gray-700">
                                             {Math.round(row.stockByCenter[center] || 0).toLocaleString()}
                                         </td>
                                     ))}
-                                    <td className="px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-800 sticky right-0 bg-white group-hover:bg-gray-50">
+                                    <td className={`px-4 py-2 whitespace-nowrap font-mono text-right font-bold text-blue-800 sticky right-0 group-hover:bg-gray-50 ${row.type === 'subtotal' ? 'bg-blue-50' : 'bg-white'}`}>
                                         {Math.round(row.totalStock).toLocaleString()}
                                     </td>
                                 </tr>
@@ -249,4 +260,5 @@ export const InventorySummarySection: React.FC = () => {
             </div>
         </div>
     );
-};
+
+    
