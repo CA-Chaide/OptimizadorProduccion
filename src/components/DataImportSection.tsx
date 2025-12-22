@@ -384,48 +384,69 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       return { tableData: [], monthColumns: [], footerTotals: {}, grandTotal: 0 };
     }
 
-    const dataBySectorAndMonth: { [sector: string]: { [month: number]: number } } = {};
+    const prioritySectors = new Set(["01 COLCHONES", "02 BASES-CABECERO-CAMA", "03 MUEBLES FABRICACIÓN"]);
+    const dataBySectorAndMonth: { [sector: string]: { [month: number]: number; isPriority: boolean } } = {};
     const monthSet = new Set<number>();
 
     loadedData.forEach(row => {
       const sector = row.sector || 'Sin Sector';
       const month = row.mes;
-      
       monthSet.add(month);
 
       if (!dataBySectorAndMonth[sector]) {
-        dataBySectorAndMonth[sector] = {};
+        dataBySectorAndMonth[sector] = { isPriority: prioritySectors.has(sector) };
       }
       dataBySectorAndMonth[sector][month] = (dataBySectorAndMonth[sector][month] || 0) + row.unidadesProyectado;
     });
 
     const sortedMonths = Array.from(monthSet).sort((a, b) => a - b);
     
-    const tableRows = Object.entries(dataBySectorAndMonth).map(([sector, monthData]) => {
+    let tableRows: (any & { type?: 'data' | 'subtotal' })[] = Object.entries(dataBySectorAndMonth).map(([sector, monthData]) => {
       const totalSector = sortedMonths.reduce((sum, month) => sum + (monthData[month] || 0), 0);
-      return {
-        sector,
-        ...monthData,
-        totalSector,
-      };
+      return { sector, ...monthData, totalSector, type: 'data' };
     });
+
+    // Separar sectores prioritarios y otros
+    const priorityRows = tableRows.filter(row => row.isPriority).sort((a,b) => a.sector.localeCompare(b.sector));
+    const otherRows = tableRows.filter(row => !row.isPriority).sort((a,b) => a.sector.localeCompare(b.sector));
+
+    // Calcular subtotal de prioritarios si existen
+    if (priorityRows.length > 0) {
+        const subtotal = {
+            sector: 'Subtotal Fabricación',
+            type: 'subtotal',
+            totalSector: 0
+        };
+        sortedMonths.forEach(month => subtotal[month] = 0);
+        
+        priorityRows.forEach(row => {
+            subtotal.totalSector += row.totalSector;
+            sortedMonths.forEach(month => {
+                subtotal[month] += (row[month] || 0);
+            });
+        });
+        priorityRows.push(subtotal);
+    }
+    
+    tableRows = [...priorityRows, ...otherRows];
     
     const monthTotals: { [month: number]: number } = {};
     let totalOfTotals = 0;
 
-    sortedMonths.forEach(month => {
-      const monthSum = tableRows.reduce((sum, row) => sum + (row[month] || 0), 0);
-      monthTotals[month] = monthSum;
-      totalOfTotals += monthSum;
+    tableRows.filter(r => r.type === 'data').forEach(row => {
+        sortedMonths.forEach(month => {
+            monthTotals[month] = (monthTotals[month] || 0) + (row[month] || 0);
+        });
+        totalOfTotals += row.totalSector;
     });
 
     return {
-      tableData: tableRows.sort((a, b) => a.sector.localeCompare(b.sector)),
+      tableData: tableRows,
       monthColumns: sortedMonths,
       footerTotals: monthTotals,
       grandTotal: totalOfTotals,
     };
-  }, [loadedData]);
+}, [loadedData]);
 
     const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i);
 
@@ -500,13 +521,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                       {tableData.map(row => (
-                            <tr key={row.sector}>
-                                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{row.sector}</td>
+                       {tableData.map((row, idx) => (
+                            <tr key={row.sector + idx} className={`${row.type === 'subtotal' ? 'bg-blue-50 font-bold' : ''}`}>
+                                <td className={`px-3 py-2 whitespace-nowrap font-medium ${row.type === 'subtotal' ? 'text-blue-800' : 'text-gray-800'}`}>{row.sector}</td>
                                 {monthColumns.map(month => (
-                                    <td key={`${row.sector}-${month}`} className="px-3 py-2 text-right text-gray-600">{(row[month] || 0).toLocaleString()}</td>
+                                    <td key={`${row.sector}-${month}`} className={`px-3 py-2 text-right ${row.type === 'subtotal' ? 'text-blue-700' : 'text-gray-600'}`}>{(row[month] || 0).toLocaleString()}</td>
                                 ))}
-                                <td className="px-3 py-2 text-right font-bold text-gray-900">{row.totalSector.toLocaleString()}</td>
+                                <td className={`px-3 py-2 text-right font-bold ${row.type === 'subtotal' ? 'text-blue-800' : 'text-gray-900'}`}>{row.totalSector.toLocaleString()}</td>
                             </tr>
                         ))}
                     </tbody>
