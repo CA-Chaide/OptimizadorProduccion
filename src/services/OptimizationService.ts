@@ -592,7 +592,7 @@ function getMonthlyCapacity(
     auditLog: string[],
     startDay: number = 1
 ): { totalHours: number } {
-    const EFFICIENCY_FACTOR = 1.0;
+    const EFFICIENCY_FACTOR = 0.87;
     let grossTotalHours = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
     
@@ -700,5 +700,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
