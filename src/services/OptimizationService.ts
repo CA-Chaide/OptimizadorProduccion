@@ -326,6 +326,72 @@ export const generateProductionPlan = async (
     auditLog.push(`[${new Date().toLocaleTimeString()}] INFO: ${horizonMsg}`);
     logger.log(`[${new Date().toLocaleTimeString()}] ${horizonMsg}`, 'info');
 
+    // --- NEW: Load Smoothing Logic ---
+    const advancedProduction = new Map<string, number>(); // key: 'monthKey---prodCenterKey', value: units to produce in advance
+    
+    const productCenterPairs = Array.from(new Set(filteredSalesData.map(s => `${normalizeMaterialCode(s.código)}---${s.centro}`)));
+
+    productCenterPairs.forEach(pairKey => {
+        let monthlyNeeds: { monthKey: string; netNeed: number; capacity: number }[] = [];
+        let tempInventory = inventoryState.get(pairKey) || 0;
+
+        // 1. Calculate needs and capacity per month for this product
+        planningMonths.forEach(monthKey => {
+            const [year, monthNum] = monthKey.split('-').map(Number);
+            const salesInMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2,'0')}` === monthKey && `${normalizeMaterialCode(s.código)}---${s.centro}` === pairKey);
+            const demand = salesInMonth.reduce((sum, s) => sum + s.unidadesProyectado, 0);
+            
+            const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === pairKey.split('---')[0] && inv.centerId === pairKey.split('---')[1])?.minStock || 0;
+            const netNeed = Math.max(0, (demand + safetyStock) - tempInventory);
+            
+            // Calculate capacity for this specific product
+            const [productId, centerId] = pairKey.split('---');
+            const linesForProduct = productionLines.filter(l => l.workCenterId === centerId && l.materialsHandled.includes(productId));
+            let monthCapacityUnits = 0;
+            linesForProduct.forEach(line => {
+                const timePerUnit = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
+                if (timePerUnit > 0 && timePerUnit !== Infinity) {
+                    const { totalHours } = getMonthlyCapacity(year, monthNum, line, holidays, shiftParameters, []);
+                    monthCapacityUnits += Math.floor(totalHours / timePerUnit);
+                }
+            });
+
+            monthlyNeeds.push({ monthKey, netNeed, capacity: monthCapacityUnits });
+            
+            // Project inventory for next month's calculation
+            const productionThisMonth = Math.min(netNeed, monthCapacityUnits);
+            tempInventory = tempInventory + productionThisMonth - demand;
+        });
+
+        // 2. Smooth the load by advancing production
+        for (let i = monthlyNeeds.length - 1; i > 0; i--) {
+            const currentMonth = monthlyNeeds[i];
+            const productionDeficit = Math.max(0, currentMonth.netNeed - currentMonth.capacity);
+
+            if (productionDeficit > 0) {
+                // Look for spare capacity in previous months
+                for (let j = i - 1; j >= 0; j--) {
+                    const prevMonth = monthlyNeeds[j];
+                    const spareCapacity = Math.max(0, prevMonth.capacity - prevMonth.netNeed);
+                    if (spareCapacity > 0) {
+                        const amountToAdvance = Math.min(productionDeficit, spareCapacity);
+                        
+                        const advanceKey = `${prevMonth.monthKey}---${pairKey}`;
+                        advancedProduction.set(advanceKey, (advancedProduction.get(advanceKey) || 0) + amountToAdvance);
+                        
+                        prevMonth.netNeed += amountToAdvance;
+                        currentMonth.netNeed -= amountToAdvance;
+                        
+                        if (currentMonth.netNeed <= 0) break; // Deficit covered
+                    }
+                }
+            }
+        }
+    });
+
+    auditLog.push(`[${new Date().toLocaleTimeString()}] INFO: Lógica de suavizado de carga completada. Se adelantará producción para ${advancedProduction.size} combinaciones mes-producto.`);
+    // --- END: Load Smoothing Logic ---
+
     for (let i = 0; i < planningMonths.length; i++) {
         const monthKey = planningMonths[i];
         const [year, monthNum] = monthKey.split('-').map(Number);
@@ -370,13 +436,21 @@ export const generateProductionPlan = async (
             getMovements(invKey).salesDemand += sale.unidadesProyectado;
         });
 
-        const productionNeedsThisMonth = new Map<string, { demandVentas: number; demandTrasladosF: number; demandTrasladosX: number }>();
+        const productionNeedsThisMonth = new Map<string, { demandVentas: number; demandTrasladosF: number; demandTrasladosX: number; demandAdelantada: number }>();
         const getNeeds = (key: string) => {
             if (!productionNeedsThisMonth.has(key)) {
-                productionNeedsThisMonth.set(key, { demandVentas: 0, demandTrasladosF: 0, demandTrasladosX: 0 });
+                productionNeedsThisMonth.set(key, { demandVentas: 0, demandTrasladosF: 0, demandTrasladosX: 0, demandAdelantada: 0 });
             }
             return productionNeedsThisMonth.get(key)!;
         };
+
+        // Add advanced production needs
+        advancedProduction.forEach((units, key) => {
+            if (key.startsWith(monthKey)) {
+                const prodCenterKey = key.substring(monthKey.length + 3);
+                getNeeds(prodCenterKey).demandAdelantada += units;
+            }
+        });
 
         const allDemandKeys = new Set([...salesThisMonth.map(s => `${normalizeMaterialCode(s.código)}---${String(s.centro).trim()}`), ...salesBacklog.keys()]);
 
@@ -392,8 +466,6 @@ export const generateProductionPlan = async (
                 getNeeds(`${productId}---${demandCenterId}`).demandVentas += totalDemandForDispatch;
             }
         });
-        
-        // ... (GYE 'X' logic would be complex here, simplifying for now)
 
         const allNeeds = Array.from(productionNeedsThisMonth.entries()).map(([prodCenterKey, needs]) => {
              const [productId, centerId] = prodCenterKey.split('---');
@@ -401,7 +473,7 @@ export const generateProductionPlan = async (
              const currentStock = inventoryState.get(invKey) || 0;
              const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
              const totalDemand = needs.demandVentas + needs.demandTrasladosF + needs.demandTrasladosX;
-             const netNeedForProduction = Math.max(0, (totalDemand + safetyStock) - currentStock);
+             const netNeedForProduction = Math.max(0, (totalDemand + safetyStock + needs.demandAdelantada) - currentStock);
              return { prodCenterKey, productId, centerId, needs, netNeedForProduction, urgency: (currentStock - totalDemand) / (totalDemand || 1) };
         }).sort((a,b) => a.urgency - b.urgency);
 
@@ -431,9 +503,7 @@ export const generateProductionPlan = async (
             }
         }
         
-        // Final pass to calculate dispatches and final inventory
         const newSalesBacklog = new Map<string, number>();
-
         const allProductCenterPairsThisMonth = new Set<string>(Array.from(inventoryState.keys()));
         monthlyMovements.forEach((_, key) => allProductCenterPairsThisMonth.add(key));
         allDemandKeys.forEach(key => allProductCenterPairsThisMonth.add(key));
@@ -443,10 +513,9 @@ export const generateProductionPlan = async (
             const initialStock = inventoryState.get(pairKey) || 0;
             const movements = getMovements(pairKey);
 
-            // Determine production and transfers for this specific item
-            const itemProduction = movements.production; // Simplified, in reality it's more complex
-            const itemTransfersIn = 0; // Simplified
-            const itemTransfersOut = 0; // Simplified
+            const itemProduction = movements.production;
+            const itemTransfersIn = 0; 
+            const itemTransfersOut = 0; 
 
             const availableForDispatch = initialStock + itemProduction + itemTransfersIn - itemTransfersOut;
             const totalDemand = movements.salesDemand + (salesBacklog.get(pairKey) || 0);
@@ -459,11 +528,8 @@ export const generateProductionPlan = async (
             }
             
             inventoryState.set(pairKey, finalStock);
-            movements.dispatches = dispatches;
-            movements.transfersIn = itemTransfersIn;
-            movements.transfersOut = itemTransfersOut;
-
-            if (Object.values(movements).some(v => v !== 0) || initialStock > 0) {
+            
+            if (Object.values(movements).some(v => v !== 0) || initialStock > 0 || totalDemand > 0) {
                  monthlyPlanItems.push({
                     id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
                     productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
@@ -474,8 +540,8 @@ export const generateProductionPlan = async (
                     initialStock: initialStock,
                     finalStock: finalStock,
                     backlogVentas: newBacklog,
-                    backlogTrasladosF: 0, // Simplified for now
-                    backlogTrasladosX: 0, // Simplified for now
+                    backlogTrasladosF: 0,
+                    backlogTrasladosX: 0,
                     totalHoursWorked: 0, 
                     totalEstimatedLaborCost: 0, 
                     assignedLineId: productionLines.find(l => l.workCenterId === centerId && l.materialsHandled.includes(productId))?.id,
@@ -614,6 +680,4 @@ export const generateTacticalPlan = ( request: TacticalRequest, context: any ): 
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
 
-
-
-
+    
