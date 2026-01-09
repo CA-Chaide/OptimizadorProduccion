@@ -13,19 +13,21 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
-
 interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
 }
 
-type GroupByOption = 'sector' | 'etiqueta' | 'material';
+interface SectorRow {
+    sector: string;
+    stockByCenter: { [center: string]: number };
+    totalStock: number;
+}
 
-interface AggregatedData {
-  [key: string]: {
-    totalUnits: number;
-    unitsByCenter: { [centerName: string]: number };
-    dataRows: SalesDataRow[];
-  };
+interface DisplayRow {
+    type: 'data' | 'subtotal' | 'total';
+    sector: string;
+    stockByCenter: { [center: string]: number };
+    totalStock: number;
 }
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -179,16 +181,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        // Define loops for iteration
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-        // Array to hold all promises
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                // Skip past months of the current year if all months are being loaded
                 if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
                     continue;
                 }
@@ -198,8 +197,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     if (filters.etiqueta) {
                         queryFilters['Etiqueta'] = filters.etiqueta;
                     }
-                    
-                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
                     
                     const promise = queryApi({
                         source: 'Presupuesto',
@@ -252,41 +249,79 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   };
 
-  const { aggregatedData, centers } = useMemo(() => {
-    const data: AggregatedData = {};
+  const { displayRows, centers, footerTotals } = useMemo(() => {
+    if (loadedData.length === 0) return { displayRows: [], centers: [], footerTotals: { grandTotal: 0 } };
+
+    const dataBySectorAndCenter: { [sector: string]: { [center: string]: number } } = {};
     const centerSet = new Set<string>();
 
     loadedData.forEach(row => {
-      const key = row.etiqueta;
-      if (!data[key]) {
-        data[key] = { totalUnits: 0, unitsByCenter: {}, dataRows: [] };
-      }
-      data[key].totalUnits += row.unidadesProyectado;
-      
-      if (!data[key].unitsByCenter[row.centro]) {
-          data[key].unitsByCenter[row.centro] = 0;
-      }
-      data[key].unitsByCenter[row.centro] += row.unidadesProyectado;
+        const sector = row.sector || 'Sin Sector';
+        const center = String(row.centro).trim();
+        centerSet.add(center);
 
-      data[key].dataRows.push(row);
-      centerSet.add(row.centro);
+        if (!dataBySectorAndCenter[sector]) {
+            dataBySectorAndCenter[sector] = {};
+        }
+        if (!dataBySectorAndCenter[sector][center]) {
+            dataBySectorAndCenter[sector][center] = 0;
+        }
+        dataBySectorAndCenter[sector][center] += row.unidadesProyectado;
+    });
+    
+    const sortedCenters = Array.from(centerSet).sort();
+
+    const priorityOrder = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
+    const prioritySectors: DisplayRow[] = [];
+    const otherSectors: DisplayRow[] = [];
+
+    Object.entries(dataBySectorAndCenter).forEach(([sector, stockByCenter]) => {
+        const totalStock = Object.values(stockByCenter).reduce((sum, val) => sum + val, 0);
+        const displayRow: DisplayRow = { type: 'data', sector, stockByCenter, totalStock };
+        
+        if (priorityOrder.includes(sector)) {
+            prioritySectors.push(displayRow);
+        } else {
+            otherSectors.push(displayRow);
+        }
     });
 
-    return { aggregatedData: data, centers: Array.from(centerSet).sort() };
+    prioritySectors.sort((a, b) => priorityOrder.indexOf(a.sector) - priorityOrder.indexOf(b.sector));
+    otherSectors.sort((a, b) => a.sector.localeCompare(b.sector));
+    
+    const allDisplayRows: DisplayRow[] = [];
+    const footerTotals: { [key: string]: number; grandTotal: number; } = { grandTotal: 0 };
+    
+    if (prioritySectors.length > 0) {
+        allDisplayRows.push(...prioritySectors);
+        const subtotalFabricacion: DisplayRow = {
+            type: 'subtotal', sector: 'Subtotal Fabricación', stockByCenter: {}, totalStock: 0
+        };
+        prioritySectors.forEach(pSector => {
+            subtotalFabricacion.totalStock += pSector.totalStock;
+            Object.entries(pSector.stockByCenter).forEach(([center, stock]) => {
+                subtotalFabricacion.stockByCenter[center] = (subtotalFabricacion.stockByCenter[center] || 0) + stock;
+            });
+        });
+        allDisplayRows.push(subtotalFabricacion);
+    }
+    
+    if (otherSectors.length > 0) {
+        allDisplayRows.push(...otherSectors);
+    }
+
+    allDisplayRows.forEach(row => {
+        if (row.type === 'data') {
+            footerTotals.grandTotal += row.totalStock;
+            sortedCenters.forEach(center => {
+                footerTotals[center] = (footerTotals[center] || 0) + (row.stockByCenter[center] || 0);
+            });
+        }
+    });
+
+    return { displayRows: allDisplayRows, centers: sortedCenters, footerTotals };
   }, [loadedData]);
-
-  const footerTotals = useMemo(() => {
-    const totals: { [centerName: string]: number } = {};
-    let grandTotal = 0;
-    Object.values(aggregatedData).forEach(group => {
-      Object.entries(group.unitsByCenter).forEach(([center, units]) => {
-        totals[center] = (totals[center] || 0) + units;
-      });
-      grandTotal += group.totalUnits;
-    });
-    return { ...totals, grandTotal };
-  }, [aggregatedData]);
-
+  
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
       <div className="flex items-center space-x-3">
@@ -298,8 +333,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
       </p>
 
-      {/* --- Filtros --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
         <MultiSelect 
             label="Año(s)"
             options={filterOptions.años}
@@ -312,23 +346,21 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             selected={filters.meses}
             onChange={value => handleFilterChange('meses', value)}
         />
-        <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-            <MultiSelect 
-                label="Centro(s)"
-                options={filterOptions.centros}
-                selected={filters.centros}
-                onChange={value => handleFilterChange('centros', value)}
-            />
-            <div>
-                 <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
-                 <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
-                    <option value="">Todas</option>
-                    {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-            </div>
+        <MultiSelect 
+            label="Centro(s)"
+            options={filterOptions.centros}
+            selected={filters.centros}
+            onChange={value => handleFilterChange('centros', value)}
+        />
+        <div>
+             <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
+             <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
+                <option value="">Todas</option>
+                {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
         </div>
         
-        <div className="flex flex-col pt-5">
+        <div className="flex flex-col justify-end h-full">
             <button
                 onClick={handleLoadData}
                 disabled={isProcessing || isAppLoading || filters.años.length === 0}
@@ -341,38 +373,40 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
        {loadedData.length > 0 && (
          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Ventas Consolidadas por Sector y Centro</h3>
             <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
                 <table className="min-w-full text-xs divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
-                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">Etiqueta</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 sticky left-0 z-20">Sector</th>
                             {centers.map(center => (
-                                <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">{center}</th>
+                                <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{center}</th>
                             ))}
-                            <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Unidades</th>
+                            <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100 sticky right-0 z-20">Total Unidades</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                       {Object.entries(aggregatedData).map(([etiqueta, group]) => (
-                            <tr key={etiqueta}>
-                                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
+                       {displayRows.map((row) => (
+                            <tr key={row.sector} className={`group ${row.type === 'subtotal' ? 'bg-blue-50 font-bold' : 'hover:bg-gray-50'}`}>
+                                <td className={`px-3 py-2 whitespace-nowrap sticky left-0 group-hover:bg-gray-50 z-10 ${row.type === 'subtotal' ? 'bg-blue-50' : 'bg-white'}`}>{row.sector}</td>
                                 {centers.map(center => (
-                                    <td key={`${etiqueta}-${center}`} className="px-3 py-2 text-right text-gray-600">{Math.round(group.unitsByCenter[center] || 0).toLocaleString()}</td>
+                                    <td key={`${row.sector}-${center}`} className="px-3 py-2 text-right text-gray-600">{Math.round(row.stockByCenter[center] || 0).toLocaleString()}</td>
                                 ))}
-                                <td className="px-3 py-2 text-right font-bold text-gray-900">{Math.round(group.totalUnits).toLocaleString()}</td>
+                                <td className={`px-3 py-2 text-right font-bold text-gray-900 sticky right-0 group-hover:bg-gray-50 z-10 ${row.type === 'subtotal' ? 'bg-blue-50' : 'bg-white'}`}>
+                                    {Math.round(row.totalStock).toLocaleString()}
+                                </td>
                             </tr>
                         ))}
                     </tbody>
                     <tfoot className="bg-gray-200 sticky bottom-0 z-10">
                         <tr>
-                            <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
+                            <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-200 z-20">TOTAL GENERAL</th>
                              {centers.map(center => (
                                 <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
                                     {Math.round(footerTotals[center] || 0).toLocaleString()}
                                 </th>
                             ))}
-                             <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
+                             <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider sticky right-0 bg-gray-200 z-20">
                                 {Math.round(footerTotals.grandTotal).toLocaleString()}
                             </th>
                         </tr>
