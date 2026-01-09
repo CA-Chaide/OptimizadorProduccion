@@ -13,19 +13,8 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
-
 interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
-}
-
-type GroupByOption = 'sector' | 'etiqueta' | 'material';
-
-interface AggregatedData {
-  [key: string]: {
-    totalUnits: number;
-    unitsByCenter: { [centerName: string]: number };
-    dataRows: SalesDataRow[];
-  };
 }
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -111,6 +100,111 @@ const MultiSelect: React.FC<{
 };
 
 
+const CenterReportTable: React.FC<{
+  centerData: {
+    sectors: { [sector: string]: { unitsByMonth: { [month: number]: number }, totalUnits: number } },
+    months: number[],
+  },
+  title: string
+}> = ({ centerData, title }) => {
+
+  const { displayRows, footerTotals } = useMemo(() => {
+    const priorityOrder = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
+    const prioritySectors: any[] = [];
+    const otherSectors: any[] = [];
+
+    Object.entries(centerData.sectors).forEach(([sector, data]) => {
+      const row = { sector, ...data };
+      if (priorityOrder.includes(sector)) {
+        prioritySectors.push(row);
+      } else {
+        otherSectors.push(row);
+      }
+    });
+
+    prioritySectors.sort((a, b) => priorityOrder.indexOf(a.sector) - priorityOrder.indexOf(b.sector));
+    otherSectors.sort((a, b) => a.sector.localeCompare(b.sector));
+    
+    let allDisplayRows: any[] = [];
+    if (prioritySectors.length > 0) {
+        allDisplayRows.push(...prioritySectors);
+        const subtotalFabricacion = {
+            sector: 'Subtotal Fabricación',
+            isSubtotal: true,
+            unitsByMonth: {} as { [month: number]: number },
+            totalUnits: 0
+        };
+        prioritySectors.forEach(pSector => {
+            subtotalFabricacion.totalUnits += pSector.totalUnits;
+            centerData.months.forEach(month => {
+                subtotalFabricacion.unitsByMonth[month] = (subtotalFabricacion.unitsByMonth[month] || 0) + (pSector.unitsByMonth[month] || 0);
+            });
+        });
+        allDisplayRows.push(subtotalFabricacion);
+    }
+    
+    if (otherSectors.length > 0) {
+        allDisplayRows.push(...otherSectors);
+    }
+    
+    const footerTotals: { [key: string]: number; grandTotal: number; } = { grandTotal: 0 };
+    Object.values(centerData.sectors).forEach(sectorData => {
+        footerTotals.grandTotal += sectorData.totalUnits;
+        centerData.months.forEach(month => {
+            footerTotals[month] = (footerTotals[month] || 0) + (sectorData.unitsByMonth[month] || 0);
+        });
+    });
+
+    return { displayRows: allDisplayRows, footerTotals };
+  }, [centerData]);
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+      <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
+        <table className="min-w-full text-xs divide-y divide-gray-200">
+          <thead className="bg-gray-100 sticky top-0 z-10">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 sticky left-0 z-20">Sector</th>
+              {centerData.months.map(month => (
+                <th key={month} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{MONTH_NAMES[month-1].substring(0,3)}</th>
+              ))}
+              <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100 sticky right-0 z-20">Total Unidades</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {displayRows.map((row) => (
+              <tr key={row.sector} className={`group ${row.isSubtotal ? 'bg-blue-50 font-bold' : 'hover:bg-gray-50'}`}>
+                <td className={`px-3 py-2 whitespace-nowrap sticky left-0 group-hover:bg-gray-50 z-10 ${row.isSubtotal ? 'bg-blue-50' : 'bg-white'}`}>{row.sector}</td>
+                {centerData.months.map(month => (
+                  <td key={`${row.sector}-${month}`} className="px-3 py-2 text-right text-gray-600">{Math.round(row.unitsByMonth[month] || 0).toLocaleString()}</td>
+                ))}
+                <td className={`px-3 py-2 text-right font-bold text-gray-900 sticky right-0 group-hover:bg-gray-50 z-10 ${row.isSubtotal ? 'bg-blue-50' : 'bg-white'}`}>
+                  {Math.round(row.totalUnits).toLocaleString()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-200 sticky bottom-0 z-10">
+            <tr>
+              <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-200 z-20">TOTAL GENERAL</th>
+              {centerData.months.map(month => (
+                 <th key={`total-${month}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
+                  {Math.round(footerTotals[month] || 0).toLocaleString()}
+                </th>
+              ))}
+              <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider sticky right-0 bg-gray-200 z-20">
+                {Math.round(footerTotals.grandTotal).toLocaleString()}
+              </th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const { addNotification, isLoading: isAppLoading } = useAppContext();
   
@@ -179,16 +273,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
         
-        // Define loops for iteration
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-        // Array to hold all promises
         const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                // Skip past months of the current year if all months are being loaded
                 if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
                     continue;
                 }
@@ -198,8 +289,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     if (filters.etiqueta) {
                         queryFilters['Etiqueta'] = filters.etiqueta;
                     }
-                    
-                    console.log(`Planificando llamada a API para ${MONTH_NAMES[month-1]} ${year} - Centro: ${centro}`);
                     
                     const promise = queryApi({
                         source: 'Presupuesto',
@@ -226,7 +315,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     etiqueta: item.Etiqueta || 'Sin Etiqueta',
                     código: normalizeMaterialCode(item.CodMaterial),
                     centro: String(item.Centro).trim(), 
-                    unidadesProyectado: item.UnidadesProyectado,
+                    unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
                     dolaresProyectado: 0,
                     descripciónMaterial: item.Material,
                     familia: item.Familia, marca: item.Marca, 
@@ -252,36 +341,41 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
   };
 
-  const { aggregatedData, centers } = useMemo(() => {
-    const data: AggregatedData = {};
-    const centerSet = new Set<string>();
+  const dataByCenter = useMemo(() => {
+    const groupedByCenter: { 
+        [center: string]: {
+            sectors: { [sector: string]: { unitsByMonth: { [month: number]: number }, totalUnits: number } },
+            months: number[]
+        }
+    } = {};
+    const allMonths = new Set<number>();
 
     loadedData.forEach(row => {
-      const key = row.etiqueta;
-      if (!data[key]) {
-        data[key] = { totalUnits: 0, unitsByCenter: {}, dataRows: [] };
-      }
-      data[key].totalUnits += row.unidadesProyectado;
-      data[key].unitsByCenter[row.centro] = (data[key].unitsByCenter[row.centro] || 0) + row.unidadesProyectado;
-      data[key].dataRows.push(row);
-      centerSet.add(row.centro);
+        const center = String(row.centro).trim();
+        const sector = row.sector || 'Sin Sector';
+        const month = row.mes;
+        allMonths.add(month);
+
+        if (!groupedByCenter[center]) {
+            groupedByCenter[center] = { sectors: {}, months: [] };
+        }
+        if (!groupedByCenter[center].sectors[sector]) {
+            groupedByCenter[center].sectors[sector] = { unitsByMonth: {}, totalUnits: 0 };
+        }
+
+        const currentUnits = groupedByCenter[center].sectors[sector].unitsByMonth[month] || 0;
+        groupedByCenter[center].sectors[sector].unitsByMonth[month] = currentUnits + row.unidadesProyectado;
+        groupedByCenter[center].sectors[sector].totalUnits += row.unidadesProyectado;
     });
 
-    return { aggregatedData: data, centers: Array.from(centerSet).sort() };
+    const sortedMonths = Array.from(allMonths).sort((a,b) => a - b);
+    Object.keys(groupedByCenter).forEach(center => {
+        groupedByCenter[center].months = sortedMonths;
+    });
+
+    return groupedByCenter;
   }, [loadedData]);
-
-  const footerTotals = useMemo(() => {
-    const totals: { [centerName: string]: number } = {};
-    let grandTotal = 0;
-    Object.values(aggregatedData).forEach(group => {
-      Object.entries(group.unitsByCenter).forEach(([center, units]) => {
-        totals[center] = (totals[center] || 0) + units;
-      });
-      grandTotal += group.totalUnits;
-    });
-    return { ...totals, grandTotal };
-  }, [aggregatedData]);
-
+  
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
       <div className="flex items-center space-x-3">
@@ -293,7 +387,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
       </p>
 
-      {/* --- Filtros --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
         <MultiSelect 
             label="Año(s)"
@@ -321,7 +414,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </select>
         </div>
         
-        <div className="flex flex-col pt-5">
+        <div className="flex flex-col justify-end h-full pt-1">
             <button
                 onClick={handleLoadData}
                 disabled={isProcessing || isAppLoading || filters.años.length === 0}
@@ -333,45 +426,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
 
        {loadedData.length > 0 && (
-         <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">Datos Cargados y Agrupados por Etiqueta</h3>
-            <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
-                <table className="min-w-full text-xs divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                        <tr>
-                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">Etiqueta</th>
-                            {centers.map(center => (
-                                <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">{center}</th>
-                            ))}
-                            <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total Unidades</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                       {Object.entries(aggregatedData).map(([etiqueta, group]) => (
-                            <tr key={etiqueta}>
-                                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{etiqueta}</td>
-                                {centers.map(center => (
-                                    <td key={`${etiqueta}-${center}`} className="px-3 py-2 text-right text-gray-600">{group.unitsByCenter[center]?.toLocaleString() || 0}</td>
-                                ))}
-                                <td className="px-3 py-2 text-right font-bold text-gray-900">{group.totalUnits.toLocaleString()}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                    <tfoot className="bg-gray-200 sticky bottom-0 z-10">
-                        <tr>
-                            <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
-                             {centers.map(center => (
-                                <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
-                                    {(footerTotals[center] || 0).toLocaleString()}
-                                </th>
-                            ))}
-                             <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
-                                {footerTotals.grandTotal.toLocaleString()}
-                            </th>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
+         <div className="space-y-8 mt-6">
+           {Object.entries(dataByCenter).sort(([centerA], [centerB]) => centerA.localeCompare(centerB)).map(([center, centerData]) => {
+             const title = `Ventas Consolidadas para Centro: ${center}`;
+             return (
+               <CenterReportTable key={center} centerData={centerData} title={title} />
+             );
+           })}
         </div>
       )}
     </div>
