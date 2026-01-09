@@ -395,7 +395,7 @@ export const ProductionPlanSection: React.FC = () => {
 
     for(const centerId of centerIdsToDisplay) {
         const aggregatedData: Record<string, Record<string, number>> = {
-            'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Ventas': {}, 'Faltante Ventas (Backlog)': {}, 'Traslados Mat. Prod. UIO (Backlog)': {}, 'Traslados Mat. Prod. GYE (Backlog)': {}, 'Saldo Final': {}
+            'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Despachos': {}, 'Faltante Ventas (Backlog)': {}, 'Traslados Mat. Prod. UIO (Backlog)': {}, 'Traslados Mat. Prod. GYE (Backlog)': {}, 'Saldo Final': {}
         };
 
         for (const monthKey of monthKeys) {
@@ -408,7 +408,7 @@ export const ProductionPlanSection: React.FC = () => {
 
             aggregatedData['Saldo Inicial'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.initialStock, 0);
             aggregatedData['Producción'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
-            aggregatedData['Ventas'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalDemand, 0);
+            aggregatedData['Despachos'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.dispatches, 0);
             aggregatedData['Traslados (Neto)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.netTransfers, 0);
             aggregatedData['Faltante Ventas (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogVentas, 0);
             aggregatedData['Traslados Mat. Prod. UIO (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosF, 0);
@@ -416,11 +416,12 @@ export const ProductionPlanSection: React.FC = () => {
             aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
         }
 
-        const flowRows: { label: string, isBacklog?: boolean }[] = [
+        const flowRows: { label: string }[] = [
             { label: 'Saldo Inicial' }, 
             { label: 'Producción' }, 
             { label: 'Traslados (Neto)' }, 
-            { label: 'Ventas' },
+            { label: 'Despachos' },
+            { label: 'Saldo Final' },
         ];
         
         const backlogRows: { label: string, isBacklog?: boolean }[] = [];
@@ -433,9 +434,7 @@ export const ProductionPlanSection: React.FC = () => {
             aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)']; // Consolidate for other centers
         }
 
-        const finalRow = { label: 'Saldo Final' };
-
-        const allRowsConfig = [...flowRows, ...backlogRows, finalRow];
+        const allRowsConfig = [...flowRows, ...backlogRows];
         const rows = allRowsConfig.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label], isBacklog }));
         
         result[centerId] = { monthKeys, rows };
@@ -465,13 +464,13 @@ export const ProductionPlanSection: React.FC = () => {
 
           const weekKeys = Array.from(new Set(filteredData.map(d => `${d.year}-W${String(d.week).padStart(2,'0')}`))).sort();
           const aggregatedData: Record<string, Record<string, number>> = {
-              'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Faltante (Backlog)': {}, 'Saldo Final': {}
+              'Saldo Inicial': {}, 'Producción': {}, 'Despachos': {}, 'Traslados (Neto)': {}, 'Faltante (Backlog)': {}, 'Saldo Final': {}
           };
 
           weekKeys.forEach(weekKey => {
             const weekItems = filteredData.filter(d => `${d.year}-W${String(d.week).padStart(2,'0')}` === weekKey);
             aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
-            aggregatedData['Ventas'][weekKey] = weekItems.reduce((sum, item) => sum + item.sales, 0);
+            aggregatedData['Despachos'][weekKey] = weekItems.reduce((sum, item) => sum + item.dispatches, 0);
             aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
             aggregatedData['Faltante (Backlog)'][weekKey] = weekItems.reduce((sum, item) => sum + (item.unmetDemand || 0), 0);
             
@@ -479,7 +478,7 @@ export const ProductionPlanSection: React.FC = () => {
             aggregatedData['Saldo Final'][weekKey] = weekItems.reduce((sum, item) => sum + item.finalStock, 0);
           });
           
-          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Faltante (Backlog)', 'Saldo Final'];
+          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Despachos', 'Saldo Final', 'Faltante (Backlog)'];
           const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
           result[centerId] = { weekKeys, rows };
       }
@@ -506,7 +505,7 @@ export const ProductionPlanSection: React.FC = () => {
           const dayKeys = Array.from(new Set(centerData.map(d => `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`))).sort();
           
           const aggregatedData: Record<string, Record<string, number>> = {
-              'Saldo Inicial': {}, 'Producción': {}, 'Ventas': {}, 'Traslados (Neto)': {}, 'Faltante (Backlog)': {}, 'Saldo Final': {}
+              'Saldo Inicial': {}, 'Producción': {}, 'Despachos': {}, 'Traslados (Neto)': {}, 'Faltante (Backlog)': {}, 'Saldo Final': {}
           };
           
           const dailyInventoryState = new Map<string, number>();
@@ -516,7 +515,7 @@ export const ProductionPlanSection: React.FC = () => {
               
               let saldoInicialDelDia = 0;
               let produccionDelDia = 0;
-              let ventasDelDia = 0;
+              let despachosDelDia = 0;
               let trasladosNetoDelDia = 0;
               let faltanteDelDia = 0;
               let saldoFinalDelDia = 0;
@@ -529,32 +528,34 @@ export const ProductionPlanSection: React.FC = () => {
 
                   const itemsForProduct = dayItems.filter(d => d.productId === productId);
                   const production = itemsForProduct.reduce((sum, item) => sum + (item.isTransfer ? 0 : item.quantityToProduce), 0);
-                  const sales = itemsForProduct.reduce((sum, item) => sum + item.demandOnDay, 0);
+                  const sales = itemsForProduct.reduce((sum, item) => sum + item.demandOnDay, 0); // This is demand
                   const transferIn = itemsForProduct.reduce((sum, item) => sum + (item.isTransfer && item.transferDestinationCenterId === centerId ? item.quantityToProduce : 0), 0);
                   const transferOut = itemsForProduct.reduce((sum, item) => sum + (item.isTransfer && item.transferSourceCenterId === centerId ? item.quantityToProduce : 0), 0);
                   
+                  const availableForDispatch = stock + production + transferIn - transferOut;
+                  const dispatches = Math.min(availableForDispatch, sales);
+                  
                   produccionDelDia += production;
-                  ventasDelDia += sales;
+                  despachosDelDia += dispatches;
                   trasladosNetoDelDia += (transferIn - transferOut);
                   
-                  const balance = stock + production + transferIn - transferOut - sales;
-                  faltanteDelDia += Math.abs(Math.min(0, balance));
+                  faltanteDelDia += (sales - dispatches);
                   
-                  const finalStock = Math.max(0, balance);
+                  const finalStock = availableForDispatch - dispatches;
                   dailyInventoryState.set(productId, finalStock);
                   saldoFinalDelDia += finalStock;
               });
 
               aggregatedData['Saldo Inicial'][dayKey] = saldoInicialDelDia;
               aggregatedData['Producción'][dayKey] = produccionDelDia;
-              aggregatedData['Ventas'][dayKey] = ventasDelDia;
+              aggregatedData['Despachos'][dayKey] = despachosDelDia;
               aggregatedData['Traslados (Neto)'][dayKey] = trasladosNetoDelDia;
               aggregatedData['Faltante (Backlog)'][dayKey] = faltanteDelDia;
               aggregatedData['Saldo Final'][dayKey] = saldoFinalDelDia;
           });
           
-          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Ventas', 'Faltante (Backlog)', 'Saldo Final'];
-          const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
+          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Despachos', 'Saldo Final', 'Faltante (Backlog)'];
+          const rows = rowOrder.map(label => ({ label, values: aggregatedData[label], isBacklog: label.includes('Backlog') }));
           result[centerId] = { dayKeys, rows };
       }
       return result;

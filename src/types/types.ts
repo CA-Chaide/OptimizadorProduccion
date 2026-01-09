@@ -1,4 +1,5 @@
 
+
 export type SyncStatus = {
     isSynced: boolean;
     lastSyncTimestamp: string | null;
@@ -256,6 +257,7 @@ export interface MonthlyProductionPlanItem {
     centerId: string;
     totalQuantityToProduce: number;
     totalDemand: number;
+    dispatches: number;
     netTransfers: number;
     initialStock: number;
     finalStock: number;
@@ -278,6 +280,7 @@ export interface WeeklyPlanItem {
   initialStock: number;
   production: number;
   sales: number;
+  dispatches: number;
   netTransfers: number;
   finalStock: number;
   unmetDemand: number;
