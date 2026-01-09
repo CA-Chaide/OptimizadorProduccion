@@ -396,7 +396,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       if (!dataBySectorAndMonth[sector]) {
         dataBySectorAndMonth[sector] = { isPriority: prioritySectors.has(sector) };
       }
-      dataBySectorAndMonth[sector][month] = (dataBySectorAndMonth[sector][month] || 0) + row.unidadesProyectado;
+      
+      // Correctamente inicializar y sumar
+      if (!dataBySectorAndMonth[sector][month]) {
+        dataBySectorAndMonth[sector][month] = 0;
+      }
+      dataBySectorAndMonth[sector][month] += row.unidadesProyectado;
     });
 
     const sortedMonths = Array.from(monthSet).sort((a, b) => a - b);
@@ -412,7 +417,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     // Calcular subtotal de prioritarios si existen
     if (priorityRows.length > 0) {
-        const subtotal = {
+        const subtotal: any = { // Usamos any para flexibilidad
             sector: 'Subtotal Fabricación',
             type: 'subtotal',
             totalSector: 0
