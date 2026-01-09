@@ -479,20 +479,18 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             <label className="block text-sm font-medium text-gray-700 mb-1">Meses a Cargar</label>
             <input type="number" value={filters.monthsToLoad} onChange={e => handleFilterChange('monthsToLoad', Number(e.target.value))} className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" min="1" max="24" />
         </div>
-        <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-            <MultiSelect 
-                label="Centro(s)"
-                options={filterOptions.centros}
-                selected={filters.centros}
-                onChange={value => handleFilterChange('centros', value)}
-            />
-            <div>
-                 <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
-                 <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
-                    <option value="">Todas</option>
-                    {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-            </div>
+        <MultiSelect 
+            label="Centro(s)"
+            options={filterOptions.centros}
+            selected={filters.centros}
+            onChange={value => handleFilterChange('centros', value)}
+        />
+        <div>
+             <label htmlFor="etiqueta" className="block text-sm font-medium text-gray-700 mb-1">Etiqueta</label>
+             <select id="etiqueta" value={filters.etiqueta} onChange={e => handleFilterChange('etiqueta', e.target.value)} className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm h-10">
+                <option value="">Todas</option>
+                {filterOptions.etiquetas.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
         </div>
         
         <div className="lg:col-start-5 flex flex-col justify-end">
@@ -525,9 +523,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                             <tr key={row.sector + idx} className={`${row.type === 'subtotal' ? 'bg-blue-50 font-bold' : ''}`}>
                                 <td className={`px-3 py-2 whitespace-nowrap font-medium ${row.type === 'subtotal' ? 'text-blue-800' : 'text-gray-800'}`}>{row.sector}</td>
                                 {monthColumns.map(month => (
-                                    <td key={`${row.sector}-${month}`} className={`px-3 py-2 text-right ${row.type === 'subtotal' ? 'text-blue-700' : 'text-gray-600'}`}>{(row[month] || 0).toLocaleString()}</td>
+                                    <td key={`${row.sector}-${month}`} className={`px-3 py-2 text-right ${row.type === 'subtotal' ? 'text-blue-700' : 'text-gray-600'}`}>{Math.round(row[month] || 0).toLocaleString()}</td>
                                 ))}
-                                <td className={`px-3 py-2 text-right font-bold ${row.type === 'subtotal' ? 'text-blue-800' : 'text-gray-900'}`}>{row.totalSector.toLocaleString()}</td>
+                                <td className={`px-3 py-2 text-right font-bold ${row.type === 'subtotal' ? 'text-blue-800' : 'text-gray-900'}`}>{Math.round(row.totalSector).toLocaleString()}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -536,11 +534,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                             <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider">TOTAL</th>
                              {monthColumns.map(month => (
                                 <th key={`total-${month}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
-                                    {(footerTotals[month] || 0).toLocaleString()}
+                                    {Math.round(footerTotals[month] || 0).toLocaleString()}
                                 </th>
                             ))}
                              <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider">
-                                {grandTotal.toLocaleString()}
+                                {Math.round(grandTotal).toLocaleString()}
                             </th>
                         </tr>
                     </tfoot>
