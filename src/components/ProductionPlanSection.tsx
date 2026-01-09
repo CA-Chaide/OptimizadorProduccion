@@ -416,25 +416,28 @@ export const ProductionPlanSection: React.FC = () => {
             aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
         }
 
-        let rowOrder = [
-            { label: 'Saldo Inicial', isBacklog: false }, 
-            { label: 'Producción', isBacklog: false }, 
-            { label: 'Traslados (Neto)', isBacklog: false }, 
-            { label: 'Ventas', isBacklog: false },
+        const flowRows: { label: string, isBacklog?: boolean }[] = [
+            { label: 'Saldo Inicial' }, 
+            { label: 'Producción' }, 
+            { label: 'Traslados (Neto)' }, 
+            { label: 'Ventas' },
         ];
         
+        const backlogRows: { label: string, isBacklog?: boolean }[] = [];
         if (centerId === '1000') {
-            rowOrder.push({ label: 'Faltante Ventas (Backlog)', isBacklog: true });
-            rowOrder.push({ label: 'Traslados Mat. Prod. UIO (Backlog)', isBacklog: true });
-            rowOrder.push({ label: 'Traslados Mat. Prod. GYE (Backlog)', isBacklog: true });
+            backlogRows.push({ label: 'Faltante Ventas (Backlog)', isBacklog: true });
+            backlogRows.push({ label: 'Traslados Mat. Prod. UIO (Backlog)', isBacklog: true });
+            backlogRows.push({ label: 'Traslados Mat. Prod. GYE (Backlog)', isBacklog: true });
         } else {
-            rowOrder.push({ label: 'Faltante (Backlog)', isBacklog: true });
-            aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)']; // Para otros centros, es solo un tipo.
+            backlogRows.push({ label: 'Faltante (Backlog)', isBacklog: true });
+            aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)']; // Consolidate for other centers
         }
 
-        rowOrder.push({ label: 'Saldo Final', isBacklog: false });
+        const finalRow = { label: 'Saldo Final' };
 
-        const rows = rowOrder.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label], isBacklog }));
+        const allRowsConfig = [...flowRows, ...backlogRows, finalRow];
+        const rows = allRowsConfig.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label], isBacklog }));
+        
         result[centerId] = { monthKeys, rows };
     }
     
