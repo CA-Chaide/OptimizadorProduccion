@@ -181,6 +181,7 @@ export const ProductionPlanSection: React.FC = () => {
   }, [isDataSynced, isLoading, prorateCurrentMonth, productionPlan, salesData]);
 
   const [activeTab, setActiveTab] = useState<'monthly' | 'weekly' | 'daily_summary' | 'daily_audit'>('monthly');
+  const [selectedSectors, setSelectedSectors] = useState<string[]>([]);
   
   const [filterInputs, setFilterInputs] = useState<{
     centers: string[];
@@ -354,73 +355,90 @@ export const ProductionPlanSection: React.FC = () => {
     return relevantLineIds ?? new Set<string>();
 }, [filterInputs, constraints.productionLines]);
 
+  const productSectorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    salesData.forEach(sale => {
+      if (sale.código && sale.sector) {
+        map.set(sale.código, sale.sector);
+      }
+    });
+    return map;
+  }, [salesData]);
+
+  const sectorOptions = useMemo(() => {
+    const sectors = new Set(salesData.map(s => s.sector).filter(Boolean));
+    return Array.from(sectors).sort().map(s => ({ value: s, label: s }));
+  }, [salesData]);
 
   const monthlyFlowByCenter = useMemo(() => {
     const { monthlyPlan: plan } = productionPlan || { monthlyPlan: [] };
     if (!plan || plan.length === 0) return null;
   
+    const filteredPlan = selectedSectors.length > 0
+        ? plan.filter(item => selectedSectors.includes(productSectorMap.get(item.productId) || ''))
+        : plan;
+
     const result: Record<string, {
         monthKeys: string[],
         rows: { label: string, values: Record<string, number>, isBacklog?: boolean }[]
     }> = {};
   
-    const allCenterIds = Array.from(new Set(plan.map(item => item.centerId))).sort();
-    const monthKeys = Array.from(new Set(plan.map(d => `${d.year}-${String(d.month).padStart(2, '0')}`))).sort();
+    const allCenterIds = Array.from(new Set(filteredPlan.map(item => item.centerId))).sort();
+    const monthKeys = Array.from(new Set(filteredPlan.map(d => `${d.year}-${String(d.month).padStart(2, '0')}`))).sort();
   
     for (const centerId of allCenterIds) {
-      const aggregatedData: Record<string, Record<string, number>> = {};
+        const aggregatedData: Record<string, Record<string, number>> = {};
   
-      const allRowLabels = [
-        'Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Despachos', 'Saldo Final',
-        'Faltante Ventas (Backlog)', 'Traslados Mat. Prod. UIO (Backlog)', 'Traslados Mat. Prod. GYE (Backlog)'
-      ];
-      allRowLabels.forEach(label => aggregatedData[label] = {});
-  
-      for (const monthKey of monthKeys) {
-        const monthItemsForCenter = plan.filter(item =>
-          item.centerId === centerId &&
-          `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey
-        );
-        
-        // Sum values for each metric for the current center and month
-        aggregatedData['Saldo Inicial'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.initialStock, 0);
-        aggregatedData['Producción'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
-        aggregatedData['Traslados (Neto)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.netTransfers, 0);
-        aggregatedData['Despachos'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.dispatches, 0);
-        aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
-        aggregatedData['Faltante Ventas (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogVentas, 0);
-        aggregatedData['Traslados Mat. Prod. UIO (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosF, 0);
-        aggregatedData['Traslados Mat. Prod. GYE (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosX, 0);
-      }
-      
-      const flowRowsConfig = [
-        { label: 'Saldo Inicial', isBacklog: false },
-        { label: 'Producción', isBacklog: false },
-        { label: 'Traslados (Neto)', isBacklog: false },
-        { label: 'Despachos', isBacklog: false },
-      ];
-      
-      const finalRowConfig = { label: 'Saldo Final', isBacklog: false };
-
-      let backlogRowsConfig: { label: string, isBacklog: boolean }[] = [];
-      if (centerId === '1000') {
-        backlogRowsConfig = [
-          { label: 'Faltante Ventas (Backlog)', isBacklog: true },
-          { label: 'Traslados Mat. Prod. UIO (Backlog)', isBacklog: true },
-          { label: 'Traslados Mat. Prod. GYE (Backlog)', isBacklog: true }
+        const allRowLabels = [
+            'Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Despachos', 'Saldo Final',
+            'Faltante Ventas (Backlog)', 'Traslados Mat. Prod. UIO (Backlog)', 'Traslados Mat. Prod. GYE (Backlog)'
         ];
-      } else {
-        aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)'];
-        backlogRowsConfig = [{ label: 'Faltante (Backlog)', isBacklog: true }];
-      }
-
-      const allRowsConfig = [...flowRowsConfig, finalRowConfig, ...backlogRowsConfig];
-      const rows = allRowsConfig.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label] || {}, isBacklog }));
+        allRowLabels.forEach(label => aggregatedData[label] = {});
+  
+        for (const monthKey of monthKeys) {
+            const monthItemsForCenter = filteredPlan.filter(item =>
+            item.centerId === centerId &&
+            `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey
+            );
+            
+            aggregatedData['Saldo Inicial'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.initialStock, 0);
+            aggregatedData['Producción'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+            aggregatedData['Traslados (Neto)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.netTransfers, 0);
+            aggregatedData['Despachos'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.dispatches, 0);
+            aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
+            aggregatedData['Faltante Ventas (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogVentas, 0);
+            aggregatedData['Traslados Mat. Prod. UIO (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosF, 0);
+            aggregatedData['Traslados Mat. Prod. GYE (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosX, 0);
+        }
       
-      result[centerId] = { monthKeys, rows };
+        const flowRowsConfig = [
+            { label: 'Saldo Inicial', isBacklog: false },
+            { label: 'Producción', isBacklog: false },
+            { label: 'Traslados (Neto)', isBacklog: false },
+            { label: 'Despachos', isBacklog: false },
+        ];
+      
+        const finalRowConfig = { label: 'Saldo Final', isBacklog: false };
+
+        let backlogRowsConfig: { label: string, isBacklog: boolean }[] = [];
+        if (centerId === '1000') {
+            backlogRowsConfig = [
+            { label: 'Faltante Ventas (Backlog)', isBacklog: true },
+            { label: 'Traslados Mat. Prod. UIO (Backlog)', isBacklog: true },
+            { label: 'Traslados Mat. Prod. GYE (Backlog)', isBacklog: true }
+            ];
+        } else {
+            aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)'];
+            backlogRowsConfig = [{ label: 'Faltante (Backlog)', isBacklog: true }];
+        }
+
+        const allRowsConfig = [...flowRowsConfig, finalRowConfig, ...backlogRowsConfig];
+        const rows = allRowsConfig.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label] || {}, isBacklog }));
+      
+        result[centerId] = { monthKeys, rows };
     }
     return result;
-  }, [productionPlan]);
+  }, [productionPlan, selectedSectors, productSectorMap]);
 
   const availableLinesForFilter = useMemo(() => {
     let lines = constraints.productionLines;
@@ -492,6 +510,16 @@ export const ProductionPlanSection: React.FC = () => {
     
     return (
         <div className="space-y-8">
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start p-4 border rounded-lg bg-gray-50">
+                <MultiSelect 
+                    label="Sectores"
+                    options={sectorOptions}
+                    selected={selectedSectors}
+                    onChange={setSelectedSectors}
+                    className="md:col-span-2"
+                    placeholder="Todos los Sectores"
+                />
+            </div>
             {Object.keys(monthlyFlowByCenter).sort().map(centerId => {
                 const flow = monthlyFlowByCenter[centerId];
                 if (!flow || flow.rows.every(r => Object.keys(r.values).length === 0)) return null;
@@ -642,3 +670,6 @@ export const ProductionPlanSection: React.FC = () => {
     
 
 
+
+
+    
