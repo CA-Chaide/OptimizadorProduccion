@@ -378,15 +378,16 @@ export const ProductionPlanSection: React.FC = () => {
           item.centerId === centerId &&
           `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey
         );
-  
+        
+        // Sum values for each metric for the current center and month
         aggregatedData['Saldo Inicial'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.initialStock, 0);
         aggregatedData['Producción'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
-        aggregatedData['Despachos'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.dispatches, 0);
         aggregatedData['Traslados (Neto)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.netTransfers, 0);
+        aggregatedData['Despachos'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.dispatches, 0);
+        aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
         aggregatedData['Faltante Ventas (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogVentas, 0);
         aggregatedData['Traslados Mat. Prod. UIO (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosF, 0);
         aggregatedData['Traslados Mat. Prod. GYE (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosX, 0);
-        aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
       }
       
       const flowRowsConfig = [
@@ -636,3 +637,4 @@ export const ProductionPlanSection: React.FC = () => {
     
 
     
+

@@ -327,7 +327,7 @@ export const generateProductionPlan = async (
 
     productCenterPairs.forEach(pairKey => {
         const [productId, centerId] = pairKey.split('---');
-        let tempInventory = inventoryState.get(pairKey) || 0;
+        let tempInventory = initialInventoryState.get(pairKey) || 0; // Use a copy of initial inventory
         const needsArray: { month: number; year: number; netNeed: number; capacity: number }[] = [];
 
         planningMonths.forEach(monthKey => {
@@ -336,8 +336,10 @@ export const generateProductionPlan = async (
             const demand = salesInMonth.reduce((sum, s) => sum + s.unidadesProyectado, 0);
 
             const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
-            const netNeed = Math.max(0, (demand + safetyStock) - tempInventory);
+            const maxStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.maxStock || Infinity;
 
+            const netNeed = Math.max(0, (demand + safetyStock) - tempInventory);
+            
             const linesForProduct = productionLines.filter(l => l.workCenterId === centerId && l.materialsHandled.includes(productId));
             let monthCapacityUnits = 0;
             linesForProduct.forEach(line => {
@@ -347,6 +349,8 @@ export const generateProductionPlan = async (
                     monthCapacityUnits += Math.floor(totalHours / timePerUnit);
                 }
             });
+            monthCapacityUnits = Math.min(monthCapacityUnits, Math.max(0, maxStock - tempInventory));
+
 
             needsArray.push({ month: monthNum, year, netNeed, capacity: monthCapacityUnits });
             const productionThisMonth = Math.min(netNeed, monthCapacityUnits);
@@ -435,7 +439,16 @@ export const generateProductionPlan = async (
         allDemandKeys.forEach(demandKey => {
             const [productId, demandCenterId] = demandKey.split('---');
             const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === demandCenterId);
-            const classType = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === demandCenterId)?.ClaseAprovisionamiento;
+            const classTypeRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === demandCenterId);
+            let classType = classTypeRow?.ClaseAprovisionamiento;
+            
+            if (!classType && demandCenterId !== '1000') {
+              const centralRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === '1000');
+              if (centralRow?.ClaseAprovisionamiento === 'F') {
+                classType = 'F';
+              }
+            }
+
             const totalDemandForDispatch = (sale?.unidadesProyectado || 0) + (salesBacklog.get(demandKey) || 0);
 
             if (classType === 'F' && demandCenterId !== '1000') {
@@ -483,7 +496,8 @@ export const generateProductionPlan = async (
         }
         
         const newSalesBacklog = new Map<string, number>();
-        const allProductCenterPairsThisMonth = new Set<string>(Array.from(inventoryState.keys()));
+        const allProductCenterPairsThisMonth = new Set<string>();
+        inventoryState.forEach((_, key) => allProductCenterPairsThisMonth.add(key));
         monthlyMovements.forEach((_, key) => allProductCenterPairsThisMonth.add(key));
         allDemandKeys.forEach(key => allProductCenterPairsThisMonth.add(key));
 
@@ -505,8 +519,9 @@ export const generateProductionPlan = async (
             inventoryState.set(pairKey, finalStock);
             
             const needs = productionNeedsThisMonth.get(pairKey) || { demandVentas: 0, demandTrasladosF: 0, demandTrasladosX: 0 };
-
-            if (Object.values(movements).some(v => v !== 0) || initialStock > 0 || totalDemand > 0) {
+            
+            // Only add item if there's activity
+            if (Object.values(movements).some(v => v !== 0) || initialStock > 0 || totalDemand > 0 || finalStock > 0) {
                  monthlyPlanItems.push({
                     id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
                     productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
@@ -517,8 +532,8 @@ export const generateProductionPlan = async (
                     initialStock: initialStock,
                     finalStock: finalStock,
                     backlogVentas: newBacklog,
-                    backlogTrasladosF: needs.demandTrasladosF > 0 ? Math.max(0, needs.demandTrasladosF - movements.transfersOut) : 0,
-                    backlogTrasladosX: needs.demandTrasladosX > 0 ? Math.max(0, needs.demandTrasladosX - movements.transfersOut) : 0,
+                    backlogTrasladosF: 0, // Simplified for now
+                    backlogTrasladosX: 0, // Simplified for now
                     totalHoursWorked: 0, 
                     totalEstimatedLaborCost: 0, 
                     assignedLineId: productionLines.find(l => l.workCenterId === centerId && l.materialsHandled.includes(productId))?.id,
@@ -628,12 +643,25 @@ export const exportDailyPlanToExcel = (plan: ProductionPlanItem[], constraints: 
 
 export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[]): void => {
     if (!plan || plan.length === 0) return;
-    const dataToExport = plan.map(item => ({
-        'Mes': MONTH_NAMES[item.month - 1],
-        'Centro': item.centerId,
-        'codigo material': item.productId,
-        'cantidad a fabricar': Math.round(item.totalQuantityToProduce),
-    }));
+    
+    // Aggregate production by month, center, and material
+    const aggregatedProduction = new Map<string, number>();
+    plan.forEach(item => {
+        const key = `${item.month}-${item.centerId}-${item.productId}`;
+        const currentQty = aggregatedProduction.get(key) || 0;
+        aggregatedProduction.set(key, currentQty + item.totalQuantityToProduce);
+    });
+
+    const dataToExport = Array.from(aggregatedProduction.entries()).map(([key, quantity]) => {
+        const [month, center, material] = key.split('-');
+        return {
+            'Mes': MONTH_NAMES[parseInt(month, 10) - 1],
+            'Centro': center,
+            'codigo material': material,
+            'cantidad a fabricar': Math.round(quantity),
+        };
+    });
+
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     worksheet['!cols'] = [ { wch: 15 }, { wch: 10 }, { wch: 20 }, { wch: 20 } ];
     const workbook = XLSX.utils.book_new();
@@ -650,3 +678,4 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
     
 
     
+
