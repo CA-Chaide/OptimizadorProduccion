@@ -437,6 +437,9 @@ export const generateProductionPlan = async (
             const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === demandCenterId);
             const totalDemandForDispatch = (sale?.unidadesProyectado || 0) + (salesBacklog.get(demandKey) || 0);
 
+            // Always register the sales demand at the origin center
+            getMovements(demandKey).salesDemand += totalDemandForDispatch;
+            
             let classType: 'E' | 'X' | 'F' | null | undefined = null;
             
             const centralRuleRow = apiData.find(d => 
@@ -453,18 +456,25 @@ export const generateProductionPlan = async (
                 classType = localRuleRow?.ClaseAprovisionamiento;
             }
 
-            // Always register the sales demand at the origin center
-            getNeeds(demandKey).demandVentas += totalDemandForDispatch;
 
             if (classType === 'F' && demandCenterId !== '1000') {
                 // This is a transfer. Add a transfer need to Center 1000.
-                getNeeds(`${productId}---1000`).demandTrasladosF += totalDemandForDispatch;
+                const needsKey1000 = `${productId}---1000`;
+                getNeeds(needsKey1000).demandTrasladosF += totalDemandForDispatch;
+            } else { // Class E or X
+                getNeeds(demandKey).demandVentas += totalDemandForDispatch;
             }
         });
 
         const allNeeds = Array.from(productCenterPairs).map(pairKey => {
+             const [productId, centerId] = pairKey.split('---');
             const needsFromYearly = yearlyNeeds.get(pairKey)?.[i];
-            const netNeedForProduction = needsFromYearly?.netNeed || 0;
+            const safetyStock = constraints.inventorySettings.find(inv => inv.itemId === productId && inv.centerId === centerId)?.minStock || 0;
+            const currentStock = inventoryState.get(pairKey) || 0;
+            const salesNeed = getNeeds(pairKey).demandVentas;
+            const transferNeed = getNeeds(pairKey).demandTrasladosF + getNeeds(pairKey).demandTrasladosX;
+            
+            const netNeedForProduction = Math.max(0, (salesNeed + transferNeed + safetyStock) - currentStock);
             return { prodCenterKey: pairKey, netNeedForProduction };
         });
 
@@ -498,28 +508,28 @@ export const generateProductionPlan = async (
         }
         
         // Handle transfers based on the needs calculated earlier
-        productionNeedsThisMonth.forEach((needs, key) => {
-            const [productId, prodCenterId] = key.split('---');
-            if (prodCenterId === '1000' && needs.demandTrasladosF > 0) {
-                 // Find all centers that need this product via transfer 'F'
-                allDemandKeys.forEach(demandKey => {
-                    const [demandProductId, demandCenterId] = demandKey.split('---');
-                    if(demandProductId === productId && demandCenterId !== '1000') {
-                         const centralRuleRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === '1000');
-                        if(centralRuleRow?.ClaseAprovisionamiento === 'F') {
-                             const transferAmount = getNeeds(demandKey).demandVentas; // The sales demand triggers the transfer
-                             const stockAt1000 = (inventoryState.get(`${productId}---1000`) || 0) + (getMovements(`${productId}---1000`).production);
-                             const actualTransfer = Math.min(transferAmount, stockAt1000);
+        allDemandKeys.forEach(demandKey => {
+             const [productId, demandCenterId] = demandKey.split('---');
+             if(demandCenterId === '1000') return;
 
-                             if (actualTransfer > 0) {
-                                 getMovements(`${productId}---1000`).transfersOut += actualTransfer;
-                                 getMovements(demandKey).transfersIn += actualTransfer;
-                                 inventoryState.set(`${productId}---1000`, (inventoryState.get(`${productId}---1000`) || 0) - actualTransfer);
-                             }
-                        }
-                    }
-                });
-            }
+             let classType: 'E' | 'X' | 'F' | null | undefined = null;
+             const centralRuleRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === '1000');
+             if (centralRuleRow?.ClaseAprovisionamiento === 'F') {
+                 classType = 'F';
+             }
+
+             if (classType === 'F') {
+                 const transferAmount = getMovements(demandKey).salesDemand;
+                 const key1000 = `${productId}---1000`;
+                 const stockAt1000 = (inventoryState.get(key1000) || 0) + getMovements(key1000).production;
+                 const actualTransfer = Math.min(transferAmount, stockAt1000);
+
+                 if (actualTransfer > 0) {
+                     getMovements(key1000).transfersOut += actualTransfer;
+                     getMovements(demandKey).transfersIn += actualTransfer;
+                     inventoryState.set(key1000, (inventoryState.get(key1000) || 0) - actualTransfer);
+                 }
+             }
         });
 
 
@@ -536,9 +546,9 @@ export const generateProductionPlan = async (
             const movements = getMovements(pairKey);
             movements.initialStock = initialStock; // Store initial stock for reporting
 
-            const totalSalesDemand = (productionNeedsThisMonth.get(pairKey)?.demandVentas || 0);
+            const totalSalesDemand = movements.salesDemand;
 
-            const availableForDispatch = initialStock + movements.production + movements.transfersIn;
+            const availableForDispatch = initialStock + movements.production + movements.transfersIn - movements.transfersOut;
             const dispatches = Math.min(availableForDispatch, totalSalesDemand);
             const finalStock = availableForDispatch - dispatches;
             
@@ -550,7 +560,6 @@ export const generateProductionPlan = async (
             
             inventoryState.set(pairKey, finalStock);
             movements.dispatches = dispatches;
-            movements.salesDemand = totalSalesDemand;
         }
 
 
@@ -567,10 +576,10 @@ export const generateProductionPlan = async (
                 initialStock: movements.initialStock,
                 finalStock: (inventoryState.get(pairKey) || 0),
                 backlogVentas: newSalesBacklog.get(pairKey) || 0,
-                backlogTrasladosF: 0, // Recalculate if needed for detailed report
+                backlogTrasladosF: 0, 
                 backlogTrasladosX: 0,
-                totalHoursWorked: 0, // Can be calculated back if needed
-                totalEstimatedLaborCost: 0, // Can be calculated back if needed
+                totalHoursWorked: 0, 
+                totalEstimatedLaborCost: 0, 
             });
         }
 
@@ -713,6 +722,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
     
 
     
+
 
 
 
