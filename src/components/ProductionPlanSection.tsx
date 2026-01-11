@@ -152,7 +152,7 @@ export const ProductionPlanSection: React.FC = () => {
   
   // Ejemplo: log de cambios en filtros y generación de plan
   const [localFilter, setLocalFilter] = useState<string>("");
-  const [prorateCurrentMonth, setProrateCurrentMonth] = useState<boolean>(true);
+  const [prorateCurrentMonth, setProrateCurrentMonth] = useState<boolean>(false);
 
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Cambio en localFilter: ${localFilter}`);
@@ -421,7 +421,6 @@ export const ProductionPlanSection: React.FC = () => {
             { label: 'Producción' }, 
             { label: 'Traslados (Neto)' }, 
             { label: 'Despachos' },
-            { label: 'Saldo Final' },
         ];
         
         const backlogRows: { label: string, isBacklog?: boolean }[] = [];
@@ -433,8 +432,10 @@ export const ProductionPlanSection: React.FC = () => {
             backlogRows.push({ label: 'Faltante (Backlog)', isBacklog: true });
             aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)']; // Consolidate for other centers
         }
+        
+        const finalRow = { label: 'Saldo Final' };
 
-        const allRowsConfig = [...flowRows, ...backlogRows];
+        const allRowsConfig = [...flowRows, finalRow, ...backlogRows];
         const rows = allRowsConfig.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label], isBacklog }));
         
         result[centerId] = { monthKeys, rows };
@@ -682,7 +683,7 @@ export const ProductionPlanSection: React.FC = () => {
                                 <tr key={row.label} className="hover:bg-gray-50 group">
                                   <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''} ${row.isBacklog ? 'text-red-700' : ''}`}>{row.label}</td>
                                   {keys.map((key: string) => (
-                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.isBacklog && (row.values[key] || 0) > 0 ? 'text-red-700 font-bold' : 'text-gray-700'} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-orange-600' : (row.label === 'Traslados (Neto)' && (row.values[key] || 0) > 0 ? 'text-blue-600' : '')}`}>
+                                    <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right font-mono ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.isBacklog && (row.values[key] || 0) > 0 ? 'text-red-700 font-bold' : 'text-gray-700'} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-orange-600' : (row.label === 'Traslados (Neto)' && (row.values[key] || 0) > 0 ? 'text-blue-600' : '')}`}>
                                        {(isNaN(row.values[key])) ? 'N/A' : Math.round(row.values[key] || 0).toLocaleString()}
                                     </td>
                                   ))}
