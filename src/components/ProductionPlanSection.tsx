@@ -359,9 +359,12 @@ export const ProductionPlanSection: React.FC = () => {
     const { monthlyPlan: plan } = productionPlan || { monthlyPlan: [] };
     if (!plan || plan.length === 0) return null;
   
-    const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number>, isBacklog?: boolean }[] }> = {};
+    const result: Record<string, {
+        monthKeys: string[],
+        rows: { label: string, values: Record<string, number>, isBacklog?: boolean }[]
+    }> = {};
   
-    const allCenterIds = new Set(plan.map(item => item.centerId));
+    const allCenterIds = Array.from(new Set(plan.map(item => item.centerId))).sort();
     const monthKeys = Array.from(new Set(plan.map(d => `${d.year}-${String(d.month).padStart(2, '0')}`))).sort();
   
     for (const centerId of allCenterIds) {
@@ -399,7 +402,7 @@ export const ProductionPlanSection: React.FC = () => {
       
       const finalRowConfig = { label: 'Saldo Final', isBacklog: false };
 
-      let backlogRowsConfig = [];
+      let backlogRowsConfig: { label: string, isBacklog: boolean }[] = [];
       if (centerId === '1000') {
         backlogRowsConfig = [
           { label: 'Faltante Ventas (Backlog)', isBacklog: true },
@@ -637,4 +640,5 @@ export const ProductionPlanSection: React.FC = () => {
     
 
     
+
 

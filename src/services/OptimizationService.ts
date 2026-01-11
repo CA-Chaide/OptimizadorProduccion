@@ -307,7 +307,6 @@ export const generateProductionPlan = async (
         logger.log(`[${new Date().toLocaleTimeString()}] ${logMsg}`, 'warning');
     }
     
-    const inventoryState = new Map(initialInventoryState);
     const monthlyPlanItems: MonthlyProductionPlanItem[] = [];
     let salesBacklog = new Map<string, number>();
 
@@ -382,6 +381,8 @@ export const generateProductionPlan = async (
     }
      // --- End Load Smoothing Logic ---
 
+    let inventoryState = new Map(initialInventoryState);
+
     for (let i = 0; i < planningMonths.length; i++) {
         const monthKey = planningMonths[i];
         const [year, monthNum] = monthKey.split('-').map(Number);
@@ -398,10 +399,10 @@ export const generateProductionPlan = async (
             monthlyCapacityByLine.set(line.id, totalHours);
         });
 
-        const monthlyMovements = new Map<string, { production: number; salesDemand: number; dispatches: number; transfersIn: number; transfersOut: number }>();
+        const monthlyMovements = new Map<string, { production: number; salesDemand: number; dispatches: number; transfersIn: number; transfersOut: number; initialStock: number }>();
         const getMovements = (key: string) => {
             if (!monthlyMovements.has(key)) {
-                monthlyMovements.set(key, { production: 0, salesDemand: 0, dispatches: 0, transfersIn: 0, transfersOut: 0 });
+                monthlyMovements.set(key, { production: 0, salesDemand: 0, dispatches: 0, transfersIn: 0, transfersOut: 0, initialStock: 0 });
             }
             return monthlyMovements.get(key)!;
         };
@@ -503,11 +504,13 @@ export const generateProductionPlan = async (
 
         for (const pairKey of allProductCenterPairsThisMonth) {
             const [productId, centerId] = pairKey.split('---');
-            const initialStock = (i === 0 ? initialInventoryState.get(pairKey) : inventoryState.get(pairKey)) || 0;
-
+            const initialStock = inventoryState.get(pairKey) || 0;
+            
             const movements = getMovements(pairKey);
-            const totalDemand = movements.salesDemand + (salesBacklog.get(pairKey) || 0);
+            movements.initialStock = initialStock; // Store initial stock for reporting
 
+            const totalDemand = movements.salesDemand + (salesBacklog.get(pairKey) || 0);
+            
             const availableForDispatch = initialStock + movements.production + movements.transfersIn - movements.transfersOut;
             const dispatches = Math.min(availableForDispatch, totalDemand);
             const finalStock = availableForDispatch - dispatches;
@@ -518,28 +521,30 @@ export const generateProductionPlan = async (
             }
             
             inventoryState.set(pairKey, finalStock);
-            
-            const needs = productionNeedsThisMonth.get(pairKey) || { demandVentas: 0, demandTrasladosF: 0, demandTrasladosX: 0 };
-            
-            if (Object.values(movements).some(v => v !== 0) || initialStock > 0 || totalDemand > 0 || finalStock > 0 || newBacklog > 0) {
-                 monthlyPlanItems.push({
-                    id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
-                    productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
-                    totalQuantityToProduce: movements.production,
-                    totalDemand: totalDemand,
-                    dispatches: dispatches,
-                    netTransfers: movements.transfersIn - movements.transfersOut,
-                    initialStock: initialStock,
-                    finalStock: finalStock,
-                    backlogVentas: newBacklog,
-                    backlogTrasladosF: 0, 
-                    backlogTrasladosX: 0, 
-                    totalHoursWorked: 0, 
-                    totalEstimatedLaborCost: 0, 
-                    assignedLineId: productionLines.find(l => l.workCenterId === centerId && l.materialsHandled.includes(productId))?.id,
-                });
-            }
+            movements.dispatches = dispatches;
         }
+
+        // Now, populate the monthlyPlanItems for reporting
+        for (const [pairKey, movements] of monthlyMovements.entries()) {
+             const [productId, centerId] = pairKey.split('---');
+             monthlyPlanItems.push({
+                id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
+                productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
+                totalQuantityToProduce: movements.production,
+                totalDemand: movements.salesDemand,
+                dispatches: movements.dispatches,
+                netTransfers: movements.transfersIn - movements.transfersOut,
+                initialStock: movements.initialStock,
+                finalStock: (inventoryState.get(pairKey) || 0),
+                backlogVentas: newSalesBacklog.get(pairKey) || 0,
+                backlogTrasladosF: 0, // Recalculate if needed for detailed report
+                backlogTrasladosX: 0,
+                totalHoursWorked: 0, // Can be calculated back if needed
+                totalEstimatedLaborCost: 0, // Can be calculated back if needed
+            });
+        }
+
+
         salesBacklog = newSalesBacklog;
     }
     
@@ -666,7 +671,7 @@ export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[]): voi
     worksheet['!cols'] = [ { wch: 15 }, { wch: 10 }, { wch: 20 }, { wch: 20 } ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Plan Mensual Fabricacion');
-    XLSX.writeFile(workbook, 'Plan_Mensual_Fabricacion.xlsx');
+    XLSX.writeFile(workbook, 'Resumen_Inventario_Mensual.xlsx');
 };
 
 export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]> => { return Promise.resolve([]); };
@@ -678,5 +683,6 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
     
 
     
+
 
 
