@@ -150,21 +150,10 @@ DailyPlanRow.displayName = 'DailyPlanRow';
 export const ProductionPlanSection: React.FC = () => {
   const inspector = useRuntimeInspector('ProductionPlan');
   
-  // Ejemplo: log de cambios en filtros y generación de plan
-  const [localFilter, setLocalFilter] = useState<string>("");
   const [prorateCurrentMonth, setProrateCurrentMonth] = useState<boolean>(false);
 
   useEffect(() => {
-    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Cambio en localFilter: ${localFilter}`);
-    inspector.captureVariable('localFilter', localFilter);
-  }, [localFilter]);
-  useEffect(() => {
-    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Cambio en prorateCurrentMonth: ${prorateCurrentMonth}`);
-    inspector.captureVariable('prorateCurrentMonth', prorateCurrentMonth);
-  }, [prorateCurrentMonth]);
-
-  useEffect(() => {
-    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[ProductionPlanSection] Montado.`);
+    logger.log(`[ProductionPlanSection] Montado.`);
   }, []);
   const { 
     productionPlan, 
@@ -206,18 +195,6 @@ export const ProductionPlanSection: React.FC = () => {
     center: string;
     productCode: string;
   }>({ month: '', line: '', center: '', product: '', productCode: ''});
-
-  const productSectorMap = useMemo(() => {
-    const map = new Map<string, string>();
-    salesData.forEach(sale => {
-      if (!map.has(sale.código)) {
-        map.set(sale.código, sale.sector);
-      }
-    });
-    return map;
-  }, [salesData]);
-  
-  const prioritySectors = useMemo(() => new Set(['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN']), []);
 
   const { dailyPlan = [], monthlyPlan = [], weeklyPlan = [], auditLog = [], initialInventory } = productionPlan || { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [], initialInventory: new Map() };
   
@@ -291,11 +268,6 @@ export const ProductionPlanSection: React.FC = () => {
   const filteredDailyPlan = useMemo(() => {
     if (!dailyPlan) return [];
     
-    const sectorFilteredPlan = dailyPlan.filter(item => {
-        const sector = productSectorMap.get(item.productId);
-        return sector && prioritySectors.has(sector);
-    });
-
     const { product, month, line, center, productCode } = appliedFilters;
     
     const productNameFilter = product.toLowerCase().trim();
@@ -305,12 +277,12 @@ export const ProductionPlanSection: React.FC = () => {
     const centerFilter = center.toLowerCase().trim();
 
     if (!productNameFilter && !productCodeFilter && !monthFilter && !lineFilter && !centerFilter) {
-      return sectorFilteredPlan;
+      return dailyPlan;
     }
 
     const lineNamesMap = new Map(constraints.productionLines.map(l => [l.id, l.name]));
 
-    return sectorFilteredPlan.filter(item => {
+    return dailyPlan.filter(item => {
         if (monthFilter && !MONTH_NAMES[item.month - 1].toLowerCase().includes(monthFilter)) {
             return false;
         }
@@ -339,14 +311,14 @@ export const ProductionPlanSection: React.FC = () => {
 
         return true;
     });
-  }, [dailyPlan, appliedFilters, constraints.productionLines, productSectorMap, prioritySectors]);
+  }, [dailyPlan, appliedFilters, constraints.productionLines]);
 
   const getFilteredLineIds = useMemo(() => {
     if (filterInputs.centers.length === 0 && !filterInputs.processType && filterInputs.lines.length === 0) {
-        return new Set<string>(); // Return empty set if no filters are active, to signal "show all"
+        return new Set<string>();
     }
 
-    let relevantLineIds: Set<string> | null = null; // Use null to signify "all lines from selected centers"
+    let relevantLineIds: Set<string> | null = null; 
 
     if (filterInputs.centers.length > 0) {
         relevantLineIds = new Set<string>(
@@ -380,187 +352,72 @@ export const ProductionPlanSection: React.FC = () => {
     }
 
     return relevantLineIds ?? new Set<string>();
-}, [filterInputs.centers, filterInputs.processType, filterInputs.lines, constraints.productionLines]);
+}, [filterInputs, constraints.productionLines]);
+
 
   const monthlyFlowByCenter = useMemo(() => {
-    const { monthlyPlan } = productionPlan || { monthlyPlan: [] };
-    if (!monthlyPlan || monthlyPlan.length === 0) return null;
-
+    const { monthlyPlan: plan } = productionPlan || { monthlyPlan: [] };
+    if (!plan || plan.length === 0) return null;
+  
     const result: Record<string, { monthKeys: string[], rows: { label: string, values: Record<string, number>, isBacklog?: boolean }[] }> = {};
-
-    const centerIdsToDisplay = filterInputs.centers.length > 0 ? filterInputs.centers : constraints.workCenters.map(c => c.id);
-    const filteredLineIds = getFilteredLineIds;
-    
-    const monthKeys = Array.from(new Set(monthlyPlan.map(d => `${d.year}-${String(d.month).padStart(2,'0')}`))).sort();
-
-    for(const centerId of centerIdsToDisplay) {
-        const aggregatedData: Record<string, Record<string, number>> = {
-            'Saldo Inicial': {}, 'Producción': {}, 'Traslados (Neto)': {}, 'Despachos': {}, 'Faltante Ventas (Backlog)': {}, 'Traslados Mat. Prod. UIO (Backlog)': {}, 'Traslados Mat. Prod. GYE (Backlog)': {}, 'Saldo Final': {}
-        };
-
-        for (const monthKey of monthKeys) {
-            const monthItemsForCenter = monthlyPlan.filter(item => 
-                item.centerId === centerId &&
-                `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey &&
-                (filteredLineIds.size === 0 || !item.assignedLineId || filteredLineIds.has(item.assignedLineId)) &&
-                (productSectorMap.get(item.productId) && prioritySectors.has(productSectorMap.get(item.productId)!))
-            );
-
-            aggregatedData['Saldo Inicial'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.initialStock, 0);
-            aggregatedData['Producción'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
-            aggregatedData['Despachos'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.dispatches, 0);
-            aggregatedData['Traslados (Neto)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.netTransfers, 0);
-            aggregatedData['Faltante Ventas (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogVentas, 0);
-            aggregatedData['Traslados Mat. Prod. UIO (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosF, 0);
-            aggregatedData['Traslados Mat. Prod. GYE (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosX, 0);
-            aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
-        }
-
-        const flowRows: { label: string }[] = [
-            { label: 'Saldo Inicial' }, 
-            { label: 'Producción' }, 
-            { label: 'Traslados (Neto)' }, 
-            { label: 'Despachos' },
-        ];
-        
-        const backlogRows: { label: string, isBacklog?: boolean }[] = [];
-        if (centerId === '1000') {
-            backlogRows.push({ label: 'Faltante Ventas (Backlog)', isBacklog: true });
-            backlogRows.push({ label: 'Traslados Mat. Prod. UIO (Backlog)', isBacklog: true });
-            backlogRows.push({ label: 'Traslados Mat. Prod. GYE (Backlog)', isBacklog: true });
-        } else {
-            backlogRows.push({ label: 'Faltante (Backlog)', isBacklog: true });
-            aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)']; // Consolidate for other centers
-        }
-        
-        const finalRow = { label: 'Saldo Final' };
-
-        const allRowsConfig = [...flowRows, finalRow, ...backlogRows];
-        const rows = allRowsConfig.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label], isBacklog }));
-        
-        result[centerId] = { monthKeys, rows };
-    }
-    
-    return result;
-  }, [filterInputs.centers, productionPlan, getFilteredLineIds, constraints.workCenters, productSectorMap, prioritySectors]);
   
-  const weeklyFlow = useMemo(() => {
-      const { weeklyPlan } = productionPlan || { weeklyPlan: [] };
-      if (filterInputs.centers.length === 0 || !weeklyPlan || weeklyPlan.length === 0) return null;
-
-      const result: Record<string, { weekKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
-      const filteredLineIds = getFilteredLineIds;
+    const allCenterIds = new Set(plan.map(item => item.centerId));
+    const monthKeys = Array.from(new Set(plan.map(d => `${d.year}-${String(d.month).padStart(2, '0')}`))).sort();
+  
+    for (const centerId of allCenterIds) {
+      const aggregatedData: Record<string, Record<string, number>> = {};
+  
+      const allRowLabels = [
+        'Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Despachos', 'Saldo Final',
+        'Faltante Ventas (Backlog)', 'Traslados Mat. Prod. UIO (Backlog)', 'Traslados Mat. Prod. GYE (Backlog)'
+      ];
+      allRowLabels.forEach(label => aggregatedData[label] = {});
+  
+      for (const monthKey of monthKeys) {
+        const monthItemsForCenter = plan.filter(item =>
+          item.centerId === centerId &&
+          `${item.year}-${String(item.month).padStart(2, '0')}` === monthKey
+        );
+  
+        aggregatedData['Saldo Inicial'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.initialStock, 0);
+        aggregatedData['Producción'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.totalQuantityToProduce, 0);
+        aggregatedData['Despachos'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.dispatches, 0);
+        aggregatedData['Traslados (Neto)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.netTransfers, 0);
+        aggregatedData['Faltante Ventas (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogVentas, 0);
+        aggregatedData['Traslados Mat. Prod. UIO (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosF, 0);
+        aggregatedData['Traslados Mat. Prod. GYE (Backlog)'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.backlogTrasladosX, 0);
+        aggregatedData['Saldo Final'][monthKey] = monthItemsForCenter.reduce((sum, item) => sum + item.finalStock, 0);
+      }
       
-      const filteredWeeklyPlan = weeklyPlan.filter(item => {
-        const sector = productSectorMap.get(item.productId);
-        return sector && prioritySectors.has(sector);
-      });
-
-      for(const centerId of filterInputs.centers) {
-          const filteredData = filteredWeeklyPlan.filter(item => 
-            (item.workCenterId === centerId) &&
-            (filteredLineIds.size === 0 || filteredLineIds.has(item.lineId))
-          );
-          if (filteredData.length === 0) continue;
-
-          const weekKeys = Array.from(new Set(filteredData.map(d => `${d.year}-W${String(d.week).padStart(2,'0')}`))).sort();
-          const aggregatedData: Record<string, Record<string, number>> = {
-              'Saldo Inicial': {}, 'Producción': {}, 'Despachos': {}, 'Traslados (Neto)': {}, 'Faltante (Backlog)': {}, 'Saldo Final': {}
-          };
-
-          weekKeys.forEach(weekKey => {
-            const weekItems = filteredData.filter(d => `${d.year}-W${String(d.week).padStart(2,'0')}` === weekKey);
-            aggregatedData['Producción'][weekKey] = weekItems.reduce((sum, item) => sum + item.production, 0);
-            aggregatedData['Despachos'][weekKey] = weekItems.reduce((sum, item) => sum + item.dispatches, 0);
-            aggregatedData['Traslados (Neto)'][weekKey] = weekItems.reduce((sum, item) => sum + item.netTransfers, 0);
-            aggregatedData['Faltante (Backlog)'][weekKey] = weekItems.reduce((sum, item) => sum + (item.unmetDemand || 0), 0);
-            
-            aggregatedData['Saldo Inicial'][weekKey] = weekItems.reduce((sum, item) => sum + item.initialStock, 0);
-            aggregatedData['Saldo Final'][weekKey] = weekItems.reduce((sum, item) => sum + item.finalStock, 0);
-          });
-          
-          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Despachos', 'Saldo Final', 'Faltante (Backlog)'];
-          const rows = rowOrder.map(label => ({ label, values: aggregatedData[label] }));
-          result[centerId] = { weekKeys, rows };
+      const flowRowsConfig = [
+        { label: 'Saldo Inicial', isBacklog: false },
+        { label: 'Producción', isBacklog: false },
+        { label: 'Traslados (Neto)', isBacklog: false },
+        { label: 'Despachos', isBacklog: false },
+      ];
+      
+      let backlogRowsConfig = [];
+      if (centerId === '1000') {
+        backlogRowsConfig = [
+          { label: 'Faltante Ventas (Backlog)', isBacklog: true },
+          { label: 'Traslados Mat. Prod. UIO (Backlog)', isBacklog: true },
+          { label: 'Traslados Mat. Prod. GYE (Backlog)', isBacklog: true }
+        ];
+      } else {
+         // Consolidate for other centers
+        aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)'];
+        backlogRowsConfig = [{ label: 'Faltante (Backlog)', isBacklog: true }];
       }
-      return result;
-  }, [filterInputs.centers, productionPlan, getFilteredLineIds, productSectorMap, prioritySectors]);
-  
-  const dailyFlowByCenter = useMemo(() => {
-      const { dailyPlan } = productionPlan;
-      if (filterInputs.centers.length === 0 || !dailyPlan || dailyPlan.length === 0) return null;
 
-      const result: Record<string, { dayKeys: string[], rows: { label: string, values: Record<string, number> }[] }> = {};
-      const filteredLineIds = getFilteredLineIds;
+      const finalRowConfig = { label: 'Saldo Final', isBacklog: false };
 
-      const filteredPlan = dailyPlan.filter(item => {
-          const sector = productSectorMap.get(item.productId);
-          return sector && prioritySectors.has(sector) &&
-              (filteredLineIds.size === 0 || (item.assignedLineId && filteredLineIds.has(item.assignedLineId)));
-      });
-
-      for (const centerId of filterInputs.centers) {
-          const centerData = filteredPlan.filter(item => item.producingCenterId === centerId || item.demandCenterId === centerId);
-          if (centerData.length === 0) continue;
-
-          const dayKeys = Array.from(new Set(centerData.map(d => `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`))).sort();
-          
-          const aggregatedData: Record<string, Record<string, number>> = {
-              'Saldo Inicial': {}, 'Producción': {}, 'Despachos': {}, 'Traslados (Neto)': {}, 'Faltante (Backlog)': {}, 'Saldo Final': {}
-          };
-          
-          const dailyInventoryState = new Map<string, number>();
-
-          dayKeys.forEach(dayKey => {
-              const dayItems = centerData.filter(d => `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}` === dayKey);
-              
-              let saldoInicialDelDia = 0;
-              let produccionDelDia = 0;
-              let despachosDelDia = 0;
-              let trasladosNetoDelDia = 0;
-              let faltanteDelDia = 0;
-              let saldoFinalDelDia = 0;
-
-              const productsInDay = new Set(dayItems.map(d => d.productId));
-              
-              productsInDay.forEach(productId => {
-                  let stock = dailyInventoryState.get(productId) ?? dayItems.find(d => d.productId === productId)?.initialStockOnDay ?? 0;
-                  saldoInicialDelDia += stock;
-
-                  const itemsForProduct = dayItems.filter(d => d.productId === productId);
-                  const production = itemsForProduct.reduce((sum, item) => sum + (item.isTransfer ? 0 : item.quantityToProduce), 0);
-                  const sales = itemsForProduct.reduce((sum, item) => sum + item.demandOnDay, 0); // This is demand
-                  const transferIn = itemsForProduct.reduce((sum, item) => sum + (item.isTransfer && item.transferDestinationCenterId === centerId ? item.quantityToProduce : 0), 0);
-                  const transferOut = itemsForProduct.reduce((sum, item) => sum + (item.isTransfer && item.transferSourceCenterId === centerId ? item.quantityToProduce : 0), 0);
-                  
-                  const availableForDispatch = stock + production + transferIn - transferOut;
-                  const dispatches = Math.min(availableForDispatch, sales);
-                  
-                  produccionDelDia += production;
-                  despachosDelDia += dispatches;
-                  trasladosNetoDelDia += (transferIn - transferOut);
-                  
-                  faltanteDelDia += (sales - dispatches);
-                  
-                  const finalStock = availableForDispatch - dispatches;
-                  dailyInventoryState.set(productId, finalStock);
-                  saldoFinalDelDia += finalStock;
-              });
-
-              aggregatedData['Saldo Inicial'][dayKey] = saldoInicialDelDia;
-              aggregatedData['Producción'][dayKey] = produccionDelDia;
-              aggregatedData['Despachos'][dayKey] = despachosDelDia;
-              aggregatedData['Traslados (Neto)'][dayKey] = trasladosNetoDelDia;
-              aggregatedData['Faltante (Backlog)'][dayKey] = faltanteDelDia;
-              aggregatedData['Saldo Final'][dayKey] = saldoFinalDelDia;
-          });
-          
-          const rowOrder = ['Saldo Inicial', 'Producción', 'Traslados (Neto)', 'Despachos', 'Saldo Final', 'Faltante (Backlog)'];
-          const rows = rowOrder.map(label => ({ label, values: aggregatedData[label], isBacklog: label.includes('Backlog') }));
-          result[centerId] = { dayKeys, rows };
-      }
-      return result;
-  }, [filterInputs.centers, productionPlan, getFilteredLineIds, productSectorMap, prioritySectors]);
+      const allRowsConfig = [...flowRowsConfig, finalRowConfig, ...backlogRowsConfig];
+      const rows = allRowsConfig.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label] || {}, isBacklog }));
+      
+      result[centerId] = { monthKeys, rows };
+    }
+    return result;
+  }, [productionPlan]);
 
   const availableLinesForFilter = useMemo(() => {
     let lines = constraints.productionLines;
@@ -579,8 +436,6 @@ export const ProductionPlanSection: React.FC = () => {
   const renderContentForTab = (tab: 'monthly' | 'weekly' | 'daily_summary' | 'daily_audit') => {
       switch (tab) {
           case 'monthly': return renderMonthlySummary();
-          case 'weekly': return renderWeeklySummary();
-          case 'daily_summary': return renderDailySummary();
           case 'daily_audit': return renderDailyAudit();
           default: return null;
       }
@@ -629,41 +484,14 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 
-  const renderSummaryView = (
-      flowByCenter: Record<string, { dayKeys?: string[], monthKeys?: string[], weekKeys?: string[], rows: { label: string, values: Record<string, number>, isBacklog?: boolean }[] }> | null,
-      type: 'daily' | 'monthly' | 'weekly'
-  ) => {
-    if (filterInputs.centers.length === 0) {
-      return <div className="text-center py-10 text-gray-500">Por favor, seleccione uno o más centros para ver el resumen.</div>;
-    }
-    if (!flowByCenter || Object.keys(flowByCenter).length === 0) {
-        return <div className="text-center py-10 text-gray-500">No hay datos de planificación para la combinación de filtros seleccionada.</div>;
-    }
+  const renderMonthlySummary = () => {
+    if (!monthlyFlowByCenter) return null;
     
     return (
-        <div className="space-y-6">
-            {filterInputs.centers.map(centerId => {
-                const flow = (flowByCenter as any)[centerId];
-                if (!flow) return null;
-
-                const keys = type === 'daily' ? flow.dayKeys : (type === 'monthly' ? flow.monthKeys : flow.weekKeys);
-                if (!keys || keys.length === 0) return null;
-
-                const getLabel = (key: string) => {
-                    if (type === 'daily') {
-                       const [,,day] = key.split('-');
-                       return day;
-                    }
-                    if (type === 'monthly') {
-                        const [year, monthNum] = key.split('-');
-                        return `${MONTH_NAMES[parseInt(monthNum,10) -1].substring(0,3)} '${year.slice(-2)}`;
-                    }
-                    if (type === 'weekly') {
-                        const [, weekNum] = key.split('-W');
-                        return `S${weekNum}`;
-                    }
-                    return '';
-                };
+        <div className="space-y-8">
+            {Object.keys(monthlyFlowByCenter).sort().map(centerId => {
+                const flow = monthlyFlowByCenter[centerId];
+                if (!flow || flow.rows.every(r => Object.keys(r.values).length === 0)) return null;
 
                 return (
                     <div key={centerId}>
@@ -672,17 +500,18 @@ export const ProductionPlanSection: React.FC = () => {
                           <table className="min-w-full text-sm">
                             <thead className="bg-gray-100">
                               <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-10">Métrica</th>
-                                {keys.map((key: string) => (
-                                    <th key={key} className="px-3 py-2 text-right font-semibold text-gray-600">{getLabel(key)}</th>
-                                ))}
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-10 w-64">Métrica</th>
+                                {flow.monthKeys.map((key: string) => {
+                                    const [year, monthNum] = key.split('-');
+                                    return <th key={key} className="px-3 py-2 text-right font-semibold text-gray-600 w-32">{`${MONTH_NAMES[parseInt(monthNum,10) -1].substring(0,3)} '${year.slice(-2)}`}</th>;
+                                })}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
                               {flow.rows.map((row: any) => (
                                 <tr key={row.label} className="hover:bg-gray-50 group">
                                   <td className={`px-3 py-2 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 ${row.label === 'Saldo Final' ? 'font-bold' : ''} ${row.isBacklog ? 'text-red-700' : ''}`}>{row.label}</td>
-                                  {keys.map((key: string) => (
+                                  {flow.monthKeys.map((key: string) => (
                                     <td key={`${row.label}-${key}`} className={`px-3 py-2 text-right font-mono ${row.label === 'Saldo Final' ? 'font-bold bg-gray-50' : ''} ${row.isBacklog && (row.values[key] || 0) > 0 ? 'text-red-700 font-bold' : 'text-gray-700'} ${row.label === 'Traslados (Neto)' && (row.values[key] || 0) < 0 ? 'text-orange-600' : (row.label === 'Traslados (Neto)' && (row.values[key] || 0) > 0 ? 'text-blue-600' : '')}`}>
                                        {(isNaN(row.values[key])) ? 'N/A' : Math.round(row.values[key] || 0).toLocaleString()}
                                     </td>
@@ -699,66 +528,8 @@ export const ProductionPlanSection: React.FC = () => {
     );
   };
   
-  const renderMonthlySummary = () => (
-     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 border rounded-lg bg-gray-50 items-start">
-         <FilterControls />
-      </div>
-      {renderSummaryView(monthlyFlowByCenter, 'monthly')}
-    </div>
-  );
-
-  const renderWeeklySummary = () => (
-     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 border rounded-lg bg-gray-50 items-start">
-         <FilterControls />
-      </div>
-      {renderSummaryView(weeklyFlow, 'weekly')}
-    </div>
-  );
-
-  const renderDailySummary = () => (
-    <div className="space-y-4">
-     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 border rounded-lg bg-gray-50 items-start">
-        <FilterControls />
-     </div>
-     {renderSummaryView(dailyFlowByCenter, 'daily')}
-   </div>
- );
-  
-  const FilterControls = () => (
-      <>
-        <div>
-            <MultiSelect
-                label="Centro(s) de Trabajo"
-                options={constraints.workCenters.map(c => ({ value: c.id, label: c.name }))}
-                selected={filterInputs.centers}
-                onChange={selectedCenters => setFilterInputs({ ...filterInputs, centers: selectedCenters, processType: '', lines: [] })}
-                placeholder="Seleccione Centro(s)"
-            />
-        </div>
-        <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de Proceso</label>
-            <select value={filterInputs.processType} onChange={e => setFilterInputs({ ...filterInputs, processType: e.target.value, lines: [] })} className="w-full text-xs p-2 mt-1 border border-gray-300 rounded h-9" disabled={filterInputs.centers.length === 0}>
-                <option value="">Todos</option>
-                {PROCESS_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
-        </div>
-        <div>
-            <MultiSelect
-                label="Línea(s) de Producción"
-                options={availableLinesForFilter}
-                selected={filterInputs.lines}
-                onChange={selectedLines => setFilterInputs({ ...filterInputs, lines: selectedLines })}
-                placeholder="Todas las Líneas"
-                className={availableLinesForFilter.length === 0 ? 'opacity-50' : ''}
-            />
-        </div>
-      </>
-  );
-  
   const renderPlanResult = () => {
-      const noPlanGenerated = weeklyPlan.length === 0 && dailyPlan.length === 0 && monthlyPlan.length === 0;
+      const noPlanGenerated = monthlyPlan.length === 0;
 
       if (noPlanGenerated && auditLog.length === 0) {
           return (
@@ -798,10 +569,8 @@ export const ProductionPlanSection: React.FC = () => {
          <div>
             <div className="flex justify-between items-center border-b border-gray-200 pb-3 mb-4">
                 <nav className="flex space-x-2" aria-label="Tabs">
-                    <button onClick={() => setActiveTab('monthly')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'monthly' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen Mensual por Línea</button>
-                    <button onClick={() => setActiveTab('weekly')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'weekly' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen Semanal por Línea</button>
-                    <button onClick={() => setActiveTab('daily_summary')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily_summary' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen Diario por Línea</button>
-                    <button onClick={() => setActiveTab('daily_audit')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily_audit' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Auditoría Diaria (Avanzado)</button>
+                    <button onClick={() => setActiveTab('monthly')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'monthly' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Resumen Mensual</button>
+                    <button onClick={() => setActiveTab('daily_audit')} className={`px-3 py-2 font-medium text-sm rounded-md ${activeTab === 'daily_audit' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>Auditoría Diaria</button>
                 </nav>
                  <div>
                     {activeTab === 'monthly' && monthlyPlan.length > 0 && 
@@ -864,5 +633,7 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
+    
 
     
