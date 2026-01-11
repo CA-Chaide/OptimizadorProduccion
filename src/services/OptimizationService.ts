@@ -629,24 +629,16 @@ export const exportDailyPlanToExcel = (plan: ProductionPlanItem[], constraints: 
 export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[]): void => {
     if (!plan || plan.length === 0) return;
     const dataToExport = plan.map(item => ({
-        'Año': item.year, 'Mes': MONTH_NAMES[item.month - 1], 'Producto (Cód)': item.productId,
-        'Nombre Producto': item.productName,
+        'Mes': MONTH_NAMES[item.month - 1],
         'Centro': item.centerId,
-        'Stock Inicial': Math.round(item.initialStock),
-        'Producción': Math.round(item.totalQuantityToProduce),
-        'Despachos': Math.round(item.dispatches),
-        'Demanda Total': Math.round(item.totalDemand),
-        'Traslados (Neto)': Math.round(item.netTransfers),
-        'Stock Final': Math.round(item.finalStock),
-        'Backlog Ventas': Math.round(item.backlogVentas || 0),
-        'Backlog Traslados F': Math.round(item.backlogTrasladosF || 0),
-        'Backlog Traslados X': Math.round(item.backlogTrasladosX || 0),
+        'codigo material': item.productId,
+        'cantidad a fabricar': Math.round(item.totalQuantityToProduce),
     }));
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    worksheet['!cols'] = [ { wch: 6 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 } ];
+    worksheet['!cols'] = [ { wch: 15 }, { wch: 10 }, { wch: 20 }, { wch: 20 } ];
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Resumen Mensual');
-    XLSX.writeFile(workbook, 'Resumen_Inventario_Mensual.xlsx');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Plan Mensual Fabricacion');
+    XLSX.writeFile(workbook, 'Plan_Mensual_Fabricacion.xlsx');
 };
 
 export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]> => { return Promise.resolve([]); };

@@ -396,6 +396,8 @@ export const ProductionPlanSection: React.FC = () => {
         { label: 'Despachos', isBacklog: false },
       ];
       
+      const finalRowConfig = { label: 'Saldo Final', isBacklog: false };
+
       let backlogRowsConfig = [];
       if (centerId === '1000') {
         backlogRowsConfig = [
@@ -404,12 +406,9 @@ export const ProductionPlanSection: React.FC = () => {
           { label: 'Traslados Mat. Prod. GYE (Backlog)', isBacklog: true }
         ];
       } else {
-         // Consolidate for other centers
         aggregatedData['Faltante (Backlog)'] = aggregatedData['Faltante Ventas (Backlog)'];
         backlogRowsConfig = [{ label: 'Faltante (Backlog)', isBacklog: true }];
       }
-
-      const finalRowConfig = { label: 'Saldo Final', isBacklog: false };
 
       const allRowsConfig = [...flowRowsConfig, finalRowConfig, ...backlogRowsConfig];
       const rows = allRowsConfig.map(({ label, isBacklog }) => ({ label, values: aggregatedData[label] || {}, isBacklog }));
