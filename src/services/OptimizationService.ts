@@ -440,14 +440,24 @@ export const generateProductionPlan = async (
         allDemandKeys.forEach(demandKey => {
             const [productId, demandCenterId] = demandKey.split('---');
             const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === demandCenterId);
-            const classTypeRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === demandCenterId);
-            let classType = classTypeRow?.ClaseAprovisionamiento;
+
+            // CORRECTED LOGIC: Prioritize 'F' rule from central plant.
+            let classType: 'E' | 'X' | 'F' | null | undefined = null;
             
-            if (!classType && demandCenterId !== '1000') {
-              const centralRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === '1000');
-              if (centralRow?.ClaseAprovisionamiento === 'F') {
+            // 1. Check for 'F' rule at central plant (highest priority)
+            const centralRuleRow = apiData.find(d => 
+                normalizeMaterialCode(d.CodMaterial) === productId && 
+                String(d.Centro).trim() === '1000'
+            );
+            if (centralRuleRow?.ClaseAprovisionamiento === 'F') {
                 classType = 'F';
-              }
+            } else {
+                // 2. If not 'F' centrally, check for a specific rule at the demand center.
+                const localRuleRow = apiData.find(d => 
+                    normalizeMaterialCode(d.CodMaterial) === productId && 
+                    String(d.Centro).trim() === demandCenterId
+                );
+                classType = localRuleRow?.ClaseAprovisionamiento;
             }
 
             const totalDemandForDispatch = (sale?.unidadesProyectado || 0) + (salesBacklog.get(demandKey) || 0);
@@ -457,6 +467,7 @@ export const generateProductionPlan = async (
                 getMovements(`${productId}---${demandCenterId}`).transfersIn += totalDemandForDispatch;
                 getMovements(`${productId}---1000`).transfersOut += totalDemandForDispatch;
             } else {
+                // Default to local production ('E' or 'X')
                 getNeeds(`${productId}---${demandCenterId}`).demandVentas += totalDemandForDispatch;
             }
         });
@@ -683,6 +694,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
     
 
     
+
 
 
 
