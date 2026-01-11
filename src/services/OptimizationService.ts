@@ -277,7 +277,7 @@ export const generateProductionPlan = async (
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
     
-    const inventoryState = new Map<string, number>(); 
+    const initialInventoryState = new Map<string, number>(); 
     const allInventoryData = await queryApi({
       source: 'CuboInventarios',
       operation: 'get_data',
@@ -293,11 +293,11 @@ export const generateProductionPlan = async (
                     const productId = normalizeMaterialCode(inv.Material);
                     const centerId = String(inv.Centro).trim();
                     const key = `${productId}---${centerId}`;
-                    inventoryState.set(key, (inventoryState.get(key) || 0) + stock);
+                    initialInventoryState.set(key, (initialInventoryState.get(key) || 0) + stock);
                 }
             }
         });
-        const logMsg = `Inventario inicial cargado desde CuboInventarios. Se encontraron ${inventoryState.size} pares producto-centro con stock.`;
+        const logMsg = `Inventario inicial cargado desde CuboInventarios. Se encontraron ${initialInventoryState.size} pares producto-centro con stock.`;
         auditLog.push(`[${new Date().toLocaleTimeString()}] INFO: ${logMsg}`);
         logger.log(`[${new Date().toLocaleTimeString()}] [Punto 1: Motor] ${logMsg}`, 'success');
 
@@ -307,7 +307,7 @@ export const generateProductionPlan = async (
         logger.log(`[${new Date().toLocaleTimeString()}] ${logMsg}`, 'warning');
     }
     
-    const initialInventoryState = new Map(inventoryState);
+    const inventoryState = new Map(initialInventoryState);
     const monthlyPlanItems: MonthlyProductionPlanItem[] = [];
     let salesBacklog = new Map<string, number>();
 
@@ -503,11 +503,12 @@ export const generateProductionPlan = async (
 
         for (const pairKey of allProductCenterPairsThisMonth) {
             const [productId, centerId] = pairKey.split('---');
-            const initialStock = inventoryState.get(pairKey) || 0;
+            const initialStock = (i === 0 ? initialInventoryState.get(pairKey) : inventoryState.get(pairKey)) || 0;
+
             const movements = getMovements(pairKey);
+            const totalDemand = movements.salesDemand + (salesBacklog.get(pairKey) || 0);
 
             const availableForDispatch = initialStock + movements.production + movements.transfersIn - movements.transfersOut;
-            const totalDemand = movements.salesDemand + (salesBacklog.get(pairKey) || 0);
             const dispatches = Math.min(availableForDispatch, totalDemand);
             const finalStock = availableForDispatch - dispatches;
             const newBacklog = totalDemand - dispatches;
@@ -520,8 +521,7 @@ export const generateProductionPlan = async (
             
             const needs = productionNeedsThisMonth.get(pairKey) || { demandVentas: 0, demandTrasladosF: 0, demandTrasladosX: 0 };
             
-            // Only add item if there's activity
-            if (Object.values(movements).some(v => v !== 0) || initialStock > 0 || totalDemand > 0 || finalStock > 0) {
+            if (Object.values(movements).some(v => v !== 0) || initialStock > 0 || totalDemand > 0 || finalStock > 0 || newBacklog > 0) {
                  monthlyPlanItems.push({
                     id: `${monthKey}---${pairKey}`, year, month: monthNum, productId, centerId,
                     productName: salesData.find(s=> normalizeMaterialCode(s.código) === productId)?.descripciónMaterial || productId,
@@ -532,8 +532,8 @@ export const generateProductionPlan = async (
                     initialStock: initialStock,
                     finalStock: finalStock,
                     backlogVentas: newBacklog,
-                    backlogTrasladosF: 0, // Simplified for now
-                    backlogTrasladosX: 0, // Simplified for now
+                    backlogTrasladosF: 0, 
+                    backlogTrasladosX: 0, 
                     totalHoursWorked: 0, 
                     totalEstimatedLaborCost: 0, 
                     assignedLineId: productionLines.find(l => l.workCenterId === centerId && l.materialsHandled.includes(productId))?.id,
@@ -678,4 +678,5 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
     
 
     
+
 
