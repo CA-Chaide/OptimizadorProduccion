@@ -437,7 +437,6 @@ export const generateProductionPlan = async (
             const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === demandCenterId);
             const totalDemandForDispatch = (sale?.unidadesProyectado || 0) + (salesBacklog.get(demandKey) || 0);
 
-            // CORRECTED LOGIC: Prioritize 'F' rule from central plant.
             let classType: 'E' | 'X' | 'F' | null | undefined = null;
             
             const centralRuleRow = apiData.find(d => 
@@ -454,14 +453,12 @@ export const generateProductionPlan = async (
                 classType = localRuleRow?.ClaseAprovisionamiento;
             }
 
+            // Always register the sales demand at the origin center
+            getNeeds(demandKey).demandVentas += totalDemandForDispatch;
+
             if (classType === 'F' && demandCenterId !== '1000') {
-                // This is a transfer. Add need to Center 1000.
+                // This is a transfer. Add a transfer need to Center 1000.
                 getNeeds(`${productId}---1000`).demandTrasladosF += totalDemandForDispatch;
-                // Mark the demand for sales at the origin as zero, it will be fulfilled by transfer.
-                getNeeds(demandKey).demandVentas = 0;
-            } else {
-                // This is local production ('E', 'X', or 'F' at center 1000). Add to local sales demand.
-                getNeeds(demandKey).demandVentas += totalDemandForDispatch;
             }
         });
 
@@ -508,12 +505,17 @@ export const generateProductionPlan = async (
                 allDemandKeys.forEach(demandKey => {
                     const [demandProductId, demandCenterId] = demandKey.split('---');
                     if(demandProductId === productId && demandCenterId !== '1000') {
-                        const centralRuleRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === '1000');
+                         const centralRuleRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === '1000');
                         if(centralRuleRow?.ClaseAprovisionamiento === 'F') {
-                             const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === demandCenterId);
-                             const transferAmount = (sale?.unidadesProyectado || 0) + (salesBacklog.get(demandKey) || 0);
-                             getMovements(`${productId}---1000`).transfersOut += transferAmount;
-                             getMovements(demandKey).transfersIn += transferAmount;
+                             const transferAmount = getNeeds(demandKey).demandVentas; // The sales demand triggers the transfer
+                             const stockAt1000 = (inventoryState.get(`${productId}---1000`) || 0) + (getMovements(`${productId}---1000`).production);
+                             const actualTransfer = Math.min(transferAmount, stockAt1000);
+
+                             if (actualTransfer > 0) {
+                                 getMovements(`${productId}---1000`).transfersOut += actualTransfer;
+                                 getMovements(demandKey).transfersIn += actualTransfer;
+                                 inventoryState.set(`${productId}---1000`, (inventoryState.get(`${productId}---1000`) || 0) - actualTransfer);
+                             }
                         }
                     }
                 });
@@ -536,15 +538,11 @@ export const generateProductionPlan = async (
 
             const totalSalesDemand = (productionNeedsThisMonth.get(pairKey)?.demandVentas || 0);
 
-            const availableForDispatch = initialStock + movements.production + movements.transfersIn - movements.transfersOut;
+            const availableForDispatch = initialStock + movements.production + movements.transfersIn;
             const dispatches = Math.min(availableForDispatch, totalSalesDemand);
             const finalStock = availableForDispatch - dispatches;
             
-            // Recalculate sales demand based on what should have been dispatched
-            const thisMonthSales = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === centerId)?.unidadesProyectado || 0;
-            const fullDemandThisMonth = thisMonthSales + (salesBacklog.get(pairKey) || 0);
-
-            const newBacklog = Math.max(0, fullDemandThisMonth - dispatches);
+            const newBacklog = Math.max(0, totalSalesDemand - dispatches);
 
             if (newBacklog > 0) {
                 newSalesBacklog.set(pairKey, newBacklog);
@@ -715,6 +713,7 @@ export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkil
     
 
     
+
 
 
 
