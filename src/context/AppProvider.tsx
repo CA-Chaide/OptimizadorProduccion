@@ -8,7 +8,7 @@ import {
     AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
     TacticalPlanResult, Employee, EmployeeSkill, AbsenteeismEvent, MaintenanceEvent,
     WorkShift, AppConstraints, NotificationMessage, TiempoEnsambleItem, SyncStatus,
-    DetailedProductionPlan, PresupuestoItem, PlanningProgress, DemandAnalysisResult
+    DetailedProductionPlan, PresupuestoItem, PlanningProgress, DemandAnalysisResult, CuboInventariosItem
 } from '@/types/types';
 import { ActiveView, MONTH_NAMES } from '@/constants/constants';
 import { generateProductionPlan, processAndValidateAssemblyData, analyzeSalesDemand } from '@/services/OptimizationService';
@@ -49,6 +49,7 @@ const initialState: AppState = {
     planningStep: 0,
     demandAnalysis: null,
     apiAssemblyData: [],
+    apiCuboInventariosData: [],
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -117,6 +118,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, planningStep: 0, demandAnalysis: null, productionPlan: initialState.productionPlan };
         case 'SET_API_ASSEMBLY_DATA':
             return { ...state, apiAssemblyData: action.payload };
+        case 'SET_API_CUBO_INVENTARIOS_DATA':
+            return { ...state, apiCuboInventariosData: action.payload };
         default:
             return state;
     }
@@ -141,6 +144,7 @@ type AppContextType = {
     planningStep: number;
     demandAnalysis: DemandAnalysisResult | null;
     apiAssemblyData: TiempoEnsambleItem[];
+    apiCuboInventariosData: CuboInventariosItem[];
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
@@ -289,19 +293,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addNotification('info', 'Sincronizando y validando estructura y tiempos desde la API...');
         dispatch({ type: 'SET_IS_LOADING', payload: true });
         try {
-            const assemblyData: TiempoEnsambleItem[] = await queryApi({ 
-                source: 'TiemposEnsamblado', 
-                operation: 'get_data',
-                pagination: { limit: 50000 }
-            });
-
-            if (assemblyData.length === 0) {
+            const [assemblyData, cuboInventariosData] = await Promise.all([
+                queryApi({ 
+                    source: 'TiemposEnsamblado', 
+                    operation: 'get_data',
+                    pagination: { limit: 50000 }
+                }),
+                queryApi({
+                    source: 'CuboInventarios',
+                    operation: 'get_data',
+                    pagination: { limit: 500000 }
+                })
+            ]);
+            
+            if (!assemblyData || assemblyData.length === 0) {
                 addNotification('warning', "La API no devolvió datos de tiempos de ensamble.");
-                dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: ["La API no devolvió datos."] }});
+                dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: ["La API de TiemposEnsamblado no devolvió datos."] }});
+                return false;
+            }
+             if (!cuboInventariosData || cuboInventariosData.length === 0) {
+                addNotification('warning', "La API no devolvió datos de CuboInventarios.");
+                dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: false, lastSyncTimestamp: new Date().toISOString(), errors: ["La API de CuboInventarios no devolvió datos."] }});
                 return false;
             }
             
             dispatch({ type: 'SET_API_ASSEMBLY_DATA', payload: assemblyData });
+            dispatch({ type: 'SET_API_CUBO_INVENTARIOS_DATA', payload: cuboInventariosData });
 
             const { newConstraints, validationErrors, dataCompletenessErrors } = processAndValidateAssemblyData(
                 assemblyData,
@@ -320,7 +337,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dispatch({ type: 'SET_CONSTRAINTS', payload: newConstraints });
             
             dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: true, lastSyncTimestamp: new Date().toISOString(), errors: [] }});
-            addNotification('success', `Sincronización exitosa. Se descubrieron y validaron ${assemblyData.length} registros.`);
+            addNotification('success', `Sincronización exitosa. Se descubrieron y validaron ${assemblyData.length} registros de ensamble y ${cuboInventariosData.length} de inventario.`);
             return true;
         } catch (error) {
             const errorMessage = `Error de red o de API al sincronizar: ${(error as Error).message}`;
@@ -448,3 +465,4 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
+

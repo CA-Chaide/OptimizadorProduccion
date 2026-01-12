@@ -165,7 +165,7 @@ export const ProductionPlanSection: React.FC = () => {
     planningStep,
     dispatch,
     demandAnalysis,
-    apiAssemblyData
+    apiCuboInventariosData
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
@@ -212,13 +212,13 @@ export const ProductionPlanSection: React.FC = () => {
         logger.log("Error: No hay datos de ventas.", 'error');
         return;
       }
-      if (apiAssemblyData.length === 0) {
-        logger.log("Error: Los datos de la API de ensamble no están cargados en el contexto.", 'error');
+      if (apiCuboInventariosData.length === 0) {
+        logger.log("Error: Los datos de la API de CuboInventarios no están cargados en el contexto.", 'error');
         return;
       }
       dispatch({ type: 'SET_IS_LOADING', payload: true });
       try {
-        const analysisResult = await analyzeSalesDemand(salesData, apiAssemblyData);
+        const analysisResult = await analyzeSalesDemand(salesData, apiCuboInventariosData);
         dispatch({ type: 'SET_DEMAND_ANALYSIS', payload: analysisResult });
         dispatch({ type: 'SET_PLANNING_STEP', payload: 1 });
       } catch (error) {
@@ -328,9 +328,9 @@ export const ProductionPlanSection: React.FC = () => {
 
           {unclassifiedMaterials.length > 0 && (
             <div className="p-4 border border-yellow-300 bg-yellow-50 rounded-lg">
-                <h4 className="text-md font-semibold text-yellow-800">⚠️ Alerta: Materiales sin Clase de Aprovisionamiento Asignada</h4>
+                <h4 className="text-md font-semibold text-yellow-800">⚠️ Alerta: Materiales Fabricables sin Clase de Aprovisionamiento</h4>
                 <p className="text-xs text-yellow-700 mt-1 mb-3">
-                    Los siguientes materiales no tienen una regla de aprovisionamiento ('E', 'F', 'X') definida en los datos de `TiemposEnsamblado` y no podrán ser planificados. Esto puede ser correcto para materiales importados o puede indicar un error en los datos maestros.
+                    Los siguientes materiales (código inicia con '3' o '4') no tienen una regla de aprovisionamiento ('E', 'F', 'X') definida en `CuboInventarios` y no podrán ser planificados. Esto puede indicar un error en los datos maestros. Los productos comprados (que no inician con 3 o 4) son omitidos correctamente.
                 </p>
                 <div className="overflow-auto max-h-48 border rounded-md bg-white">
                     <table className="min-w-full text-xs divide-y divide-gray-200">
@@ -400,3 +400,4 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+

@@ -7,7 +7,7 @@ import {
     SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
     Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, PresupuestoItem,
-    PlanningProgress, WeeklyPlanItem, DemandAnalysisResult 
+    PlanningProgress, WeeklyPlanItem, DemandAnalysisResult, CuboInventariosItem
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 import { queryApi } from '@/hooks/useApiData';
@@ -22,9 +22,11 @@ const normalizeMaterialCode = (code: string | number): string => {
 
 export const analyzeSalesDemand = async (
     salesData: SalesDataRow[],
-    apiData: TiempoEnsambleItem[]
+    cuboInventariosData: CuboInventariosItem[]
 ): Promise<DemandAnalysisResult> => {
     const auditLog: string[] = [];
+    auditLog.push(`[${new Date().toLocaleTimeString()}] Iniciando análisis de demanda con ${salesData.length} registros de venta y ${cuboInventariosData.length} registros de CuboInventarios.`);
+    
     const totalDemand = salesData.reduce((sum, row) => sum + row.unidadesProyectado, 0);
 
     const demandByGroupMap = new Map<string, {
@@ -35,6 +37,13 @@ export const analyzeSalesDemand = async (
     }>();
 
     const unclassifiedMaterials: DemandAnalysisResult['unclassifiedMaterials'] = [];
+    const cuboMap = new Map<string, CuboInventariosItem>();
+    cuboInventariosData.forEach(item => {
+        const key = `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}`;
+        cuboMap.set(key, item);
+    });
+    
+    auditLog.push(`[${new Date().toLocaleTimeString()}] Creado mapa de búsqueda de CuboInventarios con ${cuboMap.size} entradas únicas.`);
 
     salesData.forEach(row => {
         const productId = normalizeMaterialCode(row.código);
@@ -42,48 +51,42 @@ export const analyzeSalesDemand = async (
         const sector = row.sector || 'Sin Sector';
         
         let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
-        
-        const centralRuleF = apiData.find(
-            item => normalizeMaterialCode(item.CodMaterial) === productId && 
-                    String(item.Centro).trim() === '1000' && 
-                    item.ClaseAprovisionamiento === 'F'
-        );
 
-        if (centralRuleF) {
-            claseAprovisionamiento = 'F';
+        const cuboKey = `${productId}---${centerId}`;
+        const cuboEntry = cuboMap.get(cuboKey);
+
+        if (cuboEntry && cuboEntry.ClaseAprovisionam) {
+            claseAprovisionamiento = cuboEntry.ClaseAprovisionam;
         } else {
-            const localRule = apiData.find(
-                item => normalizeMaterialCode(item.CodMaterial) === productId && 
-                        String(item.Centro).trim() === centerId
-            );
-            
-            if (localRule && localRule.ClaseAprovisionamiento) {
-              claseAprovisionamiento = localRule.ClaseAprovisionamiento;
+            // Si el código NO empieza con 3 o 4, no es un error, es un producto comprado.
+            if (!String(row.código).startsWith('3') && !String(row.código).startsWith('4')) {
+                // No lo agregamos a unclassified, simplemente lo ignoramos para la planificación de fabricación.
+            } else {
+                unclassifiedMaterials.push({
+                    productId: row.código,
+                    productName: row.descripciónMaterial,
+                    centerId: centerId,
+                    sector: sector,
+                    demand: row.unidadesProyectado
+                });
             }
         }
         
-        if (claseAprovisionamiento === 'N/A') {
-            unclassifiedMaterials.push({
-                productId: row.código,
-                productName: row.descripciónMaterial,
-                centerId: centerId,
-                sector: sector,
-                demand: row.unidadesProyectado
-            });
-        }
+        // Solo agrupamos para el reporte si tiene una clase válida
+        if (claseAprovisionamiento !== 'N/A') {
+            const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}`;
 
-        const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}`;
-
-        if (!demandByGroupMap.has(groupKey)) {
-            demandByGroupMap.set(groupKey, {
-                claseAprovisionamiento,
-                centro: centerId,
-                sector: sector,
-                totalUnidades: 0,
-            });
+            if (!demandByGroupMap.has(groupKey)) {
+                demandByGroupMap.set(groupKey, {
+                    claseAprovisionamiento,
+                    centro: centerId,
+                    sector: sector,
+                    totalUnidades: 0,
+                });
+            }
+            const group = demandByGroupMap.get(groupKey)!;
+            group.totalUnidades += row.unidadesProyectado;
         }
-        const group = demandByGroupMap.get(groupKey)!;
-        group.totalUnidades += row.unidadesProyectado;
     });
 
     const demandByGroup = Array.from(demandByGroupMap.values())
@@ -95,10 +98,10 @@ export const analyzeSalesDemand = async (
             return a.sector.localeCompare(b.sector);
         });
 
-    auditLog.push(`Análisis de demanda completado. Total de demanda bruta: ${totalDemand.toLocaleString()}. Grupos encontrados: ${demandByGroup.length}.`);
+    auditLog.push(`[${new Date().toLocaleTimeString()}] Análisis de demanda completado. Total de demanda bruta: ${totalDemand.toLocaleString()}. Grupos clasificados: ${demandByGroup.length}.`);
 
     if(unclassifiedMaterials.length > 0) {
-        auditLog.push(`ADVERTENCIA: Se encontraron ${unclassifiedMaterials.length} registros de demanda para materiales sin Clase de Aprovisionamiento definida.`);
+        auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: Se encontraron ${unclassifiedMaterials.length} registros de demanda para materiales fabricables (código inicia con 3 o 4) pero sin Clase de Aprovisionamiento definida en CuboInventarios.`);
     }
 
     return { totalDemand, demandByGroup, unclassifiedMaterials, auditLog };
@@ -788,3 +791,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+

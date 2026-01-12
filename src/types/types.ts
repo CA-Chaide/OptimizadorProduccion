@@ -34,6 +34,7 @@ export type AppState = {
   planningStep: number;
   demandAnalysis: DemandAnalysisResult | null;
   apiAssemblyData: TiempoEnsambleItem[];
+  apiCuboInventariosData: CuboInventariosItem[];
 };
 
 export type AppAction =
@@ -57,7 +58,8 @@ export type AppAction =
   | { type: 'SET_PLANNING_STEP'; payload: number }
   | { type: 'SET_DEMAND_ANALYSIS'; payload: DemandAnalysisResult | null }
   | { type: 'RESET_PLANNING' }
-  | { type: 'SET_API_ASSEMBLY_DATA'; payload: TiempoEnsambleItem[] };
+  | { type: 'SET_API_ASSEMBLY_DATA'; payload: TiempoEnsambleItem[] }
+  | { type: 'SET_API_CUBO_INVENTARIOS_DATA'; payload: CuboInventariosItem[] };
 
 
 export type AbsenteeismEvent = {
@@ -520,7 +522,8 @@ export interface TiempoEnsambleItem {
 export interface CuboInventariosItem {
     Material: string;
     Centro: string;
-    ClaseAprovisionamiento: 'E' | 'X' | 'F' | null;
+    ClaseAprovisionam: 'E' | 'X' | 'F' | null;
+    [key: string]: any; // Allow other fields
 }
 
 // New type for the demand analysis step
@@ -544,3 +547,4 @@ export interface DemandAnalysisResult {
 
 
 import { ActiveView } from '@/constants/constants';
+
