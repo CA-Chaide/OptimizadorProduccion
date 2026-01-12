@@ -164,7 +164,8 @@ export const ProductionPlanSection: React.FC = () => {
     planningProgress,
     planningStep,
     dispatch,
-    demandAnalysis
+    demandAnalysis,
+    apiAssemblyData
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
@@ -211,9 +212,13 @@ export const ProductionPlanSection: React.FC = () => {
         logger.log("Error: No hay datos de ventas.", 'error');
         return;
       }
+      if (apiAssemblyData.length === 0) {
+        logger.log("Error: Los datos de la API de ensamble no están cargados en el contexto.", 'error');
+        return;
+      }
       dispatch({ type: 'SET_IS_LOADING', payload: true });
       try {
-        const analysisResult = await analyzeSalesDemand(salesData, constraints);
+        const analysisResult = await analyzeSalesDemand(salesData, apiAssemblyData);
         dispatch({ type: 'SET_DEMAND_ANALYSIS', payload: analysisResult });
         dispatch({ type: 'SET_PLANNING_STEP', payload: 1 });
       } catch (error) {

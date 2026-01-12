@@ -33,6 +33,7 @@ export type AppState = {
   // New state for step-by-step planning
   planningStep: number;
   demandAnalysis: DemandAnalysisResult | null;
+  apiAssemblyData: TiempoEnsambleItem[];
 };
 
 export type AppAction =
@@ -55,7 +56,9 @@ export type AppAction =
   // New actions for step-by-step planning
   | { type: 'SET_PLANNING_STEP'; payload: number }
   | { type: 'SET_DEMAND_ANALYSIS'; payload: DemandAnalysisResult | null }
-  | { type: 'RESET_PLANNING' };
+  | { type: 'RESET_PLANNING' }
+  | { type: 'SET_API_ASSEMBLY_DATA'; payload: TiempoEnsambleItem[] };
+
 
 export type AbsenteeismEvent = {
   id: string;

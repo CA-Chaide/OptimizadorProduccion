@@ -22,7 +22,7 @@ const normalizeMaterialCode = (code: string | number): string => {
 
 export const analyzeSalesDemand = async (
     salesData: SalesDataRow[],
-    constraints: AppConstraints
+    assemblyData: TiempoEnsambleItem[] // Usar los datos directos de la API
 ): Promise<DemandAnalysisResult> => {
     const auditLog: string[] = [];
     const totalDemand = salesData.reduce((sum, row) => sum + row.unidadesProyectado, 0);
@@ -34,8 +34,6 @@ export const analyzeSalesDemand = async (
         totalUnidades: number;
     }>();
 
-    const { productProcessInfos } = constraints;
-
     salesData.forEach(row => {
         const productId = normalizeMaterialCode(row.código);
         const centerId = String(row.centro).trim();
@@ -43,22 +41,24 @@ export const analyzeSalesDemand = async (
         
         let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
         
-        // Correct Logic: Hierarchical search for procurement class
-        // 1. Check for an 'F' rule at the central manufacturing center (1000)
-        const centralManufacturingRule = productProcessInfos.find(
-            ppi => ppi.productId === productId && ppi.productionLineId.includes('1000') && ppi.ClaseAprovisionamiento === 'F'
+        // Lógica de búsqueda jerárquica directamente en los datos de la API
+        // 1. Buscar regla 'F' en el centro 1000
+        const centralRuleF = assemblyData.find(
+            item => normalizeMaterialCode(item.CodMaterial) === productId && 
+                    String(item.Centro).trim() === '1000' && 
+                    item.ClaseAprovisionamiento === 'F'
         );
 
-        if (centralManufacturingRule) {
+        if (centralRuleF) {
             claseAprovisionamiento = 'F';
         } else {
-            // 2. If not 'F', find the local rule in the demand center
-            const localRule = productProcessInfos.find(
-                ppi => ppi.productId === productId && ppi.productionLineId.includes(centerId)
+            // 2. Si no es 'F', buscar la regla en el centro de demanda local
+            const localRule = assemblyData.find(
+                item => normalizeMaterialCode(item.CodMaterial) === productId && 
+                        String(item.Centro).trim() === centerId
             );
             claseAprovisionamiento = localRule?.ClaseAprovisionamiento || 'N/A';
         }
-
 
         const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}`;
 
@@ -476,13 +476,15 @@ export const generateProductionPlan = async (
             const centerId = String(sale.centro).trim();
             const demandKey = `${productId}---${centerId}`;
 
-            const classF_rule = constraints.productProcessInfos.find(ppi => ppi.productId === productId && ppi.productionLineId.includes('1000') && ppi.ClaseAprovisionamiento === 'F');
+            const classF_rule = apiData.find(item => normalizeMaterialCode(item.CodMaterial) === productId && String(item.Centro).trim() === '1000' && item.ClaseAprovisionamiento === 'F');
+
             if (classF_rule) {
                 demandF.set(demandKey, (demandF.get(demandKey) || 0) + sale.unidadesProyectado);
                 continue;
             }
 
-            const local_rule = constraints.productProcessInfos.find(ppi => ppi.productId === productId && ppi.productionLineId.includes(centerId));
+            const local_rule = apiData.find(item => normalizeMaterialCode(item.CodMaterial) === productId && String(item.Centro).trim() === centerId);
+
             if (local_rule?.ClaseAprovisionamiento === 'X') {
                 demandX.set(demandKey, (demandX.get(demandKey) || 0) + sale.unidadesProyectado);
             } else { // 'E' or undefined defaults to local
@@ -767,10 +769,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-
-
-
-
-
-
