@@ -532,6 +532,13 @@ export interface DemandAnalysisResult {
         sector: string;
         totalUnidades: number;
     }>;
+    unclassifiedMaterials: Array<{
+        productId: string;
+        productName: string;
+        centerId: string;
+        sector: string;
+        demand: number;
+    }>;
     auditLog: string[];
 }
 

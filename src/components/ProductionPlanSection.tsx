@@ -179,7 +179,7 @@ export const ProductionPlanSection: React.FC = () => {
       salesDataCount: salesData.length,
       demandAnalysisPresent: !!demandAnalysis
     });
-  }, [isDataSynced, isLoading, planningStep, productionPlan, salesData, demandAnalysis]);
+  }, [isDataSynced, isLoading, planningStep, productionPlan, salesData, demandAnalysis, inspector]);
 
   const [activeTab, setActiveTab] = useState<'monthly' | 'weekly' | 'daily_summary' | 'daily_audit'>('monthly');
   const [selectedSectors, setSelectedSectors] = useState<string[]>([]);
@@ -286,43 +286,80 @@ export const ProductionPlanSection: React.FC = () => {
     }
 
     if (planningStep === 1 && demandAnalysis) {
-      const { totalDemand, demandByGroup } = demandAnalysis;
+      const { totalDemand, demandByGroup, unclassifiedMaterials } = demandAnalysis;
       return (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-800">Paso 1: Validación de Demanda de Ventas Bruta</h3>
-          <p className="text-sm text-gray-600">
-            A continuación se muestra el total de unidades de venta cargadas, agregadas por Clase de Aprovisionamiento, Centro de Demanda y Sector. Verifique que estos totales coincidan con sus expectativas antes de continuar.
-          </p>
-          <div className="overflow-auto max-h-[60vh] border rounded-lg">
-            <table className="min-w-full text-sm divide-y divide-gray-200">
-              <thead className="bg-gray-100 sticky top-0 z-10">
-                <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase Aprov.</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro Demanda</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Sector</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Total Unidades</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {demandByGroup.map((item, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
-                      {item.claseAprovisionamiento}
-                    </td>
-                    <td className="px-3 py-2">{item.centro}</td>
-                    <td className="px-3 py-2">{item.sector}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Paso 1: Validación de Demanda de Ventas Bruta</h3>
+            <p className="text-sm text-gray-600">
+              A continuación se muestra el total de unidades de venta cargadas, agregadas por Clase de Aprovisionamiento, Centro de Demanda y Sector. Verifique que estos totales coincidan con sus expectativas antes de continuar.
+            </p>
+            <div className="overflow-auto max-h-[50vh] border rounded-lg mt-4">
+              <table className="min-w-full text-sm divide-y divide-gray-200">
+                <thead className="bg-gray-100 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase Aprov.</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro Demanda</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Sector</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-600">Total Unidades</th>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-gray-800 text-white sticky bottom-0">
-                <tr>
-                  <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase">Total General Demanda</th>
-                  <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalDemand).toLocaleString()}</th>
-                </tr>
-              </tfoot>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {demandByGroup.map((item, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
+                        {item.claseAprovisionamiento}
+                      </td>
+                      <td className="px-3 py-2">{item.centro}</td>
+                      <td className="px-3 py-2">{item.sector}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-800 text-white sticky bottom-0">
+                  <tr>
+                    <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase">Total General Demanda</th>
+                    <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalDemand).toLocaleString()}</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
+
+          {unclassifiedMaterials.length > 0 && (
+            <div className="p-4 border border-yellow-300 bg-yellow-50 rounded-lg">
+                <h4 className="text-md font-semibold text-yellow-800">⚠️ Alerta: Materiales sin Clase de Aprovisionamiento Asignada</h4>
+                <p className="text-xs text-yellow-700 mt-1 mb-3">
+                    Los siguientes materiales no tienen una regla de aprovisionamiento ('E', 'F', 'X') definida en los datos de `TiemposEnsamblado` y no podrán ser planificados. Esto puede ser correcto para materiales importados o puede indicar un error en los datos maestros.
+                </p>
+                <div className="overflow-auto max-h-48 border rounded-md bg-white">
+                    <table className="min-w-full text-xs divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0">
+                            <tr>
+                                <th className="px-2 py-1 text-left font-semibold text-gray-600">Material</th>
+                                <th className="px-2 py-1 text-left font-semibold text-gray-600">Centro</th>
+                                <th className="px-2 py-1 text-left font-semibold text-gray-600">Sector</th>
+                                <th className="px-2 py-1 text-right font-semibold text-gray-600">Unidades</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {unclassifiedMaterials.map((item, index) => (
+                                <tr key={index} className="hover:bg-yellow-100">
+                                    <td className="px-2 py-1">
+                                        <div className="font-mono text-gray-800">{item.productId}</div>
+                                        <div className="text-gray-500">{item.productName}</div>
+                                    </td>
+                                    <td className="px-2 py-1">{item.centerId}</td>
+                                    <td className="px-2 py-1">{item.sector}</td>
+                                    <td className="px-2 py-1 text-right font-mono">{Math.round(item.demand).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+          )}
+
           <div className="flex justify-end space-x-4 pt-4">
             <Button variant="outline" onClick={resetPlanning}>Cancelar y Reiniciar</Button>
             <Button disabled>Aceptar y Continuar al Paso 2</Button>

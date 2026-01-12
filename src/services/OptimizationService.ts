@@ -34,6 +34,8 @@ export const analyzeSalesDemand = async (
         totalUnidades: number;
     }>();
 
+    const unclassifiedMaterials: DemandAnalysisResult['unclassifiedMaterials'] = [];
+
     salesData.forEach(row => {
         const productId = normalizeMaterialCode(row.código);
         const centerId = String(row.centro).trim();
@@ -41,8 +43,6 @@ export const analyzeSalesDemand = async (
         
         let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
         
-        // Lógica de búsqueda jerárquica directamente en los datos de la API
-        // 1. Buscar regla 'F' en el centro 1000
         const centralRuleF = apiData.find(
             item => normalizeMaterialCode(item.CodMaterial) === productId && 
                     String(item.Centro).trim() === '1000' && 
@@ -52,12 +52,24 @@ export const analyzeSalesDemand = async (
         if (centralRuleF) {
             claseAprovisionamiento = 'F';
         } else {
-            // 2. Si no es 'F', buscar la regla en el centro de demanda local
             const localRule = apiData.find(
                 item => normalizeMaterialCode(item.CodMaterial) === productId && 
                         String(item.Centro).trim() === centerId
             );
-            claseAprovisionamiento = localRule?.ClaseAprovisionamiento || 'N/A';
+            
+            if (localRule && localRule.ClaseAprovisionamiento) {
+              claseAprovisionamiento = localRule.ClaseAprovisionamiento;
+            }
+        }
+        
+        if (claseAprovisionamiento === 'N/A') {
+            unclassifiedMaterials.push({
+                productId: row.código,
+                productName: row.descripciónMaterial,
+                centerId: centerId,
+                sector: sector,
+                demand: row.unidadesProyectado
+            });
         }
 
         const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}`;
@@ -85,7 +97,11 @@ export const analyzeSalesDemand = async (
 
     auditLog.push(`Análisis de demanda completado. Total de demanda bruta: ${totalDemand.toLocaleString()}. Grupos encontrados: ${demandByGroup.length}.`);
 
-    return { totalDemand, demandByGroup, auditLog };
+    if(unclassifiedMaterials.length > 0) {
+        auditLog.push(`ADVERTENCIA: Se encontraron ${unclassifiedMaterials.length} registros de demanda para materiales sin Clase de Aprovisionamiento definida.`);
+    }
+
+    return { totalDemand, demandByGroup, unclassifiedMaterials, auditLog };
 };
 
 export function processAndValidateAssemblyData(
@@ -107,7 +123,10 @@ export function processAndValidateAssemblyData(
         if (!row.Linea) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Linea'.`);
         if (!row.PuestoTrabajo) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'PuestoTrabajo'.`);
         if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
-        if (row.ClaseAprovisionamiento === null || row.ClaseAprovisionamiento === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'ClaseAprovisionamiento'.`);
+        if (row.ClaseAprovisionamiento === null || row.ClaseAprovisionamiento === undefined) {
+          // No es un error fatal, pero se puede loguear si se desea
+          // logger.log(`Fila API ${index+1} (Mat: ${row.CodMaterial}) no tiene ClaseAprovisionamiento. Se tratará como 'E'.`, 'warning');
+        }
     });
 
     if (dataCompletenessErrors.length > 0) {
