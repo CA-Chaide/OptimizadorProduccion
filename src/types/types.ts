@@ -115,7 +115,7 @@ export interface SalesDataRow {
   familia: string;
   marca: string;
   lineaProduccion: string; 
-  claseAprovisionamiento?: 'E' | 'X' | 'F' | 'N/A';
+  ClaseAprovisionamiento?: 'E' | 'X' | 'F' | 'N/A';
 }
 
 export interface WorkstationDefinition {
@@ -133,7 +133,7 @@ export interface ProductProcessInfo {
   productionLineId: string; 
   workstationTimes: Array<{ workstationDefinitionId: string; timeHours: number }>; 
   totalManufacturingTimeHours: number; 
-  aprovisionamientoEspecial?: 'E' | 'X' | 'F'; _
+  ClaseAprovisionamiento?: 'E' | 'X' | 'F';
 }
 
 export interface ProductionLine {

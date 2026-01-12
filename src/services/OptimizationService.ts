@@ -46,7 +46,7 @@ export const analyzeSalesDemand = async (
         // Correct Logic: Hierarchical search for procurement class
         // 1. Check for an 'F' rule at the central manufacturing center (1000)
         const centralManufacturingRule = productProcessInfos.find(
-            ppi => ppi.productId === productId && ppi.productionLineId.includes('1000') && ppi.aprovisionamientoEspecial === 'F'
+            ppi => ppi.productId === productId && ppi.productionLineId.includes('1000') && ppi.ClaseAprovisionamiento === 'F'
         );
 
         if (centralManufacturingRule) {
@@ -56,7 +56,7 @@ export const analyzeSalesDemand = async (
             const localRule = productProcessInfos.find(
                 ppi => ppi.productId === productId && ppi.productionLineId.includes(centerId)
             );
-            claseAprovisionamiento = localRule?.aprovisionamientoEspecial || 'N/A';
+            claseAprovisionamiento = localRule?.ClaseAprovisionamiento || 'N/A';
         }
 
 
@@ -232,7 +232,7 @@ export function processAndValidateAssemblyData(
             productionLineId: lineId,
             workstationTimes: workstationTimes,
             totalManufacturingTimeHours: totalManufacturingTimeHours,
-            aprovisionamientoEspecial: representativeRow?.ClaseAprovisionamiento || undefined
+            ClaseAprovisionamiento: representativeRow?.ClaseAprovisionamiento || undefined
         });
     });
 
@@ -324,7 +324,7 @@ export const generateProductionPlan = async (
     logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN (Prorrateo: ${prorateCurrentMonth}) ---`, 'info');
     auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan (Prorrateo mes actual: ${prorateCurrentMonth}).`);
 
-    var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
+    const { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
     if (salesData.length === 0) {
         auditLog.push(`Error: No hay datos de ventas para planificar.`);
@@ -441,12 +441,8 @@ export const generateProductionPlan = async (
         
         let salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
 
-        const isCurrentPlanningMonth = year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1;
-        let startDayForCapacityCalc = 1;
-        
-        if (prorateCurrentMonth && isCurrentPlanningMonth) {
+        if (prorateCurrentMonth && year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1) {
             const today = new Date();
-            startDayForCapacityCalc = today.getDate();
             const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
             const daysPassed = today.getDate() - 1;
             const remainingProportion = (daysInMonth - daysPassed) / daysInMonth;
@@ -460,6 +456,10 @@ export const generateProductionPlan = async (
 
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
+            let startDayForCapacityCalc = 1;
+            if (prorateCurrentMonth && year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1) {
+                startDayForCapacityCalc = new Date().getDate();
+            }
             const { totalHours } = getMonthlyCapacity(year, monthNum, line, startDayForCapacityCalc);
             monthlyCapacityByLine.set(line.id, totalHours);
         });
@@ -476,14 +476,14 @@ export const generateProductionPlan = async (
             const centerId = String(sale.centro).trim();
             const demandKey = `${productId}---${centerId}`;
 
-            const classF_rule = constraints.productProcessInfos.find(ppi => ppi.productId === productId && ppi.productionLineId.includes('1000') && ppi.aprovisionamientoEspecial === 'F');
+            const classF_rule = constraints.productProcessInfos.find(ppi => ppi.productId === productId && ppi.productionLineId.includes('1000') && ppi.ClaseAprovisionamiento === 'F');
             if (classF_rule) {
                 demandF.set(demandKey, (demandF.get(demandKey) || 0) + sale.unidadesProyectado);
                 continue;
             }
 
             const local_rule = constraints.productProcessInfos.find(ppi => ppi.productId === productId && ppi.productionLineId.includes(centerId));
-            if (local_rule?.aprovisionamientoEspecial === 'X') {
+            if (local_rule?.ClaseAprovisionamiento === 'X') {
                 demandX.set(demandKey, (demandX.get(demandKey) || 0) + sale.unidadesProyectado);
             } else { // 'E' or undefined defaults to local
                 demandE.set(demandKey, (demandE.get(demandKey) || 0) + sale.unidadesProyectado);
@@ -557,7 +557,7 @@ export const generateProductionPlan = async (
         }
         
         // Add local demand for Center 1000 (if any)
-        const localDemand1000 = salesData.filter(s => s.centro === '1000' && `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
+        const localDemand1000 = salesThisMonth.filter(s => s.centro === '1000');
         for(const sale of localDemand1000) {
             const productId = normalizeMaterialCode(sale.código);
             const key = `${productId}---1000`;
@@ -661,12 +661,13 @@ export const generateProductionPlan = async (
         monthlyMovements.forEach((mov, key) => {
             const [productId, centerId] = key.split('---');
             const safetyStock = constraints.inventorySettings.find(s => s.id === key)?.minStock || 0;
-            const totalNeed = mov.salesDemand + safetyStock;
+            const totalNeed = mov.salesDemand + safetyStock + mov.transfersOut; // Added transfersOut
             
             if (totalNeed > 0) {
-                if (!needsLog[centerId]) needsLog[centerId] = { ventas: 0, stockSeguridad: 0, total: 0 };
+                if (!needsLog[centerId]) needsLog[centerId] = { ventas: 0, stockSeguridad: 0, trasladosSalientes: 0, total: 0 };
                 needsLog[centerId].ventas += mov.salesDemand;
                 needsLog[centerId].stockSeguridad += safetyStock;
+                needsLog[centerId].trasladosSalientes += mov.transfersOut;
                 needsLog[centerId].total += totalNeed;
             }
             if (mov.production > 0) {
@@ -766,6 +767,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
