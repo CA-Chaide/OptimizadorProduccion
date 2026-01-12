@@ -4,7 +4,7 @@ import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/type
 
 // --- Configuración Central de API ---
 const API_BASE_URL = ''; 
-const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9k20gLVe3rPut4';
+const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9kf721d3d';
 
 /**
  * Un 'fetcher' genérico y reutilizable para peticiones a la API.
@@ -24,20 +24,12 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
     if (method === 'POST' && body) {
         options.body = JSON.stringify(body);
     }
-    
-    const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] [Fetcher] ---> INICIANDO PETICIÓN...`);
-    console.log(`[${timestamp}] [Fetcher] URL: ${url}`);
-    console.log(`[${timestamp}] [Fetcher] Opciones:`, { method: options.method, headers: options.headers, body: body ? '...' : 'No Body' });
-
 
     try {
         const res = await fetch(url, options);
 
         if (!res.ok) {
             const errorText = await res.text();
-            console.error(`[${timestamp}] [Fetcher] ERROR en la respuesta. Estado: ${res.status} ${res.statusText}`);
-            console.error(`[${timestamp}] [Fetcher] Cuerpo del error:`, errorText);
             const error: any = new Error('Ocurrió un error al cargar los datos desde la API.');
             try {
                 error.info = JSON.parse(errorText);
@@ -47,21 +39,16 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
             error.status = res.status;
             throw error;
         }
-        
-        console.log(`[${timestamp}] [Fetcher] Respuesta OK. Estado: ${res.status} ${res.statusText}`);
 
         if (res.status === 204 || res.headers.get('content-length') === '0') {
-             console.log(`[${timestamp}] [Fetcher] Respuesta vacía (204 No Content). Retornando null.`);
             return null;
         }
 
         const jsonResponse = await res.json();
-        // Evitamos loguear respuestas muy grandes para no saturar la consola
-        // console.log(`[${timestamp}] [Fetcher] Respuesta JSON parseada:`, jsonResponse);
         return jsonResponse;
 
     } catch (error) {
-        console.error(`[${timestamp}] [Fetcher] <--- PETICIÓN FALLIDA. Error de red o en fetch.`, error);
+        console.error('Fetcher: Capturado error de fetch', error);
         throw error;
     }
 };
@@ -75,7 +62,6 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     let endpoint = '';
     let method: 'GET' | 'POST' = 'POST';
     let body: any = query;
-    const timestamp = new Date().toLocaleTimeString();
 
     if (query.operation === 'get_documentation') {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/documentation/';
@@ -86,12 +72,13 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     }
 
     const fullUrl = API_BASE_URL + endpoint;
-    console.log(`[${timestamp}] [useApiData] Preparando consulta para API: ${method} ${fullUrl}`, body ? body : 'No Body');
+    console.log(`[useApiData] Querying API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
+        // console.log(`[useApiData] API Response:`, response); // This can be too verbose
         return response;
     } catch(e) {
-        // El error ya se loguea en el fetcher. Aquí solo lo relanzamos.
+        console.error('[useApiData] API Fetch failed:', e);
         throw e;
     }
 };
