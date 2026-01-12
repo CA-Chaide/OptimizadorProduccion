@@ -276,6 +276,58 @@ export const generateProductionPlan = async (
         logger.log("Error: No se han definido los parámetros de costo laboral o turnos.", 'error');
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
+
+    const getMonthlyCapacity = (
+        year: number,
+        month: number,
+        line: ProductionLine,
+        startDay: number = 1
+    ): { totalHours: number } => {
+        const EFFICIENCY_FACTOR = 0.87;
+        let grossTotalHours = 0;
+        const daysInMonth = new Date(year, month, 0).getDate();
+        
+        for (let day = startDay; day <= daysInMonth; day++) {
+            const checkDate = new Date(year, month - 1, day);
+            const dayOfWeek = checkDate.getDay(); 
+            
+            let dailyHours = 0;
+            
+            if (dayOfWeek !== 0) { // Not Sunday
+                const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
+                
+                let isNonWorkingHoliday = false;
+                if (holidayInfo && holidayInfo.dayType === 'asueto') {
+                    const appliesTo = holidayInfo.appliesTo;
+                    if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
+                        isNonWorkingHoliday = true;
+                    }
+                }
+
+                if (!isNonWorkingHoliday) {
+                     if (holidayInfo && holidayInfo.isProductionAllowed) {
+                        if (holidayInfo.dayType === 'full') {
+                            dailyHours = shiftParameters.regularHoursPerDay;
+                        } else if (holidayInfo.dayType === 'half') {
+                            dailyHours = 5;
+                        }
+                    } else {
+                        if (dayOfWeek === 6) { // Saturday
+                            dailyHours = shiftParameters.saturdayAndHolidayHours;
+                        } else { // Weekday
+                            dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
+                        }
+                    }
+                }
+            }
+            
+            grossTotalHours += dailyHours;
+        }
+
+        const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
+        return { totalHours: netTotalHours };
+    };
+
     
     const initialInventoryState = new Map<string, number>(); 
     const allInventoryData = await queryApi({
@@ -344,7 +396,7 @@ export const generateProductionPlan = async (
             linesForProduct.forEach(line => {
                 const timePerUnit = calculateEffectiveManufacturingTime(productId, line, apiData, workstationDefinitions);
                 if (timePerUnit > 0 && timePerUnit !== Infinity) {
-                    const { totalHours } = getMonthlyCapacity(year, monthNum, line, holidays, shiftParameters, []);
+                    const { totalHours } = getMonthlyCapacity(year, monthNum, line);
                     monthCapacityUnits += Math.floor(totalHours / timePerUnit);
                 }
             });
@@ -389,27 +441,13 @@ export const generateProductionPlan = async (
         
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         auditLog.push(`\n[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
-
-        const isCurrentMonthForProrate = year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1;
-        const startDayForCalc = (prorateCurrentMonth && isCurrentMonthForProrate) ? new Date().getDate() : 1;
-
-        const monthlyCapacityByLine = new Map<string, number>();
-        productionLines.forEach(line => {
-            const { totalHours } = getMonthlyCapacity(year, monthNum, line, holidays, shiftParameters, auditLog, startDayForCalc);
-            monthlyCapacityByLine.set(line.id, totalHours);
-        });
-
-        const monthlyMovements = new Map<string, { production: number; salesDemand: number; dispatches: number; transfersIn: number; transfersOut: number; initialStock: number }>();
-        const getMovements = (key: string) => {
-            if (!monthlyMovements.has(key)) {
-                monthlyMovements.set(key, { production: 0, salesDemand: 0, dispatches: 0, transfersIn: 0, transfersOut: 0, initialStock: 0 });
-            }
-            return monthlyMovements.get(key)!;
-        };
+        
+        const isCurrentPlanningMonth = year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1;
+        const startDayForCapacityCalc = (prorateCurrentMonth && isCurrentPlanningMonth) ? new Date().getDate() : 1;
         
         let salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
 
-        if (prorateCurrentMonth && isCurrentMonthForProrate) {
+        if (prorateCurrentMonth && isCurrentPlanningMonth) {
             const today = new Date();
             const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
             const daysPassed = today.getDate() - 1;
@@ -422,6 +460,20 @@ export const generateProductionPlan = async (
             }));
         }
 
+        const monthlyCapacityByLine = new Map<string, number>();
+        productionLines.forEach(line => {
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line, startDayForCapacityCalc);
+            monthlyCapacityByLine.set(line.id, totalHours);
+        });
+
+        const monthlyMovements = new Map<string, { production: number; salesDemand: number; dispatches: number; transfersIn: number; transfersOut: number; initialStock: number }>();
+        const getMovements = (key: string) => {
+            if (!monthlyMovements.has(key)) {
+                monthlyMovements.set(key, { production: 0, salesDemand: 0, dispatches: 0, transfersIn: 0, transfersOut: 0, initialStock: 0 });
+            }
+            return monthlyMovements.get(key)!;
+        };
+        
         const productionNeedsThisMonth = new Map<string, { demandVentas: number; demandTrasladosF: number; demandTrasladosX: number; }>();
         const getNeeds = (key: string) => {
             if (!productionNeedsThisMonth.has(key)) {
@@ -590,64 +642,6 @@ export const generateProductionPlan = async (
     onProgress(null);
     return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan: [], auditLog, initialInventory: initialInventoryState };
 };
-
-
-function getMonthlyCapacity(
-    year: number,
-    month: number,
-    line: ProductionLine,
-    holidays: Holiday[],
-    shiftParams: ShiftParameters,
-    auditLog: string[],
-    startDay: number = 1
-): { totalHours: number } {
-    const EFFICIENCY_FACTOR = 0.87;
-    let grossTotalHours = 0;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    
-    for (let day = startDay; day <= daysInMonth; day++) {
-        const checkDate = new Date(year, month - 1, day);
-        const dayOfWeek = checkDate.getDay(); 
-        
-        let dailyHours = 0;
-        let logMsg = '';
-
-        if (dayOfWeek === 0) {
-            // Sunday, no hours
-        } else {
-            const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
-            
-            let isNonWorkingHoliday = false;
-            if (holidayInfo && holidayInfo.dayType === 'asueto') {
-                const appliesTo = holidayInfo.appliesTo;
-                if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
-                    isNonWorkingHoliday = true;
-                }
-            }
-
-            if (!isNonWorkingHoliday) {
-                 if (holidayInfo && holidayInfo.isProductionAllowed) {
-                    if (holidayInfo.dayType === 'full') {
-                        dailyHours = shiftParams.regularHoursPerDay;
-                    } else if (holidayInfo.dayType === 'half') {
-                        dailyHours = 5;
-                    }
-                } else {
-                    if (dayOfWeek === 6) { // Saturday
-                        dailyHours = shiftParams.saturdayAndHolidayHours;
-                    } else { // Weekday
-                        dailyHours = shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
-                    }
-                }
-            }
-        }
-        
-        grossTotalHours += dailyHours;
-    }
-
-    const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
-    return { totalHours: netTotalHours };
-}
 
 export const exportDailyPlanToExcel = (plan: ProductionPlanItem[], constraints: AppConstraints): void => {
   if (!plan || plan.length === 0) return;
