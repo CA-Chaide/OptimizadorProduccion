@@ -21,6 +21,7 @@ export type AppState = {
   isLoading: boolean;
   productionPlan: ProductionPlan;
   detailedProductionPlan: DetailedProductionPlan | null;
+  planningProgress: PlanningProgress | null;
   constraints: AppConstraints;
   employees: Employee[];
   employeeSkills: EmployeeSkill[];
@@ -29,7 +30,9 @@ export type AppState = {
   workShifts: WorkShift[];
   tacticalPlanResult: TacticalPlanResult | null;
   syncStatus: SyncStatus | null;
-  planningProgress: PlanningProgress | null;
+  // New state for step-by-step planning
+  planningStep: number;
+  demandAnalysis: DemandAnalysisResult | null;
 };
 
 export type AppAction =
@@ -48,7 +51,11 @@ export type AppAction =
   | { type: 'GENERATE_TACTICAL_PLAN'; payload: TacticalPlanResult | null }
   | { type: 'SET_IS_LOADING'; payload: boolean }
   | { type: 'SET_SYNC_STATUS'; payload: SyncStatus }
-  | { type: 'SET_PLANNING_PROGRESS'; payload: PlanningProgress | null };
+  | { type: 'SET_PLANNING_PROGRESS'; payload: PlanningProgress | null }
+  // New actions for step-by-step planning
+  | { type: 'SET_PLANNING_STEP'; payload: number }
+  | { type: 'SET_DEMAND_ANALYSIS'; payload: DemandAnalysisResult | null }
+  | { type: 'RESET_PLANNING' };
 
 export type AbsenteeismEvent = {
   id: string;
@@ -511,6 +518,18 @@ export interface CuboInventariosItem {
     Material: string;
     Centro: string;
     ClaseAprovisionam: 'E' | 'X' | 'F' | null;
+}
+
+// New type for the demand analysis step
+export interface DemandAnalysisResult {
+    totalDemand: number;
+    demandByGroup: Array<{
+        claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
+        centro: string;
+        sector: string;
+        totalUnidades: number;
+    }>;
+    auditLog: string[];
 }
 
 

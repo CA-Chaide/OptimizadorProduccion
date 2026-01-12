@@ -1,6 +1,5 @@
 
 
-
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
@@ -9,7 +8,7 @@ import {
     AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
     TacticalPlanResult, Employee, EmployeeSkill, AbsenteeismEvent, MaintenanceEvent,
     WorkShift, AppConstraints, NotificationMessage, TiempoEnsambleItem, SyncStatus,
-    DetailedProductionPlan, PresupuestoItem, PlanningProgress
+    DetailedProductionPlan, PresupuestoItem, PlanningProgress, DemandAnalysisResult
 } from '@/types/types';
 import { ActiveView, MONTH_NAMES } from '@/constants/constants';
 import { generateProductionPlan, processAndValidateAssemblyData } from '@/services/OptimizationService';
@@ -47,6 +46,8 @@ const initialState: AppState = {
     workShifts: [],
     tacticalPlanResult: null,
     syncStatus: null,
+    planningStep: 0,
+    demandAnalysis: null,
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -57,14 +58,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, activeView: action.payload };
         case 'SET_SALES_DATA':
             console.log("[AppContext] Action: SET_SALES_DATA. Reseteando plan de producción.");
-            return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null };
+            return { ...state, salesData: action.payload, syncStatus: null, productionPlan: initialState.productionPlan, detailedProductionPlan: null, planningStep: 0, demandAnalysis: null };
         case 'SET_CONSTRAINTS':
             console.log("[AppContext] Action: SET_CONSTRAINTS. Invalidando plan de producción existente.");
             return { 
                 ...state, 
                 constraints: action.payload,
                 productionPlan: initialState.productionPlan, 
-                detailedProductionPlan: null 
+                detailedProductionPlan: null,
+                planningStep: 0, 
+                demandAnalysis: null 
             };
         case 'SET_EMPLOYEES':
             return { ...state, employees: action.payload };
@@ -105,6 +108,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, isLoading: action.payload };
         case 'SET_PLANNING_PROGRESS':
             return { ...state, planningProgress: action.payload };
+        case 'SET_PLANNING_STEP':
+            return { ...state, planningStep: action.payload };
+        case 'SET_DEMAND_ANALYSIS':
+            return { ...state, demandAnalysis: action.payload };
+        case 'RESET_PLANNING':
+            return { ...state, planningStep: 0, demandAnalysis: null, productionPlan: initialState.productionPlan };
         default:
             return state;
     }
@@ -126,6 +135,8 @@ type AppContextType = {
     tacticalPlanResult: TacticalPlanResult | null;
     syncStatus: SyncStatus | null;
     planningProgress: PlanningProgress | null;
+    planningStep: number;
+    demandAnalysis: DemandAnalysisResult | null;
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;

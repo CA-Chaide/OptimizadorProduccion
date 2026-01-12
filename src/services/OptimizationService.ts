@@ -1,5 +1,6 @@
 
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -7,7 +8,7 @@ import {
     SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
     Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, PresupuestoItem,
-    PlanningProgress, WeeklyPlanItem 
+    PlanningProgress, WeeklyPlanItem, DemandAnalysisResult
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 import { queryApi } from '@/hooks/useApiData';
@@ -18,6 +19,59 @@ declare var XLSX: any;
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
     return codeStr.slice(-8);
+};
+
+export const analyzeSalesDemand = async (
+    salesData: SalesDataRow[],
+    constraints: AppConstraints
+): Promise<DemandAnalysisResult> => {
+    const auditLog: string[] = [];
+    const totalDemand = salesData.reduce((sum, row) => sum + row.unidadesProyectado, 0);
+
+    const demandByGroupMap = new Map<string, {
+        claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
+        centro: string;
+        sector: string;
+        totalUnidades: number;
+    }>();
+
+    const { productProcessInfos } = constraints;
+
+    salesData.forEach(row => {
+        const productId = normalizeMaterialCode(row.código);
+        const centerId = String(row.centro).trim();
+        const sector = row.sector || 'Sin Sector';
+        
+        // Find process info which contains the procurement class
+        const processInfo = productProcessInfos.find(ppi => ppi.productId === productId && ppi.productionLineId.includes(centerId));
+        const claseAprovisionamiento = processInfo?.aprovisionamientoEspecial || 'N/A';
+
+        const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}`;
+
+        if (!demandByGroupMap.has(groupKey)) {
+            demandByGroupMap.set(groupKey, {
+                claseAprovisionamiento,
+                centro: centerId,
+                sector: sector,
+                totalUnidades: 0,
+            });
+        }
+        const group = demandByGroupMap.get(groupKey)!;
+        group.totalUnidades += row.unidadesProyectado;
+    });
+
+    const demandByGroup = Array.from(demandByGroupMap.values())
+        .sort((a, b) => {
+            if (a.centro < b.centro) return -1;
+            if (a.centro > b.centro) return 1;
+            if (a.claseAprovisionamiento < b.claseAprovisionamiento) return -1;
+            if (a.claseAprovisionamiento > b.claseAprovisionamiento) return 1;
+            return a.sector.localeCompare(b.sector);
+        });
+
+    auditLog.push(`Análisis de demanda completado. Total de demanda bruta: ${totalDemand.toLocaleString()}. Grupos encontrados: ${demandByGroup.length}.`);
+
+    return { totalDemand, demandByGroup, auditLog };
 };
 
 export function processAndValidateAssemblyData(
@@ -50,6 +104,7 @@ export function processAndValidateAssemblyData(
     const discoveredWorkCenters = new Map<string, WorkCenter>();
     const discoveredLines = new Map<string, ProductionLine>();
     const discoveredWorkstations = new Map<string, WorkstationDefinition>();
+    const productProcessInfos: ProductProcessInfo[] = [];
 
     apiData.forEach(row => {
         const centerId = String(row.Centro).trim();
@@ -114,12 +169,65 @@ export function processAndValidateAssemblyData(
             }
         });
     });
+    
+    const uniqueProductLinePairs = new Set<string>();
+    apiData.forEach(row => {
+        const productId = normalizeMaterialCode(row.CodMaterial);
+        const centerId = String(row.Centro).trim();
+        const lineName = String(row.Linea).trim();
+        const lineId = `pl---${centerId}---${lineName}`;
+        uniqueProductLinePairs.add(`${productId}---${lineId}`);
+    });
+    
+    uniqueProductLinePairs.forEach(pairKey => {
+        const [productId, lineId] = pairKey.split('---');
+        const line = discoveredLines.get(lineId);
+        if (!line) return;
+
+        const workstationTimes: { workstationDefinitionId: string; timeHours: number }[] = [];
+        let totalManufacturingTimeHours = 0;
+        
+        const workstationDefsForLine = line.assignedWorkstations.map(as => discoveredWorkstations.get(as.definitionId)).filter(Boolean) as WorkstationDefinition[];
+
+        for (const workstationDef of workstationDefsForLine) {
+            const apiRow = apiData.find(d => 
+                normalizeMaterialCode(d.CodMaterial) === productId &&
+                String(d.Centro).trim() === line.workCenterId &&
+                String(d.Linea).trim() === line.name &&
+                String(d.PuestoTrabajo).trim() === workstationDef.name
+            );
+
+            if (apiRow && apiRow.Tiempo > 0) {
+                const assignedWs = line.assignedWorkstations.find(as => as.definitionId === workstationDef.id);
+                const quantity = assignedWs?.quantity || 1;
+                const timePerPost = apiRow.Tiempo / (quantity > 0 ? quantity : 1);
+                workstationTimes.push({ workstationDefinitionId: workstationDef.id, timeHours: timePerPost / 60 });
+            }
+        }
+        
+        if (workstationTimes.length > 0) {
+            totalManufacturingTimeHours = Math.max(...workstationTimes.map(wt => wt.timeHours));
+        }
+
+        const representativeRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === line.workCenterId);
+
+        productProcessInfos.push({
+            id: `${productId}---${lineId}`,
+            productId: productId,
+            productName: representativeRow?.Material,
+            productionLineId: lineId,
+            workstationTimes: workstationTimes,
+            totalManufacturingTimeHours: totalManufacturingTimeHours,
+            aprovisionamientoEspecial: representativeRow?.ClaseAprovisionamiento || undefined
+        });
+    });
+
 
     const finalLines = Array.from(discoveredLines.values());
     const inventorySettings: InventorySetting[] = [];
-    const uniqueProductCenterPairs = new Set(apiData.map(row => `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`));
+    const uniqueProductCenterPairsForInv = new Set(apiData.map(row => `${normalizeMaterialCode(row.CodMaterial)}---${String(row.Centro).trim()}`));
     
-    uniqueProductCenterPairs.forEach(pairKey => {
+    uniqueProductCenterPairsForInv.forEach(pairKey => {
         const [productId, centerId] = pairKey.split('---');
         const rowsForPair = apiData.filter(row => normalizeMaterialCode(row.CodMaterial) === productId && String(row.Centro).trim() === centerId);
         
@@ -157,7 +265,7 @@ export function processAndValidateAssemblyData(
         workCenters: Array.from(discoveredWorkCenters.values()),
         productionLines: finalLines,
         workstationDefinitions: Array.from(discoveredWorkstations.values()),
-        productProcessInfos: [], 
+        productProcessInfos: productProcessInfos, 
         inventorySettings: inventorySettings, 
     };
     logger.log(`[${timestamp}] Procesamiento y validación completados. Centros: ${discoveredWorkCenters.size}, Líneas: ${discoveredLines.size}, Puestos: ${discoveredWorkstations.size}, Inventario: ${inventorySettings.length}`, 'success');
@@ -433,10 +541,7 @@ export const generateProductionPlan = async (
             
             getMovements(demandKey).salesDemand += totalDemandForDispatch;
 
-            // CORRECTED LOGIC: Hierarchical check for procurement class
             let classType: 'E' | 'X' | 'F' | null | undefined = null;
-            
-            // Priority 1: Check for 'F' class at the central manufacturing plant (1000)
             const centralRuleRow = apiData.find(d => 
                 normalizeMaterialCode(d.CodMaterial) === productId && 
                 String(d.Centro).trim() === '1000'
@@ -445,7 +550,6 @@ export const generateProductionPlan = async (
             if (centralRuleRow?.ClaseAprovisionamiento === 'F') {
                 classType = 'F';
             } else {
-                // Priority 2: If not 'F' at central, check for a specific rule at the demand center
                 const localRuleRow = apiData.find(d => 
                     normalizeMaterialCode(d.CodMaterial) === productId && 
                     String(d.Centro).trim() === demandCenterId
@@ -454,11 +558,9 @@ export const generateProductionPlan = async (
             }
 
             if (classType === 'F' && demandCenterId !== '1000') {
-                // It's a transfer need. The production need is moved to center 1000.
                 const needsKey1000 = `${productId}---1000`;
                 getNeeds(needsKey1000).demandTrasladosF += totalDemandForDispatch;
             } else { 
-                // It's a local production need ('E', 'X', or rule for center 1000 itself)
                 getNeeds(demandKey).demandVentas += totalDemandForDispatch;
             }
         });
@@ -680,6 +782,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
