@@ -390,8 +390,8 @@ export const generateProductionPlan = async (
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         auditLog.push(`\n[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
 
-        const isCurrentMonth = year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1;
-        const startDayForCalc = (prorateCurrentMonth && isCurrentMonth) ? new Date().getDate() : 1;
+        const isCurrentMonthForProrate = year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1;
+        const startDayForCalc = (prorateCurrentMonth && isCurrentMonthForProrate) ? new Date().getDate() : 1;
 
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
@@ -409,7 +409,7 @@ export const generateProductionPlan = async (
         
         let salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
 
-        if (prorateCurrentMonth && isCurrentMonth) {
+        if (prorateCurrentMonth && isCurrentMonthForProrate) {
             const today = new Date();
             const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
             const daysPassed = today.getDate() - 1;
@@ -437,7 +437,6 @@ export const generateProductionPlan = async (
             const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === demandCenterId);
             const totalDemandForDispatch = (sale?.unidadesProyectado || 0) + (salesBacklog.get(demandKey) || 0);
 
-            // Always register the sales demand at the origin center
             getMovements(demandKey).salesDemand += totalDemandForDispatch;
             
             let classType: 'E' | 'X' | 'F' | null | undefined = null;
@@ -446,6 +445,7 @@ export const generateProductionPlan = async (
                 normalizeMaterialCode(d.CodMaterial) === productId && 
                 String(d.Centro).trim() === '1000'
             );
+            
             if (centralRuleRow?.ClaseAprovisionamiento === 'F') {
                 classType = 'F';
             } else {
@@ -456,12 +456,10 @@ export const generateProductionPlan = async (
                 classType = localRuleRow?.ClaseAprovisionamiento;
             }
 
-
             if (classType === 'F' && demandCenterId !== '1000') {
-                // This is a transfer. Add a transfer need to Center 1000.
                 const needsKey1000 = `${productId}---1000`;
                 getNeeds(needsKey1000).demandTrasladosF += totalDemandForDispatch;
-            } else { // Class E or X
+            } else { 
                 getNeeds(demandKey).demandVentas += totalDemandForDispatch;
             }
         });
@@ -507,7 +505,6 @@ export const generateProductionPlan = async (
             }
         }
         
-        // Handle transfers based on the needs calculated earlier
         allDemandKeys.forEach(demandKey => {
              const [productId, demandCenterId] = demandKey.split('---');
              if(demandCenterId === '1000') return;
@@ -519,15 +516,17 @@ export const generateProductionPlan = async (
              }
 
              if (classType === 'F') {
-                 const transferAmount = getMovements(demandKey).salesDemand;
-                 const key1000 = `${productId}---1000`;
-                 const stockAt1000 = (inventoryState.get(key1000) || 0) + getMovements(key1000).production;
-                 const actualTransfer = Math.min(transferAmount, stockAt1000);
+                 const transferDemand = getMovements(demandKey).salesDemand;
+                 if (transferDemand > 0) {
+                     const key1000 = `${productId}---1000`;
+                     const stockAt1000 = (inventoryState.get(key1000) || 0) + getMovements(key1000).production;
+                     const actualTransfer = Math.min(transferDemand, stockAt1000);
 
-                 if (actualTransfer > 0) {
-                     getMovements(key1000).transfersOut += actualTransfer;
-                     getMovements(demandKey).transfersIn += actualTransfer;
-                     inventoryState.set(key1000, (inventoryState.get(key1000) || 0) - actualTransfer);
+                     if (actualTransfer > 0) {
+                         getMovements(key1000).transfersOut += actualTransfer;
+                         getMovements(demandKey).transfersIn += actualTransfer;
+                         inventoryState.set(key1000, (inventoryState.get(key1000) || 0) - actualTransfer);
+                     }
                  }
              }
         });
@@ -544,7 +543,7 @@ export const generateProductionPlan = async (
             const initialStock = inventoryState.get(pairKey) || 0;
             
             const movements = getMovements(pairKey);
-            movements.initialStock = initialStock; // Store initial stock for reporting
+            movements.initialStock = initialStock;
 
             const totalSalesDemand = movements.salesDemand;
 
@@ -562,8 +561,6 @@ export const generateProductionPlan = async (
             movements.dispatches = dispatches;
         }
 
-
-        // Now, populate the monthlyPlanItems for reporting
         for (const [pairKey, movements] of monthlyMovements.entries()) {
              const [productId, centerId] = pairKey.split('---');
              monthlyPlanItems.push({
@@ -608,11 +605,6 @@ function getMonthlyCapacity(
     let grossTotalHours = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
     
-    if (startDay > 1) {
-        auditLog.push(`[${new Date().toLocaleTimeString()}]     - Mes corriente detectado. Calculando capacidad desde el día ${startDay}.`);
-    }
-    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Calculando capacidad para línea ${line.name} en mes ${month}:`);
-    
     for (let day = startDay; day <= daysInMonth; day++) {
         const checkDate = new Date(year, month - 1, day);
         const dayOfWeek = checkDate.getDay(); 
@@ -621,45 +613,39 @@ function getMonthlyCapacity(
         let logMsg = '';
 
         if (dayOfWeek === 0) {
-            logMsg = `Día ${day}: Domingo. Horas: 0.`;
+            // Sunday, no hours
         } else {
             const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
             
+            let isNonWorkingHoliday = false;
             if (holidayInfo && holidayInfo.dayType === 'asueto') {
                 const appliesTo = holidayInfo.appliesTo;
                 if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
-                    logMsg = `Día ${day}: Feriado (Asueto) no productivo ('${holidayInfo.name}'). Horas: 0.`;
-                    dailyHours = 0;
+                    isNonWorkingHoliday = true;
                 }
             }
 
-            if (!logMsg) {
+            if (!isNonWorkingHoliday) {
                  if (holidayInfo && holidayInfo.isProductionAllowed) {
                     if (holidayInfo.dayType === 'full') {
                         dailyHours = shiftParams.regularHoursPerDay;
-                        logMsg = `Día ${day}: Feriado (Jornada Completa - '${holidayInfo.name}'). Horas: ${dailyHours}.`;
                     } else if (holidayInfo.dayType === 'half') {
                         dailyHours = 5;
-                        logMsg = `Día ${day}: Feriado (Media Jornada - '${holidayInfo.name}'). Horas: ${dailyHours}.`;
                     }
                 } else {
-                    if (dayOfWeek === 6) {
+                    if (dayOfWeek === 6) { // Saturday
                         dailyHours = shiftParams.saturdayAndHolidayHours;
-                        logMsg = `Día ${day}: Sábado. +${dailyHours}h.`;
-                    } else {
+                    } else { // Weekday
                         dailyHours = shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay;
-                        logMsg = `Día ${day}: L-V normal. +${dailyHours}h.`;
                     }
                 }
             }
         }
         
         grossTotalHours += dailyHours;
-        if(startDay <= 1) auditLog.push(`[${new Date().toLocaleTimeString()}]       - ${logMsg}`);
     }
 
     const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
-    auditLog.push(`[${new Date().toLocaleTimeString()}]     - Total Bruto Mes para ${line.name}: ${grossTotalHours.toFixed(2)}h. Total Neto (x${EFFICIENCY_FACTOR}): ${netTotalHours.toFixed(2)}h.`);
     return { totalHours: netTotalHours };
 }
 
@@ -718,14 +704,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-
-    
-
-    
-
-
-
-
-
-
-

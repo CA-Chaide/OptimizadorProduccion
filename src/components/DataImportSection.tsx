@@ -313,9 +313,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
-                    continue;
-                }
                 
                 for (const centro of centrosToLoad) {
                     const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
