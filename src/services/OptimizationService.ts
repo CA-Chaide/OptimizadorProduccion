@@ -1,6 +1,5 @@
 
 
-
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -42,9 +41,24 @@ export const analyzeSalesDemand = async (
         const centerId = String(row.centro).trim();
         const sector = row.sector || 'Sin Sector';
         
-        // Find process info which contains the procurement class
-        const processInfo = productProcessInfos.find(ppi => ppi.productId === productId && ppi.productionLineId.includes(centerId));
-        const claseAprovisionamiento = processInfo?.aprovisionamientoEspecial || 'N/A';
+        let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
+        
+        // Correct Logic: Hierarchical search for procurement class
+        // 1. Check for an 'F' rule at the central manufacturing center (1000)
+        const centralManufacturingRule = productProcessInfos.find(
+            ppi => ppi.productId === productId && ppi.productionLineId.includes('1000') && ppi.aprovisionamientoEspecial === 'F'
+        );
+
+        if (centralManufacturingRule) {
+            claseAprovisionamiento = 'F';
+        } else {
+            // 2. If not 'F', find the local rule in the demand center
+            const localRule = productProcessInfos.find(
+                ppi => ppi.productId === productId && ppi.productionLineId.includes(centerId)
+            );
+            claseAprovisionamiento = localRule?.aprovisionamientoEspecial || 'N/A';
+        }
+
 
         const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}`;
 
@@ -368,23 +382,6 @@ export const generateProductionPlan = async (
     onProgress: (progress: PlanningProgress | null) => void
 ): Promise<ProductionPlan> => {
     
-    const auditLog: string[] = [];
-    logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN (Prorrateo: ${prorateCurrentMonth}) ---`, 'info');
-    auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan (Prorrateo mes actual: ${prorateCurrentMonth}).`);
-
-    var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
-
-    if (salesData.length === 0) {
-        auditLog.push(`Error: No hay datos de ventas para planificar.`);
-        logger.log("Error: No hay datos de ventas para planificar.", 'error');
-        return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
-    }
-     if (!laborCostFactors || !globalBaseCostPerHour || !shiftParameters) {
-        auditLog.push(`Error: No se han definido los parámetros de costo laboral o turnos.`);
-        logger.log("Error: No se han definido los parámetros de costo laboral o turnos.", 'error');
-        return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
-    }
-
     const getMonthlyCapacity = (
         year: number,
         month: number,
@@ -436,6 +433,22 @@ export const generateProductionPlan = async (
         return { totalHours: netTotalHours };
     };
 
+    const auditLog: string[] = [];
+    logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN (Prorrateo: ${prorateCurrentMonth}) ---`, 'info');
+    auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan (Prorrateo mes actual: ${prorateCurrentMonth}).`);
+
+    var { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
+
+    if (salesData.length === 0) {
+        auditLog.push(`Error: No hay datos de ventas para planificar.`);
+        logger.log("Error: No hay datos de ventas para planificar.", 'error');
+        return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
+    }
+     if (!laborCostFactors || !globalBaseCostPerHour || !shiftParameters) {
+        auditLog.push(`Error: No se han definido los parámetros de costo laboral o turnos.`);
+        logger.log("Error: No se han definido los parámetros de costo laboral o turnos.", 'error');
+        return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
+    }
     
     const initialInventoryState = new Map<string, number>(); 
     const allInventoryData = await queryApi({
@@ -782,6 +795,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
