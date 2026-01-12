@@ -131,6 +131,8 @@ export default function ChatInterface() {
       // Las operaciones están ahora en los logs, así que no necesitamos enviarlas por separado
       // Pero sí mantenemos el resumen para análisis rápido
       contextData.operationsSummary = summary;
+      contextData.activeOperations = activeOperations;
+      contextData.recentOperations = (await import('@/services/OperationTracker')).operationTracker.getLatestOperations(10);
       
       if (shareSales) {
         contextData.salesDataSample = salesData?.slice(0, 10);
@@ -163,7 +165,7 @@ export default function ChatInterface() {
       if (shareConstraints) {
         contextData.constraintsSummary = {
           workCenters: constraints?.workCenters?.length,
-          productionLines: constraints?.productionLines?.length,
+          productionLines: constraints?.productionLines,
           workstationDefinitions: constraints?.workstationDefinitions?.length
         };
       }
@@ -172,8 +174,7 @@ export default function ChatInterface() {
       contextData.planningProgress = planningProgress;
       contextData.includeFull = shareFullData;
       
-      // Agregar datos del RuntimeInspector SIEMPRE (incluso sin shareContext)
-      // Esto permite al agente acceder a variables en tiempo real
+      // Agregar datos del RuntimeInspector SIEMPRE
       try {
         const { runtimeInspector } = await import('@/services/RuntimeInspector');
         const inspectorSummary = runtimeInspector.getSummary();
@@ -188,14 +189,6 @@ export default function ChatInterface() {
       } catch (error) {
         console.error('[ChatInterface] Error loading RuntimeInspector data:', error);
       }
-      
-      // NOTA: El DataStore es accesible directamente por las herramientas del chat
-      // No necesitamos enviarlo en el contexto, ya que es un singleton
-      
-      console.log('[ChatInterface] Sending context data keys:', Object.keys(contextData));
-      if (contextData.salesDataSample) console.log('[ChatInterface] Sales sample size:', contextData.salesDataSample.length);
-      if (contextData.runtimeInspector) console.log('[ChatInterface] RuntimeInspector variables:', contextData.runtimeInspector.variables.length);
-      console.log('[ChatInterface] DataStore is accessible via tools');
       
       const response = await sendMessage([...messages, userMessage], recentLogs, shareContext ? contextData : undefined);
 
@@ -226,7 +219,7 @@ export default function ChatInterface() {
       <div className="p-3 border-b bg-muted/20">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <label className="inline-flex items-center text-sm fontle-medium cursor-pointer">
+            <label className="inline-flex items-center text-sm font-le-medium cursor-pointer">
               <input 
                 type="checkbox" 
                 checked={shareContext} 

@@ -82,6 +82,8 @@ Panel visual flotante que muestra:
 Hook fácil de usar en cualquier componente:
 
 ```typescript
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
+
 const inspector = useRuntimeInspector('SectionName');
 
 // Capturar variables
