@@ -1,3 +1,4 @@
+
 /**
  * @file Archivo de barril para exportar todos los componentes de sección.
  * Esto permite importarlos desde una única ubicación.

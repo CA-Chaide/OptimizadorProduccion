@@ -1,10 +1,12 @@
 
 
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
 import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -15,19 +17,6 @@ import { Badge } from '@/components/ui/badge';
 
 interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
-}
-
-interface SectorRow {
-    sector: string;
-    stockByCenter: { [center: string]: number };
-    totalStock: number;
-}
-
-interface DisplayRow {
-    type: 'data' | 'subtotal' | 'total';
-    sector: string;
-    stockByCenter: { [center: string]: number };
-    totalStock: number;
 }
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -141,6 +130,13 @@ const MonthlyReportTable: React.FC<{
     const sortedCenters = Array.from(centerSet).sort();
 
     const priorityOrder = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
+    
+    interface DisplayRow {
+        type: 'data' | 'subtotal';
+        sector: string;
+        stockByCenter: { [center: string]: number };
+        totalStock: number;
+    }
     const prioritySectors: DisplayRow[] = [];
     const otherSectors: DisplayRow[] = [];
 
@@ -240,6 +236,7 @@ const MonthlyReportTable: React.FC<{
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const { addNotification, isLoading: isAppLoading } = useAppContext();
+  const inspector = useRuntimeInspector('DataImport');
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: string, label: string}[],
@@ -262,12 +259,28 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
+  // Instrumentación con RuntimeInspector
+  useEffect(() => {
+    inspector.captureState({
+        isProcessing,
+        hasFilterOptions: filterOptions.años.length > 0,
+        loadedRecords: loadedData.length,
+    }, {
+        filters,
+        filterOptions,
+    });
+    inspector.captureVariable('filters', filters, { description: 'Filtros aplicados por el usuario', source: 'user' });
+    inspector.captureVariable('filterOptions', filterOptions, { description: 'Opciones de filtro cargadas desde la API', source: 'api' });
+    inspector.captureVariable('loadedData', loadedData, { description: 'Datos brutos cargados desde la API', source: 'api' });
+  }, [filters, filterOptions, loadedData, isProcessing]);
+
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
   useEffect(() => {
     const loadFilterOptions = async () => {
+      const ctxId = inspector.startContext('load_filter_options', { trigger: 'component_mount' });
       try {
         const [añosData, centrosData, etiquetasData] = await Promise.all([
             queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' }),
@@ -281,27 +294,29 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
         };
         setFilterOptions(newFilterOptions);
-      } catch (error) {
+        inspector.updateContext(ctxId, 'completed', { outputs: { optionsCount: newFilterOptions.años.length } });
+      } catch (error: any) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
+        inspector.updateContext(ctxId, 'failed', { error: error.message, stackTrace: error.stack?.split('\n') });
       }
     };
     loadFilterOptions();
-  }, [addNotification]);
+  }, [addNotification, inspector]);
   
   const handleLoadData = async () => {
+    const ctxId = inspector.startContext('load_budget_data', { filters });
     setIsProcessing(true);
     setLoadedData([]);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
         setIsProcessing(false);
+        inspector.updateContext(ctxId, 'failed', { error: 'No year selected' });
         return;
     }
 
     let allData: SalesDataRow[] = [];
     const yearsToLoad = filters.años.map(Number);
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
 
     try {
         addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
@@ -313,7 +328,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                
                 for (const centro of centrosToLoad) {
                     const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
                     if (filters.etiqueta) {
@@ -331,10 +345,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }
         }
         
+        inspector.updateContext(ctxId, 'running', { outputs: { apiCalls: apiCallPromises.length } });
         addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
 
         const responses = await Promise.all(apiCallPromises);
-
         addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
 
         responses.forEach(response => {
@@ -355,17 +369,21 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }
         });
 
+        inspector.captureVariable('totalRecords', allData.length, { description: 'Total de registros importados desde la API', source: 'calculation' });
 
         if (allData.length > 0) {
             setLoadedData(allData);
             onDataImported(allData);
             addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
+            inspector.updateContext(ctxId, 'completed', { outputs: { totalRecords: allData.length } });
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
+            inspector.updateContext(ctxId, 'completed', { outputs: { totalRecords: 0, message: 'No records found' } });
         }
 
-    } catch (error) {
-        addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
+    } catch (error: any) {
+        addNotification('error', `Error durante la carga de datos: ${error.message}`);
+        inspector.updateContext(ctxId, 'failed', { error: error.message, stackTrace: error.stack?.split('\n') });
     } finally {
         setIsProcessing(false);
     }
@@ -380,8 +398,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       }
       grouped[key].push(row);
     });
-    return Object.entries(grouped).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-  }, [loadedData]);
+    const sorted = Object.entries(grouped).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
+    inspector.captureVariable('consolidatedRows', sorted.length, { description: 'Número de tablas de resumen mensual generadas', source: 'calculation' });
+    return sorted;
+  }, [loadedData, inspector]);
   
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">

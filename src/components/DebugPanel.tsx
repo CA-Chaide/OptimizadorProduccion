@@ -75,7 +75,7 @@ export default function DebugPanel() {
     
     if (typeof value === 'object') {
       const keys = Object.keys(value);
-      if (keys.length === 0) return <span>{'{}'}</span>;
+      if (keys.length === 0) return <span>{'{'}</span>;
       if (keys.length > 5) {
         return <span>{'{'}{keys.length} keys{'}'}</span>;
       }
@@ -480,7 +480,7 @@ export default function DebugPanel() {
                             </div>
                           </div>
                           
-                          {state.props && Object.keys(state.props).length > 0 && (
+                          {state.props && Object.keys(JSON.parse(state.props as string)).length > 0 && (
                             <div style={{ marginTop: 8 }}>
                               <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>Props:</div>
                               <div style={{ marginLeft: 10, fontFamily: 'monospace', fontSize: 11 }}>
@@ -489,7 +489,7 @@ export default function DebugPanel() {
                             </div>
                           )}
                           
-                          {state.computed && Object.keys(state.computed).length > 0 && (
+                          {state.computed && Object.keys(JSON.parse(state.computed as string)).length > 0 && (
                             <div style={{ marginTop: 8 }}>
                               <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>Computed:</div>
                               <div style={{ marginLeft: 10, fontFamily: 'monospace', fontSize: 11 }}>

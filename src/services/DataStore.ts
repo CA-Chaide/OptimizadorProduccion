@@ -1,3 +1,4 @@
+
 /**
  * DataStore: Almacén centralizado de datos de la aplicación
  * 
@@ -28,8 +29,8 @@ export interface DataStoreState {
   salesData: DataSnapshot | null;
   productionPlan: DataSnapshot | null;
   employees: DataSnapshot | null;
-  maintenance: DataSnapshot | null;
-  absenteeism: DataSnapshot | null;
+  maintenanceEvents: DataSnapshot | null;
+  absenteeismEvents: DataSnapshot | null;
   workShifts: DataSnapshot | null;
   constraints: DataSnapshot | null;
   tacticalPlan: DataSnapshot | null;
@@ -48,8 +49,8 @@ class DataStore {
     salesData: null,
     productionPlan: null,
     employees: null,
-    maintenance: null,
-    absenteeism: null,
+    maintenanceEvents: null,
+    absenteeismEvents: null,
     workShifts: null,
     constraints: null,
     tacticalPlan: null,

@@ -1,5 +1,6 @@
 
 
+
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
@@ -262,19 +263,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.log(`[AppProvider] handleDataImported llamado con ${data.length} registros.`);
         dispatch({ type: 'SET_SALES_DATA', payload: data });
         
-        // Sincronizar con DataStore del servidor
-        if (data.length > 0) {
-            try {
-                await syncDataToStore('salesData', data, 'AppProvider', {
-                    count: data.length,
-                    timestamp: new Date().toISOString()
-                });
-                console.log(`[AppProvider] salesData sincronizado con DataStore: ${data.length} registros`);
-            } catch (error) {
-                console.error('[AppProvider] Error sincronizando salesData con DataStore:', error);
-            }
-        }
-        
         if (data.length > 0) {
             addNotification('success', `Éxito: Se han cargado ${data.length} registros de ventas. Ahora puede proceder a la planificación.`);
         } else {
@@ -316,17 +304,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             
             dispatch({ type: 'SET_CONSTRAINTS', payload: newConstraints });
-            
-            // Sincronizar constraints con DataStore del servidor
-            try {
-                await syncDataToStore('constraints', newConstraints, 'AppProvider', {
-                    assemblyDataCount: assemblyData.length,
-                    timestamp: new Date().toISOString()
-                });
-                console.log('[AppProvider] constraints sincronizado con DataStore');
-            } catch (error) {
-                console.error('[AppProvider] Error sincronizando constraints con DataStore:', error);
-            }
             
             dispatch({ type: 'SET_SYNC_STATUS', payload: { isSynced: true, lastSyncTimestamp: new Date().toISOString(), errors: [] }});
             addNotification('success', `Sincronización exitosa. Se descubrieron y validaron ${assemblyData.length} registros.`);
@@ -380,19 +357,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_SUCCESS', payload: planResult });
             
-            // Sincronizar productionPlan con DataStore del servidor
-            try {
-                await syncDataToStore('productionPlan', planResult, 'AppProvider', {
-                    monthlyCount: planResult.monthlyPlan.length,
-                    weeklyCount: planResult.weeklyPlan.length,
-                    dailyCount: planResult.dailyPlan.length,
-                    timestamp: new Date().toISOString()
-                });
-                console.log('[AppProvider] productionPlan sincronizado con DataStore');
-            } catch (error) {
-                console.error('[AppProvider] Error sincronizando productionPlan con DataStore:', error);
-            }
-            
             addNotification('success', 'Proceso de planificación completado. Revise los resultados.');
             return true;
 
@@ -426,62 +390,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const setEmployees = async (employees: Employee[]) => {
         dispatch({ type: 'SET_EMPLOYEES', payload: employees });
-        try {
-            await syncDataToStore('employees', employees, 'AppProvider', { count: employees.length });
-            console.log('[AppProvider] employees sincronizado con DataStore');
-        } catch (error) {
-            console.error('[AppProvider] Error sincronizando employees:', error);
-        }
     };
     
     const setSkills = async (skills: EmployeeSkill[]) => {
         dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: skills });
-        try {
-            await syncDataToStore('employeeSkills', skills, 'AppProvider', { count: skills.length });
-            console.log('[AppProvider] employeeSkills sincronizado con DataStore');
-        } catch (error) {
-            console.error('[AppProvider] Error sincronizando employeeSkills:', error);
-        }
     };
     
     const setAbsenteeismEvents = async (events: AbsenteeismEvent[]) => {
         dispatch({ type: 'SET_ABSENTEEISM_EVENTS', payload: events });
-        try {
-            await syncDataToStore('absenteeismEvents', events, 'AppProvider', { count: events.length });
-            console.log('[AppProvider] absenteeismEvents sincronizado con DataStore');
-        } catch (error) {
-            console.error('[AppProvider] Error sincronizando absenteeismEvents:', error);
-        }
     };
     
     const setMaintenanceEvents = async (events: MaintenanceEvent[]) => {
         dispatch({ type: 'SET_MAINTENANCE_EVENTS', payload: events });
-        try {
-            await syncDataToStore('maintenanceEvents', events, 'AppProvider', { count: events.length });
-            console.log('[AppProvider] maintenanceEvents sincronizado con DataStore');
-        } catch (error) {
-            console.error('[AppProvider] Error sincronizando maintenanceEvents:', error);
-        }
     };
     
     const setWorkShifts = async (shifts: WorkShift[]) => {
         dispatch({ type: 'SET_WORK_SHIFTS', payload: shifts });
-        try {
-            await syncDataToStore('workShifts', shifts, 'AppProvider', { count: shifts.length });
-            console.log('[AppProvider] workShifts sincronizado con DataStore');
-        } catch (error) {
-            console.error('[AppProvider] Error sincronizando workShifts:', error);
-        }
     };
     
     const setConstraints = async (constraints: AppConstraints) => {
         dispatch({ type: 'SET_CONSTRAINTS', payload: constraints });
-        try {
-            await syncDataToStore('constraints', constraints, 'AppProvider', { source: 'manual' });
-            console.log('[AppProvider] constraints sincronizado con DataStore');
-        } catch (error) {
-            console.error('[AppProvider] Error sincronizando constraints:', error);
-        }
     };
     
     const value = {
