@@ -22,7 +22,7 @@ const normalizeMaterialCode = (code: string | number): string => {
 
 export const analyzeSalesDemand = async (
     salesData: SalesDataRow[],
-    assemblyData: TiempoEnsambleItem[] // Usar los datos directos de la API
+    apiData: TiempoEnsambleItem[]
 ): Promise<DemandAnalysisResult> => {
     const auditLog: string[] = [];
     const totalDemand = salesData.reduce((sum, row) => sum + row.unidadesProyectado, 0);
@@ -43,21 +43,21 @@ export const analyzeSalesDemand = async (
         
         // Lógica de búsqueda jerárquica directamente en los datos de la API
         // 1. Buscar regla 'F' en el centro 1000
-        const centralRuleF = assemblyData.find(
+        const centralRuleF = apiData.find(
             item => normalizeMaterialCode(item.CodMaterial) === productId && 
                     String(item.Centro).trim() === '1000' && 
-                    item.ClaseAprovisionamiento === 'F'
+                    item.ClaseAprovisionam === 'F'
         );
 
         if (centralRuleF) {
             claseAprovisionamiento = 'F';
         } else {
             // 2. Si no es 'F', buscar la regla en el centro de demanda local
-            const localRule = assemblyData.find(
+            const localRule = apiData.find(
                 item => normalizeMaterialCode(item.CodMaterial) === productId && 
                         String(item.Centro).trim() === centerId
             );
-            claseAprovisionamiento = localRule?.ClaseAprovisionamiento || 'N/A';
+            claseAprovisionamiento = localRule?.ClaseAprovisionam || 'N/A';
         }
 
         const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}`;
@@ -107,7 +107,7 @@ export function processAndValidateAssemblyData(
         if (!row.Linea) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Linea'.`);
         if (!row.PuestoTrabajo) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'PuestoTrabajo'.`);
         if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
-        if (row.ClaseAprovisionamiento === null || row.ClaseAprovisionamiento === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'ClaseAprovisionamiento'.`);
+        if (row.ClaseAprovisionam === null || row.ClaseAprovisionam === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'ClaseAprovisionam'.`);
     });
 
     if (dataCompletenessErrors.length > 0) {
@@ -232,7 +232,7 @@ export function processAndValidateAssemblyData(
             productionLineId: lineId,
             workstationTimes: workstationTimes,
             totalManufacturingTimeHours: totalManufacturingTimeHours,
-            ClaseAprovisionamiento: representativeRow?.ClaseAprovisionamiento || undefined
+            ClaseAprovisionam: representativeRow?.ClaseAprovisionam || undefined
         });
     });
 
@@ -476,7 +476,7 @@ export const generateProductionPlan = async (
             const centerId = String(sale.centro).trim();
             const demandKey = `${productId}---${centerId}`;
 
-            const classF_rule = apiData.find(item => normalizeMaterialCode(item.CodMaterial) === productId && String(item.Centro).trim() === '1000' && item.ClaseAprovisionamiento === 'F');
+            const classF_rule = apiData.find(item => normalizeMaterialCode(item.CodMaterial) === productId && String(item.Centro).trim() === '1000' && item.ClaseAprovisionam === 'F');
 
             if (classF_rule) {
                 demandF.set(demandKey, (demandF.get(demandKey) || 0) + sale.unidadesProyectado);
@@ -485,7 +485,7 @@ export const generateProductionPlan = async (
 
             const local_rule = apiData.find(item => normalizeMaterialCode(item.CodMaterial) === productId && String(item.Centro).trim() === centerId);
 
-            if (local_rule?.ClaseAprovisionamiento === 'X') {
+            if (local_rule?.ClaseAprovisionam === 'X') {
                 demandX.set(demandKey, (demandX.get(demandKey) || 0) + sale.unidadesProyectado);
             } else { // 'E' or undefined defaults to local
                 demandE.set(demandKey, (demandE.get(demandKey) || 0) + sale.unidadesProyectado);

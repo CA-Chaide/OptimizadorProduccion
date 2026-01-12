@@ -29,7 +29,7 @@ Esta es la tabla maestra que define la estructura de producción, los tiempos y 
     - `Linea`: Nombre de la línea de producción.
     - `PuestoTrabajo`: Nombre del puesto de trabajo dentro de la línea.
     - `Tiempo`: **Tiempo de ensamble estándar** en minutos por unidad para un producto en un puesto específico. Es la base para calcular la capacidad y las horas requeridas.
-    - `ClaseAprovisionamiento`: **Regla de negocio CRÍTICA** que define dónde se fabrica un producto.
+    - `ClaseAprovisionam`: **Regla de negocio CRÍTICA** que define dónde se fabrica un producto.
     - `StockActual`, `StockSeguridad`, `StockMaximo`: Parámetros de inventario para cada producto en un centro específico. Son fundamentales para calcular la necesidad neta de producción.
     - `TamLoteMin`: El lote mínimo de producción.
 
@@ -45,7 +45,7 @@ Al presionar "Sincronizar", la aplicación no asume una estructura predefinida. 
 - **Puestos de Trabajo:** Se crean a partir de las combinaciones únicas de `Centro` y `PuestoTrabajo`.
 - **Asignaciones:** La aplicación mapea qué puestos de trabajo pertenecen a qué líneas y qué líneas a qué centros, construyendo la jerarquía operativa completa.
 
-### 2.2. Reglas de Aprovisionamiento (`ClaseAprovisionamiento`)
+### 2.2. Reglas de Aprovisionamiento (`ClaseAprovisionam`)
 
 Esta es una de las reglas más importantes y determina la estrategia de producción y logística:
 - **'E' (In-house):** El producto se fabrica en el mismo centro donde se genera su demanda.
@@ -57,7 +57,7 @@ Esta es una de las reglas más importantes y determina la estrategia de producci
 El sistema no lee una lista de traslados, sino que los **crea y planifica lógicamente**. Este es el proceso:
 
 1.  **Detección de Demanda:** El motor detecta una necesidad de venta. Ej: "Se necesitan 100 unidades del Producto-A en el Centro `2000`".
-2.  **Consulta de Regla:** El sistema verifica la `ClaseAprovisionamiento` para el Producto-A y ve que es `'F'`.
+2.  **Consulta de Regla:** El sistema verifica la `ClaseAprovisionam` para el Producto-A y ve que es `'F'`.
 3.  **Desplazamiento de la Producción:** En lugar de planificar la producción en el Centro `2000`, el motor **mueve la necesidad de producción** al Centro `1000`. Ahora el plan del Centro `1000` incluye la fabricación de esas 100 unidades adicionales.
 4.  **Impacto en Inventarios:**
     *   **Centro `1000` (Fabricante):** Su plan de inventario reflejará una **salida** de 100 unidades por "transferencia". El stock se calcula como: `StockInicial + Producción - VentasPropias - TransferenciasSalientes`.
