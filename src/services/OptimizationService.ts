@@ -381,11 +381,11 @@ export const generateProductionPlan = async (
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         auditLog.push(`\n[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
         
+        let salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
+
         const isCurrentPlanningMonth = year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1;
         let startDayForCapacityCalc = 1;
         
-        let salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
-
         if (prorateCurrentMonth && isCurrentPlanningMonth) {
             const today = new Date();
             startDayForCapacityCalc = today.getDate();
@@ -430,11 +430,13 @@ export const generateProductionPlan = async (
             const totalDemandForDispatch = (sale?.unidadesProyectado || 0) + (salesBacklog.get(demandKey) || 0);
 
             if (totalDemandForDispatch <= 0) return;
-
-            getMovements(demandKey).salesDemand += totalDemandForDispatch;
             
+            getMovements(demandKey).salesDemand += totalDemandForDispatch;
+
+            // CORRECTED LOGIC: Hierarchical check for procurement class
             let classType: 'E' | 'X' | 'F' | null | undefined = null;
             
+            // Priority 1: Check for 'F' class at the central manufacturing plant (1000)
             const centralRuleRow = apiData.find(d => 
                 normalizeMaterialCode(d.CodMaterial) === productId && 
                 String(d.Centro).trim() === '1000'
@@ -443,6 +445,7 @@ export const generateProductionPlan = async (
             if (centralRuleRow?.ClaseAprovisionamiento === 'F') {
                 classType = 'F';
             } else {
+                // Priority 2: If not 'F' at central, check for a specific rule at the demand center
                 const localRuleRow = apiData.find(d => 
                     normalizeMaterialCode(d.CodMaterial) === productId && 
                     String(d.Centro).trim() === demandCenterId
@@ -451,9 +454,11 @@ export const generateProductionPlan = async (
             }
 
             if (classType === 'F' && demandCenterId !== '1000') {
+                // It's a transfer need. The production need is moved to center 1000.
                 const needsKey1000 = `${productId}---1000`;
                 getNeeds(needsKey1000).demandTrasladosF += totalDemandForDispatch;
             } else { 
+                // It's a local production need ('E', 'X', or rule for center 1000 itself)
                 getNeeds(demandKey).demandVentas += totalDemandForDispatch;
             }
         });
@@ -675,5 +680,6 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
