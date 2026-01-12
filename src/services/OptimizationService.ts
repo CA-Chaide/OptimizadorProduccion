@@ -382,12 +382,13 @@ export const generateProductionPlan = async (
         auditLog.push(`\n[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
         
         const isCurrentPlanningMonth = year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1;
-        const startDayForCapacityCalc = (prorateCurrentMonth && isCurrentPlanningMonth) ? new Date().getDate() : 1;
+        let startDayForCapacityCalc = 1;
         
         let salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
 
         if (prorateCurrentMonth && isCurrentPlanningMonth) {
             const today = new Date();
+            startDayForCapacityCalc = today.getDate();
             const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
             const daysPassed = today.getDate() - 1;
             const remainingProportion = (daysInMonth - daysPassed) / daysInMonth;
@@ -427,6 +428,8 @@ export const generateProductionPlan = async (
             const [productId, demandCenterId] = demandKey.split('---');
             const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === demandCenterId);
             const totalDemandForDispatch = (sale?.unidadesProyectado || 0) + (salesBacklog.get(demandKey) || 0);
+
+            if (totalDemandForDispatch <= 0) return;
 
             getMovements(demandKey).salesDemand += totalDemandForDispatch;
             
@@ -468,7 +471,6 @@ export const generateProductionPlan = async (
             return { prodCenterKey: pairKey, netNeedForProduction };
         });
 
-        // --- INICIO: LOGGING DE NECESIDADES ---
         const needsLog: Record<string, { ventas: number, stockSeguridad: number, traslados: number, total: number }> = {};
         productCenterPairs.forEach(pairKey => {
             const [productId, centerId] = pairKey.split('---');
@@ -489,8 +491,6 @@ export const generateProductionPlan = async (
         });
         console.log(`\n--- TOTAL DE NECESIDADES BRUTAS (MES ${monthNum}/${year}) ---`);
         console.table(needsLog);
-        // --- FIN: LOGGING DE NECESIDADES ---
-
 
         for (const { prodCenterKey, netNeedForProduction } of allNeeds) {
             let remainingNeed = netNeedForProduction;
@@ -521,7 +521,6 @@ export const generateProductionPlan = async (
             }
         }
         
-        // --- INICIO: LOGGING DE PRODUCCIÓN ---
         const prodLog: Record<string, { produccionPlanificada: number }> = {};
         for (const [pairKey, movement] of monthlyMovements.entries()) {
             if (movement.production > 0) {
@@ -534,9 +533,7 @@ export const generateProductionPlan = async (
         }
         console.log(`\n--- TOTAL DE PRODUCCIÓN PLANIFICADA (MES ${monthNum}/${year}) ---`);
         console.table(prodLog);
-        // --- FIN: LOGGING DE PRODUCCIÓN ---
         
-
         allDemandKeys.forEach(demandKey => {
              const [productId, demandCenterId] = demandKey.split('---');
              if(demandCenterId === '1000') return;
@@ -678,4 +675,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
