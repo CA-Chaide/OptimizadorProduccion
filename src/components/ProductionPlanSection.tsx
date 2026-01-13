@@ -364,12 +364,16 @@ export const ProductionPlanSection: React.FC = () => {
     if (planningStep === 1 && demandAnalysis) {
       const { totalDemand, demandByGroup, unclassifiedMaterials } = demandAnalysis;
       const groupedByCenter = demandByGroup.reduce((acc, item) => {
-          if (!acc[item.centro]) acc[item.centro] = [];
-          acc[item.centro].push(item);
+          const centerKey = item.centro;
+          if (!acc[centerKey]) {
+              acc[centerKey] = { items: [], subtotalFabricacion: 0 };
+          }
+          acc[centerKey].items.push(item);
+          if (['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'].includes(item.sector)) {
+              acc[centerKey].subtotalFabricacion += item.totalUnidades;
+          }
           return acc;
-      }, {} as Record<string, typeof demandByGroup>);
-
-      const MANUFACTURING_SECTORS = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
+      }, {} as Record<string, { items: typeof demandByGroup; subtotalFabricacion: number }>);
 
       return (
         <div className="space-y-6">
@@ -407,11 +411,10 @@ export const ProductionPlanSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {Object.entries(groupedByCenter).map(([center, items]) => {
-                      const subtotal = items.filter(i => MANUFACTURING_SECTORS.includes(i.sector)).reduce((sum, i) => sum + i.totalUnidades, 0);
+                  {Object.entries(groupedByCenter).map(([center, data]) => {
                       return (
                         <React.Fragment key={center}>
-                            {items.map((item, index) => (
+                            {data.items.map((item, index) => (
                                 <tr key={`${item.claseAprovisionamiento}-${item.centro}-${item.sector}`} className="hover:bg-gray-50">
                                     <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
                                         {item.claseAprovisionamiento}
@@ -423,7 +426,7 @@ export const ProductionPlanSection: React.FC = () => {
                             ))}
                             <tr className="bg-blue-50 font-bold">
                                 <td colSpan={3} className="px-3 py-2 text-right text-blue-800">Subtotal Fabricación (Centro {center})</td>
-                                <td className="px-3 py-2 text-right text-blue-800">{Math.round(subtotal).toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right text-blue-800">{Math.round(data.subtotalFabricacion).toLocaleString()}</td>
                             </tr>
                         </React.Fragment>
                       )
@@ -538,15 +541,17 @@ export const ProductionPlanSection: React.FC = () => {
 
     if (planningStep === 3 && demandAnalysis) {
         const { transfers } = demandAnalysis;
-        const MANUFACTURING_SECTORS = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
         
         const groupedByCenter = transfers.reduce((acc, item) => {
             const center = item.centro;
-            if (!acc[center]) acc[center] = [];
-            acc[center].push(item);
+            if (!acc[center]) {
+                acc[center] = { items: [], total: 0 };
+            }
+            acc[center].items.push(item);
+            acc[center].total += item.totalUnidades;
             return acc;
-        }, {} as Record<string, typeof transfers>);
-
+        }, {} as Record<string, { items: typeof transfers, total: number }>);
+    
         return (
             <div className="space-y-6">
                 <h3 className="text-lg font-semibold text-gray-800">Paso 3: Validación de Transferencias (Clase 'F')</h3>
@@ -564,11 +569,18 @@ export const ProductionPlanSection: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {Object.entries(groupedByCenter).map(([center, items]) => {
-                                const subtotal = items.filter(i => MANUFACTURING_SECTORS.includes(i.sector)).reduce((sum, i) => sum + i.totalUnidades, 0);
+                            {Object.entries(groupedByCenter).map(([center, data]) => {
+                                const sectorSubtotals = data.items.reduce((acc, item) => {
+                                    if (!acc[item.sector]) {
+                                        acc[item.sector] = 0;
+                                    }
+                                    acc[item.sector] += item.totalUnidades;
+                                    return acc;
+                                }, {} as Record<string, number>);
+
                                 return (
                                     <React.Fragment key={center}>
-                                        {items.map((item, index) => (
+                                        {data.items.map((item, index) => (
                                             <tr key={index} className="hover:bg-gray-50">
                                                 <td className="px-3 py-2">{item.centro}</td>
                                                 <td className="px-3 py-2">{item.sector}</td>
@@ -576,9 +588,15 @@ export const ProductionPlanSection: React.FC = () => {
                                                 <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
                                             </tr>
                                         ))}
-                                        <tr className="bg-blue-50 font-bold">
-                                            <td colSpan={3} className="px-3 py-2 text-right text-blue-800">Subtotal Fabricación para Transferir a {center}</td>
-                                            <td className="px-3 py-2 text-right text-blue-800">{Math.round(subtotal).toLocaleString()}</td>
+                                        {Object.entries(sectorSubtotals).map(([sector, subtotal]) => (
+                                            <tr key={`${center}-${sector}-subtotal`} className="bg-blue-50 font-bold">
+                                                <td colSpan={3} className="px-3 py-2 text-right text-blue-800">Subtotal Sector {sector} para {center}</td>
+                                                <td className="px-3 py-2 text-right text-blue-800">{Math.round(subtotal).toLocaleString()}</td>
+                                            </tr>
+                                        ))}
+                                         <tr className="bg-blue-100 font-extrabold">
+                                            <td colSpan={3} className="px-3 py-2 text-right text-blue-900">Total para Centro {center}</td>
+                                            <td className="px-3 py-2 text-right text-blue-900">{Math.round(data.total).toLocaleString()}</td>
                                         </tr>
                                     </React.Fragment>
                                 );
@@ -594,7 +612,7 @@ export const ProductionPlanSection: React.FC = () => {
                 </div>
                  <div className="flex justify-end space-x-4 pt-4">
                     <Button variant="outline" onClick={() => dispatch({type: 'SET_PLANNING_STEP', payload: 2})}>Volver al Paso 2</Button>
-                    <Button onClick={() => handleContinueToStep3(inventoryFilters)}>Aceptar y Generar Plan de Producción</Button>
+                    <Button onClick={() => handleContinueToStep3({ centros: selectedInventoryCentros, sectores: selectedInventorySectores })}>Aceptar y Generar Plan de Producción</Button>
                 </div>
             </div>
         );
