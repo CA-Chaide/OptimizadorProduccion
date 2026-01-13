@@ -607,72 +607,40 @@ export const ProductionPlanSection: React.FC = () => {
     }
 
     if (planningStep === 3 && demandAnalysis) {
-        const { transfers } = demandAnalysis;
+        const { productionNeedsFirstMonth = [] } = demandAnalysis;
         
-        const groupedByCenter = transfers.reduce((acc, item) => {
-            const center = item.centro;
-            if (!acc[center]) {
-                acc[center] = { items: [], total: 0 };
-            }
-            acc[center].items.push(item);
-            acc[center].total += item.totalUnidades;
-            return acc;
-        }, {} as Record<string, { items: typeof transfers, total: number }>);
-    
         return (
             <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-gray-800">Paso 3: Validación de Transferencias (Clase 'F')</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Paso 3: Validación de Necesidades de Producción (Primer Mes)</h3>
                 <p className="text-sm text-gray-600">
-                    Se ha identificado la siguiente demanda para productos de Clase 'F' en centros de distribución. Esta demanda será planificada en el centro 1000 y luego transferida. Verifique que las cantidades sean correctas.
+                    La tabla muestra la cantidad de unidades que el motor necesita planificar en el primer mes para cubrir tanto la demanda de ventas como para alcanzar el stock de seguridad. Verifique que estas cantidades sean coherentes antes de generar el plan final.
                 </p>
                 <div className="overflow-auto max-h-[60vh] border rounded-lg">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
                         <thead className="bg-gray-100 sticky top-0 z-10">
                             <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro Destino</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro de Producción</th>
                                 <th className="px-3 py-2 text-left font-semibold text-gray-600">Sector</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Etiqueta</th>
-                                <th className="px-3 py-2 text-right font-semibold text-gray-600">Total Unidades a Transferir</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase Aprov.</th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-600">Unidades Requeridas</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {Object.entries(groupedByCenter).map(([center, data]) => {
-                                const sectorSubtotals = data.items.reduce((acc, item) => {
-                                    if (!acc[item.sector]) {
-                                        acc[item.sector] = 0;
-                                    }
-                                    acc[item.sector] += item.totalUnidades;
-                                    return acc;
-                                }, {} as Record<string, number>);
-
-                                return (
-                                    <React.Fragment key={center}>
-                                        {data.items.map((item, index) => (
-                                            <tr key={index} className="hover:bg-gray-50">
-                                                <td className="px-3 py-2">{item.centro}</td>
-                                                <td className="px-3 py-2">{item.sector}</td>
-                                                <td className="px-3 py-2">{item.etiqueta}</td>
-                                                <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
-                                            </tr>
-                                        ))}
-                                        {Object.entries(sectorSubtotals).map(([sector, subtotal]) => (
-                                            <tr key={`${center}-${sector}-subtotal`} className="bg-blue-50 font-bold">
-                                                <td colSpan={3} className="px-3 py-2 text-right text-blue-800">Subtotal Sector {sector} para {center}</td>
-                                                <td className="px-3 py-2 text-right text-blue-800">{Math.round(subtotal).toLocaleString()}</td>
-                                            </tr>
-                                        ))}
-                                         <tr className="bg-blue-100 font-extrabold">
-                                            <td colSpan={3} className="px-3 py-2 text-right text-blue-900">Total para Centro {center}</td>
-                                            <td className="px-3 py-2 text-right text-blue-900">{Math.round(data.total).toLocaleString()}</td>
-                                        </tr>
-                                    </React.Fragment>
-                                );
-                            })}
+                            {productionNeedsFirstMonth.map((item, index) => (
+                                <tr key={index} className="hover:bg-gray-50">
+                                    <td className="px-3 py-2">{item.producingCenterId}</td>
+                                    <td className="px-3 py-2">{item.sector}</td>
+                                    <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
+                                        {item.claseAprovisionamiento}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnits).toLocaleString()}</td>
+                                </tr>
+                            ))}
                         </tbody>
                          <tfoot className="bg-gray-800 text-white sticky bottom-0">
                             <tr>
-                                <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase">Total General a Transferir</th>
-                                <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(transfers.reduce((sum, item) => sum + item.totalUnidades, 0)).toLocaleString()}</th>
+                                <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase">Total a Producir (Primer Mes)</th>
+                                <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(productionNeedsFirstMonth.reduce((sum, item) => sum + item.totalUnits, 0)).toLocaleString()}</th>
                             </tr>
                         </tfoot>
                     </table>

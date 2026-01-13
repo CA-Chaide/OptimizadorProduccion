@@ -550,9 +550,16 @@ export interface DemandAnalysisResult {
         etiqueta: string;
         totalUnidades: number;
     }>;
+    productionNeedsFirstMonth: Array<{
+        producingCenterId: string;
+        sector: string;
+        claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
+        totalUnits: number;
+    }>;
     auditLog: string[];
 }
 
 
 import { ActiveView } from '@/constants/constants';
+
 
