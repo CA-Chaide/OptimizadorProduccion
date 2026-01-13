@@ -318,6 +318,8 @@ export const ProductionPlanSection: React.FC = () => {
       return { totalNetHours: grossTotalHours * EFFICIENCY_FACTOR, weekdays, saturdaysAndHolidays };
     };
 
+    const planningMonths = Array.from(new Set(salesData.map(s => `${s.año}-${s.mes}`))).sort();
+
     const capacityByMonth: Record<string, {
       monthName: string;
       year: number;
@@ -329,8 +331,6 @@ export const ProductionPlanSection: React.FC = () => {
         saturdaysAndHolidays: number;
       }>;
     }> = {};
-
-    const planningMonths = Array.from(new Set(salesData.map(s => `${s.año}-${s.mes}`))).sort();
 
     planningMonths.forEach(monthKey => {
       const [year, month] = monthKey.split('-').map(Number);
@@ -520,10 +520,54 @@ export const ProductionPlanSection: React.FC = () => {
           )}
           <div className="flex justify-end space-x-4 pt-4">
             <Button variant="outline" onClick={resetPlanning}>Cancelar y Reiniciar</Button>
-            <Button onClick={handleContinueToStep3}>Aceptar y Generar Plan de Producción</Button>
+            <Button onClick={() => dispatch({ type: 'SET_PLANNING_STEP', payload: 3 })}>Aceptar y Continuar al Paso 3</Button>
           </div>
         </div>
       );
+    }
+
+    if (planningStep === 3 && demandAnalysis) {
+        const { transfers } = demandAnalysis;
+        return (
+            <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-gray-800">Paso 3: Validación de Transferencias (Clase 'F')</h3>
+                <p className="text-sm text-gray-600">
+                    Se ha identificado la siguiente demanda para productos de Clase 'F' en centros de distribución. Esta demanda será planificada en el centro 1000 y luego transferida. Verifique que las cantidades sean correctas.
+                </p>
+                <div className="overflow-auto max-h-[60vh] border rounded-lg">
+                    <table className="min-w-full text-sm divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0 z-10">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro Destino</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Sector</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Etiqueta</th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-600">Total Unidades a Transferir</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {transfers.map((item, index) => (
+                                <tr key={index} className="hover:bg-gray-50">
+                                    <td className="px-3 py-2">{item.centro}</td>
+                                    <td className="px-3 py-2">{item.sector}</td>
+                                    <td className="px-3 py-2">{item.etiqueta}</td>
+                                    <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                         <tfoot className="bg-gray-800 text-white sticky bottom-0">
+                            <tr>
+                                <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase">Total General a Transferir</th>
+                                <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(transfers.reduce((sum, item) => sum + item.totalUnidades, 0)).toLocaleString()}</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                 <div className="flex justify-end space-x-4 pt-4">
+                    <Button variant="outline" onClick={resetPlanning}>Cancelar y Reiniciar</Button>
+                    <Button onClick={handleContinueToStep3}>Aceptar y Generar Plan de Producción</Button>
+                </div>
+            </div>
+        );
     }
     
     return null;

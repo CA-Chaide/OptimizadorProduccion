@@ -543,6 +543,12 @@ export interface DemandAnalysisResult {
         sector: string;
         demand: number;
     }>;
+    transfers: Array<{
+        centro: string;
+        sector: string;
+        etiqueta: string;
+        totalUnidades: number;
+    }>;
     auditLog: string[];
 }
 
