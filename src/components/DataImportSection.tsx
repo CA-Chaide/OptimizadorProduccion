@@ -1,6 +1,5 @@
 
 
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
@@ -272,7 +271,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     inspector.captureVariable('filters', filters, { description: 'Filtros aplicados por el usuario', source: 'user' });
     inspector.captureVariable('filterOptions', filterOptions, { description: 'Opciones de filtro cargadas desde la API', source: 'api' });
     inspector.captureVariable('loadedData', loadedData, { description: 'Datos brutos cargados desde la API', source: 'api' });
-  }, [filters, filterOptions, loadedData, isProcessing]);
+  }, [filters, filterOptions, loadedData, isProcessing, inspector]);
 
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
