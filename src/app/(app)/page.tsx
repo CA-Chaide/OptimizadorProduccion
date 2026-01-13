@@ -72,6 +72,8 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <ProductionPlanSection />;
             case ActiveView.TACTICAL_SCHEDULING:
                 return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} />;
+            case ActiveView.TACTICAL_SCHEDULING_MUEBLES:
+                return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} />;
             case ActiveView.WORK_SHIFT_PLANNING:
                 return <WorkShiftPlanningSection shifts={workShifts} setShifts={setWorkShifts} constraints={constraints} employees={employees} absenteeismEvents={absenteeismEvents} employeeSkills={employeeSkills} />;
             case ActiveView.DICTIONARY:
