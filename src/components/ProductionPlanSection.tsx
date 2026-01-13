@@ -205,6 +205,10 @@ const MonthlySummaryTable: React.FC<{
 };
 
 
+const normalizeMaterialCode = (code: string | number): string => {
+    const codeStr = String(code);
+    return codeStr.slice(-8);
+};
 
 export const ProductionPlanSection: React.FC = () => {
   const inspector = useRuntimeInspector('ProductionPlan');
@@ -779,3 +783,5 @@ export const ProductionPlanSection: React.FC = () => {
 };
 
     
+
+  
