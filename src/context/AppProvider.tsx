@@ -159,7 +159,7 @@ type AppContextType = {
     setConstraints: (constraints: AppConstraints) => Promise<void>;
     handleSyncAndValidate: () => Promise<boolean>;
     handleContinueToStep2: () => void;
-    handleContinueToStep3: () => Promise<void>;
+    handleContinueToStep3: (inventoryFilters: { centros: string[], sectores: string[] }) => Promise<void>;
 };
 
 
@@ -378,7 +378,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
             
-            const planResult = await generateProductionPlan(state.year, state.constraints, state.apiCuboInventariosData, state.salesData, inventoryFilters, progressCallback);
+            const planResult = await generateProductionPlan(state.year, state.constraints, state.apiAssemblyData, state.apiCuboInventariosData, state.salesData, false, progressCallback);
+
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
                  dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: planResult.auditLog });
@@ -406,10 +407,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state.year, state.constraints, state.syncStatus, state.apiAssemblyData, state.apiCuboInventariosData, state.salesData, addNotification]);
 
-    const handleContinueToStep3 = useCallback(async () => {
+    const handleContinueToStep3 = useCallback(async (inventoryFilters: { centros: string[], sectores: string[] }) => {
         if (state.demandAnalysis) {
             dispatch({ type: 'SET_IS_LOADING', payload: true });
-            const inventoryFilters = state.demandAnalysis.inventoryFilters;
             const success = await handleGeneratePlan(inventoryFilters);
             dispatch({ type: 'SET_IS_LOADING', payload: false });
             if (success) {
