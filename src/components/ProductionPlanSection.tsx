@@ -6,7 +6,7 @@ import { operationTracker } from '@/services/OperationTracker';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { 
     ProductionPlan, AppConstraints, WorkCenter, ProductionLine, 
-    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem, MonthlyProductionPlanItem, DemandAnalysisResult 
+    PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem, MonthlyProductionPlanItem, DemandAnalysisResult, Holiday 
 } from '@/types/types';
 import { PlanIcon, DataImportIcon, MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
 import { exportDailyPlanToExcel, exportMonthlyPlanToExcel, analyzeSalesDemand } from '@/services/OptimizationService';
@@ -265,6 +265,58 @@ export const ProductionPlanSection: React.FC = () => {
   const totalCapacityByCenter = useMemo(() => {
     if (!demandAnalysis) return null;
     
+    // This function is a local copy from OptimizationService to avoid window object errors.
+    const getMonthlyCapacity = (
+        year: number,
+        month: number,
+        line: ProductionLine,
+        startDay: number = 1
+    ): { totalHours: number } => {
+        const EFFICIENCY_FACTOR = 0.87;
+        let grossTotalHours = 0;
+        const daysInMonth = new Date(year, month, 0).getDate();
+        
+        for (let day = startDay; day <= daysInMonth; day++) {
+            const checkDate = new Date(year, month - 1, day);
+            const dayOfWeek = checkDate.getDay(); 
+            
+            let dailyHours = 0;
+            
+            if (dayOfWeek !== 0) { // Not Sunday
+                const holidayInfo = constraints.holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
+                
+                let isNonWorkingHoliday = false;
+                if (holidayInfo && holidayInfo.dayType === 'asueto') {
+                    const appliesTo = holidayInfo.appliesTo;
+                    if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
+                        isNonWorkingHoliday = true;
+                    }
+                }
+
+                if (!isNonWorkingHoliday) {
+                     if (holidayInfo && holidayInfo.isProductionAllowed) {
+                        if (holidayInfo.dayType === 'full') {
+                            dailyHours = constraints.shiftParameters.regularHoursPerDay;
+                        } else if (holidayInfo.dayType === 'half') {
+                            dailyHours = 5;
+                        }
+                    } else {
+                        if (dayOfWeek === 6) { // Saturday
+                            dailyHours = constraints.shiftParameters.saturdayAndHolidayHours;
+                        } else { // Weekday
+                            dailyHours = constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay;
+                        }
+                    }
+                }
+            }
+            
+            grossTotalHours += dailyHours;
+        }
+
+        const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
+        return { totalHours: netTotalHours };
+    };
+
     const capacity: Record<string, number> = {};
     const planningMonths = new Set(salesData.map(s => `${s.año}-${s.mes}`));
 
@@ -276,7 +328,7 @@ export const ProductionPlanSection: React.FC = () => {
       if (capacity[line.workCenterId] !== undefined) {
         planningMonths.forEach(monthKey => {
             const [year, month] = monthKey.split('-').map(Number);
-            const lineCapacity = (window as any).getMonthlyCapacity(year, month, line);
+            const lineCapacity = getMonthlyCapacity(year, month, line);
             capacity[line.workCenterId] += lineCapacity.totalHours;
         });
       }
@@ -458,4 +510,3 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
-
