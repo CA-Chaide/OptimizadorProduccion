@@ -3,7 +3,6 @@
 import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
-const API_BASE_URL = ''; 
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9kf721d3d';
 
 /**
@@ -71,7 +70,7 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/query/';
     }
 
-    const fullUrl = API_BASE_URL + endpoint;
+    const fullUrl = endpoint;
     console.log(`[useApiData] Querying API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
