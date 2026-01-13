@@ -165,7 +165,8 @@ export const ProductionPlanSection: React.FC = () => {
     planningStep,
     dispatch,
     demandAnalysis,
-    apiCuboInventariosData
+    apiCuboInventariosData,
+    handleContinueToStep2,
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
@@ -203,7 +204,6 @@ export const ProductionPlanSection: React.FC = () => {
   };
 
   const handleStartPlanning = async () => {
-    if (planningStep === 0) {
       if (!isDataSynced) {
         logger.log("Error: Datos de ensamble no sincronizados.", 'error');
         return;
@@ -226,7 +226,6 @@ export const ProductionPlanSection: React.FC = () => {
       } finally {
         dispatch({ type: 'SET_IS_LOADING', payload: false });
       }
-    }
   };
 
   const resetPlanning = () => {
@@ -262,6 +261,30 @@ export const ProductionPlanSection: React.FC = () => {
     // ... (no changes)
     return null;
   };
+  
+  const totalCapacityByCenter = useMemo(() => {
+    if (!demandAnalysis) return null;
+    
+    const capacity: Record<string, number> = {};
+    const planningMonths = new Set(salesData.map(s => `${s.año}-${s.mes}`));
+
+    constraints.workCenters.forEach(wc => {
+      capacity[wc.id] = 0;
+    });
+
+    constraints.productionLines.forEach(line => {
+      if (capacity[line.workCenterId] !== undefined) {
+        planningMonths.forEach(monthKey => {
+            const [year, month] = monthKey.split('-').map(Number);
+            const lineCapacity = (window as any).getMonthlyCapacity(year, month, line);
+            capacity[line.workCenterId] += lineCapacity.totalHours;
+        });
+      }
+    });
+
+    return Object.entries(capacity);
+
+  }, [demandAnalysis, constraints, salesData]);
 
   const renderPlanWizard = () => {
     if (planningStep === 0) {
@@ -362,13 +385,48 @@ export const ProductionPlanSection: React.FC = () => {
 
           <div className="flex justify-end space-x-4 pt-4">
             <Button variant="outline" onClick={resetPlanning}>Cancelar y Reiniciar</Button>
-            <Button disabled>Aceptar y Continuar al Paso 2</Button>
+            <Button onClick={handleContinueToStep2}>Aceptar y Continuar al Paso 2</Button>
           </div>
         </div>
       );
     }
 
-    return null; // For subsequent steps
+    if (planningStep === 2) {
+      return (
+        <div className="space-y-6">
+            <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Capacidad Instalada</h3>
+            <p className="text-sm text-gray-600">
+                A continuación se muestra la capacidad total en horas-hombre para todo el horizonte de planificación, calculada para cada centro de trabajo a partir de los parámetros de turno. Verifique que estos totales son coherentes con su operación.
+            </p>
+            {totalCapacityByCenter && (
+                 <div className="overflow-auto max-h-[50vh] border rounded-lg mt-4">
+                    <table className="min-w-full text-sm divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro de Trabajo</th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-600">Capacidad Total (Horas)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {totalCapacityByCenter.map(([centerId, totalHours]) => (
+                                <tr key={centerId} className="hover:bg-gray-50">
+                                    <td className="px-3 py-2">{constraints.workCenters.find(c => c.id === centerId)?.name || centerId}</td>
+                                    <td className="px-3 py-2 text-right font-mono">{Math.round(totalHours).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                 </div>
+            )}
+            <div className="flex justify-end space-x-4 pt-4">
+                <Button variant="outline" onClick={resetPlanning}>Cancelar y Reiniciar</Button>
+                <Button>Aceptar y Continuar al Paso 3</Button>
+            </div>
+        </div>
+      );
+    }
+    
+    return null;
   }
   
   return (
@@ -381,7 +439,7 @@ export const ProductionPlanSection: React.FC = () => {
         <div className="flex items-center space-x-4 mt-4 md:mt-0">
             <Button
                 onClick={handleStartPlanning}
-                disabled={isLoading || !isDataSynced || salesData.length === 0 || planningStep !== 0}
+                disabled={isLoading || !isDataSynced || salesData.length === 0}
                 title={!isDataSynced ? 'Debe sincronizar los datos de ensamble primero' : (salesData.length === 0 ? 'Debe importar datos de ventas primero' : 'Iniciar el asistente de planificación')}
             >
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analizando...</> : 'Paso 1: Analizar Demanda'}

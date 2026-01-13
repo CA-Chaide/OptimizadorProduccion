@@ -157,6 +157,7 @@ type AppContextType = {
     setWorkShifts: (shifts: WorkShift[]) => Promise<void>;
     setConstraints: (constraints: AppConstraints) => Promise<void>;
     handleSyncAndValidate: () => Promise<boolean>;
+    handleContinueToStep2: () => void;
 };
 
 
@@ -349,6 +350,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state.constraints, addNotification]);
 
+    const handleContinueToStep2 = useCallback(() => {
+        dispatch({ type: 'SET_PLANNING_STEP', payload: 2 });
+    }, []);
+
     const handleGeneratePlan = useCallback(async (prorateCurrentMonth: boolean): Promise<boolean> => {
         console.log(`[AppProvider] handleGeneratePlan invocado con prorrateo: ${prorateCurrentMonth}.`);
         
@@ -457,6 +462,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setWorkShifts,
         setConstraints,
         handleSyncAndValidate,
+        handleContinueToStep2,
     };
 
   return (
