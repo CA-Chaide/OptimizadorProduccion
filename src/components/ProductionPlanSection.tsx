@@ -261,6 +261,69 @@ export const ProductionPlanSection: React.FC = () => {
   
   const { monthlyPlan = [] } = productionPlan || { monthlyPlan: [] };
 
+  // ----- BEGIN: State and Logic for Results Filtering -----
+  const [resultsFilterOptions, setResultsFilterOptions] = useState<{
+    centros: { value: string; label: string }[];
+    sectores: { value: string; label: string }[];
+    lineas: { value: string; label: string }[];
+  }>({ centros: [], sectores: [], lineas: [] });
+
+  const [selectedResultsFilters, setSelectedResultsFilters] = useState<{
+    centros: string[];
+    sectores: string[];
+    lineas: string[];
+  }>({ centros: [], sectores: [], lineas: [] });
+
+  // Populate filter options when plan is generated
+  useEffect(() => {
+    if (planningStep === 4 && productionPlan.monthlyPlan.length > 0) {
+      const uniqueCentros = [...new Set(productionPlan.monthlyPlan.map(item => item.centerId))];
+      const uniqueSectores = [...new Set(salesData.map(item => item.sector || 'Sin Sector'))];
+      const uniqueLineas = [...new Set(productionPlan.monthlyPlan.map(item => item.assignedLineId).filter(Boolean) as string[])];
+      
+      const lineDetails = uniqueLineas.map(lineId => {
+        const line = constraints.productionLines.find(l => l.id === lineId);
+        return { value: lineId, label: line ? `${line.name} (${line.workCenterId})` : lineId };
+      });
+
+      setResultsFilterOptions({
+        centros: uniqueCentros.map(c => ({ value: c, label: c })).sort((a,b) => a.label.localeCompare(b.label)),
+        sectores: uniqueSectores.map(s => ({ value: s, label: s })).sort((a,b) => a.label.localeCompare(b.label)),
+        lineas: lineDetails.sort((a,b) => a.label.localeCompare(b.label)),
+      });
+      
+      // Select all by default
+      setSelectedResultsFilters({
+        centros: uniqueCentros,
+        sectores: uniqueSectores,
+        lineas: uniqueLineas,
+      });
+    }
+  }, [planningStep, productionPlan, salesData, constraints.productionLines]);
+
+  const filteredMonthlyPlan = useMemo(() => {
+    if (planningStep !== 4) return [];
+
+    const productSectorMap = new Map<string, string>();
+    salesData.forEach(row => {
+        if (!productSectorMap.has(row.código)) {
+            productSectorMap.set(normalizeMaterialCode(row.código), row.sector || 'Sin Sector');
+        }
+    });
+
+    return productionPlan.monthlyPlan.filter(item => {
+      const sector = productSectorMap.get(item.productId) || 'Sin Sector';
+      
+      const centroMatch = selectedResultsFilters.centros.length === 0 || selectedResultsFilters.centros.includes(item.centerId);
+      const sectorMatch = selectedResultsFilters.sectores.length === 0 || selectedResultsFilters.sectores.includes(sector);
+      const lineaMatch = selectedResultsFilters.lineas.length === 0 || (item.assignedLineId && selectedResultsFilters.lineas.includes(item.assignedLineId));
+      
+      return centroMatch && sectorMatch && lineaMatch;
+    });
+  }, [productionPlan.monthlyPlan, selectedResultsFilters, salesData, planningStep]);
+
+  // ----- END: State and Logic for Results Filtering -----
+
   const handleExportMonthly = () => {
     if (monthlyPlan.length > 0) {
       exportMonthlyPlanToExcel(monthlyPlan);
@@ -636,10 +699,34 @@ export const ProductionPlanSection: React.FC = () => {
                     </Button>
                 </div>
               </div>
+
+            {/* ----- BEGIN: Results Filters ----- */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start p-4 border rounded-lg bg-gray-50">
+              <MultiSelect
+                label="Centros"
+                options={resultsFilterOptions.centros}
+                selected={selectedResultsFilters.centros}
+                onChange={value => setSelectedResultsFilters(prev => ({ ...prev, centros: value }))}
+              />
+              <MultiSelect
+                label="Sectores"
+                options={resultsFilterOptions.sectores}
+                selected={selectedResultsFilters.sectores}
+                onChange={value => setSelectedResultsFilters(prev => ({ ...prev, sectores: value }))}
+              />
+              <MultiSelect
+                label="Líneas de Producción"
+                options={resultsFilterOptions.lineas}
+                selected={selectedResultsFilters.lineas}
+                onChange={value => setSelectedResultsFilters(prev => ({ ...prev, lineas: value }))}
+              />
+            </div>
+            {/* ----- END: Results Filters ----- */}
+
               <div className="bg-white p-6 rounded-xl shadow-lg">
                  <MonthlySummaryTable 
-                    planItems={monthlyPlan} 
-                    title="Resumen Ejecutivo de Flujo de Inventario" 
+                    planItems={filteredMonthlyPlan} 
+                    title="Resumen Ejecutivo de Flujo de Inventario (Filtrado)" 
                     planningMonths={planningMonths}
                   />
               </div>
@@ -690,3 +777,5 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
+
+    
