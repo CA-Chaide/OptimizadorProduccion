@@ -709,9 +709,9 @@ export const generateProductionPlan = async (
         const newInventoryState = new Map(inventoryState);
         getAllProductCenterPairs().forEach(key => {
             const mov = monthlyMovements.get(key)!;
-            const available = mov.initialStock + mov.production + mov.transfersIn - mov.transfersOut;
-            const dispatches = Math.min(available, mov.salesDemand);
-            const finalStock = available - dispatches;
+            const availableForSale = mov.initialStock + mov.production + mov.transfersIn;
+            const dispatches = Math.min(availableForSale, mov.salesDemand);
+            const finalStock = availableForSale - dispatches - mov.transfersOut;
 
             mov.dispatches = dispatches;
             mov.finalStock = finalStock;
@@ -804,4 +804,5 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
