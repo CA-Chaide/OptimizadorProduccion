@@ -24,6 +24,7 @@ export const analyzeSalesDemand = async (
     salesData: SalesDataRow[],
     cuboInventariosData: CuboInventariosItem[],
     constraints: AppConstraints,
+    inventoryFilters: { centros: string[]; sectores: string[] }
 ): Promise<DemandAnalysisResult> => {
     const auditLog: string[] = [];
     auditLog.push(`[${new Date().toLocaleTimeString()}] Iniciando análisis de demanda con ${salesData.length} registros de venta y ${cuboInventariosData.length} registros de CuboInventarios.`);
@@ -46,7 +47,15 @@ export const analyzeSalesDemand = async (
 
     const unclassifiedMaterials: DemandAnalysisResult['unclassifiedMaterials'] = [];
     const cuboMap = new Map<string, CuboInventariosItem>();
-    cuboInventariosData.forEach(item => {
+    
+    // Aplicar filtros de inventario
+    const filteredCuboData = cuboInventariosData.filter(item => 
+        inventoryFilters.centros.includes(String(item.Centro).trim()) &&
+        inventoryFilters.sectores.includes(item.Sector || 'Sin Sector')
+    );
+    auditLog.push(`[${new Date().toLocaleTimeString()}] Aplicados filtros de inventario. Se usarán ${filteredCuboData.length} de ${cuboInventariosData.length} registros para el saldo inicial.`);
+
+    filteredCuboData.forEach(item => {
         const key = `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}`;
         cuboMap.set(key, item);
     });
@@ -60,12 +69,12 @@ export const analyzeSalesDemand = async (
         
         let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
 
-        // Lógica para obtener ClaseAprovisionamiento
+        // Lógica para obtener ClaseAprovisionamiento de cualquier registro de CuboInventarios, no solo los filtrados
         const primaryKey = `${productId}---${centerId}`;
         const fallbackKey = `${productId}---1000`;
         
-        const primaryEntry = cuboMap.get(primaryKey);
-        const fallbackEntry = cuboMap.get(fallbackKey);
+        const primaryEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}` === primaryKey);
+        const fallbackEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}` === fallbackKey);
         
         if (primaryEntry && primaryEntry.ClaseAprovisionam) {
             claseAprovisionamiento = primaryEntry.ClaseAprovisionam;
@@ -426,8 +435,10 @@ export const generateProductionPlan = async (
 ): Promise<ProductionPlan> => {
     
     const auditLog: string[] = [];
-    logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN (Prorrateo: ${prorateCurrentMonth}) ---`, 'info');
-    auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan (Prorrateo mes actual: ${prorateCurrentMonth}).`);
+    // Desactivar prorrateo automático
+    const finalProrateCurrentMonth = false; 
+    logger.log(`--- INICIANDO GENERACIÓN DE PLAN DE PRODUCCIÓN (Prorrateo forzado a: ${finalProrateCurrentMonth}) ---`, 'info');
+    auditLog.push(`[${new Date().toLocaleTimeString()}] INICIO: Generación de plan (Prorrateo mes actual forzado a: ${finalProrateCurrentMonth}).`);
 
     const { holidays, productionLines, workstationDefinitions, shiftParameters, laborCostFactors, globalBaseCostPerHour } = constraints;
 
@@ -489,7 +500,7 @@ export const generateProductionPlan = async (
         
         let salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
 
-        if (prorateCurrentMonth && year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1) {
+        if (finalProrateCurrentMonth && year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1) {
             const today = new Date();
             const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
             const daysPassed = today.getDate() - 1;
@@ -505,7 +516,7 @@ export const generateProductionPlan = async (
         const monthlyCapacityByLine = new Map<string, number>();
         productionLines.forEach(line => {
             let startDayForCapacityCalc = 1;
-            if (prorateCurrentMonth && year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1) {
+            if (finalProrateCurrentMonth && year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1) {
                 startDayForCapacityCalc = new Date().getDate();
             }
             const { totalHours } = getMonthlyCapacity(year, monthNum, line, constraints, startDayForCapacityCalc);

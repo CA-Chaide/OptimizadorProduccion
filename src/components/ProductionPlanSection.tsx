@@ -231,6 +231,23 @@ export const ProductionPlanSection: React.FC = () => {
 
   const isDataSynced = syncStatus?.isSynced || false;
   
+  // State for inventory filters
+  const [inventoryFilterOptions, setInventoryFilterOptions] = useState<{ centros: string[], sectores: string[] }>({ centros: [], sectores: [] });
+  const [selectedInventoryCentros, setSelectedInventoryCentros] = useState<string[]>([]);
+  const [selectedInventorySectores, setSelectedInventorySectores] = useState<string[]>([]);
+
+
+  useEffect(() => {
+    if (apiCuboInventariosData.length > 0) {
+      const centros = [...new Set(apiCuboInventariosData.map(item => String(item.Centro).trim()))].sort();
+      const sectores = [...new Set(apiCuboInventariosData.map(item => item.Sector || 'Sin Sector'))].sort();
+      setInventoryFilterOptions({ centros, sectores });
+      setSelectedInventoryCentros(centros);
+      setSelectedInventorySectores(sectores);
+    }
+  }, [apiCuboInventariosData]);
+
+
   useEffect(() => {
     inspector.captureState({
       isDataSynced,
@@ -265,7 +282,11 @@ export const ProductionPlanSection: React.FC = () => {
       }
       dispatch({ type: 'SET_IS_LOADING', payload: true });
       try {
-        const analysisResult = await analyzeSalesDemand(salesData, apiCuboInventariosData, constraints);
+        const inventoryFilters = {
+          centros: selectedInventoryCentros,
+          sectores: selectedInventorySectores
+        };
+        const analysisResult = await analyzeSalesDemand(salesData, apiCuboInventariosData, constraints, inventoryFilters);
         dispatch({ type: 'SET_DEMAND_ANALYSIS', payload: analysisResult });
         dispatch({ type: 'SET_PLANNING_STEP', payload: 1 });
       } catch (error) {
@@ -345,10 +366,28 @@ export const ProductionPlanSection: React.FC = () => {
       return (
         <div className="space-y-6">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Paso 1: Validación de Demanda de Ventas Bruta</h3>
-            <p className="text-sm text-gray-600">
-              A continuación se muestra el total de unidades de venta cargadas, agregadas por Clase de Aprovisionamiento, Centro de Demanda y Sector. Verifique que estos totales coincidan con sus expectativas antes de continuar.
+            <h3 className="text-lg font-semibold text-gray-800">Paso 1: Validación de Demanda y Saldo Inicial</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Use los filtros a continuación para seleccionar qué saldos de `CuboInventarios` deben incluirse en el cálculo del **Saldo Inicial**. Luego, verifique que los totales de demanda coincidan con sus expectativas.
             </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg bg-gray-50 mb-6">
+              <MultiSelect
+                label="Centros para Saldo Inicial"
+                options={inventoryFilterOptions.centros.map(c => ({ value: c, label: c }))}
+                selected={selectedInventoryCentros}
+                onChange={setSelectedInventoryCentros}
+                placeholder={`${inventoryFilterOptions.centros.length} centros`}
+              />
+              <MultiSelect
+                label="Sectores para Saldo Inicial"
+                options={inventoryFilterOptions.sectores.map(s => ({ value: s, label: s }))}
+                selected={selectedInventorySectores}
+                onChange={setSelectedInventorySectores}
+                placeholder={`${inventoryFilterOptions.sectores.length} sectores`}
+              />
+            </div>
+
             <div className="overflow-auto max-h-[50vh] border rounded-lg mt-4">
               <table className="min-w-full text-sm divide-y divide-gray-200">
                 <thead className="bg-gray-100 sticky top-0 z-10">
