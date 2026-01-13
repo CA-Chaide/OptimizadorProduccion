@@ -22,7 +22,8 @@ const normalizeMaterialCode = (code: string | number): string => {
 
 export const analyzeSalesDemand = async (
     salesData: SalesDataRow[],
-    cuboInventariosData: CuboInventariosItem[]
+    cuboInventariosData: CuboInventariosItem[],
+    constraints: AppConstraints,
 ): Promise<DemandAnalysisResult> => {
     const auditLog: string[] = [];
     auditLog.push(`[${new Date().toLocaleTimeString()}] Iniciando análisis de demanda con ${salesData.length} registros de venta y ${cuboInventariosData.length} registros de CuboInventarios.`);
@@ -59,23 +60,25 @@ export const analyzeSalesDemand = async (
         
         let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
 
-        const cuboKey = `${productId}---${centerId}`;
-        const cuboEntry = cuboMap.get(cuboKey);
-
-        if (cuboEntry && cuboEntry.ClaseAprovisionam) {
-            claseAprovisionamiento = cuboEntry.ClaseAprovisionam;
-        } else {
-            if (!String(row.código).startsWith('3') && !String(row.código).startsWith('4')) {
-                // Producto comprado, ignorar para planificación de fabricación
-            } else {
-                unclassifiedMaterials.push({
-                    productId: row.código,
-                    productName: row.descripciónMaterial,
-                    centerId: centerId,
-                    sector: sector,
-                    demand: row.unidadesProyectado
-                });
-            }
+        // Lógica para obtener ClaseAprovisionamiento
+        const primaryKey = `${productId}---${centerId}`;
+        const fallbackKey = `${productId}---1000`;
+        
+        const primaryEntry = cuboMap.get(primaryKey);
+        const fallbackEntry = cuboMap.get(fallbackKey);
+        
+        if (primaryEntry && primaryEntry.ClaseAprovisionam) {
+            claseAprovisionamiento = primaryEntry.ClaseAprovisionam;
+        } else if (centerId !== '1000' && fallbackEntry && fallbackEntry.ClaseAprovisionam === 'F') {
+            claseAprovisionamiento = 'F';
+        } else if (String(row.código).startsWith('3') || String(row.código).startsWith('4')) {
+             unclassifiedMaterials.push({
+                productId: row.código,
+                productName: row.descripciónMaterial,
+                centerId: centerId,
+                sector: sector,
+                demand: row.unidadesProyectado
+            });
         }
         
         if (claseAprovisionamiento !== 'N/A') {
@@ -363,6 +366,7 @@ export const generateProductionPlan = async (
     planningYear: number, 
     constraints: AppConstraints, 
     apiData: TiempoEnsambleItem[], 
+    cuboInventariosData: CuboInventariosItem[],
     salesData: SalesDataRow[],
     prorateCurrentMonth: boolean,
     onProgress: (progress: PlanningProgress | null) => void
@@ -437,15 +441,9 @@ export const generateProductionPlan = async (
     };
 
     const initialInventoryState = new Map<string, number>(); 
-    const allInventoryData = await queryApi({
-      source: 'CuboInventarios',
-      operation: 'get_data',
-      columns: ['Material', 'Centro', 'StockActual'],
-      pagination: { limit: 500000 }
-    });
-
-    if (allInventoryData) {
-        allInventoryData.forEach((inv: any) => {
+    
+    if (cuboInventariosData) {
+        cuboInventariosData.forEach((inv: any) => {
             if(inv.Material && inv.Centro && inv.StockActual) {
                 const stock = Number(inv.StockActual);
                 if (stock > 0) {
@@ -654,7 +652,9 @@ export const generateProductionPlan = async (
         monthlyProductionPlan.forEach((qty, key) => monthlyMovements.get(key)!.production = qty);
         salesThisMonth.forEach(sale => {
             const key = `${normalizeMaterialCode(sale.código)}---${sale.centro}`;
-            monthlyMovements.get(key)!.salesDemand += sale.unidadesProyectado;
+            if (monthlyMovements.has(key)) {
+                monthlyMovements.get(key)!.salesDemand += sale.unidadesProyectado;
+            }
         });
 
         // Traslados 'F'
@@ -674,8 +674,8 @@ export const generateProductionPlan = async (
             const transferAmount = Math.floor(totalProdForThisF * proportion);
             
             if (transferAmount > 0) {
-                monthlyMovements.get(`${productId}---1000`)!.transfersOut += transferAmount;
-                monthlyMovements.get(key)!.transfersIn += transferAmount;
+                if (monthlyMovements.has(`${productId}---1000`)) monthlyMovements.get(`${productId}---1000`)!.transfersOut += transferAmount;
+                if (monthlyMovements.has(key)) monthlyMovements.get(key)!.transfersIn += transferAmount;
             }
         });
 
@@ -687,12 +687,13 @@ export const generateProductionPlan = async (
             const transferAmount = Math.min(need, productionForOverflow);
             
             if (transferAmount > 0) {
-                monthlyMovements.get(centralKey)!.transfersOut += transferAmount;
-                monthlyMovements.get(key)!.transfersIn += transferAmount;
+                 if (monthlyMovements.has(centralKey)) monthlyMovements.get(centralKey)!.transfersOut += transferAmount;
+                 if (monthlyMovements.has(key)) monthlyMovements.get(key)!.transfersIn += transferAmount;
             }
         });
         
-        // Final balances
+        // Final balances and update inventory for next month
+        const newInventoryState = new Map(inventoryState);
         getAllProductCenterPairs().forEach(key => {
             const mov = monthlyMovements.get(key)!;
             const available = mov.initialStock + mov.production + mov.transfersIn - mov.transfersOut;
@@ -701,8 +702,9 @@ export const generateProductionPlan = async (
 
             mov.dispatches = dispatches;
             mov.finalStock = finalStock;
-            inventoryState.set(key, finalStock);
+            newInventoryState.set(key, finalStock);
         });
+        inventoryState = newInventoryState; // Update for next iteration
         
         // Push to monthly plan
         monthlyMovements.forEach((mov, key) => {

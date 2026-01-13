@@ -91,7 +91,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 isLoading: false, 
                 productionPlan: action.payload,
                 planningProgress: null,
-                planningStep: 0, // Reset wizard
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
              console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_ERROR. isLoading: false.");
@@ -357,8 +356,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, []);
 
     const handleContinueToStep3 = useCallback(async () => {
-        await handleGeneratePlan(true); 
-    }, [state]);
+        dispatch({ type: 'SET_PLANNING_STEP', payload: 3 });
+    }, []);
 
     const handleGeneratePlan = useCallback(async (prorateCurrentMonth: boolean): Promise<boolean> => {
         console.log(`[AppProvider] handleGeneratePlan invocado con prorrateo: ${prorateCurrentMonth}.`);
@@ -383,7 +382,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
             
-            const planResult = await generateProductionPlan(state.year, state.constraints, state.apiAssemblyData, state.salesData, prorateCurrentMonth, progressCallback);
+            const planResult = await generateProductionPlan(state.year, state.constraints, state.apiAssemblyData, state.apiCuboInventariosData, state.salesData, prorateCurrentMonth, progressCallback);
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
                  dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: planResult.auditLog });
@@ -409,7 +408,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
         }
-    }, [state.year, state.constraints, state.syncStatus, state.apiAssemblyData, state.salesData, addNotification]);
+    }, [state.year, state.constraints, state.syncStatus, state.apiAssemblyData, state.apiCuboInventariosData, state.salesData, addNotification]);
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
