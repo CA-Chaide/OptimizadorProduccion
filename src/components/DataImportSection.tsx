@@ -397,10 +397,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       }
       grouped[key].push(row);
     });
-    const sorted = Object.entries(grouped).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-    inspector.captureVariable('consolidatedRows', sorted.length, { description: 'Número de tablas de resumen mensual generadas', source: 'calculation' });
-    return sorted;
-  }, [loadedData, inspector]);
+    return Object.entries(grouped).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
+  }, [loadedData]);
+
+  useEffect(() => {
+    inspector.captureVariable('consolidatedRows', dataByMonth.length, { description: 'Número de tablas de resumen mensual generadas', source: 'calculation' });
+  }, [dataByMonth, inspector]);
   
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
