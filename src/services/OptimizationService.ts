@@ -47,21 +47,14 @@ export const analyzeSalesDemand = async (
 
     const unclassifiedMaterials: DemandAnalysisResult['unclassifiedMaterials'] = [];
     
-    // START: Logic for Production Needs of First Month
     const firstMonthKey = salesData.length > 0 ? `${salesData[0].año}-${String(salesData[0].mes).padStart(2, '0')}` : null;
-    const productionNeedsFirstMonthMap = new Map<string, {
-        producingCenterId: string;
-        sector: string;
-        claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
-        totalUnits: number;
-    }>();
-
+    
     const initialInventoryState = new Map<string, number>();
     const filteredCuboData = cuboInventariosData.filter(item => 
         inventoryFilters.centros.includes(String(item.Centro).trim()) &&
         inventoryFilters.sectores.includes(item.Sector || 'Sin Sector')
     );
-     filteredCuboData.forEach(item => {
+    filteredCuboData.forEach(item => {
         if(item.Material && item.Centro && item.StockActual) {
             const stock = Number(item.StockActual);
             if (stock > 0) {
@@ -72,9 +65,11 @@ export const analyzeSalesDemand = async (
             }
         }
     });
-    // END: Logic for Production Needs of First Month
 
     auditLog.push(`[${new Date().toLocaleTimeString()}] Aplicados filtros de inventario. Se usarán ${filteredCuboData.length} de ${cuboInventariosData.length} registros para el saldo inicial.`);
+
+    const salesInFirstMonth = salesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === firstMonthKey);
+    const productNeedsFirstMonth = new Map<string, { productId: string; demand: number; safetyStock: number; initialStock: number }>();
 
     salesData.forEach(row => {
         const productId = normalizeMaterialCode(row.código);
@@ -115,23 +110,14 @@ export const analyzeSalesDemand = async (
             }
             const group = demandByGroupMap.get(groupKey)!;
             group.totalUnidades += row.unidadesProyectado;
-        }
-        
-        // First month production needs calculation
-        if (`${row.año}-${String(row.mes).padStart(2, '0')}` === firstMonthKey && claseAprovisionamiento !== 'N/A') {
-            const currentStock = initialInventoryState.get(primaryKey) || 0;
-            const safetyStock = constraints.inventorySettings.find(s => s.id === primaryKey)?.minStock || 0;
-            const netNeed = Math.max(0, row.unidadesProyectado + safetyStock - currentStock);
-            
-            if(netNeed > 0) {
-                const producingCenterId = claseAprovisionamiento === 'F' ? '1000' : centerId;
-                const needKey = `${producingCenterId}-${sector}-${claseAprovisionamiento}`;
-                if (!productionNeedsFirstMonthMap.has(needKey)) {
-                    productionNeedsFirstMonthMap.set(needKey, {
-                        producingCenterId, sector, claseAprovisionamiento, totalUnits: 0
-                    });
+
+            if (`${row.año}-${String(row.mes).padStart(2, '0')}` === firstMonthKey) {
+                if (!productNeedsFirstMonth.has(primaryKey)) {
+                    const safetyStock = constraints.inventorySettings.find(s => s.id === primaryKey)?.minStock || 0;
+                    const initialStock = initialInventoryState.get(primaryKey) || 0;
+                    productNeedsFirstMonth.set(primaryKey, { productId, demand: 0, safetyStock, initialStock });
                 }
-                productionNeedsFirstMonthMap.get(needKey)!.totalUnits += netNeed;
+                productNeedsFirstMonth.get(primaryKey)!.demand += row.unidadesProyectado;
             }
         }
 
@@ -149,11 +135,49 @@ export const analyzeSalesDemand = async (
         }
     });
 
+    const productionNeedsByGroup = new Map<string, {
+        producingCenterId: string;
+        sector: string;
+        claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
+        totalUnits: number;
+    }>();
+
+    productNeedsFirstMonth.forEach((data, key) => {
+        const [productId, centerId] = key.split('---');
+        const netNeed = Math.max(0, data.demand + data.safetyStock - data.initialStock);
+
+        if (netNeed > 0) {
+            const saleRow = salesData.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === centerId);
+            const primaryEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}` === key);
+            const fallbackEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---1000` === `${productId}---1000`);
+
+            let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
+            if (primaryEntry && primaryEntry.ClaseAprovisionam) {
+                claseAprovisionamiento = primaryEntry.ClaseAprovisionam;
+            } else if (centerId !== '1000' && fallbackEntry && fallbackEntry.ClaseAprovisionam === 'F') {
+                claseAprovisionamiento = 'F';
+            }
+            
+            if (claseAprovisionamiento !== 'N/A') {
+                const sector = saleRow?.sector || 'Sin Sector';
+                const producingCenterId = claseAprovisionamiento === 'F' ? '1000' : centerId;
+                const groupKey = `${producingCenterId}-${sector}-${claseAprovisionamiento}`;
+                
+                if (!productionNeedsByGroup.has(groupKey)) {
+                    productionNeedsByGroup.set(groupKey, {
+                        producingCenterId, sector, claseAprovisionamiento, totalUnits: 0
+                    });
+                }
+                productionNeedsByGroup.get(groupKey)!.totalUnits += netNeed;
+            }
+        }
+    });
+
     const demandByGroup = Array.from(demandByGroupMap.values())
         .sort((a, b) => a.centro.localeCompare(b.centro) || a.sector.localeCompare(b.sector));
     const transfers = Array.from(transfersMap.values())
         .sort((a, b) => a.centro.localeCompare(b.centro) || a.sector.localeCompare(b.sector));
-    const productionNeedsFirstMonth = Array.from(productionNeedsFirstMonthMap.values())
+    const productionNeedsFirstMonth = Array.from(productionNeedsByGroup.values())
         .sort((a, b) => a.producingCenterId.localeCompare(b.producingCenterId) || a.sector.localeCompare(b.sector));
 
     auditLog.push(`[${new Date().toLocaleTimeString()}] Análisis de demanda completado. Total de demanda bruta: ${totalDemand.toLocaleString()}. Grupos clasificados: ${demandByGroup.length}.`);
@@ -185,7 +209,7 @@ export function processAndValidateAssemblyData(
         if (row.Tiempo === null || row.Tiempo === undefined) dataCompletenessErrors.push(`Fila API ${index + 1} (Mat: ${row.CodMaterial}): Falta 'Tiempo'.`);
         if (row.ClaseAprovisionamiento === null || row.ClaseAprovisionamiento === undefined) {
           // No es un error fatal, pero se puede loguear si se desea
-          // logger.log(`Fila API ${index+1} (Mat: ${row.CodMaterial}) no tiene ClaseAprovisionamiento. Se tratará como 'E'.`, 'warning');
+          // logger.log(`Fila API ${index+1} (Mat: ${row.CodMaterial}) no tiene ClaseAprovisionamiento.`, 'warning');
         }
     });
 
@@ -605,11 +629,11 @@ export const generateProductionPlan = async (
         });
 
         const newInventoryState = new Map(inventoryState);
-        getAllRelevantPairs().forEach(key => {
+        allRelevantPairs.forEach(key => {
             const mov = monthlyMovements.get(key)!;
-            const availableForSale = mov.initialStock + mov.production + mov.transfersIn - mov.transfersOut;
+            const availableForSale = mov.initialStock + mov.production + mov.transfersIn;
             const dispatches = Math.min(availableForSale, mov.salesDemand);
-            const finalStock = availableForSale - dispatches;
+            const finalStock = availableForSale - dispatches - mov.transfersOut;
             const backlog = Math.max(0, mov.salesDemand - dispatches);
 
             mov.dispatches = dispatches;
@@ -701,6 +725,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 

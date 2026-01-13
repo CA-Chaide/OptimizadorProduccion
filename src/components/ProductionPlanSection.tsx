@@ -626,8 +626,8 @@ export const ProductionPlanSection: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {productionNeedsFirstMonth.map((item, index) => (
-                                <tr key={index} className="hover:bg-gray-50">
+                            {productionNeedsFirstMonth.map((item) => (
+                                <tr key={`need-${item.producingCenterId}-${item.sector}-${item.claseAprovisionamiento}`} className="hover:bg-gray-50">
                                     <td className="px-3 py-2">{item.producingCenterId}</td>
                                     <td className="px-3 py-2">{item.sector}</td>
                                     <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
