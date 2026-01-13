@@ -149,7 +149,7 @@ type AppContextType = {
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
-    handleGeneratePlan: (prorateCurrentMonth: boolean) => Promise<boolean>;
+    handleGeneratePlan: (inventoryFilters: { centros: string[], sectores: string[] }) => Promise<boolean>;
     handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
     setEmployees: (employees: Employee[]) => Promise<void>;
     setSkills: (skills: EmployeeSkill[]) => Promise<void>;
@@ -356,8 +356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_PLANNING_STEP', payload: 2 });
     }, []);
 
-    const handleGeneratePlan = useCallback(async (prorateCurrentMonth: boolean): Promise<boolean> => {
-        console.log(`[AppProvider] handleGeneratePlan invocado con prorrateo: ${prorateCurrentMonth}.`);
+    const handleGeneratePlan = useCallback(async (inventoryFilters: { centros: string[], sectores: string[] }): Promise<boolean> => {
         
         if (!state.year) {
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
@@ -379,7 +378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'SET_PLANNING_PROGRESS', payload: progress });
             };
             
-            const planResult = await generateProductionPlan(state.year, state.constraints, state.apiAssemblyData, state.apiCuboInventariosData, state.salesData, prorateCurrentMonth, progressCallback);
+            const planResult = await generateProductionPlan(state.year, state.constraints, state.apiCuboInventariosData, state.salesData, inventoryFilters, progressCallback);
 
             if (planResult.auditLog.some(log => log.startsWith('Error:'))) {
                  dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: planResult.auditLog });
@@ -408,9 +407,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state.year, state.constraints, state.syncStatus, state.apiAssemblyData, state.apiCuboInventariosData, state.salesData, addNotification]);
 
     const handleContinueToStep3 = useCallback(async () => {
-        const success = await handleGeneratePlan(true); // Assuming prorate always true for now
-        // The reducer will automatically move to step 4 on success
-    }, [handleGeneratePlan]);
+        if (state.demandAnalysis) {
+            dispatch({ type: 'SET_IS_LOADING', payload: true });
+            const inventoryFilters = state.demandAnalysis.inventoryFilters;
+            const success = await handleGeneratePlan(inventoryFilters);
+            dispatch({ type: 'SET_IS_LOADING', payload: false });
+            if (success) {
+                dispatch({ type: 'SET_PLANNING_STEP', payload: 4 });
+            }
+        } else {
+            addNotification('error', 'El análisis de demanda no se ha completado. No se puede continuar.');
+        }
+    }, [handleGeneratePlan, state.demandAnalysis]);
     
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
