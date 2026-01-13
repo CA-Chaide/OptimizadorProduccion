@@ -23,7 +23,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 
 // --- Reusable MultiSelect Component ---
-// ...existing code...
 const MultiSelect: React.FC<{
   label: string;
   options: { value: string; label: string }[];
@@ -105,47 +104,119 @@ const MultiSelect: React.FC<{
 };
 
 
-interface FilterInputProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  containerClassName?: string;
-}
+const MonthlySummaryTable: React.FC<{ 
+  planItems: MonthlyProductionPlanItem[], 
+  title: string,
+  planningMonths: { year: number, month: number }[] 
+}> = ({ planItems, title, planningMonths }) => {
 
-// --- Reusable Filter Input ---
-const FilterInput: React.FC<FilterInputProps> = ({ label, value, onChange, placeholder, containerClassName }) => (
-  <div className={containerClassName}>
-    <label className="block text-xs font-medium text-gray-500">{label}</label>
-    <input
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full text-xs p-1 mt-1 border border-gray-300 rounded"
-      placeholder={placeholder || `Filtrar ${label}...`}
-    />
-  </div>
-);
+  const dataBySector = useMemo(() => {
+    const sectors: Record<string, {
+      byMonth: Record<string, {
+        initialStock: number;
+        production: number;
+        dispatches: number;
+        netTransfers: number;
+        finalStock: number;
+      }>
+    }> = {};
 
-// --- Memoized Row for Performance ---
-const DailyPlanRow = React.memo(({ item, lineName }: { item: ProductionPlanItem; lineName: string }) => (
-    <tr key={item.id} className={`hover:bg-gray-50 ${item.quantityToProduce > 0 ? 'bg-green-50' : ''} ${item.isTransfer ? 'bg-blue-50' : ''}`}>
-        <td className="px-2 py-1">{`${String(item.day).padStart(2,'0')}/${String(item.month).padStart(2,'0')}/${item.year}`}</td>
-        <td className="px-2 py-1 font-medium">{item.productName}</td>
-        <td className="px-2 py-1 font-mono">{item.productId}</td>
-        <td className="px-2 py-1 text-right">{Math.round(item.initialStockOnDay).toLocaleString()}</td>
-        <td className="px-2 py-1 text-right text-green-600 font-bold">{item.isTransfer ? 0 : Math.round(item.quantityToProduce).toLocaleString()}</td>
-        <td className="px-2 py-1 text-right text-blue-600">{item.isTransfer && item.transferDestinationCenterId === item.demandCenterId ? Math.round(item.quantityToProduce).toLocaleString() : 0}</td>
-        <td className="px-2 py-1 text-right text-orange-600">{item.isTransfer && item.transferSourceCenterId === item.demandCenterId ? Math.round(item.quantityToProduce).toLocaleString() : 0}</td>
-        <td className="px-2 py-1 text-right text-red-600">{Math.round(item.demandOnDay).toLocaleString()}</td>
-        <td className="px-2 py-1 text-right font-bold">{Math.round(item.finalStockOnDay).toLocaleString()}</td>
-        <td className="px-2 py-1">{lineName}</td>
-        <td className="px-2 py-1">{item.producingCenterId}</td>
-        <td className="px-2 py-1">{item.demandCenterId}</td>
-        <td className="px-2 py-1 text-right">{item.hoursWorked.toFixed(2)}</td>
-    </tr>
-));
-DailyPlanRow.displayName = 'DailyPlanRow';
+    planItems.forEach(item => {
+      const sector = "Global"; // Simplificando por ahora a un solo sector
+      if (!sectors[sector]) {
+        sectors[sector] = { byMonth: {} };
+      }
+      const monthKey = `${item.year}-${String(item.month).padStart(2, '0')}`;
+      if (!sectors[sector].byMonth[monthKey]) {
+        sectors[sector].byMonth[monthKey] = {
+          initialStock: 0, production: 0, dispatches: 0, netTransfers: 0, finalStock: 0
+        };
+      }
+      const monthData = sectors[sector].byMonth[monthKey];
+      monthData.production += item.totalQuantityToProduce;
+      monthData.dispatches += item.dispatches;
+      monthData.netTransfers += item.netTransfers;
+      // El stock inicial y final se deben agregar de forma cuidadosa
+    });
+
+    // Calcular saldos iniciales y finales
+    Object.keys(sectors).forEach(sector => {
+      let lastMonthStock = 0;
+      planningMonths.forEach(({year, month}) => {
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        if (!sectors[sector].byMonth[monthKey]) {
+          sectors[sector].byMonth[monthKey] = { initialStock: 0, production: 0, dispatches: 0, netTransfers: 0, finalStock: 0 };
+        }
+        const monthData = sectors[sector].byMonth[monthKey];
+        
+        // Sumar stock inicial de CADA producto-centro para este mes
+        const initialStockForMonth = planItems
+          .filter(p => p.year === year && p.month === month && p.productName.includes(sector)) // Simplificación
+          .reduce((sum, p) => sum + p.initialStock, 0);
+
+        monthData.initialStock = lastMonthStock > 0 ? lastMonthStock : initialStockForMonth;
+        monthData.finalStock = monthData.initialStock + monthData.production + monthData.netTransfers - monthData.dispatches;
+        lastMonthStock = monthData.finalStock;
+      });
+    });
+
+    return sectors;
+  }, [planItems, planningMonths]);
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+      <div className="relative max-h-[70vh] overflow-y-auto border rounded-lg shadow-inner">
+        <table className="min-w-full text-xs divide-y divide-gray-200">
+          <thead className="bg-gray-100 sticky top-0 z-10">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 sticky left-0 z-20">Flujo de Inventario</th>
+              {planningMonths.map(({year, month}) => (
+                <th key={`${year}-${month}`} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">
+                  {MONTH_NAMES[month-1].substring(0,3)} {year}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {Object.entries(dataBySector).map(([sector, sectorData]) => (
+                <React.Fragment key={sector}>
+                    <tr className="bg-gray-200 font-bold"><td colSpan={planningMonths.length + 1} className="px-3 py-2">{sector}</td></tr>
+                    {[
+                        { label: 'Saldo Inicial', key: 'initialStock', sign: 1 },
+                        { label: '(+) Producción', key: 'production', sign: 1 },
+                        { label: '(+) Traslados Entrantes', key: 'netTransfers', sign: 1, filter: (v:number) => v > 0 },
+                        { label: '(-) Despachos', key: 'dispatches', sign: -1 },
+                        { label: '(-) Traslados Salientes', key: 'netTransfers', sign: -1, filter: (v:number) => v < 0 },
+                        { label: 'Saldo Final', key: 'finalStock', sign: 1 },
+                    ].map(flow => (
+                      <tr key={flow.label} className="hover:bg-gray-50">
+                        <td className={`px-3 py-2 whitespace-nowrap sticky left-0 bg-white group-hover:bg-gray-50 ${flow.key === 'finalStock' ? 'font-bold': ''}`}>{flow.label}</td>
+                        {planningMonths.map(({year, month}) => {
+                          const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+                          const val = sectorData.byMonth[monthKey]?.[flow.key as keyof typeof sectorData.byMonth[typeof monthKey]] || 0;
+                          
+                          let displayVal = val;
+                          if (flow.filter && !flow.filter(val)) displayVal = 0;
+                          if (flow.sign < 0) displayVal = Math.abs(displayVal);
+
+                          return (
+                            <td key={monthKey} className="px-3 py-2 text-right text-gray-600 font-mono">
+                               {Math.round(displayVal).toLocaleString()}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 
 
 export const ProductionPlanSection: React.FC = () => {
@@ -168,7 +239,7 @@ export const ProductionPlanSection: React.FC = () => {
     demandAnalysis,
     apiCuboInventariosData,
     handleContinueToStep2,
-    handleContinueToStep3
+    handleContinueToStep3,
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
@@ -183,26 +254,13 @@ export const ProductionPlanSection: React.FC = () => {
       demandAnalysisPresent: !!demandAnalysis
     });
   }, [isDataSynced, isLoading, planningStep, productionPlan, salesData, demandAnalysis, inspector]);
-
-  const [activeTab, setActiveTab] = useState<'monthly' | 'weekly' | 'daily_summary' | 'daily_audit'>('monthly');
-  const [selectedSectors, setSelectedSectors] = useState<string[]>([]);
   
-  const [appliedFilters, setAppliedFilters] = useState<{
-    product: string;
-    month: string;
-    line: string;
-    center: string;
-    productCode: string;
-  }>({ month: '', line: '', center: '', product: '', productCode: ''});
-
-  const { dailyPlan = [], monthlyPlan = [], weeklyPlan = [], auditLog = [], initialInventory } = productionPlan || { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog: [], initialInventory: new Map() };
-
-  const handleExportDaily = () => {
-    // ... (no changes)
-  };
+  const { monthlyPlan = [] } = productionPlan || { monthlyPlan: [] };
 
   const handleExportMonthly = () => {
-    // ... (no changes)
+    if (monthlyPlan.length > 0) {
+      exportMonthlyPlanToExcel(monthlyPlan);
+    }
   };
 
   const handleStartPlanning = async () => {
@@ -234,124 +292,15 @@ export const ProductionPlanSection: React.FC = () => {
     dispatch({ type: 'RESET_PLANNING' });
   };
   
-  const filteredDailyPlan = useMemo(() => {
-    // ... (no changes)
-    return []; // Simplified for brevity
-  }, []);
-
-  const productSectorMap = useMemo(() => {
-    // ... (no changes)
-    return new Map<string, string>();
+  const planningMonths = useMemo(() => {
+     if (salesData.length === 0) return [];
+     const monthSet = new Set<string>();
+     salesData.forEach(d => monthSet.add(`${d.año}-${d.mes}`));
+     return Array.from(monthSet).sort().map(m => {
+       const [year, month] = m.split('-').map(Number);
+       return { year, month };
+     });
   }, [salesData]);
-
-  const sectorOptions = useMemo(() => {
-    // ... (no changes)
-    return [];
-  }, [salesData]);
-
-  const monthlyFlowByCenter = useMemo(() => {
-    // ... (no changes)
-    return null;
-  }, [productionPlan, selectedSectors, productSectorMap]);
-
-  // --- Main Content Rendering Logic ---
-  const renderDailyAudit = () => (
-    <div>...</div>
-  );
-
-  const renderMonthlySummary = () => {
-    // ... (no changes)
-    return null;
-  };
-  
-    const detailedCapacityAnalysis = useMemo(() => {
-    if (!demandAnalysis || !constraints.shiftParameters) return null;
-
-    const getMonthlyCapacityDetails = (
-      year: number,
-      month: number,
-      line: ProductionLine
-    ): { totalNetHours: number; weekdays: number; saturdaysAndHolidays: number } => {
-      const EFFICIENCY_FACTOR = 0.87;
-      let grossTotalHours = 0;
-      let weekdays = 0;
-      let saturdaysAndHolidays = 0;
-      const daysInMonth = new Date(year, month, 0).getDate();
-      
-      for (let day = 1; day <= daysInMonth; day++) {
-        const checkDate = new Date(year, month - 1, day);
-        const dayOfWeek = checkDate.getDay();
-        
-        let dailyHours = 0;
-        let isWorkingDay = false;
-        
-        if (dayOfWeek !== 0) { // Not Sunday
-          const holidayInfo = constraints.holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
-          let isNonWorkingHoliday = false;
-          if (holidayInfo && holidayInfo.dayType === 'asueto') {
-            const appliesTo = holidayInfo.appliesTo;
-            if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
-              isNonWorkingHoliday = true;
-            }
-          }
-
-          if (!isNonWorkingHoliday) {
-            isWorkingDay = true;
-            if (holidayInfo && holidayInfo.isProductionAllowed) {
-              saturdaysAndHolidays++;
-              if (holidayInfo.dayType === 'full') dailyHours = constraints.shiftParameters.regularHoursPerDay;
-              else if (holidayInfo.dayType === 'half') dailyHours = 5;
-            } else {
-              if (dayOfWeek === 6) { // Saturday
-                saturdaysAndHolidays++;
-                dailyHours = constraints.shiftParameters.saturdayAndHolidayHours;
-              } else { // Weekday
-                weekdays++;
-                dailyHours = constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay;
-              }
-            }
-          }
-        }
-        grossTotalHours += dailyHours;
-      }
-
-      return { totalNetHours: grossTotalHours * EFFICIENCY_FACTOR, weekdays, saturdaysAndHolidays };
-    };
-
-    const planningMonths = Array.from(new Set(salesData.map(s => `${s.año}-${s.mes}`))).sort();
-
-    const capacityByMonth: Record<string, {
-      monthName: string;
-      year: number;
-      totalHours: number;
-      lines: Array<{
-        line: ProductionLine;
-        totalNetHours: number;
-        weekdays: number;
-        saturdaysAndHolidays: number;
-      }>;
-    }> = {};
-
-    planningMonths.forEach(monthKey => {
-      const [year, month] = monthKey.split('-').map(Number);
-      const monthName = `${MONTH_NAMES[month-1]} ${year}`;
-      capacityByMonth[monthKey] = { monthName, year, totalHours: 0, lines: [] };
-    });
-
-    constraints.productionLines.forEach(line => {
-      if(line.isActive !== false) {
-        planningMonths.forEach(monthKey => {
-          const [year, month] = monthKey.split('-').map(Number);
-          const details = getMonthlyCapacityDetails(year, month, line);
-          capacityByMonth[monthKey].lines.push({ line, ...details });
-          capacityByMonth[monthKey].totalHours += details.totalNetHours;
-        });
-      }
-    });
-
-    return Object.values(capacityByMonth);
-
-  }, [demandAnalysis, constraints, salesData]);
 
   const renderPlanWizard = () => {
     if (planningStep === 0) {
@@ -457,80 +406,12 @@ export const ProductionPlanSection: React.FC = () => {
         </div>
       );
     }
-
-    if (planningStep === 2) {
-      return (
-        <div className="space-y-6">
-          <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Capacidad Instalada</h3>
-          <p className="text-sm text-gray-600">
-            A continuación se muestra la capacidad neta en horas-hombre para cada línea de producción, desglosada por mes. Verifique que los días laborables y las horas por tipo de día son coherentes con su operación.
-          </p>
-          {detailedCapacityAnalysis ? (
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-              {detailedCapacityAnalysis.map(monthData => (
-                <Accordion key={monthData.monthName} type="single" collapsible className="w-full border rounded-lg px-4">
-                  <AccordionItem value={monthData.monthName}>
-                    <AccordionTrigger>
-                      <div className="flex justify-between items-center w-full">
-                        <span className="font-semibold text-md text-gray-800">{monthData.monthName}</span>
-                        <span className="font-bold text-lg text-indigo-600">{Math.round(monthData.totalHours).toLocaleString()} horas</span>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <div className="divide-y">
-                        {monthData.lines.map(({ line, totalNetHours, weekdays, saturdaysAndHolidays }) => (
-                          <div key={line.id} className="py-2 px-3 hover:bg-gray-50">
-                            <div className="grid grid-cols-2 gap-4 items-center">
-                              <div>
-                                <p className="font-semibold text-gray-700">{line.name} <span className="text-xs text-gray-500">({constraints.workCenters.find(wc => wc.id === line.workCenterId)?.name})</span></p>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {constraints.workstationDefinitions
-                                    .filter(wd => line.assignedWorkstations.some(as => as.definitionId === wd.id))
-                                    .map(wd => `${wd.name} (x${line.assignedWorkstations.find(as => as.definitionId === wd.id)?.quantity})`).join(', ')
-                                  }
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-3 gap-2 text-xs text-right">
-                                <div className="bg-blue-50 p-1 rounded">
-                                  <div className="font-bold text-blue-800">{weekdays}</div>
-                                  <div className="text-blue-700">L-V</div>
-                                  <div className="text-blue-700">{constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay}h/día</div>
-                                </div>
-                                <div className="bg-green-50 p-1 rounded">
-                                  <div className="font-bold text-green-800">{saturdaysAndHolidays}</div>
-                                  <div className="text-green-700">Sáb/Fer</div>
-                                  <div className="text-green-700">{constraints.shiftParameters.saturdayAndHolidayHours}h/día</div>
-                                </div>
-                                <div className="bg-indigo-50 p-1 rounded">
-                                  <div className="font-bold text-indigo-800 text-sm">{Math.round(totalNetHours).toLocaleString()}</div>
-                                  <div className="text-indigo-700">Total Horas</div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              ))}
-            </div>
-          ) : (
-            <p>Calculando desglose de capacidad...</p>
-          )}
-          <div className="flex justify-end space-x-4 pt-4">
-            <Button variant="outline" onClick={resetPlanning}>Cancelar y Reiniciar</Button>
-            <Button onClick={() => dispatch({ type: 'SET_PLANNING_STEP', payload: 3 })}>Aceptar y Continuar al Paso 3</Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (planningStep === 3 && demandAnalysis) {
+    
+    if (planningStep === 2 && demandAnalysis) {
         const { transfers } = demandAnalysis;
         return (
             <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-gray-800">Paso 3: Validación de Transferencias (Clase 'F')</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Transferencias (Clase 'F')</h3>
                 <p className="text-sm text-gray-600">
                     Se ha identificado la siguiente demanda para productos de Clase 'F' en centros de distribución. Esta demanda será planificada en el centro 1000 y luego transferida. Verifique que las cantidades sean correctas.
                 </p>
@@ -573,6 +454,35 @@ export const ProductionPlanSection: React.FC = () => {
     return null;
   }
   
+  // Render main view
+  if (monthlyPlan.length > 0 && !isLoading) {
+    return (
+       <div className="p-6 md:p-8 space-y-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
+          <div className="flex items-center space-x-3">
+              <PlanIcon />
+              <h2 className="text-2xl font-semibold text-gray-700">Resultados del Plan de Producción</h2>
+          </div>
+          <div className="flex items-center space-x-4 mt-4 md:mt-0">
+              <Button onClick={handleExportMonthly} variant="outline">
+                <Download className="mr-2 h-4 w-4" /> Exportar Resumen
+              </Button>
+              <Button onClick={resetPlanning} variant="destructive">
+                Iniciar Nueva Planificación
+              </Button>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-lg">
+           <MonthlySummaryTable 
+              planItems={monthlyPlan} 
+              title="Resumen Ejecutivo de Flujo de Inventario" 
+              planningMonths={planningMonths}
+            />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">

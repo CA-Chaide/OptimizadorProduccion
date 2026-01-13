@@ -91,6 +91,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 isLoading: false, 
                 productionPlan: action.payload,
                 planningProgress: null,
+                planningStep: 0, // Reset wizard
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
              console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_ERROR. isLoading: false.");

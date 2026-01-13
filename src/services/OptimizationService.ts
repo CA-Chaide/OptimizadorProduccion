@@ -704,34 +704,6 @@ export const generateProductionPlan = async (
             inventoryState.set(key, finalStock);
         });
         
-        // Log needs and production
-        const needsLog: any = {};
-        const prodLog: any = {};
-
-        monthlyMovements.forEach((mov, key) => {
-            const [productId, centerId] = key.split('---');
-            const safetyStock = constraints.inventorySettings.find(s => s.id === key)?.minStock || 0;
-            const totalNeed = mov.salesDemand + safetyStock + mov.transfersOut; // Added transfersOut
-            
-            if (totalNeed > 0) {
-                if (!needsLog[centerId]) needsLog[centerId] = { ventas: 0, stockSeguridad: 0, trasladosSalientes: 0, total: 0 };
-                needsLog[centerId].ventas += mov.salesDemand;
-                needsLog[centerId].stockSeguridad += safetyStock;
-                needsLog[centerId].trasladosSalientes += mov.transfersOut;
-                needsLog[centerId].total += totalNeed;
-            }
-            if (mov.production > 0) {
-                if (!prodLog[centerId]) prodLog[centerId] = { produccionPlanificada: 0 };
-                prodLog[centerId].produccionPlanificada += mov.production;
-            }
-        });
-
-        console.log(`\n--- TOTAL DE NECESIDADES BRUTAS (MES ${monthNum}/${year}) ---`);
-        console.table(needsLog);
-        console.log(`\n--- TOTAL DE PRODUCCIÓN PLANIFICADA (MES ${monthNum}/${year}) ---`);
-        console.table(prodLog);
-
-
         // Push to monthly plan
         monthlyMovements.forEach((mov, key) => {
             const [productId, centerId] = key.split('---');
