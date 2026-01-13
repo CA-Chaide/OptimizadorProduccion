@@ -523,6 +523,7 @@ export interface CuboInventariosItem {
     Material: string;
     Centro: string;
     ClaseAprovisionam: 'E' | 'X' | 'F' | null;
+    StockActual?: number;
     [key: string]: any; // Allow other fields
 }
 
@@ -547,5 +548,3 @@ export interface DemandAnalysisResult {
 
 
 import { ActiveView } from '@/constants/constants';
-
-

@@ -158,6 +158,7 @@ type AppContextType = {
     setConstraints: (constraints: AppConstraints) => Promise<void>;
     handleSyncAndValidate: () => Promise<boolean>;
     handleContinueToStep2: () => void;
+    handleContinueToStep3: () => Promise<void>;
 };
 
 
@@ -354,6 +355,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_PLANNING_STEP', payload: 2 });
     }, []);
 
+    const handleContinueToStep3 = useCallback(async () => {
+        await handleGeneratePlan(true); 
+    }, [state]);
+
     const handleGeneratePlan = useCallback(async (prorateCurrentMonth: boolean): Promise<boolean> => {
         console.log(`[AppProvider] handleGeneratePlan invocado con prorrateo: ${prorateCurrentMonth}.`);
         
@@ -463,6 +468,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setConstraints,
         handleSyncAndValidate,
         handleContinueToStep2,
+        handleContinueToStep3,
     };
 
   return (
@@ -471,4 +477,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-

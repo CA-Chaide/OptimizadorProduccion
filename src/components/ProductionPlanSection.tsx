@@ -19,6 +19,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 
 // --- Reusable MultiSelect Component ---
@@ -167,6 +168,7 @@ export const ProductionPlanSection: React.FC = () => {
     demandAnalysis,
     apiCuboInventariosData,
     handleContinueToStep2,
+    handleContinueToStep3
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
@@ -262,79 +264,92 @@ export const ProductionPlanSection: React.FC = () => {
     return null;
   };
   
-  const totalCapacityByCenter = useMemo(() => {
-    if (!demandAnalysis) return null;
-    
-    // This function is a local copy from OptimizationService to avoid window object errors.
-    const getMonthlyCapacity = (
-        year: number,
-        month: number,
-        line: ProductionLine,
-        startDay: number = 1
-    ): { totalHours: number } => {
-        const EFFICIENCY_FACTOR = 0.87;
-        let grossTotalHours = 0;
-        const daysInMonth = new Date(year, month, 0).getDate();
+    const detailedCapacityAnalysis = useMemo(() => {
+    if (!demandAnalysis || !constraints.shiftParameters) return null;
+
+    const getMonthlyCapacityDetails = (
+      year: number,
+      month: number,
+      line: ProductionLine
+    ): { totalNetHours: number; weekdays: number; saturdaysAndHolidays: number } => {
+      const EFFICIENCY_FACTOR = 0.87;
+      let grossTotalHours = 0;
+      let weekdays = 0;
+      let saturdaysAndHolidays = 0;
+      const daysInMonth = new Date(year, month, 0).getDate();
+      
+      for (let day = 1; day <= daysInMonth; day++) {
+        const checkDate = new Date(year, month - 1, day);
+        const dayOfWeek = checkDate.getDay();
         
-        for (let day = startDay; day <= daysInMonth; day++) {
-            const checkDate = new Date(year, month - 1, day);
-            const dayOfWeek = checkDate.getDay(); 
-            
-            let dailyHours = 0;
-            
-            if (dayOfWeek !== 0) { // Not Sunday
-                const holidayInfo = constraints.holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
-                
-                let isNonWorkingHoliday = false;
-                if (holidayInfo && holidayInfo.dayType === 'asueto') {
-                    const appliesTo = holidayInfo.appliesTo;
-                    if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
-                        isNonWorkingHoliday = true;
-                    }
-                }
-
-                if (!isNonWorkingHoliday) {
-                     if (holidayInfo && holidayInfo.isProductionAllowed) {
-                        if (holidayInfo.dayType === 'full') {
-                            dailyHours = constraints.shiftParameters.regularHoursPerDay;
-                        } else if (holidayInfo.dayType === 'half') {
-                            dailyHours = 5;
-                        }
-                    } else {
-                        if (dayOfWeek === 6) { // Saturday
-                            dailyHours = constraints.shiftParameters.saturdayAndHolidayHours;
-                        } else { // Weekday
-                            dailyHours = constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay;
-                        }
-                    }
-                }
+        let dailyHours = 0;
+        let isWorkingDay = false;
+        
+        if (dayOfWeek !== 0) { // Not Sunday
+          const holidayInfo = constraints.holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
+          let isNonWorkingHoliday = false;
+          if (holidayInfo && holidayInfo.dayType === 'asueto') {
+            const appliesTo = holidayInfo.appliesTo;
+            if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
+              isNonWorkingHoliday = true;
             }
-            
-            grossTotalHours += dailyHours;
-        }
+          }
 
-        const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
-        return { totalHours: netTotalHours };
+          if (!isNonWorkingHoliday) {
+            isWorkingDay = true;
+            if (holidayInfo && holidayInfo.isProductionAllowed) {
+              saturdaysAndHolidays++;
+              if (holidayInfo.dayType === 'full') dailyHours = constraints.shiftParameters.regularHoursPerDay;
+              else if (holidayInfo.dayType === 'half') dailyHours = 5;
+            } else {
+              if (dayOfWeek === 6) { // Saturday
+                saturdaysAndHolidays++;
+                dailyHours = constraints.shiftParameters.saturdayAndHolidayHours;
+              } else { // Weekday
+                weekdays++;
+                dailyHours = constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay;
+              }
+            }
+          }
+        }
+        grossTotalHours += dailyHours;
+      }
+
+      return { totalNetHours: grossTotalHours * EFFICIENCY_FACTOR, weekdays, saturdaysAndHolidays };
     };
 
-    const capacity: Record<string, number> = {};
-    const planningMonths = new Set(salesData.map(s => `${s.año}-${s.mes}`));
+    const capacityByMonth: Record<string, {
+      monthName: string;
+      year: number;
+      totalHours: number;
+      lines: Array<{
+        line: ProductionLine;
+        totalNetHours: number;
+        weekdays: number;
+        saturdaysAndHolidays: number;
+      }>;
+    }> = {};
 
-    constraints.workCenters.forEach(wc => {
-      capacity[wc.id] = 0;
+    const planningMonths = Array.from(new Set(salesData.map(s => `${s.año}-${s.mes}`))).sort();
+
+    planningMonths.forEach(monthKey => {
+      const [year, month] = monthKey.split('-').map(Number);
+      const monthName = `${MONTH_NAMES[month-1]} ${year}`;
+      capacityByMonth[monthKey] = { monthName, year, totalHours: 0, lines: [] };
     });
 
     constraints.productionLines.forEach(line => {
-      if (capacity[line.workCenterId] !== undefined) {
+      if(line.isActive !== false) {
         planningMonths.forEach(monthKey => {
-            const [year, month] = monthKey.split('-').map(Number);
-            const lineCapacity = getMonthlyCapacity(year, month, line);
-            capacity[line.workCenterId] += lineCapacity.totalHours;
+          const [year, month] = monthKey.split('-').map(Number);
+          const details = getMonthlyCapacityDetails(year, month, line);
+          capacityByMonth[monthKey].lines.push({ line, ...details });
+          capacityByMonth[monthKey].totalHours += details.totalNetHours;
         });
       }
     });
 
-    return Object.entries(capacity);
+    return Object.values(capacityByMonth);
 
   }, [demandAnalysis, constraints, salesData]);
 
@@ -446,34 +461,67 @@ export const ProductionPlanSection: React.FC = () => {
     if (planningStep === 2) {
       return (
         <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Capacidad Instalada</h3>
-            <p className="text-sm text-gray-600">
-                A continuación se muestra la capacidad total en horas-hombre para todo el horizonte de planificación, calculada para cada centro de trabajo a partir de los parámetros de turno. Verifique que estos totales son coherentes con su operación.
-            </p>
-            {totalCapacityByCenter && (
-                 <div className="overflow-auto max-h-[50vh] border rounded-lg mt-4">
-                    <table className="min-w-full text-sm divide-y divide-gray-200">
-                        <thead className="bg-gray-100 sticky top-0">
-                            <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro de Trabajo</th>
-                                <th className="px-3 py-2 text-right font-semibold text-gray-600">Capacidad Total (Horas)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {totalCapacityByCenter.map(([centerId, totalHours]) => (
-                                <tr key={centerId} className="hover:bg-gray-50">
-                                    <td className="px-3 py-2">{constraints.workCenters.find(c => c.id === centerId)?.name || centerId}</td>
-                                    <td className="px-3 py-2 text-right font-mono">{Math.round(totalHours).toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                 </div>
-            )}
-            <div className="flex justify-end space-x-4 pt-4">
-                <Button variant="outline" onClick={resetPlanning}>Cancelar y Reiniciar</Button>
-                <Button>Aceptar y Continuar al Paso 3</Button>
+          <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Capacidad Instalada</h3>
+          <p className="text-sm text-gray-600">
+            A continuación se muestra la capacidad neta en horas-hombre para cada línea de producción, desglosada por mes. Verifique que los días laborables y las horas por tipo de día son coherentes con su operación.
+          </p>
+          {detailedCapacityAnalysis ? (
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              {detailedCapacityAnalysis.map(monthData => (
+                <Accordion key={monthData.monthName} type="single" collapsible className="w-full border rounded-lg px-4">
+                  <AccordionItem value={monthData.monthName}>
+                    <AccordionTrigger>
+                      <div className="flex justify-between items-center w-full">
+                        <span className="font-semibold text-md text-gray-800">{monthData.monthName}</span>
+                        <span className="font-bold text-lg text-indigo-600">{Math.round(monthData.totalHours).toLocaleString()} horas</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="divide-y">
+                        {monthData.lines.map(({ line, totalNetHours, weekdays, saturdaysAndHolidays }) => (
+                          <div key={line.id} className="py-2 px-3 hover:bg-gray-50">
+                            <div className="grid grid-cols-2 gap-4 items-center">
+                              <div>
+                                <p className="font-semibold text-gray-700">{line.name} <span className="text-xs text-gray-500">({constraints.workCenters.find(wc => wc.id === line.workCenterId)?.name})</span></p>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {constraints.workstationDefinitions
+                                    .filter(wd => line.assignedWorkstations.some(as => as.definitionId === wd.id))
+                                    .map(wd => `${wd.name} (x${line.assignedWorkstations.find(as => as.definitionId === wd.id)?.quantity})`).join(', ')
+                                  }
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-xs text-right">
+                                <div className="bg-blue-50 p-1 rounded">
+                                  <div className="font-bold text-blue-800">{weekdays}</div>
+                                  <div className="text-blue-700">L-V</div>
+                                  <div className="text-blue-700">{constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay}h/día</div>
+                                </div>
+                                <div className="bg-green-50 p-1 rounded">
+                                  <div className="font-bold text-green-800">{saturdaysAndHolidays}</div>
+                                  <div className="text-green-700">Sáb/Fer</div>
+                                  <div className="text-green-700">{constraints.shiftParameters.saturdayAndHolidayHours}h/día</div>
+                                </div>
+                                <div className="bg-indigo-50 p-1 rounded">
+                                  <div className="font-bold text-indigo-800 text-sm">{Math.round(totalNetHours).toLocaleString()}</div>
+                                  <div className="text-indigo-700">Total Horas</div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              ))}
             </div>
+          ) : (
+            <p>Calculando desglose de capacidad...</p>
+          )}
+          <div className="flex justify-end space-x-4 pt-4">
+            <Button variant="outline" onClick={resetPlanning}>Cancelar y Reiniciar</Button>
+            <Button onClick={handleContinueToStep3}>Aceptar y Generar Plan de Producción</Button>
+          </div>
         </div>
       );
     }
@@ -503,7 +551,13 @@ export const ProductionPlanSection: React.FC = () => {
          {isLoading ? (
              <div className="text-center py-10 flex flex-col items-center justify-center h-full">
                 <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
-                <h3 className="text-lg font-medium text-gray-900">Analizando Demanda...</h3>
+                <h3 className="text-lg font-medium text-gray-900">{planningProgress ? planningProgress.message : 'Analizando...'}</h3>
+                 {planningProgress && (
+                    <div className="w-full max-w-sm mt-4">
+                        <Progress value={(planningProgress.current / planningProgress.total) * 100} />
+                        <p className="text-sm text-gray-500 mt-2">{planningProgress.current} de {planningProgress.total}</p>
+                    </div>
+                )}
             </div>
          ) : renderPlanWizard()}
       </div>
