@@ -91,6 +91,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 isLoading: false, 
                 productionPlan: action.payload,
                 planningProgress: null,
+                planningStep: 4, // Move to final results view
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
              console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_ERROR. isLoading: false.");
@@ -115,7 +116,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_DEMAND_ANALYSIS':
             return { ...state, demandAnalysis: action.payload };
         case 'RESET_PLANNING':
-            return { ...state, planningStep: 0, demandAnalysis: null, productionPlan: initialState.productionPlan };
+            return { ...state, planningStep: 0, demandAnalysis: null, productionPlan: initialState.productionPlan, isLoading: false, planningProgress: null };
         case 'SET_API_ASSEMBLY_DATA':
             return { ...state, apiAssemblyData: action.payload };
         case 'SET_API_CUBO_INVENTARIOS_DATA':
@@ -355,10 +356,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_PLANNING_STEP', payload: 2 });
     }, []);
 
-    const handleContinueToStep3 = useCallback(async () => {
-        dispatch({ type: 'SET_PLANNING_STEP', payload: 3 });
-    }, []);
-
     const handleGeneratePlan = useCallback(async (prorateCurrentMonth: boolean): Promise<boolean> => {
         console.log(`[AppProvider] handleGeneratePlan invocado con prorrateo: ${prorateCurrentMonth}.`);
         
@@ -409,6 +406,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return false;
         }
     }, [state.year, state.constraints, state.syncStatus, state.apiAssemblyData, state.apiCuboInventariosData, state.salesData, addNotification]);
+
+    const handleContinueToStep3 = useCallback(async () => {
+        const success = await handleGeneratePlan(true); // Assuming prorate always true for now
+        // The reducer will automatically move to step 4 on success
+    }, [handleGeneratePlan]);
+    
 
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);

@@ -144,28 +144,10 @@ const MonthlySummaryTable: React.FC<{
         
         monthData.production += item.totalQuantityToProduce;
         monthData.dispatches += item.dispatches;
+        monthData.initialStock += item.initialStock; // Summing up initial stocks from all products in the month
+        monthData.finalStock += item.finalStock; // Summing up final stocks
         if(item.netTransfers > 0) monthData.transfersIn += item.netTransfers;
         if(item.netTransfers < 0) monthData.transfersOut += Math.abs(item.netTransfers);
-    });
-
-    // Calculate initial and final stocks sequentially
-    Object.keys(sectors).forEach(sector => {
-        let lastMonthStock: number | null = null;
-        planningMonths.forEach(({ year, month }) => {
-            const monthKey = `${year}-${String(month).padStart(2, '0')}`;
-            const monthData = sectors[sector].byMonth[monthKey];
-
-            if (lastMonthStock !== null) {
-                monthData.initialStock = lastMonthStock;
-            } else {
-                 monthData.initialStock = planItems
-                    .filter(p => p.year === year && p.month === month)
-                    .reduce((sum, p) => sum + p.initialStock, 0);
-            }
-            
-            monthData.finalStock = monthData.initialStock + monthData.production + monthData.transfersIn - monthData.transfersOut - monthData.dispatches;
-            lastMonthStock = monthData.finalStock;
-        });
     });
 
     return sectors;
@@ -540,36 +522,41 @@ export const ProductionPlanSection: React.FC = () => {
         );
     }
     
+    // Step 4 is the results view, rendered by the main logic below
+    if (planningStep === 4 && monthlyPlan.length > 0) {
+        return (
+             <div className="p-6 md:p-8 space-y-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
+                <div className="flex items-center space-x-3">
+                    <PlanIcon />
+                    <h2 className="text-2xl font-semibold text-gray-700">Resultados del Plan de Producción</h2>
+                </div>
+                <div className="flex items-center space-x-4 mt-4 md:mt-0">
+                    <Button onClick={handleExportMonthly} variant="outline">
+                      <Download className="mr-2 h-4 w-4" /> Exportar Resumen
+                    </Button>
+                    <Button onClick={resetPlanning} variant="destructive">
+                      Iniciar Nueva Planificación
+                    </Button>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-lg">
+                 <MonthlySummaryTable 
+                    planItems={monthlyPlan} 
+                    title="Resumen Ejecutivo de Flujo de Inventario" 
+                    planningMonths={planningMonths}
+                  />
+              </div>
+            </div>
+        )
+    }
+
     return null;
   }
   
   // Render main view
   if (monthlyPlan.length > 0 && !isLoading) {
-    return (
-       <div className="p-6 md:p-8 space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-          <div className="flex items-center space-x-3">
-              <PlanIcon />
-              <h2 className="text-2xl font-semibold text-gray-700">Resultados del Plan de Producción</h2>
-          </div>
-          <div className="flex items-center space-x-4 mt-4 md:mt-0">
-              <Button onClick={handleExportMonthly} variant="outline">
-                <Download className="mr-2 h-4 w-4" /> Exportar Resumen
-              </Button>
-              <Button onClick={resetPlanning} variant="destructive">
-                Iniciar Nueva Planificación
-              </Button>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-xl shadow-lg">
-           <MonthlySummaryTable 
-              planItems={monthlyPlan} 
-              title="Resumen Ejecutivo de Flujo de Inventario" 
-              planningMonths={planningMonths}
-            />
-        </div>
-      </div>
-    )
+    return renderPlanWizard();
   }
 
   return (

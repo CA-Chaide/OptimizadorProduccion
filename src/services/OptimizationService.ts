@@ -362,6 +362,59 @@ function getPredefinedQuantities(centerId: string, lineName: string): Array<{ de
     return [];
 }
 
+const getMonthlyCapacity = (
+    year: number,
+    month: number,
+    line: ProductionLine,
+    constraints: AppConstraints,
+    startDay: number = 1
+): { totalHours: number } => {
+    const EFFICIENCY_FACTOR = 0.87;
+    let grossTotalHours = 0;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    
+    for (let day = startDay; day <= daysInMonth; day++) {
+        const checkDate = new Date(year, month - 1, day);
+        const dayOfWeek = checkDate.getDay(); 
+        
+        let dailyHours = 0;
+        
+        if (dayOfWeek !== 0) { // Not Sunday
+            const holidayInfo = constraints.holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
+            
+            let isNonWorkingHoliday = false;
+            if (holidayInfo && holidayInfo.dayType === 'asueto') {
+                const appliesTo = holidayInfo.appliesTo;
+                if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
+                    isNonWorkingHoliday = true;
+                }
+            }
+
+            if (!isNonWorkingHoliday) {
+                 if (holidayInfo && holidayInfo.isProductionAllowed) {
+                    if (holidayInfo.dayType === 'full') {
+                        dailyHours = constraints.shiftParameters.regularHoursPerDay;
+                    } else if (holidayInfo.dayType === 'half') {
+                        dailyHours = 5;
+                    }
+                } else {
+                    if (dayOfWeek === 6) { // Saturday
+                        dailyHours = constraints.shiftParameters.saturdayAndHolidayHours;
+                    } else { // Weekday
+                        dailyHours = constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay;
+                    }
+                }
+            }
+        }
+        
+        grossTotalHours += dailyHours;
+    }
+
+    const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
+    return { totalHours: netTotalHours };
+};
+
+
 export const generateProductionPlan = async (
     planningYear: number, 
     constraints: AppConstraints, 
@@ -388,57 +441,6 @@ export const generateProductionPlan = async (
         logger.log("Error: No se han definido los parámetros de costo laboral o turnos.", 'error');
         return { dailyPlan: [], monthlyPlan: [], weeklyPlan: [], auditLog };
     }
-
-    const getMonthlyCapacity = (
-        year: number,
-        month: number,
-        line: ProductionLine,
-        startDay: number = 1
-    ): { totalHours: number } => {
-        const EFFICIENCY_FACTOR = 0.87;
-        let grossTotalHours = 0;
-        const daysInMonth = new Date(year, month, 0).getDate();
-        
-        for (let day = startDay; day <= daysInMonth; day++) {
-            const checkDate = new Date(year, month - 1, day);
-            const dayOfWeek = checkDate.getDay(); 
-            
-            let dailyHours = 0;
-            
-            if (dayOfWeek !== 0) { // Not Sunday
-                const holidayInfo = holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
-                
-                let isNonWorkingHoliday = false;
-                if (holidayInfo && holidayInfo.dayType === 'asueto') {
-                    const appliesTo = holidayInfo.appliesTo;
-                    if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
-                        isNonWorkingHoliday = true;
-                    }
-                }
-
-                if (!isNonWorkingHoliday) {
-                     if (holidayInfo && holidayInfo.isProductionAllowed) {
-                        if (holidayInfo.dayType === 'full') {
-                            dailyHours = shiftParameters.regularHoursPerDay;
-                        } else if (holidayInfo.dayType === 'half') {
-                            dailyHours = 5;
-                        }
-                    } else {
-                        if (dayOfWeek === 6) { // Saturday
-                            dailyHours = shiftParameters.saturdayAndHolidayHours;
-                        } else { // Weekday
-                            dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
-                        }
-                    }
-                }
-            }
-            
-            grossTotalHours += dailyHours;
-        }
-
-        const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
-        return { totalHours: netTotalHours };
-    };
 
     const initialInventoryState = new Map<string, number>(); 
     
@@ -506,7 +508,7 @@ export const generateProductionPlan = async (
             if (prorateCurrentMonth && year === new Date().getFullYear() && monthNum === new Date().getMonth() + 1) {
                 startDayForCapacityCalc = new Date().getDate();
             }
-            const { totalHours } = getMonthlyCapacity(year, monthNum, line, startDayForCapacityCalc);
+            const { totalHours } = getMonthlyCapacity(year, monthNum, line, constraints, startDayForCapacityCalc);
             monthlyCapacityByLine.set(line.id, totalHours);
         });
 
