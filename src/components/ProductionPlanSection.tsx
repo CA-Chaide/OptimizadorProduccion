@@ -339,22 +339,24 @@ export const ProductionPlanSection: React.FC = () => {
   }, [productionPlan.monthlyPlan, selectedResultsFilters, salesData, planningStep]);
   
   const filteredDailyPlan = useMemo(() => {
-      if (planningStep !== 3) return [];
-      
-       const productSectorMap = new Map<string, string>();
-        salesData.forEach(row => {
-            if (!productSectorMap.has(row.código)) {
-                productSectorMap.set(normalizeMaterialCode(row.código), row.sector || 'Sin Sector');
-            }
-        });
+    if (planningStep !== 3) return [];
 
-      return dailyPlan.filter(item => {
-          const sector = productSectorMap.get(item.productId) || 'Sin Sector';
-          const centroMatch = selectedResultsFilters.centros.length === 0 || selectedResultsFilters.centros.includes(item.producingCenterId || '');
-          const sectorMatch = selectedResultsFilters.sectores.length === 0 || selectedResultsFilters.sectores.includes(sector);
-          const lineaMatch = selectedResultsFilters.lineas.length === 0 || (item.assignedLineId && selectedResultsFilters.lineas.includes(item.assignedLineId));
-          return centroMatch && sectorMatch && lineaMatch;
-      });
+    const productSectorMap = new Map<string, string>();
+    salesData.forEach(row => {
+      if (!productSectorMap.has(normalizeMaterialCode(row.código))) {
+        productSectorMap.set(normalizeMaterialCode(row.código), row.sector || 'Sin Sector');
+      }
+    });
+
+    return dailyPlan.filter(item => {
+      const sector = productSectorMap.get(item.productId) || 'Sin Sector';
+
+      const centroMatch = selectedResultsFilters.centros.length === 0 || selectedResultsFilters.centros.includes(item.producingCenterId || '');
+      const sectorMatch = selectedResultsFilters.sectores.length === 0 || selectedResultsFilters.sectores.includes(sector);
+      const lineaMatch = selectedResultsFilters.lineas.length === 0 || (item.assignedLineId && selectedResultsFilters.lineas.includes(item.assignedLineId));
+
+      return centroMatch && sectorMatch && lineaMatch;
+    });
   }, [dailyPlan, selectedResultsFilters, salesData, planningStep]);
 
 
@@ -640,7 +642,6 @@ export const ProductionPlanSection: React.FC = () => {
     // Step 3 is the results view
     if (planningStep === 3 && monthlyPlan.length > 0) {
         
-        const firstMonthDailyPlan = dailyPlan.filter(d => d.year === planningMonths[0]?.year && d.month === planningMonths[0]?.month);
         const dailyPlanTotal = filteredDailyPlan.reduce((sum, item) => sum + item.quantityToProduce, 0);
 
         return (
@@ -790,11 +791,3 @@ export const ProductionPlanSection: React.FC = () => {
     </div>
   );
 };
-
-    
-
-  
-
-
-
-
