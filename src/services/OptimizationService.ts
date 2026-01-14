@@ -795,39 +795,51 @@ export const exportDailyPlanByLineToExcel = (
 };
 
 
-export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[], centers: string[]): void => {
+export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[], centers: string[], constraints: AppConstraints): void => {
     if (!plan || plan.length === 0) return;
+
+    const getLineName = (lineId: string | undefined): string => {
+        if (!lineId) return 'N/A';
+        const line = constraints.productionLines.find(l => l.id === lineId);
+        return line ? line.name : lineId;
+    };
     
-    // Aggregate production by month, center, and material for the centers in the filter
+    // Aggregate production by month, center, material, and line for the centers in the filter
     const aggregatedProduction = new Map<string, number>();
     plan.filter(item => centers.includes(item.producingCenterId)).forEach(item => {
-        const key = `${item.month}-${item.producingCenterId}-${item.productId}`;
+        const key = `${item.month}-${item.producingCenterId}-${item.productId}-${item.assignedLineId || 'unassigned'}`;
         const currentQty = aggregatedProduction.get(key) || 0;
         aggregatedProduction.set(key, currentQty + item.totalQuantityToProduce);
     });
 
     const dataToExport = Array.from(aggregatedProduction.entries()).map(([key, quantity]) => {
-        const [month, center, material] = key.split('-');
+        const [month, center, material, lineId] = key.split('-');
+        const productName = plan.find(p => p.productId === material)?.productName || material;
+        
         return {
             'Mes': MONTH_NAMES[parseInt(month, 10) - 1],
             'Centro': center,
-            'codigo material': material,
-            'cantidad a fabricar': Math.round(quantity),
+            'Linea de Produccion': getLineName(lineId),
+            'Codigo Material': material,
+            'Nombre Producto': productName,
+            'Cantidad a Fabricar': Math.round(quantity),
         };
     });
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    worksheet['!cols'] = [ { wch: 15 }, { wch: 10 }, { wch: 20 }, { wch: 20 } ];
+    worksheet['!cols'] = [ { wch: 15 }, { wch: 10 }, { wch: 25 }, { wch: 20 }, { wch: 40 }, { wch: 20 } ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Plan Mensual Fabricacion');
     XLSX.writeFile(workbook, 'Resumen_Inventario_Mensual.xlsx');
 };
+
 
 export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]> => { return Promise.resolve([]); };
 
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 

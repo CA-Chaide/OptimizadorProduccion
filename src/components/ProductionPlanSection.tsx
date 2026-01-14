@@ -387,7 +387,7 @@ export const ProductionPlanSection: React.FC = () => {
 
   const handleExportMonthly = () => {
     if (filteredMonthlyPlan.length > 0) {
-      exportMonthlyPlanToExcel(filteredMonthlyPlan, selectedResultsFilters.centros);
+      exportMonthlyPlanToExcel(filteredMonthlyPlan, selectedResultsFilters.centros, constraints);
     }
   };
   
