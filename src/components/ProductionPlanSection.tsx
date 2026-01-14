@@ -9,7 +9,7 @@ import {
     PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem, MonthlyProductionPlanItem, DemandAnalysisResult, Holiday 
 } from '@/types/types';
 import { PlanIcon, DataImportIcon, MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
-import { exportDailyPlanToExcel, exportMonthlyPlanToExcel, analyzeSalesDemand } from '@/services/OptimizationService';
+import { exportDailyPlanToExcel, exportMonthlyPlanToExcel, analyzeSalesDemand, getLineCapacity } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
 import { Loader2, Check, ChevronsUpDown, Download } from 'lucide-react';
@@ -280,7 +280,7 @@ export const ProductionPlanSection: React.FC = () => {
 
   // Populate filter options when plan is generated
   useEffect(() => {
-    if (planningStep === 4 && productionPlan.monthlyPlan.length > 0) {
+    if (planningStep === 3 && productionPlan.monthlyPlan.length > 0) {
       const uniqueCentros = [...new Set(productionPlan.monthlyPlan.map(item => item.centerId))];
       const uniqueSectores = [...new Set(salesData.map(item => item.sector || 'Sin Sector'))];
       const uniqueLineas = [...new Set(productionPlan.monthlyPlan.map(item => item.assignedLineId).filter(Boolean) as string[])];
@@ -306,7 +306,7 @@ export const ProductionPlanSection: React.FC = () => {
   }, [planningStep, productionPlan, salesData, constraints.productionLines]);
 
   const filteredMonthlyPlan = useMemo(() => {
-    if (planningStep !== 4) return [];
+    if (planningStep !== 3) return [];
 
     const productSectorMap = new Map<string, string>();
     salesData.forEach(row => {
@@ -376,34 +376,6 @@ export const ProductionPlanSection: React.FC = () => {
        return { year, month };
      });
   }, [salesData]);
-
-    const getMonthlyCapacityDetails = (year: number, month: number) => {
-        const daysInMonth = new Date(year, month, 0).getDate();
-        let workingWeekdays = 0;
-        let workingSaturdays = 0;
-        
-        for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(year, month - 1, day);
-            const dayOfWeek = date.getDay();
-            const holiday = constraints.holidays.find(h => h.date === date.toISOString().split('T')[0]);
-
-            if (holiday && holiday.dayType === 'asueto') continue;
-
-            if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Lunes a Viernes
-                 if (!holiday || holiday.isProductionAllowed) workingWeekdays++;
-            } else if (dayOfWeek === 6) { // Sábado
-                if (!holiday || holiday.isProductionAllowed) workingSaturdays++;
-            }
-        }
-        return { workingWeekdays, workingSaturdays };
-    };
-
-    const getLineCapacity = (line: ProductionLine, year: number, month: number): number => {
-        const { workingWeekdays, workingSaturdays } = getMonthlyCapacityDetails(year, month);
-        const { regularHoursPerDay, extraHoursPerDay, saturdayAndHolidayHours } = constraints.shiftParameters;
-        const totalHours = (workingWeekdays * (regularHoursPerDay + extraHoursPerDay)) + (workingSaturdays * saturdayAndHolidayHours);
-        return totalHours * 0.87; // Assuming 87% efficiency
-    };
 
 
   const renderPlanWizard = () => {
@@ -551,69 +523,31 @@ export const ProductionPlanSection: React.FC = () => {
       );
     }
     
-    if (planningStep === 2) {
-      return (
-        <div className="space-y-6">
-          <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Capacidad Instalada (Horas)</h3>
-          <p className="text-sm text-gray-600">
-            A continuación se muestra un desglose de la capacidad neta disponible (en horas, ya aplicado el 87% de eficiencia) para cada línea de producción en cada mes del horizonte. Verifique que los días y horas por turno sean los correctos.
-          </p>
-          <div className="overflow-auto max-h-[70vh] border rounded-lg">
-             <Accordion type="multiple" className="w-full">
-                {planningMonths.map(({year, month}) => {
-                    const monthDetails = getMonthlyCapacityDetails(year, month);
-                    return (
-                        <AccordionItem value={`${year}-${month}`} key={`${year}-${month}`}>
-                            <AccordionTrigger className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-t-md">
-                                {MONTH_NAMES[month-1]} {year}
-                            </AccordionTrigger>
-                            <AccordionContent className="p-0">
-                                <table className="min-w-full text-xs divide-y divide-gray-200">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left font-semibold text-gray-600">Línea de Producción (Centro)</th>
-                                            <th className="px-3 py-2 text-center font-semibold text-gray-600">Días L-V</th>
-                                            <th className="px-3 py-2 text-center font-semibold text-gray-600">Sáb/Fer.</th>
-                                            <th className="px-3 py-2 text-center font-semibold text-gray-600">Horas/Día (L-V)</th>
-                                            <th className="px-3 py-2 text-center font-semibold text-gray-600">Horas/Día (Sáb)</th>
-                                            <th className="px-3 py-2 text-right font-bold text-gray-700">Capacidad Neta Total (Horas)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200">
-                                        {constraints.productionLines.filter(line => line.isActive).map(line => (
-                                            <tr key={line.id}>
-                                                <td className="px-3 py-2 font-medium">{line.name} ({line.workCenterId})</td>
-                                                <td className="px-3 py-2 text-center">{monthDetails.workingWeekdays}</td>
-                                                <td className="px-3 py-2 text-center">{monthDetails.workingSaturdays}</td>
-                                                <td className="px-3 py-2 text-center">{constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay}</td>
-                                                <td className="px-3 py-2 text-center">{constraints.shiftParameters.saturdayAndHolidayHours}</td>
-                                                <td className="px-3 py-2 text-right font-bold">{Math.round(getLineCapacity(line, year, month)).toLocaleString()}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </AccordionContent>
-                        </AccordionItem>
-                    );
-                })}
-             </Accordion>
-          </div>
-          <div className="flex justify-end space-x-4 pt-4">
-              <Button variant="outline" onClick={() => dispatch({type: 'SET_PLANNING_STEP', payload: 1})}>Volver al Paso 1</Button>
-              <Button onClick={() => dispatch({type: 'SET_PLANNING_STEP', payload: 3})}>Aceptar y Continuar al Paso 3</Button>
-          </div>
-        </div>
-      );
-    }
+    if (planningStep === 2 && demandAnalysis) {
+        const { productionNeedsFirstMonth } = demandAnalysis;
+        const [firstMonth] = planningMonths;
+        const capacityByCenter = constraints.workCenters.reduce((acc, wc) => {
+            const centerLines = constraints.productionLines.filter(l => l.workCenterId === wc.id && l.isActive);
+            const totalCapacity = centerLines.reduce((sum, line) => sum + getLineCapacity(line, firstMonth.year, firstMonth.month, constraints), 0);
+            acc[wc.id] = totalCapacity;
+            return acc;
+        }, {} as Record<string, number>);
 
-    if (planningStep === 3 && demandAnalysis) {
-        const { productionNeedsFirstMonth = [] } = demandAnalysis;
-        
+        const needsByCenter = productionNeedsFirstMonth.reduce((acc, need) => {
+            if (!acc[need.producingCenterId]) {
+                acc[need.producingCenterId] = { totalUnits: 0, totalHours: 0 };
+            }
+            acc[need.producingCenterId].totalUnits += need.totalUnits;
+            acc[need.producingCenterId].totalHours += need.requiredHours;
+            return acc;
+        }, {} as Record<string, {totalUnits: number, totalHours: number}>);
+
+
         return (
             <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-gray-800">Paso 3: Validación de Necesidades de Producción (Primer Mes)</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Necesidades y Capacidad (Primer Mes)</h3>
                 <p className="text-sm text-gray-600">
-                    La tabla muestra la cantidad de unidades que el motor necesita planificar en el primer mes para cubrir tanto la demanda de ventas como para alcanzar el stock de seguridad. Verifique que estas cantidades sean coherentes antes de generar el plan final.
+                    La tabla muestra la demanda de producción en unidades y horas, comparada con la capacidad disponible. Verifique la carga de capacidad antes de generar el plan final.
                 </p>
                 <div className="overflow-auto max-h-[60vh] border rounded-lg">
                     <table className="min-w-full text-sm divide-y divide-gray-200">
@@ -623,6 +557,7 @@ export const ProductionPlanSection: React.FC = () => {
                                 <th className="px-3 py-2 text-left font-semibold text-gray-600">Sector</th>
                                 <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase Aprov.</th>
                                 <th className="px-3 py-2 text-right font-semibold text-gray-600">Unidades Requeridas</th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-600">Horas Requeridas</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -633,28 +568,41 @@ export const ProductionPlanSection: React.FC = () => {
                                     <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
                                         {item.claseAprovisionamiento}
                                     </td>
-                                    <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnits).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right font-mono">{Math.round(item.totalUnits).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right font-mono">{Math.round(item.requiredHours).toLocaleString()}</td>
                                 </tr>
                             ))}
                         </tbody>
-                         <tfoot className="bg-gray-800 text-white sticky bottom-0">
-                            <tr>
-                                <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase">Total a Producir (Primer Mes)</th>
-                                <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(productionNeedsFirstMonth.reduce((sum, item) => sum + item.totalUnits, 0)).toLocaleString()}</th>
-                            </tr>
+                         <tfoot className="bg-gray-200 sticky bottom-0 z-10">
+                            {Object.entries(needsByCenter).map(([centerId, data]) => {
+                                const capacity = capacityByCenter[centerId] || 0;
+                                const loadPercentage = capacity > 0 ? (data.totalHours / capacity) * 100 : 0;
+                                return (
+                                    <tr key={`summary-${centerId}`}>
+                                        <th colSpan={3} className="px-3 py-2 text-left font-bold text-gray-700">Resumen Centro {centerId}</th>
+                                        <th className="px-3 py-2 text-right font-bold text-gray-700">{Math.round(data.totalUnits).toLocaleString()}</th>
+                                        <th className="px-3 py-2 text-right font-bold text-gray-700">
+                                            {Math.round(data.totalHours).toLocaleString()} / {Math.round(capacity).toLocaleString()}h
+                                            <span className={`ml-2 font-semibold ${loadPercentage > 100 ? 'text-red-500' : 'text-green-600'}`}>
+                                                ({loadPercentage.toFixed(1)}%)
+                                            </span>
+                                        </th>
+                                    </tr>
+                                );
+                            })}
                         </tfoot>
                     </table>
                 </div>
                  <div className="flex justify-end space-x-4 pt-4">
-                    <Button variant="outline" onClick={() => dispatch({type: 'SET_PLANNING_STEP', payload: 2})}>Volver al Paso 2</Button>
+                    <Button variant="outline" onClick={() => dispatch({type: 'SET_PLANNING_STEP', payload: 1})}>Volver al Paso 1</Button>
                     <Button onClick={() => handleContinueToStep3({ centros: selectedInventoryCentros, sectores: selectedInventorySectores })}>Aceptar y Generar Plan de Producción</Button>
                 </div>
             </div>
         );
     }
     
-    // Step 4 is the results view, rendered by the main logic below
-    if (planningStep === 4 && monthlyPlan.length > 0) {
+    // Step 3 is the results view
+    if (planningStep === 3 && monthlyPlan.length > 0) {
         return (
              <div className="p-6 md:p-8 space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
@@ -753,4 +701,5 @@ export const ProductionPlanSection: React.FC = () => {
     
 
   
+
 

@@ -91,7 +91,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 isLoading: false, 
                 productionPlan: action.payload,
                 planningProgress: null,
-                planningStep: 4, // Move to final results view
+                planningStep: 3, // Move to final results view
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
              console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_ERROR. isLoading: false.");
@@ -413,7 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const success = await handleGeneratePlan(inventoryFilters);
             dispatch({ type: 'SET_IS_LOADING', payload: false });
             if (success) {
-                dispatch({ type: 'SET_PLANNING_STEP', payload: 4 });
+                dispatch({ type: 'SET_PLANNING_STEP', payload: 3 });
             }
         } else {
             addNotification('error', 'El análisis de demanda no se ha completado. No se puede continuar.');
@@ -488,3 +488,4 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
+

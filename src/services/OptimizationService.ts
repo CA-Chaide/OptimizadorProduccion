@@ -68,8 +68,6 @@ export const analyzeSalesDemand = async (
 
     auditLog.push(`[${new Date().toLocaleTimeString()}] Aplicados filtros de inventario. Se usarán ${filteredCuboData.length} de ${cuboInventariosData.length} registros para el saldo inicial.`);
     
-    const productNeedsFirstMonth = new Map<string, { productId: string; demand: number; safetyStock: number; initialStock: number }>();
-
     // 1. Aggregate demand per product/center for the entire horizon
     const aggregatedSales = new Map<string, number>();
     salesData.forEach(row => {
@@ -118,90 +116,76 @@ export const analyzeSalesDemand = async (
         }
     });
 
+    const demandByGroup = Array.from(demandByGroupMap.values())
+        .sort((a, b) => a.centro.localeCompare(b.centro) || a.sector.localeCompare(b.sector));
+    const transfers = Array.from(transfersMap.values())
+        .sort((a, b) => a.centro.localeCompare(b.centro) || a.sector.localeCompare(b.sector));
+
     // 3. Calculate production needs for the first month
     const salesInFirstMonth = salesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === firstMonthKey);
-    const demandFirstMonth = new Map<string, number>();
+    const demandFirstMonthMap = new Map<string, number>();
     salesInFirstMonth.forEach(row => {
         const key = `${normalizeMaterialCode(row.código)}---${String(row.centro).trim()}`;
-        demandFirstMonth.set(key, (demandFirstMonth.get(key) || 0) + row.unidadesProyectado);
+        demandFirstMonthMap.set(key, (demandFirstMonthMap.get(key) || 0) + row.unidadesProyectado);
     });
 
-    const allFirstMonthKeys = new Set([...demandFirstMonth.keys(), ...initialInventoryState.keys()]);
-    
-    allFirstMonthKeys.forEach(key => {
-        const [productId, centerId] = key.split('---');
-        const demand = demandFirstMonth.get(key) || 0;
+    const productNeedsFirstMonth: DemandAnalysisResult['productionNeedsFirstMonth'] = [];
+
+    const allProductCenterPairs = new Set([
+        ...initialInventoryState.keys(),
+        ...demandFirstMonthMap.keys(),
+    ]);
+
+    allProductCenterPairs.forEach(key => {
+        const [productId, demandCenterId] = key.split('---');
+        const demand = demandFirstMonthMap.get(key) || 0;
         const initialStock = initialInventoryState.get(key) || 0;
         const safetyStock = constraints.inventorySettings.find(s => s.id === key)?.minStock || 0;
+
         const netNeed = Math.max(0, demand + safetyStock - initialStock);
 
         if (netNeed > 0) {
-            const saleRow = salesData.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === centerId);
+            const saleRow = salesData.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === demandCenterId);
+            const sector = saleRow?.sector || 'Sin Sector';
             const primaryEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}` === key);
             const fallbackEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---1000` === `${productId}---1000`);
 
             let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
             if (primaryEntry && primaryEntry.ClaseAprovisionam) {
                 claseAprovisionamiento = primaryEntry.ClaseAprovisionam;
-            } else if (centerId !== '1000' && fallbackEntry && fallbackEntry.ClaseAprovisionam === 'F') {
+            } else if (demandCenterId !== '1000' && fallbackEntry && fallbackEntry.ClaseAprovisionam === 'F') {
                 claseAprovisionamiento = 'F';
             }
-            
+
             if (claseAprovisionamiento !== 'N/A') {
-                 if (!productNeedsFirstMonth.has(key)) {
-                    productNeedsFirstMonth.set(key, { productId, demand: 0, safetyStock: 0, initialStock: 0 });
-                }
-                const needs = productNeedsFirstMonth.get(key)!;
-                needs.demand = netNeed; // Store the calculated net need
-                needs.safetyStock = safetyStock;
-                needs.initialStock = initialStock;
+                 const ppi = constraints.productProcessInfos.find(p => p.productId === productId);
+                 const requiredHours = (ppi?.totalManufacturingTimeHours || 0) * netNeed;
+                 productNeedsFirstMonth.push({
+                    producingCenterId: claseAprovisionamiento === 'F' ? '1000' : demandCenterId,
+                    sector,
+                    claseAprovisionamiento,
+                    totalUnits: netNeed,
+                    requiredHours,
+                    productId,
+                 });
             }
         }
     });
 
-    const productionNeedsByGroup = new Map<string, {
-        producingCenterId: string;
-        sector: string;
-        claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
-        totalUnits: number;
-    }>();
-
-    productNeedsFirstMonth.forEach((data, key) => {
-        const [productId, centerId] = key.split('---');
-        const netNeed = data.demand;
-        
-        const saleRow = salesData.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === centerId);
-        const primaryEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}` === key);
-        const fallbackEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---1000` === `${productId}---1000`);
-
-        let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
-        if (primaryEntry && primaryEntry.ClaseAprovisionam) {
-            claseAprovisionamiento = primaryEntry.ClaseAprovisionam;
-        } else if (centerId !== '1000' && fallbackEntry && fallbackEntry.ClaseAprovisionam === 'F') {
-            claseAprovisionamiento = 'F';
-        }
-        
-        if (claseAprovisionamiento !== 'N/A') {
-            const sector = saleRow?.sector || 'Sin Sector';
-            const producingCenterId = claseAprovisionamiento === 'F' ? '1000' : centerId;
-            const groupKey = `${producingCenterId}-${sector}-${claseAprovisionamiento}`;
-            
-            if (!productionNeedsByGroup.has(groupKey)) {
-                productionNeedsByGroup.set(groupKey, { producingCenterId, sector, claseAprovisionamiento, totalUnits: 0 });
+    const finalProductionNeeds = Array.from(
+        productNeedsFirstMonth.reduce((map, item) => {
+            const groupKey = `${item.producingCenterId}-${item.sector}-${item.claseAprovisionamiento}`;
+            const existing = map.get(groupKey);
+            if(existing) {
+                existing.totalUnits += item.totalUnits;
+                existing.requiredHours += item.requiredHours;
+            } else {
+                map.set(groupKey, { ...item });
             }
-            productionNeedsByGroup.get(groupKey)!.totalUnits += netNeed;
-        }
-    });
-
-
-    const demandByGroup = Array.from(demandByGroupMap.values())
-        .sort((a, b) => a.centro.localeCompare(b.centro) || a.sector.localeCompare(b.sector));
-    const transfers = Array.from(transfersMap.values())
-        .sort((a, b) => a.centro.localeCompare(b.centro) || a.sector.localeCompare(b.sector));
+            return map;
+        }, new Map<string, any>()).values()
+    ).sort((a, b) => a.producingCenterId.localeCompare(b.producingCenterId) || a.sector.localeCompare(b.sector));
     
-    const finalProductionNeeds = Array.from(productionNeedsByGroup.values())
-        .sort((a, b) => a.producingCenterId.localeCompare(b.producingCenterId) || a.sector.localeCompare(b.sector));
-
     auditLog.push(`[${new Date().toLocaleTimeString()}] Análisis de demanda completado. Total de demanda bruta: ${totalDemand.toLocaleString()}. Grupos clasificados: ${demandByGroup.length}.`);
     if(unclassifiedMaterials.length > 0) {
         auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: Se encontraron ${unclassifiedMaterials.length} registros de demanda para materiales fabricables (código inicia con 3 o 4) pero sin Clase de Aprovisionamiento definida en CuboInventarios.`);
@@ -436,56 +420,32 @@ function getPredefinedQuantities(centerId: string, lineName: string): Array<{ de
     return [];
 }
 
-const getMonthlyCapacity = (
-    year: number,
-    month: number,
-    line: ProductionLine,
-    constraints: AppConstraints,
-    startDay: number = 1
-): { totalHours: number } => {
-    const EFFICIENCY_FACTOR = 0.87;
-    let grossTotalHours = 0;
+export const getMonthlyCapacityDetails = (year: number, month: number, constraints: AppConstraints) => {
     const daysInMonth = new Date(year, month, 0).getDate();
+    let workingWeekdays = 0;
+    let workingSaturdays = 0;
     
-    for (let day = startDay; day <= daysInMonth; day++) {
-        const checkDate = new Date(year, month - 1, day);
-        const dayOfWeek = checkDate.getDay(); 
-        
-        let dailyHours = 0;
-        
-        if (dayOfWeek !== 0) { // Not Sunday
-            const holidayInfo = constraints.holidays.find(h => h.date === checkDate.toISOString().split('T')[0]);
-            
-            let isNonWorkingHoliday = false;
-            if (holidayInfo && holidayInfo.dayType === 'asueto') {
-                const appliesTo = holidayInfo.appliesTo;
-                if (appliesTo === 'Toda la Planta' || appliesTo === line.workCenterId || appliesTo === line.processType || appliesTo === line.id) {
-                    isNonWorkingHoliday = true;
-                }
-            }
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const dayOfWeek = date.getDay();
+        const holiday = constraints.holidays.find(h => h.date === date.toISOString().split('T')[0]);
 
-            if (!isNonWorkingHoliday) {
-                 if (holidayInfo && holidayInfo.isProductionAllowed) {
-                    if (holidayInfo.dayType === 'full') {
-                        dailyHours = constraints.shiftParameters.regularHoursPerDay;
-                    } else if (holidayInfo.dayType === 'half') {
-                        dailyHours = 5;
-                    }
-                } else {
-                    if (dayOfWeek === 6) { // Saturday
-                        dailyHours = constraints.shiftParameters.saturdayAndHolidayHours;
-                    } else { // Weekday
-                        dailyHours = constraints.shiftParameters.regularHoursPerDay + constraints.shiftParameters.extraHoursPerDay;
-                    }
-                }
-            }
+        if (holiday && holiday.dayType === 'asueto') continue;
+
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Lunes a Viernes
+             if (!holiday || holiday.isProductionAllowed) workingWeekdays++;
+        } else if (dayOfWeek === 6) { // Sábado
+            if (!holiday || holiday.isProductionAllowed) workingSaturdays++;
         }
-        
-        grossTotalHours += dailyHours;
     }
+    return { workingWeekdays, workingSaturdays };
+};
 
-    const netTotalHours = grossTotalHours * EFFICIENCY_FACTOR;
-    return { totalHours: netTotalHours };
+export const getLineCapacity = (line: ProductionLine, year: number, month: number, constraints: AppConstraints): number => {
+    const { workingWeekdays, workingSaturdays } = getMonthlyCapacityDetails(year, month, constraints);
+    const { regularHoursPerDay, extraHoursPerDay, saturdayAndHolidayHours } = constraints.shiftParameters;
+    const totalHours = (workingWeekdays * (regularHoursPerDay + extraHoursPerDay)) + (workingSaturdays * saturdayAndHolidayHours);
+    return totalHours * 0.87; // Assuming 87% efficiency
 };
 
 
@@ -587,7 +547,7 @@ export const generateProductionPlan = async (
         productionNeedsByCenter.forEach((data, producingCenterId) => {
             const availableCapacity = constraints.productionLines
                 .filter(l => l.workCenterId === producingCenterId && l.isActive)
-                .reduce((sum, line) => sum + getMonthlyCapacity(year, monthNum, line, constraints).totalHours, 0);
+                .reduce((sum, line) => sum + getLineCapacity(line, year, monthNum, constraints), 0);
 
             if (data.totalHoursNeeded <= availableCapacity) {
                 data.needs.forEach(need => {
@@ -747,6 +707,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
