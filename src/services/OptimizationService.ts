@@ -650,8 +650,89 @@ export const generateProductionPlan = async (
     auditLog.push(`[${new Date().toLocaleTimeString()}] FIN: Plan mensual completado.`);
     logger.log(`[${new Date().toLocaleTimeString()}] Plan mensual completado.`, 'success');
     
+    // --- Daily Plan Generation ---
+    const dailyPlan: ProductionPlanItem[] = [];
+    if (monthlyPlanItems.length > 0) {
+        onProgress({ message: 'Generando plan diario...', step: 'daily', current: 0, total: planningMonths.length });
+        for (let i = 0; i < planningMonths.length; i++) {
+            const monthKey = planningMonths[i];
+            const [year, monthNum] = monthKey.split('-').map(Number);
+            
+            const monthlyProductionByCenter: { [centerId: string]: { productId: string, units: number }[] } = {};
+            monthlyPlanItems
+                .filter(p => p.year === year && p.month === monthNum && p.totalQuantityToProduce > 0)
+                .forEach(p => {
+                    if (!monthlyProductionByCenter[p.producingCenterId]) {
+                        monthlyProductionByCenter[p.producingCenterId] = [];
+                    }
+                    monthlyProductionByCenter[p.producingCenterId].push({ productId: p.productId, units: p.totalQuantityToProduce });
+                });
+
+            const daysInMonth = new Date(year, monthNum, 0).getDate();
+            const dailyCapacityPerLine: { [lineId: string]: number } = {};
+            
+            constraints.productionLines.forEach(line => {
+                dailyCapacityPerLine[line.id] = (line.capacity.normalUnitsPerHour || 1) * shiftParameters.regularHoursPerDay * 0.87;
+            });
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                 onProgress({ message: `Generando plan diario...`, step: 'daily', current: day, total: daysInMonth });
+
+                for (const centerId in monthlyProductionByCenter) {
+                    const linesForCenter = constraints.productionLines.filter(l => l.workCenterId === centerId && l.isActive);
+                    
+                    for (const line of linesForCenter) {
+                        let lineCapacityToday = dailyCapacityPerLine[line.id] || 0;
+                        const needsForLine = monthlyProductionByCenter[centerId].filter(need => 
+                            constraints.productProcessInfos.some(ppi => ppi.productId === need.productId && ppi.productionLineId === line.id) && need.units > 0
+                        );
+                        
+                        // Simple urgency: less stock coverage = higher priority
+                        needsForLine.sort((a, b) => {
+                            const stockA = inventoryState.get(`${a.productId}---${centerId}`) || 0;
+                            const stockB = inventoryState.get(`${b.productId}---${centerId}`) || 0;
+                            return stockA - stockB;
+                        });
+
+                        for(const need of needsForLine) {
+                            if (lineCapacityToday <= 0) break;
+
+                            const ppi = constraints.productProcessInfos.find(p => p.productId === need.productId && p.productionLineId === line.id);
+                            if (!ppi) continue;
+
+                            const timePerUnit = ppi.totalManufacturingTimeHours;
+                            const unitsInHours = timePerUnit > 0 ? (lineCapacityToday / timePerUnit) : need.units;
+                            const unitsToProduce = Math.min(need.units, unitsInHours);
+
+                            if (unitsToProduce > 0) {
+                                dailyPlan.push({
+                                    id: `${year}-${monthNum}-${day}-${need.productId}-${line.id}`,
+                                    productId: need.productId,
+                                    productName: ppi.productName || need.productId,
+                                    year, month: monthNum, day,
+                                    week: Math.ceil(day / 7),
+                                    quantityToProduce: unitsToProduce,
+                                    demandOnDay: 0, initialStockOnDay: 0, finalStockOnDay: 0,
+                                    assignedLineId: line.id,
+                                    producingCenterId: centerId,
+                                    demandCenterId: centerId, // Simplified for now
+                                    hoursWorked: unitsToProduce * timePerUnit,
+                                    estimatedLaborCost: unitsToProduce * timePerUnit * (globalBaseCostPerHour || 8),
+                                    status: 'Planificado'
+                                });
+                                need.units -= unitsToProduce;
+                                lineCapacityToday -= unitsToProduce * timePerUnit;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        auditLog.push(`[${new Date().toLocaleTimeString()}] FIN: Plan diario completado con ${dailyPlan.length} registros.`);
+    }
+
     onProgress(null);
-    return { dailyPlan: [], monthlyPlan: monthlyPlanItems, weeklyPlan: [], auditLog, initialInventory: initialInventoryState };
+    return { dailyPlan, monthlyPlan: monthlyPlanItems, weeklyPlan: [], auditLog, initialInventory: initialInventoryState };
 };
 
 export const exportDailyPlanToExcel = (plan: ProductionPlanItem[], constraints: AppConstraints): void => {
@@ -709,6 +790,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
