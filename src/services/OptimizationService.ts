@@ -801,27 +801,28 @@ export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[], cent
     const getLineName = (lineId: string | undefined): string => {
         if (!lineId) return 'N/A';
         const line = constraints.productionLines.find(l => l.id === lineId);
-        return line ? line.name : lineId;
+        return line ? line.name : (lineId || 'unassigned');
     };
     
     // Aggregate production by month, center, material, and line for the centers in the filter
-    const aggregatedProduction = new Map<string, number>();
+    const aggregatedProduction = new Map<string, { quantity: number; item: MonthlyProductionPlanItem }>();
     plan.filter(item => centers.includes(item.producingCenterId)).forEach(item => {
         const key = `${item.month}-${item.producingCenterId}-${item.productId}-${item.assignedLineId || 'unassigned'}`;
-        const currentQty = aggregatedProduction.get(key) || 0;
-        aggregatedProduction.set(key, currentQty + item.totalQuantityToProduce);
+        const existing = aggregatedProduction.get(key);
+        if (existing) {
+            existing.quantity += item.totalQuantityToProduce;
+        } else {
+            aggregatedProduction.set(key, { quantity: item.totalQuantityToProduce, item: item });
+        }
     });
 
-    const dataToExport = Array.from(aggregatedProduction.entries()).map(([key, quantity]) => {
-        const [month, center, material, lineId] = key.split('-');
-        const productName = plan.find(p => p.productId === material)?.productName || material;
-        
+    const dataToExport = Array.from(aggregatedProduction.values()).map(({ quantity, item }) => {
         return {
-            'Mes': MONTH_NAMES[parseInt(month, 10) - 1],
-            'Centro': center,
-            'Linea de Produccion': getLineName(lineId),
-            'Codigo Material': material,
-            'Nombre Producto': productName,
+            'Mes': MONTH_NAMES[item.month - 1],
+            'Centro': item.producingCenterId,
+            'Linea de Produccion': getLineName(item.assignedLineId),
+            'Codigo Material': item.productId,
+            'Nombre Producto': item.productName,
             'Cantidad a Fabricar': Math.round(quantity),
         };
     });
@@ -839,6 +840,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
