@@ -266,7 +266,8 @@ export interface MonthlyProductionPlanItem {
     month: number;
     productId: string;
     productName: string;
-    centerId: string;
+    centerId: string; // Centro de Demanda
+    producingCenterId: string; // Centro de Producción
     totalQuantityToProduce: number;
     totalDemand: number;
     dispatches: number;
@@ -555,11 +556,13 @@ export interface DemandAnalysisResult {
         sector: string;
         claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
         totalUnits: number;
+        requiredHours: number;
     }>;
     auditLog: string[];
 }
 
 
 import { ActiveView } from '@/constants/constants';
+
 
 

@@ -165,8 +165,7 @@ export const analyzeSalesDemand = async (
                     sector,
                     claseAprovisionamiento,
                     totalUnits: netNeed,
-                    requiredHours,
-                    productId,
+                    requiredHours: requiredHours,
                  });
             }
         }
@@ -625,9 +624,12 @@ export const generateProductionPlan = async (
             
             const [productId, centerId] = key.split('---');
             const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === centerId);
+            const ppi = constraints.productProcessInfos.find(p => p.productId === productId);
+            const prodClass = ppi?.ClaseAprovisionamiento;
+            const producingCenterId = prodClass === 'F' ? '1000' : centerId;
             
             monthlyPlanItems.push({
-                id: `${monthKey}---${key}`, year, month: monthNum, productId, centerId,
+                id: `${monthKey}---${key}`, year, month: monthNum, productId, centerId, producingCenterId,
                 productName: sale?.descripciónMaterial || productId,
                 totalQuantityToProduce: mov.production,
                 totalDemand: mov.salesDemand,
@@ -674,13 +676,13 @@ export const exportDailyPlanToExcel = (plan: ProductionPlanItem[], constraints: 
   XLSX.writeFile(workbook, 'Plan_Produccion_Diario.xlsx');
 };
 
-export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[]): void => {
+export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[], centers: string[]): void => {
     if (!plan || plan.length === 0) return;
     
-    // Aggregate production by month, center, and material
+    // Aggregate production by month, center, and material for the centers in the filter
     const aggregatedProduction = new Map<string, number>();
-    plan.forEach(item => {
-        const key = `${item.month}-${item.centerId}-${item.productId}`;
+    plan.filter(item => centers.includes(item.producingCenterId)).forEach(item => {
+        const key = `${item.month}-${item.producingCenterId}-${item.productId}`;
         const currentQty = aggregatedProduction.get(key) || 0;
         aggregatedProduction.set(key, currentQty + item.totalQuantityToProduce);
     });
@@ -707,6 +709,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 

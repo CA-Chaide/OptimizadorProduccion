@@ -107,11 +107,12 @@ const MultiSelect: React.FC<{
 const MonthlySummaryTable: React.FC<{ 
   planItems: MonthlyProductionPlanItem[], 
   title: string,
+  selectedCenters: string[],
   planningMonths: { year: number, month: number }[] 
-}> = ({ planItems, title, planningMonths }) => {
+}> = ({ planItems, title, selectedCenters, planningMonths }) => {
 
-  const dataBySector = useMemo(() => {
-    const sectors: Record<string, {
+  const dataByCenter = useMemo(() => {
+    const centersData: Record<string, {
       byMonth: Record<string, {
         initialStock: number;
         production: number;
@@ -122,37 +123,46 @@ const MonthlySummaryTable: React.FC<{
       }>
     }> = {};
 
-    planItems.forEach(item => {
-        // Asumiendo una agregación global por ahora
-        const sector = "Global";
-        if (!sectors[sector]) {
-            sectors[sector] = { byMonth: {} };
-        }
-        const monthKey = `${item.year}-${String(item.month).padStart(2, '0')}`;
-        if (!sectors[sector].byMonth[monthKey]) {
-            sectors[sector].byMonth[monthKey] = {
-                initialStock: 0, production: 0, dispatches: 0, transfersIn: 0, transfersOut: 0, finalStock: 0
-            };
-        }
+    selectedCenters.forEach(centerId => {
+      centersData[centerId] = { byMonth: {} };
+      planningMonths.forEach(({ year, month }) => {
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        centersData[centerId].byMonth[monthKey] = {
+          initialStock: 0, production: 0, dispatches: 0, transfersIn: 0, transfersOut: 0, finalStock: 0
+        };
+      });
     });
 
-    // Aggregate data
     planItems.forEach(item => {
-        const sector = "Global";
-        const monthKey = `${item.year}-${String(item.month).padStart(2, '0')}`;
-        const monthData = sectors[sector].byMonth[monthKey];
-        
-        monthData.production += item.totalQuantityToProduce;
-        monthData.dispatches += item.dispatches;
-        monthData.initialStock += item.initialStock; // Summing up initial stocks from all products in the month
-        monthData.finalStock += item.finalStock; // Summing up final stocks
-        if(item.netTransfers > 0) monthData.transfersIn += item.netTransfers;
-        if(item.netTransfers < 0) monthData.transfersOut += Math.abs(item.netTransfers);
+      const monthKey = `${item.year}-${String(item.month).padStart(2, '0')}`;
+
+      // Sumar al centro de demanda
+      if (centersData[item.centerId] && centersData[item.centerId].byMonth[monthKey]) {
+        const demandCenterData = centersData[item.centerId].byMonth[monthKey];
+        demandCenterData.initialStock += item.initialStock;
+        demandCenterData.dispatches += item.dispatches;
+        demandCenterData.finalStock += item.finalStock;
+        if(item.netTransfers > 0) demandCenterData.transfersIn += item.netTransfers;
+      }
+      
+      // Sumar al centro de producción
+      if (centersData[item.producingCenterId] && centersData[item.producingCenterId].byMonth[monthKey]) {
+         const producingCenterData = centersData[item.producingCenterId].byMonth[monthKey];
+         producingCenterData.production += item.totalQuantityToProduce;
+         if(item.netTransfers < 0) producingCenterData.transfersOut += Math.abs(item.netTransfers);
+      }
     });
 
-    return sectors;
-}, [planItems, planningMonths]);
+    return centersData;
+  }, [planItems, selectedCenters, planningMonths]);
 
+  if (selectedCenters.length === 0) {
+      return (
+          <div className="text-center py-8 text-gray-500">
+              Seleccione al menos un centro para ver el resumen.
+          </div>
+      )
+  }
 
   return (
     <div className="space-y-4">
@@ -170,9 +180,9 @@ const MonthlySummaryTable: React.FC<{
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {Object.entries(dataBySector).map(([sector, sectorData]) => (
-                <React.Fragment key={sector}>
-                    <tr className="bg-gray-200 font-bold"><td colSpan={planningMonths.length + 1} className="px-3 py-2">{sector}</td></tr>
+            {Object.entries(dataByCenter).map(([centerId, centerData]) => (
+                <React.Fragment key={centerId}>
+                    <tr className="bg-gray-200 font-bold"><td colSpan={planningMonths.length + 1} className="px-3 py-2 text-indigo-700">Centro: {centerId}</td></tr>
                     {[
                         { label: 'Saldo Inicial', key: 'initialStock' },
                         { label: '(+) Producción', key: 'production' },
@@ -181,11 +191,11 @@ const MonthlySummaryTable: React.FC<{
                         { label: '(-) Traslados Salientes', key: 'transfersOut' },
                         { label: 'Saldo Final', key: 'finalStock' },
                     ].map(flow => (
-                      <tr key={flow.label} className="hover:bg-gray-50">
+                      <tr key={flow.key} className="hover:bg-gray-50 group">
                         <td className={`px-3 py-2 whitespace-nowrap sticky left-0 bg-white group-hover:bg-gray-50 ${flow.key === 'finalStock' ? 'font-bold': ''}`}>{flow.label}</td>
                         {planningMonths.map(({year, month}) => {
                           const monthKey = `${year}-${String(month).padStart(2, '0')}`;
-                          const val = sectorData.byMonth[monthKey]?.[flow.key as keyof typeof sectorData.byMonth[typeof monthKey]] || 0;
+                          const val = centerData.byMonth[monthKey]?.[flow.key as keyof typeof centerData.byMonth[typeof monthKey]] || 0;
                           
                           return (
                             <td key={monthKey} className="px-3 py-2 text-right text-gray-600 font-mono">
@@ -203,6 +213,7 @@ const MonthlySummaryTable: React.FC<{
     </div>
   );
 };
+
 
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -329,8 +340,8 @@ export const ProductionPlanSection: React.FC = () => {
   // ----- END: State and Logic for Results Filtering -----
 
   const handleExportMonthly = () => {
-    if (monthlyPlan.length > 0) {
-      exportMonthlyPlanToExcel(monthlyPlan);
+    if (filteredMonthlyPlan.length > 0) {
+      exportMonthlyPlanToExcel(filteredMonthlyPlan, selectedResultsFilters.centros);
     }
   };
 
@@ -561,7 +572,7 @@ export const ProductionPlanSection: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {productionNeedsFirstMonth.map((item) => (
+                            {productionNeedsFirstMonth.map((item, index) => (
                                 <tr key={`need-${item.producingCenterId}-${item.sector}-${item.claseAprovisionamiento}`} className="hover:bg-gray-50">
                                     <td className="px-3 py-2">{item.producingCenterId}</td>
                                     <td className="px-3 py-2">{item.sector}</td>
@@ -611,7 +622,7 @@ export const ProductionPlanSection: React.FC = () => {
                     <h2 className="text-2xl font-semibold text-gray-700">Resultados del Plan de Producción</h2>
                 </div>
                 <div className="flex items-center space-x-4 mt-4 md:mt-0">
-                    <Button onClick={handleExportMonthly} variant="outline">
+                    <Button onClick={handleExportMonthly} variant="outline" disabled={filteredMonthlyPlan.length === 0}>
                       <Download className="mr-2 h-4 w-4" /> Exportar Resumen
                     </Button>
                     <Button onClick={resetPlanning} variant="destructive">
@@ -647,6 +658,7 @@ export const ProductionPlanSection: React.FC = () => {
                  <MonthlySummaryTable 
                     planItems={filteredMonthlyPlan} 
                     title="Resumen Ejecutivo de Flujo de Inventario (Filtrado)" 
+                    selectedCenters={selectedResultsFilters.centros}
                     planningMonths={planningMonths}
                   />
               </div>
@@ -701,5 +713,6 @@ export const ProductionPlanSection: React.FC = () => {
     
 
   
+
 
 
