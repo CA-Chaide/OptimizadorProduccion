@@ -343,21 +343,24 @@ export const ProductionPlanSection: React.FC = () => {
   }, [salesData]);
 
   const { filteredDailyPlanByLine, dailyPlanDays, totalFilteredUnits } = useMemo(() => {
-    if (planningStep !== 3 || !productionPlan.dailyPlan) return { filteredDailyPlanByLine: [], dailyPlanDays: [], totalFilteredUnits: 0 };
-    
-    let filteredItems = productionPlan.dailyPlan.filter(item => {
-        const centroMatch = selectedResultsFilters.centros.length === 0 || 
-                            selectedResultsFilters.centros.includes(item.producingCenterId || '');
-        const lineaMatch = selectedResultsFilters.lineas.length === 0 || 
-                           (item.assignedLineId && selectedResultsFilters.lineas.includes(item.assignedLineId));
-        return centroMatch && lineaMatch;
-    });
+    if (planningStep !== 3 || !productionPlan.dailyPlan) {
+      return { filteredDailyPlanByLine: [], dailyPlanDays: [], totalFilteredUnits: 0 };
+    }
 
+    let dailyPlanFirstMonth = productionPlan.dailyPlan;
     const firstMonth = planningMonths[0];
     if(firstMonth) {
-        filteredItems = filteredItems.filter(item => item.year === firstMonth.year && item.month === firstMonth.month);
+        dailyPlanFirstMonth = productionPlan.dailyPlan.filter(item => item.year === firstMonth.year && item.month === firstMonth.month);
     }
     
+    let filteredItems = dailyPlanFirstMonth.filter(item => {
+      const centroMatch = selectedResultsFilters.centros.length === 0 || 
+                          selectedResultsFilters.centros.includes(item.producingCenterId || '');
+      const lineaMatch = selectedResultsFilters.lineas.length === 0 || 
+                         (item.assignedLineId && selectedResultsFilters.lineas.includes(item.assignedLineId));
+      return centroMatch && lineaMatch;
+    });
+
     const dailyPlanDays = [...new Set(filteredItems.map(d => d.day))].sort((a,b)=> a-b);
 
     const dataByLine = filteredItems.reduce((acc, item) => {
@@ -382,7 +385,7 @@ export const ProductionPlanSection: React.FC = () => {
         return total + Object.values(lineData.dailyData).reduce((lineTotal, dayData) => lineTotal + dayData.units, 0);
     }, 0);
 
-    return { filteredDailyPlanByLine: Object.values(dataByLine), dailyPlanDays, totalFilteredUnits };
+    return { filteredDailyPlanByLine: Object.values(dataByLine).sort((a, b) => a.lineName.localeCompare(b.lineName)), dailyPlanDays, totalFilteredUnits };
 }, [planningStep, productionPlan.dailyPlan, selectedResultsFilters, planningMonths, constraints.productionLines]);
 
   const handleExportMonthly = () => {
@@ -732,29 +735,37 @@ export const ProductionPlanSection: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredDailyPlanByLine.map((lineData) => {
-                                    const totalUnits = Object.values(lineData.dailyData).reduce((sum, day) => sum + day.units, 0);
-                                    return (
-                                        <tr key={lineData.lineName} className="hover:bg-gray-50">
-                                            <td className="px-2 py-2 font-medium text-gray-800 sticky left-0 bg-white group-hover:bg-gray-50">{lineData.lineName}</td>
-                                            {dailyPlanDays.map(day => (
-                                                <td key={day} className="px-1 py-1 text-center border-l">
-                                                    {lineData.dailyData[day] ? (
-                                                        <div className="font-mono bg-indigo-50 rounded p-1">
-                                                            <div className="text-indigo-800 font-bold">{Math.round(lineData.dailyData[day].units).toLocaleString()}</div>
-                                                            <div className="text-gray-500 text-[10px]">{lineData.dailyData[day].hours.toFixed(1)}h</div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="text-gray-300">-</div>
-                                                    )}
+                                {filteredDailyPlanByLine.length > 0 ? (
+                                    filteredDailyPlanByLine.map((lineData) => {
+                                        const totalUnits = Object.values(lineData.dailyData).reduce((sum, day) => sum + day.units, 0);
+                                        return (
+                                            <tr key={lineData.lineName} className="hover:bg-gray-50 group">
+                                                <td className="px-2 py-2 font-medium text-gray-800 sticky left-0 bg-white group-hover:bg-gray-50">{lineData.lineName}</td>
+                                                {dailyPlanDays.map(day => (
+                                                    <td key={day} className="px-1 py-1 text-center border-l">
+                                                        {lineData.dailyData[day] ? (
+                                                            <div className="font-mono bg-indigo-50 rounded p-1">
+                                                                <div className="text-indigo-800 font-bold">{Math.round(lineData.dailyData[day].units).toLocaleString()}</div>
+                                                                <div className="text-gray-500 text-[10px]">{lineData.dailyData[day].hours.toFixed(1)}h</div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-gray-300">-</div>
+                                                        )}
+                                                    </td>
+                                                ))}
+                                                <td className="px-2 py-2 text-right font-bold text-indigo-800 sticky right-0 bg-white group-hover:bg-gray-50 border-l">
+                                                    {Math.round(totalUnits).toLocaleString()}
                                                 </td>
-                                            ))}
-                                            <td className="px-2 py-2 text-right font-bold text-indigo-800 sticky right-0 bg-white group-hover:bg-gray-50 border-l">
-                                                {Math.round(totalUnits).toLocaleString()}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                            </tr>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan={dailyPlanDays.length + 2} className="text-center py-8 text-gray-500">
+                                            No hay datos para mostrar con los filtros seleccionados.
+                                        </td>
+                                    </tr>
+                                )}
                                 </tbody>
                                 <tfoot className="bg-gray-200 sticky bottom-0 font-bold">
                                     <tr>
