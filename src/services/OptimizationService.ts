@@ -698,7 +698,7 @@ export const generateProductionPlan = async (
                         for(const need of needsForLine) {
                             if (lineCapacityToday <= 0) break;
 
-                            const ppi = constraints.productProcessInfos.find(p => p.productId === need.productId && p.productionLineId === line.id);
+                            const ppi = constraints.productProcessInfos.find(p => p.productId === need.productId && ppi.productionLineId === line.id);
                             if (!ppi) continue;
 
                             const timePerUnit = ppi.totalManufacturingTimeHours;
@@ -804,18 +804,25 @@ export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[], cent
         return line ? line.name : (lineId || 'unassigned');
     };
     
-    // Aggregate production by month, center, material, and line for the centers in the filter
-    const aggregatedProduction = new Map<string, { quantity: number; item: MonthlyProductionPlanItem }>();
-    plan.filter(item => centers.includes(item.producingCenterId)).forEach(item => {
+    // Filter for production in the selected centers and aggregate
+    const aggregatedProduction = new Map<string, { 
+        quantity: number; 
+        item: MonthlyProductionPlanItem; 
+    }>();
+
+    plan.filter(item => centers.includes(item.producingCenterId) && item.totalQuantityToProduce > 0).forEach(item => {
         const key = `${item.month}-${item.producingCenterId}-${item.productId}-${item.assignedLineId || 'unassigned'}`;
         const existing = aggregatedProduction.get(key);
         if (existing) {
             existing.quantity += item.totalQuantityToProduce;
         } else {
-            aggregatedProduction.set(key, { quantity: item.totalQuantityToProduce, item: item });
+            aggregatedProduction.set(key, { 
+                quantity: item.totalQuantityToProduce, 
+                item: item 
+            });
         }
     });
-
+    
     const dataToExport = Array.from(aggregatedProduction.values()).map(({ quantity, item }) => {
         return {
             'Mes': MONTH_NAMES[item.month - 1],
@@ -840,6 +847,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
