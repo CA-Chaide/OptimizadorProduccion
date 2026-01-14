@@ -9,7 +9,7 @@ import {
     PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, DetailedProductionPlan, SalesDataRow, ProductionPlanItem, ProcessType, WeeklyPlanItem, MonthlyProductionPlanItem, DemandAnalysisResult, Holiday 
 } from '@/types/types';
 import { PlanIcon, DataImportIcon, MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants';
-import { exportDailyPlanToExcel, exportMonthlyPlanToExcel, analyzeSalesDemand, getLineCapacity } from '@/services/OptimizationService';
+import { exportDailyPlanToExcel, exportMonthlyPlanToExcel, analyzeSalesDemand, getLineCapacity, exportDailyPlanByLineToExcel } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
 import { Loader2, Check, ChevronsUpDown, Download } from 'lucide-react';
@@ -135,23 +135,23 @@ const MonthlySummaryTable: React.FC<{
     });
 
     planItems.forEach(item => {
-      const monthKey = `${item.year}-${String(item.month).padStart(2, '0')}`;
+        const monthKey = `${item.year}-${String(item.month).padStart(2, '0')}`;
 
-      // Sumar al centro de demanda
-      if (centersData[item.centerId] && centersData[item.centerId].byMonth[monthKey]) {
-        const demandCenterData = centersData[item.centerId].byMonth[monthKey];
-        demandCenterData.initialStock += item.initialStock;
-        demandCenterData.dispatches += item.dispatches;
-        demandCenterData.finalStock += item.finalStock;
-        if(item.netTransfers > 0) demandCenterData.transfersIn += item.netTransfers;
-      }
-      
-      // Sumar al centro de producción
-      if (centersData[item.producingCenterId] && centersData[item.producingCenterId].byMonth[monthKey]) {
-         const producingCenterData = centersData[item.producingCenterId].byMonth[monthKey];
-         producingCenterData.production += item.totalQuantityToProduce;
-         if(item.netTransfers < 0) producingCenterData.transfersOut += Math.abs(item.netTransfers);
-      }
+        // Flujo para el CENTRO DE DEMANDA (donde se vende)
+        if (centersData[item.centerId] && centersData[item.centerId].byMonth[monthKey]) {
+            const demandCenterData = centersData[item.centerId].byMonth[monthKey];
+            demandCenterData.initialStock += item.initialStock; // Esta suma es conceptual, podría necesitar refinarse
+            demandCenterData.dispatches += item.dispatches;
+            demandCenterData.finalStock += item.finalStock; // También conceptual
+            if (item.netTransfers > 0) demandCenterData.transfersIn += item.netTransfers;
+        }
+
+        // Flujo para el CENTRO DE PRODUCCIÓN (donde se fabrica)
+        if (centersData[item.producingCenterId] && centersData[item.producingCenterId].byMonth[monthKey]) {
+            const producingCenterData = centersData[item.producingCenterId].byMonth[monthKey];
+            producingCenterData.production += item.totalQuantityToProduce;
+            if (item.netTransfers < 0) producingCenterData.transfersOut += Math.abs(item.netTransfers);
+        }
     });
 
     return centersData;
@@ -295,7 +295,7 @@ export const ProductionPlanSection: React.FC = () => {
     if (planningStep === 3 && productionPlan.monthlyPlan.length > 0) {
       const uniqueCentros = [...new Set(productionPlan.monthlyPlan.map(item => item.centerId))];
       const uniqueSectores = [...new Set(salesData.map(item => item.sector || 'Sin Sector'))];
-      const uniqueLineas = [...new Set(productionPlan.monthlyPlan.map(item => item.assignedLineId).filter(Boolean) as string[])];
+      const uniqueLineas = [...new Set(productionPlan.dailyPlan.map(item => item.assignedLineId).filter(Boolean) as string[])];
       
       const lineDetails = uniqueLineas.map(lineId => {
         const line = constraints.productionLines.find(l => l.id === lineId);
@@ -311,8 +311,8 @@ export const ProductionPlanSection: React.FC = () => {
       // Select all by default
       setSelectedResultsFilters({
         centros: uniqueCentros,
-        sectores: uniqueSectores,
-        lineas: uniqueLineas,
+        sectores: [], // Default to no sector filter for clarity
+        lineas: [], // Default to no line filter
       });
     }
   }, [planningStep, productionPlan, salesData, constraints.productionLines]);
@@ -320,45 +320,70 @@ export const ProductionPlanSection: React.FC = () => {
   const filteredMonthlyPlan = useMemo(() => {
     if (planningStep !== 3) return [];
 
-    const productSectorMap = new Map<string, string>();
-    salesData.forEach(row => {
-        if (!productSectorMap.has(row.código)) {
-            productSectorMap.set(normalizeMaterialCode(row.código), row.sector || 'Sin Sector');
-        }
-    });
-
     return productionPlan.monthlyPlan.filter(item => {
-      const sector = productSectorMap.get(item.productId) || 'Sin Sector';
+      const centroMatch = selectedResultsFilters.centros.length === 0 || 
+                          selectedResultsFilters.centros.includes(item.centerId) ||
+                          selectedResultsFilters.centros.includes(item.producingCenterId);
       
-      const centroMatch = selectedResultsFilters.centros.length === 0 || selectedResultsFilters.centros.includes(item.centerId);
+      const sector = salesData.find(s => normalizeMaterialCode(s.código) === item.productId)?.sector || 'Sin Sector';
       const sectorMatch = selectedResultsFilters.sectores.length === 0 || selectedResultsFilters.sectores.includes(sector);
-      const lineaMatch = selectedResultsFilters.lineas.length === 0 || (item.assignedLineId && selectedResultsFilters.lineas.includes(item.assignedLineId));
       
-      return centroMatch && sectorMatch && lineaMatch;
+      return centroMatch && sectorMatch;
     });
   }, [productionPlan.monthlyPlan, selectedResultsFilters, salesData, planningStep]);
   
-  const filteredDailyPlan = useMemo(() => {
-    if (planningStep !== 3) return [];
+    const planningMonths = useMemo(() => {
+     if (salesData.length === 0) return [];
+     const monthSet = new Set<string>();
+     salesData.forEach(d => monthSet.add(`${d.año}-${d.mes}`));
+     return Array.from(monthSet).sort().map(m => {
+       const [year, month] = m.split('-').map(Number);
+       return { year, month };
+     });
+  }, [salesData]);
 
-    const productSectorMap = new Map<string, string>();
-    salesData.forEach(row => {
-      if (!productSectorMap.has(normalizeMaterialCode(row.código))) {
-        productSectorMap.set(normalizeMaterialCode(row.código), row.sector || 'Sin Sector');
-      }
+  const { filteredDailyPlanByLine, dailyPlanDays, totalFilteredUnits } = useMemo(() => {
+    if (planningStep !== 3 || !productionPlan.dailyPlan) return { filteredDailyPlanByLine: [], dailyPlanDays: [], totalFilteredUnits: 0 };
+    
+    let filteredItems = productionPlan.dailyPlan.filter(item => {
+        const centroMatch = selectedResultsFilters.centros.length === 0 || 
+                            selectedResultsFilters.centros.includes(item.producingCenterId || '');
+        const lineaMatch = selectedResultsFilters.lineas.length === 0 || 
+                           (item.assignedLineId && selectedResultsFilters.lineas.includes(item.assignedLineId));
+        return centroMatch && lineaMatch;
     });
 
-    return dailyPlan.filter(item => {
-      const sector = productSectorMap.get(item.productId) || 'Sin Sector';
+    const firstMonth = planningMonths[0];
+    if(firstMonth) {
+        filteredItems = filteredItems.filter(item => item.year === firstMonth.year && item.month === firstMonth.month);
+    }
+    
+    const dailyPlanDays = [...new Set(filteredItems.map(d => d.day))].sort((a,b)=> a-b);
 
-      const centroMatch = selectedResultsFilters.centros.length === 0 || selectedResultsFilters.centros.includes(item.producingCenterId || '');
-      const sectorMatch = selectedResultsFilters.sectores.length === 0 || selectedResultsFilters.sectores.includes(sector);
-      const lineaMatch = selectedResultsFilters.lineas.length === 0 || (item.assignedLineId && selectedResultsFilters.lineas.includes(item.assignedLineId));
+    const dataByLine = filteredItems.reduce((acc, item) => {
+        const lineId = item.assignedLineId || 'unassigned';
+        if (!acc[lineId]) {
+            const line = constraints.productionLines.find(l => l.id === lineId);
+            acc[lineId] = {
+                lineName: line ? `${line.name} (${line.workCenterId})` : 'Sin Asignar',
+                workCenterId: line?.workCenterId || '',
+                dailyData: {}
+            };
+        }
+        if (!acc[lineId].dailyData[item.day]) {
+            acc[lineId].dailyData[item.day] = { units: 0, hours: 0 };
+        }
+        acc[lineId].dailyData[item.day].units += item.quantityToProduce;
+        acc[lineId].dailyData[item.day].hours += item.hoursWorked;
+        return acc;
+    }, {} as Record<string, { lineName: string; workCenterId: string; dailyData: Record<number, { units: number; hours: number }> }>);
+    
+    const totalFilteredUnits = Object.values(dataByLine).reduce((total, lineData) => {
+        return total + Object.values(lineData.dailyData).reduce((lineTotal, dayData) => lineTotal + dayData.units, 0);
+    }, 0);
 
-      return centroMatch && sectorMatch && lineaMatch;
-    });
-  }, [dailyPlan, selectedResultsFilters, salesData, planningStep]);
-
+    return { filteredDailyPlanByLine: Object.values(dataByLine), dailyPlanDays, totalFilteredUnits };
+}, [planningStep, productionPlan.dailyPlan, selectedResultsFilters, planningMonths, constraints.productionLines]);
 
   const handleExportMonthly = () => {
     if (filteredMonthlyPlan.length > 0) {
@@ -367,8 +392,8 @@ export const ProductionPlanSection: React.FC = () => {
   };
   
    const handleExportDaily = () => {
-    if (filteredDailyPlan.length > 0) {
-        exportDailyPlanToExcel(filteredDailyPlan, constraints);
+    if (productionPlan.dailyPlan.length > 0) {
+        exportDailyPlanByLineToExcel(filteredDailyPlanByLine, dailyPlanDays, constraints);
     }
   };
 
@@ -405,16 +430,6 @@ export const ProductionPlanSection: React.FC = () => {
     dispatch({ type: 'RESET_PLANNING' });
   };
   
-  const planningMonths = useMemo(() => {
-     if (salesData.length === 0) return [];
-     const monthSet = new Set<string>();
-     salesData.forEach(d => monthSet.add(`${d.año}-${d.mes}`));
-     return Array.from(monthSet).sort().map(m => {
-       const [year, month] = m.split('-').map(Number);
-       return { year, month };
-     });
-  }, [salesData]);
-
 
   const renderPlanWizard = () => {
     if (planningStep === 0) {
@@ -563,10 +578,10 @@ export const ProductionPlanSection: React.FC = () => {
     
     if (planningStep === 2 && demandAnalysis) {
         const { productionNeedsFirstMonth } = demandAnalysis;
-        const [firstMonth] = planningMonths;
+        
         const capacityByCenter = constraints.workCenters.reduce((acc, wc) => {
             const centerLines = constraints.productionLines.filter(l => l.workCenterId === wc.id && l.isActive);
-            const totalCapacity = centerLines.reduce((sum, line) => sum + getLineCapacity(line, firstMonth.year, firstMonth.month, constraints), 0);
+            const totalCapacity = centerLines.reduce((sum, line) => sum + getLineCapacity(line, planningMonths[0].year, planningMonths[0].month, constraints), 0);
             acc[wc.id] = totalCapacity;
             return acc;
         }, {} as Record<string, number>);
@@ -642,8 +657,6 @@ export const ProductionPlanSection: React.FC = () => {
     // Step 3 is the results view
     if (planningStep === 3 && monthlyPlan.length > 0) {
         
-        const dailyPlanTotal = filteredDailyPlan.reduce((sum, item) => sum + item.quantityToProduce, 0);
-
         return (
              <div className="p-6 md:p-8 space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
@@ -655,7 +668,7 @@ export const ProductionPlanSection: React.FC = () => {
                     <Button onClick={handleExportMonthly} variant="outline" disabled={filteredMonthlyPlan.length === 0}>
                       <Download className="mr-2 h-4 w-4" /> Exportar Resumen
                     </Button>
-                     <Button onClick={handleExportDaily} variant="outline" disabled={filteredDailyPlan.length === 0}>
+                     <Button onClick={handleExportDaily} variant="outline" disabled={filteredDailyPlanByLine.length === 0}>
                       <Download className="mr-2 h-4 w-4" /> Exportar Detalle Diario
                     </Button>
                     <Button onClick={resetPlanning} variant="destructive">
@@ -688,7 +701,7 @@ export const ProductionPlanSection: React.FC = () => {
             <Tabs defaultValue="monthly-summary" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="monthly-summary">Resumen Ejecutivo Mensual</TabsTrigger>
-                    <TabsTrigger value="daily-detail">Detalle Diario de Producción</TabsTrigger>
+                    <TabsTrigger value="daily-detail">Detalle Diario por Línea</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="monthly-summary">
@@ -704,39 +717,59 @@ export const ProductionPlanSection: React.FC = () => {
                 
                 <TabsContent value="daily-detail">
                      <div className="bg-white p-6 rounded-xl shadow-lg mt-4">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Desglose Diario de Producción (Filtrado)</h3>
-                        <div className="max-h-[70vh] overflow-y-auto border rounded-lg">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Carga Diaria por Línea (Primer Mes)</h3>
+                         <div className="max-h-[70vh] overflow-x-auto border rounded-lg">
                            <table className="min-w-full text-xs divide-y divide-gray-200">
                                 <thead className="bg-gray-100 sticky top-0 z-10">
                                     <tr>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Día</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Cód. Producto</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Nombre Producto</th>
-                                        <th className="px-3 py-2 text-right font-semibold text-gray-600">Cant. a Producir</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Línea Asignada</th>
-                                        <th className="px-3 py-2 text-right font-semibold text-gray-600">Horas Req.</th>
+                                        <th className="px-2 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-20">Línea de Producción</th>
+                                        {dailyPlanDays.map(day => (
+                                            <th key={day} className="px-2 py-2 text-center font-semibold text-gray-600 border-l">
+                                                Día {day}
+                                            </th>
+                                        ))}
+                                        <th className="px-2 py-2 text-right font-bold text-gray-700 sticky right-0 bg-gray-100 z-20 border-l">Total Mes</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredDailyPlan.map(item => {
-                                    const line = constraints.productionLines.find(l => l.id === item.assignedLineId);
+                                {filteredDailyPlanByLine.map((lineData) => {
+                                    const totalUnits = Object.values(lineData.dailyData).reduce((sum, day) => sum + day.units, 0);
                                     return (
-                                        <tr key={item.id}>
-                                            <td className="px-3 py-2">{item.day}</td>
-                                            <td className="px-3 py-2 font-mono">{item.productId}</td>
-                                            <td className="px-3 py-2">{item.productName}</td>
-                                            <td className="px-3 py-2 text-right font-semibold">{Math.round(item.quantityToProduce).toLocaleString()}</td>
-                                            <td className="px-3 py-2">{line ? `${line.name} (${line.workCenterId})` : 'N/A'}</td>
-                                            <td className="px-3 py-2 text-right">{item.hoursWorked.toFixed(2)}</td>
+                                        <tr key={lineData.lineName} className="hover:bg-gray-50">
+                                            <td className="px-2 py-2 font-medium text-gray-800 sticky left-0 bg-white group-hover:bg-gray-50">{lineData.lineName}</td>
+                                            {dailyPlanDays.map(day => (
+                                                <td key={day} className="px-1 py-1 text-center border-l">
+                                                    {lineData.dailyData[day] ? (
+                                                        <div className="font-mono bg-indigo-50 rounded p-1">
+                                                            <div className="text-indigo-800 font-bold">{Math.round(lineData.dailyData[day].units).toLocaleString()}</div>
+                                                            <div className="text-gray-500 text-[10px]">{lineData.dailyData[day].hours.toFixed(1)}h</div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-gray-300">-</div>
+                                                    )}
+                                                </td>
+                                            ))}
+                                            <td className="px-2 py-2 text-right font-bold text-indigo-800 sticky right-0 bg-white group-hover:bg-gray-50 border-l">
+                                                {Math.round(totalUnits).toLocaleString()}
+                                            </td>
                                         </tr>
                                     );
                                 })}
                                 </tbody>
                                 <tfoot className="bg-gray-200 sticky bottom-0 font-bold">
                                     <tr>
-                                        <td colSpan={3} className="px-3 py-2 text-right">TOTAL</td>
-                                        <td className="px-3 py-2 text-right text-indigo-700">{Math.round(dailyPlanTotal).toLocaleString()}</td>
-                                        <td colSpan={2}></td>
+                                        <td className="px-2 py-2 text-right sticky left-0 bg-gray-200">TOTAL</td>
+                                        {dailyPlanDays.map(day => {
+                                            const dayTotal = filteredDailyPlanByLine.reduce((sum, line) => sum + (line.dailyData[day]?.units || 0), 0);
+                                            return (
+                                                <td key={`total-${day}`} className="px-2 py-2 text-center border-l text-gray-700">
+                                                    {Math.round(dayTotal).toLocaleString()}
+                                                </td>
+                                            )
+                                        })}
+                                        <td className="px-2 py-2 text-right text-indigo-700 sticky right-0 bg-gray-200 border-l">
+                                            {Math.round(totalFilteredUnits).toLocaleString()}
+                                        </td>
                                     </tr>
                                 </tfoot>
                            </table>

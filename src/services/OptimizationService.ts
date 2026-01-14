@@ -641,7 +641,8 @@ export const generateProductionPlan = async (
                 backlogTrasladosF: 0, 
                 backlogTrasladosX: 0,
                 totalHoursWorked: 0,
-                totalEstimatedLaborCost: 0, 
+                totalEstimatedLaborCost: 0,
+                assignedLineId: ppi?.productionLineId,
             });
         });
         inventoryState = newInventoryState;
@@ -705,10 +706,11 @@ export const generateProductionPlan = async (
                             const unitsToProduce = Math.min(need.units, unitsInHours);
 
                             if (unitsToProduce > 0) {
+                                const sale = salesData.find(s => normalizeMaterialCode(s.código) === need.productId);
                                 dailyPlan.push({
                                     id: `${year}-${monthNum}-${day}-${need.productId}-${line.id}`,
                                     productId: need.productId,
-                                    productName: ppi.productName || need.productId,
+                                    productName: sale?.descripciónMaterial || need.productId,
                                     year, month: monthNum, day,
                                     week: Math.ceil(day / 7),
                                     quantityToProduce: unitsToProduce,
@@ -757,6 +759,42 @@ export const exportDailyPlanToExcel = (plan: ProductionPlanItem[], constraints: 
   XLSX.writeFile(workbook, 'Plan_Produccion_Diario.xlsx');
 };
 
+export const exportDailyPlanByLineToExcel = (
+    planByLine: Array<{ lineName: string; dailyData: Record<number, { units: number; hours: number }> }>,
+    days: number[],
+    constraints: AppConstraints
+): void => {
+    if (!planByLine || planByLine.length === 0) return;
+
+    const dataToExport = planByLine.map(lineData => {
+        const row: Record<string, any> = { 'Línea de Producción': lineData.lineName };
+        let totalUnits = 0;
+        days.forEach(day => {
+            const dayData = lineData.dailyData[day];
+            row[`Día ${day} (Unidades)`] = dayData ? Math.round(dayData.units) : 0;
+            row[`Día ${day} (Horas)`] = dayData ? parseFloat(dayData.hours.toFixed(2)) : 0;
+            totalUnits += dayData ? dayData.units : 0;
+        });
+        row['Total Unidades Mes'] = Math.round(totalUnits);
+        return row;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    // You might want to adjust column widths for better readability
+    const cols = [{ wch: 30 }]; // Line Name
+    days.forEach(day => {
+        cols.push({ wch: 15 }); // Units
+        cols.push({ wch: 15 }); // Hours
+    });
+    cols.push({ wch: 20 }); // Total
+    worksheet['!cols'] = cols;
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Detalle Diario por Línea');
+    XLSX.writeFile(workbook, 'Plan_Diario_Por_Linea.xlsx');
+};
+
+
 export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[], centers: string[]): void => {
     if (!plan || plan.length === 0) return;
     
@@ -790,6 +828,7 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
 
 
 
