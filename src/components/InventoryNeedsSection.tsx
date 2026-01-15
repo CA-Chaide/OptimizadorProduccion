@@ -27,6 +27,11 @@ interface InventoryNeedRow {
     tiempoTotalRequerido: number;
 }
 
+const normalizeMaterialCode = (code: string | number): string => {
+    const codeStr = String(code);
+    return codeStr.slice(-8);
+};
+
 // Re-usable MultiSelect component
 const MultiSelect: React.FC<{
   label: string;
@@ -129,10 +134,10 @@ export const InventoryNeedsSection: React.FC = () => {
                     const necesidadStock = Math.max(0, stockSeguridad - stockDisponible);
 
                     if (necesidadStock > 0 && item.Material && item.Centro) {
-                        const codigoMaterial = String(item.Material);
+                        const codigoMaterialNormalized = normalizeMaterialCode(item.Material);
                         const centro = String(item.Centro).trim();
                         
-                        const ppi = constraints.productProcessInfos.find(p => String(p.productId) === codigoMaterial);
+                        const ppi = constraints.productProcessInfos.find(p => p.productId === codigoMaterialNormalized);
                         const linea = constraints.productionLines.find(l => l.id === ppi?.productionLineId);
 
                         const tiempoUnitario = (ppi?.totalManufacturingTimeHours || 0) * 60; // Convert hours to minutes
@@ -140,7 +145,7 @@ export const InventoryNeedsSection: React.FC = () => {
                         return {
                             centro: centro,
                             mes: firstMonth,
-                            codigoMaterial: codigoMaterial,
+                            codigoMaterial: String(item.Material),
                             claseAprovisionamiento: item.ClaseAprovisionam || 'N/A',
                             lineaProduccion: linea?.name || 'N/A',
                             stockDisponible,
