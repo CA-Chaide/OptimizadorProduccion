@@ -14,7 +14,7 @@ export * from './ProductionPlanSection';
 export * from './TacticalPlanSection';
 export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
-export * from './InventorySummarySection';
+export * from './InventoryNeedsSection';
 export * from './TacticalPlanMueblesSection';
 
 // Widgets y paneles

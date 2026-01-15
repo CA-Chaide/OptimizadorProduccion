@@ -525,6 +525,7 @@ export interface CuboInventariosItem {
     Centro: string;
     ClaseAprovisionam: 'E' | 'X' | 'F' | null;
     StockActual?: number;
+    StockSeguridad?: number;
     Sector?: string;
     [key: string]: any; // Allow other fields
 }

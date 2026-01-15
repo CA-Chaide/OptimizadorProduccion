@@ -14,7 +14,7 @@ import {
   TacticalPlanSection,
   WorkShiftPlanningSection,
   RealDataSection,
-  // InventorySummarySection, // Eliminado
+  InventoryNeedsSection,
   TacticalPlanMueblesSection,
 } from '@/components';
 import { ActiveView, viewConfig } from '@/constants/constants';
@@ -59,10 +59,10 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <DashboardSection plan={productionPlan.dailyPlan} salesData={salesData} constraints={constraints} />;
             case ActiveView.DATA_IMPORT:
                 return <DataImportSection onDataImported={handleDataImported} />;
-            // case ActiveView.INVENTORY_SUMMARY: // Eliminado
-            //     return <InventorySummarySection />;
             case ActiveView.CONSTRAINTS:
                 return <ConstraintConfigurationSection />;
+            case ActiveView.INVENTORY_NEEDS:
+                return <InventoryNeedsSection />;
             case ActiveView.PERSONNEL:
                 return <PersonnelManagementSection employees={employees} setEmployees={setEmployees} skills={employeeSkills} setSkills={setSkills} constraints={constraints} />;
             case ActiveView.MAINTENANCE:
