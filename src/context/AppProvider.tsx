@@ -111,6 +111,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, planningProgress: action.payload };
         case 'SET_PLANNING_STEP':
             return { ...state, planningStep: action.payload };
+        case 'SET_SYNC_STATUS':
+             return { ...state, syncStatus: action.payload };
         case 'SET_DEMAND_ANALYSIS':
             return { ...state, demandAnalysis: action.payload };
         case 'RESET_PLANNING':

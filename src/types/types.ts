@@ -52,7 +52,7 @@ export type AppAction =
   | { type: 'SET_WORK_SHIFTS'; payload: WorkShift[] }
   | { type: 'GENERATE_TACTICAL_PLAN'; payload: TacticalPlanResult | null }
   | { type: 'SET_IS_LOADING'; payload: boolean }
-  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus }
+  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus | null }
   | { type: 'SET_PLANNING_PROGRESS'; payload: PlanningProgress | null }
   // New actions for step-by-step planning
   | { type: 'SET_PLANNING_STEP'; payload: number }
