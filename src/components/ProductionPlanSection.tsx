@@ -457,50 +457,20 @@ export const ProductionPlanSection: React.FC = () => {
     }
 
     if (planningStep === 1 && demandAnalysis) {
-        const { totalDemand, demandByGroup, unclassifiedMaterials } = demandAnalysis;
+        const { demandByGroup, unclassifiedMaterials } = demandAnalysis;
         
-        const demandWithProdCenter = demandByGroup.map(item => ({
-            ...item,
-            producingCenter: item.claseAprovisionamiento === 'F' ? '1000' : item.centro
-        }));
-
-        const groupedByProducingCenter: Record<string, { items: typeof demandWithProdCenter }> = {};
-        demandWithProdCenter.forEach(item => {
-            const centerKey = item.producingCenter;
-            if (!groupedByProducingCenter[centerKey]) {
-                groupedByProducingCenter[centerKey] = { items: [] };
-            }
-            groupedByProducingCenter[centerKey].items.push(item);
-        });
-        
-        const totalNecesidadCentro1000 = Object.values(groupedByProducingCenter['1000']?.items || []).reduce((sum, item) => sum + item.totalUnidades, 0);
-        const totalNecesidadCentro2000 = Object.values(groupedByProducingCenter['2000']?.items || []).reduce((sum, item) => sum + item.totalUnidades, 0);
+        const totalNecesidadCentro1000 = demandByGroup.filter(d => d.producingCenter === '1000').reduce((sum, item) => sum + item.totalUnidades, 0);
+        const totalNecesidadCentro2000 = demandByGroup.filter(d => d.producingCenter === '2000').reduce((sum, item) => sum + item.totalUnidades, 0);
+        const totalGeneral = totalNecesidadCentro1000 + totalNecesidadCentro2000;
 
 
       return (
         <div className="space-y-6">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Paso 1: Validación de Demanda y Saldo Inicial</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Paso 1: Validación de Demanda Bruta (Primer Mes)</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Use los filtros a continuación para seleccionar qué saldos de `CuboInventarios` deben incluirse en el cálculo del **Saldo Inicial**. Luego, verifique que los totales de demanda coincidan con sus expectativas.
+              Esta tabla muestra la demanda de ventas bruta para el primer mes del horizonte de planificación, agrupada por centro de producción. Verifique que los totales coincidan con sus expectativas antes de continuar.
             </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg bg-gray-50 mb-6">
-              <MultiSelect
-                label="Centros para Saldo Inicial"
-                options={inventoryFilterOptions.centros.map(c => ({ value: c, label: c }))}
-                selected={selectedInventoryCentros}
-                onChange={setSelectedInventoryCentros}
-                placeholder={`${inventoryFilterOptions.centros.length} centros`}
-              />
-              <MultiSelect
-                label="Sectores para Saldo Inicial"
-                options={inventoryFilterOptions.sectores.map(s => ({ value: s, label: s }))}
-                selected={selectedInventorySectores}
-                onChange={setSelectedInventorySectores}
-                placeholder={`${inventoryFilterOptions.sectores.length} sectores`}
-              />
-            </div>
 
             <div className="overflow-auto max-h-[50vh] border rounded-lg mt-4">
               <table className="min-w-full text-sm divide-y divide-gray-200">
@@ -514,34 +484,30 @@ export const ProductionPlanSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                   {Object.entries(groupedByProducingCenter).sort(([a], [b]) => a.localeCompare(b)).map(([producingCenter, data]) => (
-                        <React.Fragment key={producingCenter}>
-                            {data.items.sort((a,b) => a.sector.localeCompare(b.sector)).map(item => (
-                                <tr key={`${item.claseAprovisionamiento}-${item.centro}-${item.sector}`} className="hover:bg-gray-50">
-                                    <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
-                                        {item.claseAprovisionamiento}
-                                    </td>
-                                    <td className="px-3 py-2">{item.centro}</td>
-                                    <td className="px-3 py-2 font-semibold">{item.producingCenter}</td>
-                                    <td className="px-3 py-2">{item.sector}</td>
-                                    <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </React.Fragment>
-                   ))}
+                   {demandByGroup.map(item => (
+                        <tr key={`${item.claseAprovisionamiento}-${item.centro}-${item.sector}`} className="hover:bg-gray-50">
+                            <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
+                                {item.claseAprovisionamiento}
+                            </td>
+                            <td className="px-3 py-2">{item.centro}</td>
+                            <td className="px-3 py-2 font-semibold">{item.producingCenter}</td>
+                            <td className="px-3 py-2">{item.sector}</td>
+                            <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                        </tr>
+                    ))}
                 </tbody>
                 <tfoot className="bg-gray-800 text-white sticky bottom-0">
                     <tr>
-                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total Necesidad Centro 1000</th>
+                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total Demanda Centro 1000</th>
                         <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalNecesidadCentro1000).toLocaleString()}</th>
                     </tr>
                     <tr>
-                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total Necesidad Centro 2000</th>
+                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total Demanda Centro 2000</th>
                         <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalNecesidadCentro2000).toLocaleString()}</th>
                     </tr>
                     <tr className="bg-gray-900">
-                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total General Demanda</th>
-                        <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalDemand).toLocaleString()}</th>
+                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total General Demanda (Planificable)</th>
+                        <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalGeneral).toLocaleString()}</th>
                     </tr>
                 </tfoot>
               </table>
@@ -612,9 +578,9 @@ export const ProductionPlanSection: React.FC = () => {
 
         return (
             <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Necesidades y Capacidad (Primer Mes)</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Paso 2: Validación de Necesidad Neta y Capacidad (Primer Mes)</h3>
                 <p className="text-sm text-gray-600">
-                    La tabla muestra la demanda de producción en unidades y horas, comparada con la capacidad disponible. Verifique la carga de capacidad antes de generar el plan final.
+                    Esta tabla muestra la necesidad de producción neta (Demanda + Cobertura de Stock) en unidades y horas, comparada con la capacidad disponible. Verifique la carga de capacidad antes de generar el plan final.
                 </p>
                 <div className="overflow-auto max-h-[60vh] border rounded-lg">
                     <table className="min-w-full text-sm divide-y divide-gray-200">

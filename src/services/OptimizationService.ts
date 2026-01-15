@@ -1,4 +1,5 @@
 
+
 import { 
     SalesDataRow, AppConstraints, ProductionPlan, ProductionPlanItem, 
     ProductProcessInfo, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, Holiday,
@@ -28,56 +29,31 @@ export const analyzeSalesDemand = async (
     const auditLog: string[] = [];
     auditLog.push(`[${new Date().toLocaleTimeString()}] Iniciando análisis de demanda con ${salesData.length} registros de venta y ${cuboInventariosData.length} registros de CuboInventarios.`);
     
-    const totalDemand = salesData.reduce((sum, row) => sum + row.unidadesProyectado, 0);
+    // --- STEP 1: DEMANDA BRUTA (SOLO PRIMER MES) ---
+    const firstMonthKey = salesData.length > 0 ? `${salesData[0].año}-${String(salesData[0].mes).padStart(2, '0')}` : null;
+    if (!firstMonthKey) {
+        return { totalDemand: 0, demandByGroup: [], unclassifiedMaterials: [], auditLog: ['No sales data found'], transfers: [], productionNeedsFirstMonth: [] };
+    }
 
+    const salesInFirstMonth = salesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === firstMonthKey);
     const demandByGroupMap = new Map<string, {
         claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
         centro: string;
         sector: string;
         totalUnidades: number;
+        producingCenter: string;
     }>();
-    
-    const transfersMap = new Map<string, {
-        centro: string;
-        sector: string;
-        etiqueta: string;
-        totalUnidades: number;
-    }>();
-
     const unclassifiedMaterials: DemandAnalysisResult['unclassifiedMaterials'] = [];
-    
-    const firstMonthKey = salesData.length > 0 ? `${salesData[0].año}-${String(salesData[0].mes).padStart(2, '0')}` : null;
-    
-    const initialInventoryState = new Map<string, number>();
-    const filteredCuboData = cuboInventariosData.filter(item => 
-        inventoryFilters.centros.includes(String(item.Centro).trim()) &&
-        inventoryFilters.sectores.includes(item.Sector || 'Sin Sector')
-    );
-    filteredCuboData.forEach(item => {
-        if(item.Material && item.Centro && item.StockActual) {
-            const stock = Number(item.StockActual);
-            if (stock > 0) {
-                const productId = normalizeMaterialCode(item.Material);
-                const centerId = String(item.Centro).trim();
-                const key = `${productId}---${centerId}`;
-                initialInventoryState.set(key, (initialInventoryState.get(key) || 0) + stock);
-            }
-        }
+
+    const aggregatedSalesFirstMonth = new Map<string, number>();
+    salesInFirstMonth.forEach(row => {
+        const key = `${normalizeMaterialCode(row.código)}---${String(row.centro).trim()}`;
+        aggregatedSalesFirstMonth.set(key, (aggregatedSalesFirstMonth.get(key) || 0) + row.unidadesProyectado);
     });
 
-    auditLog.push(`[${new Date().toLocaleTimeString()}] Aplicados filtros de inventario. Se usarán ${filteredCuboData.length} de ${cuboInventariosData.length} registros para el saldo inicial.`);
-    
-    // 1. Aggregate demand per product/center for the entire horizon
-    const aggregatedSales = new Map<string, number>();
-    salesData.forEach(row => {
-        const key = `${normalizeMaterialCode(row.código)}---${String(row.centro).trim()}`;
-        aggregatedSales.set(key, (aggregatedSales.get(key) || 0) + row.unidadesProyectado);
-    });
-    
-    // 2. Classify and group demand
-    aggregatedSales.forEach((totalUnidades, key) => {
+    aggregatedSalesFirstMonth.forEach((totalUnidades, key) => {
         const [productId, centerId] = key.split('---');
-        const saleRow = salesData.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === centerId)!;
+        const saleRow = salesInFirstMonth.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === centerId)!;
         const sector = saleRow.sector || 'Sin Sector';
 
         let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
@@ -99,52 +75,54 @@ export const analyzeSalesDemand = async (
         }
         
         if (claseAprovisionamiento !== 'N/A') {
-            const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}`;
+            const producingCenter = claseAprovisionamiento === 'F' ? '1000' : centerId;
+            const groupKey = `${claseAprovisionamiento}-${centerId}-${sector}-${producingCenter}`;
             if (!demandByGroupMap.has(groupKey)) {
-                demandByGroupMap.set(groupKey, { claseAprovisionamiento, centro: centerId, sector, totalUnidades: 0 });
+                demandByGroupMap.set(groupKey, { claseAprovisionamiento, centro: centerId, sector, totalUnidades: 0, producingCenter });
             }
             demandByGroupMap.get(groupKey)!.totalUnidades += totalUnidades;
-        }
-
-        if (claseAprovisionamiento === 'F' && centerId !== '1000') {
-             const transferKey = `${centerId}-${sector}-${saleRow.etiqueta}`;
-            if (!transfersMap.has(transferKey)) {
-                transfersMap.set(transferKey, { centro: centerId, sector, etiqueta: saleRow.etiqueta, totalUnidades: 0 });
-            }
-            transfersMap.get(transferKey)!.totalUnidades += totalUnidades;
         }
     });
 
     const demandByGroup = Array.from(demandByGroupMap.values())
-        .sort((a, b) => a.centro.localeCompare(b.centro) || a.sector.localeCompare(b.sector));
-    const transfers = Array.from(transfersMap.values())
-        .sort((a, b) => a.centro.localeCompare(b.centro) || a.sector.localeCompare(b.sector));
-
-    // 3. Calculate production needs for the first month
-    const salesInFirstMonth = salesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === firstMonthKey);
-    const demandFirstMonthMap = new Map<string, number>();
-    salesInFirstMonth.forEach(row => {
-        const key = `${normalizeMaterialCode(row.código)}---${String(row.centro).trim()}`;
-        demandFirstMonthMap.set(key, (demandFirstMonthMap.get(key) || 0) + row.unidadesProyectado);
+        .sort((a, b) => a.producingCenter.localeCompare(b.producingCenter) || a.sector.localeCompare(b.sector));
+    
+    // --- STEP 2: NECESIDAD NETA DE PRODUCCIÓN (PRIMER MES) ---
+    const initialInventoryState = new Map<string, number>();
+    const filteredCuboData = cuboInventariosData.filter(item => 
+        inventoryFilters.centros.includes(String(item.Centro).trim()) &&
+        inventoryFilters.sectores.includes(item.Sector || 'Sin Sector')
+    );
+    filteredCuboData.forEach(item => {
+        if(item.Material && item.Centro && item.StockActual) {
+            const stock = Number(item.StockActual);
+            if (stock > 0) {
+                const productId = normalizeMaterialCode(item.Material);
+                const centerId = String(item.Centro).trim();
+                const key = `${productId}---${centerId}`;
+                initialInventoryState.set(key, (initialInventoryState.get(key) || 0) + stock);
+            }
+        }
     });
 
-    const productNeedsFirstMonth: DemandAnalysisResult['productionNeedsFirstMonth'] = [];
+    const productionNeedsFirstMonth: DemandAnalysisResult['productionNeedsFirstMonth'] = [];
 
+    // Considerar todos los productos que tienen demanda O inventario para el cálculo de necesidad
     const allProductCenterPairs = new Set([
         ...initialInventoryState.keys(),
-        ...demandFirstMonthMap.keys(),
+        ...aggregatedSalesFirstMonth.keys(),
     ]);
 
     allProductCenterPairs.forEach(key => {
         const [productId, demandCenterId] = key.split('---');
-        const demand = demandFirstMonthMap.get(key) || 0;
+        const demand = aggregatedSalesFirstMonth.get(key) || 0;
         const initialStock = initialInventoryState.get(key) || 0;
         const safetyStock = constraints.inventorySettings.find(s => s.id === key)?.minStock || 0;
 
         const netNeed = Math.max(0, demand + safetyStock - initialStock);
 
         if (netNeed > 0) {
-            const saleRow = salesData.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === demandCenterId);
+            const saleRow = salesData.find(s => normalizeMaterialCode(s.código) === productId); // Busca en toda la data de ventas
             const sector = saleRow?.sector || 'Sin Sector';
             const primaryEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}` === key);
             const fallbackEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---1000` === `${productId}---1000`);
@@ -157,9 +135,11 @@ export const analyzeSalesDemand = async (
             }
 
             if (claseAprovisionamiento !== 'N/A') {
+                 // **CORRECCIÓN CLAVE**: Buscar el ppi usando el código de material normalizado
                  const ppi = constraints.productProcessInfos.find(p => p.productId === productId);
                  const requiredHours = (ppi?.totalManufacturingTimeHours || 0) * netNeed;
-                 productNeedsFirstMonth.push({
+                 
+                 productionNeedsFirstMonth.push({
                     producingCenterId: claseAprovisionamiento === 'F' ? '1000' : demandCenterId,
                     sector,
                     claseAprovisionamiento,
@@ -169,9 +149,10 @@ export const analyzeSalesDemand = async (
             }
         }
     });
-
+    
+    // Agrupar las necesidades de producción para la vista del Paso 2
     const finalProductionNeeds = Array.from(
-        productNeedsFirstMonth.reduce((map, item) => {
+        productionNeedsFirstMonth.reduce((map, item) => {
             const groupKey = `${item.producingCenterId}-${item.sector}-${item.claseAprovisionamiento}`;
             const existing = map.get(groupKey);
             if(existing) {
@@ -184,12 +165,16 @@ export const analyzeSalesDemand = async (
         }, new Map<string, any>()).values()
     ).sort((a, b) => a.producingCenterId.localeCompare(b.producingCenterId) || a.sector.localeCompare(b.sector));
     
-    auditLog.push(`[${new Date().toLocaleTimeString()}] Análisis de demanda completado. Total de demanda bruta: ${totalDemand.toLocaleString()}. Grupos clasificados: ${demandByGroup.length}.`);
-    if(unclassifiedMaterials.length > 0) {
-        auditLog.push(`[${new Date().toLocaleTimeString()}] ADVERTENCIA: Se encontraron ${unclassifiedMaterials.length} registros de demanda para materiales fabricables (código inicia con 3 o 4) pero sin Clase de Aprovisionamiento definida en CuboInventarios.`);
-    }
-
-    return { totalDemand, demandByGroup, unclassifiedMaterials, auditLog, transfers, productionNeedsFirstMonth: finalProductionNeeds };
+    auditLog.push(`[${new Date().toLocaleTimeString()}] Análisis de demanda completado.`);
+    
+    return {
+        totalDemand: salesInFirstMonth.reduce((sum, row) => sum + row.unidadesProyectado, 0),
+        demandByGroup,
+        unclassifiedMaterials,
+        auditLog,
+        transfers: [], // Lógica de transfers se maneja en el planificador principal
+        productionNeedsFirstMonth: finalProductionNeeds
+    };
 };
 
 export function processAndValidateAssemblyData(
