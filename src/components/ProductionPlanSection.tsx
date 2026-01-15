@@ -459,7 +459,6 @@ export const ProductionPlanSection: React.FC = () => {
     if (planningStep === 1 && demandAnalysis) {
         const { totalDemand, demandByGroup, unclassifiedMaterials } = demandAnalysis;
         
-        // Enhance demandByGroup with producingCenterId
         const demandWithProdCenter = demandByGroup.map(item => ({
             ...item,
             producingCenter: item.claseAprovisionamiento === 'F' ? '1000' : item.centro
