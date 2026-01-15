@@ -457,18 +457,26 @@ export const ProductionPlanSection: React.FC = () => {
     }
 
     if (planningStep === 1 && demandAnalysis) {
-      const { totalDemand, demandByGroup, unclassifiedMaterials } = demandAnalysis;
-      const groupedByCenter = demandByGroup.reduce((acc, item) => {
-          const centerKey = item.centro;
-          if (!acc[centerKey]) {
-              acc[centerKey] = { items: [], subtotalFabricacion: 0 };
-          }
-          acc[centerKey].items.push(item);
-          if (['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'].includes(item.sector)) {
-              acc[centerKey].subtotalFabricacion += item.totalUnidades;
-          }
-          return acc;
-      }, {} as Record<string, { items: typeof demandByGroup; subtotalFabricacion: number }>);
+        const { totalDemand, demandByGroup, unclassifiedMaterials } = demandAnalysis;
+        
+        // Enhance demandByGroup with producingCenterId
+        const demandWithProdCenter = demandByGroup.map(item => ({
+            ...item,
+            producingCenter: item.claseAprovisionamiento === 'F' ? '1000' : item.centro
+        }));
+
+        const groupedByProducingCenter: Record<string, { items: typeof demandWithProdCenter }> = {};
+        demandWithProdCenter.forEach(item => {
+            const centerKey = item.producingCenter;
+            if (!groupedByProducingCenter[centerKey]) {
+                groupedByProducingCenter[centerKey] = { items: [] };
+            }
+            groupedByProducingCenter[centerKey].items.push(item);
+        });
+        
+        const totalNecesidadCentro1000 = Object.values(groupedByProducingCenter['1000']?.items || []).reduce((sum, item) => sum + item.totalUnidades, 0);
+        const totalNecesidadCentro2000 = Object.values(groupedByProducingCenter['2000']?.items || []).reduce((sum, item) => sum + item.totalUnidades, 0);
+
 
       return (
         <div className="space-y-6">
@@ -501,37 +509,41 @@ export const ProductionPlanSection: React.FC = () => {
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Clase Aprov.</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro Demanda</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Centro Producción</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Sector</th>
                     <th className="px-3 py-2 text-right font-semibold text-gray-600">Total Unidades</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {Object.entries(groupedByCenter).map(([center, data]) => {
-                      return (
-                        <React.Fragment key={center}>
-                            {data.items.map((item, index) => (
+                   {Object.entries(groupedByProducingCenter).sort(([a], [b]) => a.localeCompare(b)).map(([producingCenter, data]) => (
+                        <React.Fragment key={producingCenter}>
+                            {data.items.sort((a,b) => a.sector.localeCompare(b.sector)).map(item => (
                                 <tr key={`${item.claseAprovisionamiento}-${item.centro}-${item.sector}`} className="hover:bg-gray-50">
                                     <td className={`px-3 py-2 font-mono ${item.claseAprovisionamiento === 'F' ? 'text-blue-600 font-bold' : ''}`}>
                                         {item.claseAprovisionamiento}
                                     </td>
                                     <td className="px-3 py-2">{item.centro}</td>
+                                    <td className="px-3 py-2 font-semibold">{item.producingCenter}</td>
                                     <td className="px-3 py-2">{item.sector}</td>
                                     <td className="px-3 py-2 text-right font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
                                 </tr>
                             ))}
-                            <tr className="bg-blue-50 font-bold">
-                                <td colSpan={3} className="px-3 py-2 text-right text-blue-800">Subtotal Fabricación (Centro {center})</td>
-                                <td className="px-3 py-2 text-right text-blue-800">{Math.round(data.subtotalFabricacion).toLocaleString()}</td>
-                            </tr>
                         </React.Fragment>
-                      )
-                  })}
+                   ))}
                 </tbody>
                 <tfoot className="bg-gray-800 text-white sticky bottom-0">
-                  <tr>
-                    <th colSpan={3} className="px-3 py-2 text-left font-bold uppercase">Total General Demanda</th>
-                    <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalDemand).toLocaleString()}</th>
-                  </tr>
+                    <tr>
+                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total Necesidad Centro 1000</th>
+                        <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalNecesidadCentro1000).toLocaleString()}</th>
+                    </tr>
+                    <tr>
+                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total Necesidad Centro 2000</th>
+                        <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalNecesidadCentro2000).toLocaleString()}</th>
+                    </tr>
+                    <tr className="bg-gray-900">
+                        <th colSpan={4} className="px-3 py-2 text-right font-bold uppercase">Total General Demanda</th>
+                        <th className="px-3 py-2 text-right font-bold uppercase">{Math.round(totalDemand).toLocaleString()}</th>
+                    </tr>
                 </tfoot>
               </table>
             </div>
