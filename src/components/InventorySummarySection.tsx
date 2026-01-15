@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -127,6 +128,7 @@ export const InventorySummarySection: React.FC = () => {
         });
         
         prioritySectors.sort((a, b) => priorityOrder.indexOf(a.sector) - priorityOrder.indexOf(b.sector));
+        otherSectors.sort((a, b) => a.sector.localeCompare(b.sector));
         
         const subtotalFabricacion: DisplayRow = {
             type: 'subtotal', sector: 'Subtotal Fabricación', stockByCenter: {}, totalStock: 0,
@@ -138,7 +140,6 @@ export const InventorySummarySection: React.FC = () => {
             });
         });
 
-        otherSectors.sort((a, b) => a.sector.localeCompare(b.sector));
         
         const subtotalOtros: DisplayRow = {
             type: 'subtotal', sector: 'Subtotal Otros', stockByCenter: {}, totalStock: 0,

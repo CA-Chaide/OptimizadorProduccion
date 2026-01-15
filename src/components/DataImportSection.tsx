@@ -101,138 +101,6 @@ const MultiSelect: React.FC<{
 };
 
 
-const MonthlyReportTable: React.FC<{
-  monthData: SalesDataRow[],
-  title: string
-}> = ({ monthData, title }) => {
-
-  const { displayRows, centers, footerTotals } = useMemo(() => {
-    if (monthData.length === 0) return { displayRows: [], centers: [], footerTotals: { grandTotal: 0 } };
-
-    const dataBySectorAndCenter: { [sector: string]: { [center: string]: number } } = {};
-    const centerSet = new Set<string>();
-
-    monthData.forEach(row => {
-        const sector = row.sector || 'Sin Sector';
-        const center = String(row.centro).trim();
-        centerSet.add(center);
-
-        if (!dataBySectorAndCenter[sector]) {
-            dataBySectorAndCenter[sector] = {};
-        }
-        if (!dataBySectorAndCenter[sector][center]) {
-            dataBySectorAndCenter[sector][center] = 0;
-        }
-        dataBySectorAndCenter[sector][center] += row.unidadesProyectado;
-    });
-    
-    const sortedCenters = Array.from(centerSet).sort();
-
-    const priorityOrder = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
-    
-    interface DisplayRow {
-        type: 'data' | 'subtotal';
-        sector: string;
-        stockByCenter: { [center: string]: number };
-        totalStock: number;
-    }
-    const prioritySectors: DisplayRow[] = [];
-    const otherSectors: DisplayRow[] = [];
-
-    Object.entries(dataBySectorAndCenter).forEach(([sector, stockByCenter]) => {
-        const totalStock = Object.values(stockByCenter).reduce((sum, val) => sum + val, 0);
-        const displayRow: DisplayRow = { type: 'data', sector, stockByCenter, totalStock };
-        
-        if (priorityOrder.includes(sector)) {
-            prioritySectors.push(displayRow);
-        } else {
-            otherSectors.push(displayRow);
-        }
-    });
-
-    prioritySectors.sort((a, b) => priorityOrder.indexOf(a.sector) - priorityOrder.indexOf(b.sector));
-    otherSectors.sort((a, b) => a.sector.localeCompare(b.sector));
-    
-    const allDisplayRows: DisplayRow[] = [];
-    const footerTotals: { [key: string]: number; grandTotal: number; } = { grandTotal: 0 };
-    
-    if (prioritySectors.length > 0) {
-        allDisplayRows.push(...prioritySectors);
-        const subtotalFabricacion: DisplayRow = {
-            type: 'subtotal', sector: 'Subtotal Fabricación', stockByCenter: {}, totalStock: 0
-        };
-        prioritySectors.forEach(pSector => {
-            subtotalFabricacion.totalStock += pSector.totalStock;
-            Object.entries(pSector.stockByCenter).forEach(([center, stock]) => {
-                subtotalFabricacion.stockByCenter[center] = (subtotalFabricacion.stockByCenter[center] || 0) + stock;
-            });
-        });
-        allDisplayRows.push(subtotalFabricacion);
-    }
-    
-    if (otherSectors.length > 0) {
-        allDisplayRows.push(...otherSectors);
-    }
-
-    allDisplayRows.forEach(row => {
-        if (row.type === 'data') {
-            footerTotals.grandTotal += row.totalStock;
-            sortedCenters.forEach(center => {
-                footerTotals[center] = (footerTotals[center] || 0) + (row.stockByCenter[center] || 0);
-            });
-        }
-    });
-
-    return { displayRows: allDisplayRows, centers: sortedCenters, footerTotals };
-  }, [monthData]);
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-      <div className="relative max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
-        <table className="min-w-full text-xs divide-y divide-gray-200">
-          <thead className="bg-gray-100 sticky top-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 sticky left-0 z-20">Sector</th>
-              {centers.map(center => (
-                <th key={center} className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">{center}</th>
-              ))}
-              <th className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider bg-gray-100 sticky right-0 z-20">Total Unidades</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {displayRows.map((row) => (
-              <tr key={row.sector} className={`group ${row.type === 'subtotal' ? 'bg-blue-50 font-bold' : 'hover:bg-gray-50'}`}>
-                <td className={`px-3 py-2 whitespace-nowrap sticky left-0 group-hover:bg-gray-50 z-10 ${row.type === 'subtotal' ? 'bg-blue-50' : 'bg-white'}`}>{row.sector}</td>
-                {centers.map(center => (
-                  <td key={`${row.sector}-${center}`} className="px-3 py-2 text-right text-gray-600">{Math.round(row.stockByCenter[center] || 0).toLocaleString()}</td>
-                ))}
-                <td className={`px-3 py-2 text-right font-bold text-gray-900 sticky right-0 group-hover:bg-gray-50 z-10 ${row.type === 'subtotal' ? 'bg-blue-50' : 'bg-white'}`}>
-                  {Math.round(row.totalStock).toLocaleString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot className="bg-gray-200 sticky bottom-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-200 z-20">TOTAL GENERAL</th>
-              {centers.map(center => (
-                <th key={`total-${center}`} className="px-3 py-2 text-right font-bold text-gray-700 uppercase tracking-wider">
-                  {Math.round(footerTotals[center] || 0).toLocaleString()}
-                </th>
-              ))}
-              <th className="px-3 py-2 text-right font-bold text-indigo-700 uppercase tracking-wider sticky right-0 bg-gray-200 z-20">
-                {Math.round(footerTotals.grandTotal).toLocaleString()}
-              </th>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const { addNotification, isLoading: isAppLoading } = useAppContext();
   const inspector = useRuntimeInspector('DataImport');
@@ -255,7 +123,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       etiqueta: '',
   });
 
-  const [loadedData, setLoadedData] = useState<SalesDataRow[]>([]);
+  const [totalLoadedRecords, setTotalLoadedRecords] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
   // Instrumentación con RuntimeInspector
@@ -263,15 +131,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     inspector.captureState({
         isProcessing,
         hasFilterOptions: filterOptions.años.length > 0,
-        loadedRecords: loadedData.length,
+        totalLoadedRecords,
     }, {
         filters,
         filterOptions,
     });
     inspector.captureVariable('filters', filters, { description: 'Filtros aplicados por el usuario', source: 'user' });
     inspector.captureVariable('filterOptions', filterOptions, { description: 'Opciones de filtro cargadas desde la API', source: 'api' });
-    inspector.captureVariable('loadedData', loadedData, { description: 'Datos brutos cargados desde la API', source: 'api' });
-  }, [filters, filterOptions, loadedData, isProcessing, inspector]);
+    inspector.captureVariable('totalLoadedRecords', totalLoadedRecords, { description: 'Total de registros importados desde la API', source: 'calculation' });
+  }, [filters, filterOptions, totalLoadedRecords, isProcessing, inspector]);
 
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -305,7 +173,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     const ctxId = inspector.startContext('load_budget_data', { filters });
     setIsProcessing(true);
-    setLoadedData([]);
+    setTotalLoadedRecords(0);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -371,12 +239,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         inspector.captureVariable('totalRecords', allData.length, { description: 'Total de registros importados desde la API', source: 'calculation' });
 
         if (allData.length > 0) {
-            setLoadedData(allData);
+            setTotalLoadedRecords(allData.length);
             onDataImported(allData);
             addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
             inspector.updateContext(ctxId, 'completed', { outputs: { totalRecords: allData.length } });
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
+            onDataImported([]);
             inspector.updateContext(ctxId, 'completed', { outputs: { totalRecords: 0, message: 'No records found' } });
         }
 
@@ -387,22 +256,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         setIsProcessing(false);
     }
   };
-
-  const dataByMonth = useMemo(() => {
-    const grouped: Record<string, SalesDataRow[]> = {};
-    loadedData.forEach(row => {
-      const key = `${row.año}-${String(row.mes).padStart(2, '0')}`;
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-      grouped[key].push(row);
-    });
-    return Object.entries(grouped).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-  }, [loadedData]);
-
-  useEffect(() => {
-    inspector.captureVariable('consolidatedRows', dataByMonth.length, { description: 'Número de tablas de resumen mensual generadas', source: 'calculation' });
-  }, [dataByMonth, inspector]);
   
   return (
     <div className="p-6 md:p-8 space-y-6 bg-white shadow-lg rounded-xl m-4">
@@ -412,7 +265,8 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados.
+        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos los años seleccionados.
+        Una vez cargados, la aplicación los tendrá en memoria para el resto de los pasos.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
@@ -453,15 +307,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         </div>
       </div>
 
-       {loadedData.length > 0 && (
-         <div className="space-y-8 mt-6">
-           {dataByMonth.map(([monthKey, monthData]) => {
-             const [year, monthNum] = monthKey.split('-');
-             const title = `Ventas Consolidadas para ${MONTH_NAMES[parseInt(monthNum, 10) - 1]} ${year}`;
-             return (
-               <MonthlyReportTable key={monthKey} monthData={monthData} title={title} />
-             );
-           })}
+       {totalLoadedRecords > 0 && !isProcessing && (
+         <div className="mt-6 text-center p-6 bg-green-50 border border-green-200 rounded-lg">
+            <h3 className="text-xl font-semibold text-green-800">
+                ¡Carga Completada!
+            </h3>
+            <p className="text-green-700 mt-2">
+                Se han cargado <span className="font-bold">{totalLoadedRecords.toLocaleString()}</span> registros de ventas en la memoria de la aplicación.
+            </p>
+            <p className="text-green-600 mt-1 text-sm">
+                Ahora puede proceder a las demás secciones para configurar y generar el plan de producción.
+            </p>
         </div>
       )}
     </div>
