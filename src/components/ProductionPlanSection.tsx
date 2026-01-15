@@ -231,7 +231,7 @@ export const ProductionPlanSection: React.FC = () => {
   
   const { 
     productionPlan, 
-    handleGeneratePlan, 
+    handleGenerateFullPlan, 
     isLoading, 
     constraints, 
     syncStatus,
@@ -243,6 +243,7 @@ export const ProductionPlanSection: React.FC = () => {
     apiCuboInventariosData,
     handleContinueToStep2,
     handleContinueToStep3,
+    handleContinueToStep4,
   } = useAppContext();
 
   const isDataSynced = syncStatus?.isSynced || false;
@@ -292,7 +293,7 @@ export const ProductionPlanSection: React.FC = () => {
 
   // Populate filter options when plan is generated
   useEffect(() => {
-    if (planningStep === 3 && productionPlan.monthlyPlan.length > 0) {
+    if (planningStep >= 3 && productionPlan.monthlyPlan.length > 0) {
       const uniqueCentros = [...new Set(productionPlan.monthlyPlan.map(item => item.centerId))];
       const uniqueSectores = [...new Set(salesData.map(item => item.sector || 'Sin Sector'))];
       const uniqueLineas = [...new Set(productionPlan.dailyPlan.map(item => item.assignedLineId).filter(Boolean) as string[])];
@@ -318,14 +319,15 @@ export const ProductionPlanSection: React.FC = () => {
   }, [planningStep, productionPlan, salesData, constraints.productionLines]);
 
   const filteredMonthlyPlan = useMemo(() => {
-    if (planningStep !== 3) return [];
+    if (planningStep < 3) return [];
 
     return productionPlan.monthlyPlan.filter(item => {
       const centroMatch = selectedResultsFilters.centros.length === 0 || 
                           selectedResultsFilters.centros.includes(item.centerId) ||
                           selectedResultsFilters.centros.includes(item.producingCenterId);
       
-      const sector = salesData.find(s => normalizeMaterialCode(s.código) === item.productId)?.sector || 'Sin Sector';
+      const sale = salesData.find(s => normalizeMaterialCode(s.código) === normalizeMaterialCode(item.productId));
+      const sector = sale?.sector || 'Sin Sector';
       const sectorMatch = selectedResultsFilters.sectores.length === 0 || selectedResultsFilters.sectores.includes(sector);
       
       return centroMatch && sectorMatch;
@@ -343,7 +345,7 @@ export const ProductionPlanSection: React.FC = () => {
   }, [salesData]);
 
   const { filteredDailyPlanByLine, dailyPlanDays, totalFilteredUnits } = useMemo(() => {
-    if (planningStep !== 3 || !productionPlan.dailyPlan) {
+    if (planningStep < 4 || !productionPlan.dailyPlan) {
       return { filteredDailyPlanByLine: [], dailyPlanDays: [], totalFilteredUnits: 0 };
     }
 
@@ -427,6 +429,17 @@ export const ProductionPlanSection: React.FC = () => {
       } finally {
         dispatch({ type: 'SET_IS_LOADING', payload: false });
       }
+  };
+
+  const handleGeneratePlanClick = async () => {
+    if (demandAnalysis) {
+        dispatch({ type: 'SET_IS_LOADING', payload: true });
+        const success = await handleGenerateFullPlan({ centros: selectedInventoryCentros, sectores: selectedInventorySectores });
+        dispatch({ type: 'SET_IS_LOADING', payload: false });
+        if (success) {
+            handleContinueToStep3();
+        }
+    }
   };
 
   const resetPlanning = () => {
@@ -628,21 +641,46 @@ export const ProductionPlanSection: React.FC = () => {
                 </div>
                  <div className="flex justify-end space-x-4 pt-4">
                     <Button variant="outline" onClick={() => dispatch({type: 'SET_PLANNING_STEP', payload: 1})}>Volver al Paso 1</Button>
-                    <Button onClick={() => handleContinueToStep3({ centros: selectedInventoryCentros, sectores: selectedInventorySectores })}>Aceptar y Generar Plan de Producción</Button>
+                    <Button onClick={handleGeneratePlanClick}>Aceptar y Generar Plan de Producción</Button>
                 </div>
             </div>
         );
     }
     
-    // Step 3 is the results view
+    // Step 3 (NEW): Show monthly plan results
     if (planningStep === 3 && monthlyPlan.length > 0) {
+        return (
+            <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-gray-800">Paso 3: Plan de Producción Mensual (Factible)</h3>
+                <p className="text-sm text-gray-600">
+                    Esta tabla muestra el plan de producción mensual final después de balancear la carga y respetar las restricciones de capacidad. Compare la columna "Producción" con la "Demanda" para ver los ajustes realizados por el motor.
+                </p>
+
+                <div className="bg-white p-6 rounded-xl shadow-lg mt-4">
+                    <MonthlySummaryTable 
+                        planItems={productionPlan.monthlyPlan} 
+                        title="Flujo de Inventario Mensual Planificado" 
+                        selectedCenters={resultsFilterOptions.centros.map(c => c.value)}
+                        planningMonths={planningMonths}
+                    />
+                </div>
+                <div className="flex justify-end space-x-4 pt-4">
+                    <Button variant="outline" onClick={() => dispatch({type: 'SET_PLANNING_STEP', payload: 2})}>Volver al Paso 2</Button>
+                    <Button onClick={handleContinueToStep4}>Continuar al Detalle Diario</Button>
+                </div>
+            </div>
+        );
+    }
+
+    // Step 4 is the final results view with daily details
+    if (planningStep === 4 && monthlyPlan.length > 0) {
         
         return (
              <div className="p-6 md:p-8 space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
                 <div className="flex items-center space-x-3">
                     <PlanIcon />
-                    <h2 className="text-2xl font-semibold text-gray-700">Resultados del Plan de Producción</h2>
+                    <h2 className="text-2xl font-semibold text-gray-700">Paso 4: Resultados del Plan de Producción</h2>
                 </div>
                 <div className="flex items-center space-x-4 mt-4 md:mt-0">
                     <Button onClick={handleExportMonthly} variant="outline" disabled={filteredMonthlyPlan.length === 0}>
@@ -678,93 +716,77 @@ export const ProductionPlanSection: React.FC = () => {
               />
             </div>
             
-            <Tabs defaultValue="monthly-summary" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="monthly-summary">Resumen Ejecutivo Mensual</TabsTrigger>
-                    <TabsTrigger value="daily-detail">Detalle Diario por Línea</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="monthly-summary">
-                    <div className="bg-white p-6 rounded-xl shadow-lg mt-4">
-                        <MonthlySummaryTable 
-                            planItems={filteredMonthlyPlan} 
-                            title="Flujo de Inventario Mensual (Filtrado)" 
-                            selectedCenters={selectedResultsFilters.centros}
-                            planningMonths={planningMonths}
-                        />
-                    </div>
-                </TabsContent>
-                
-                <TabsContent value="daily-detail">
-                     <div className="bg-white p-6 rounded-xl shadow-lg mt-4">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Carga Diaria por Línea (Primer Mes)</h3>
-                         <div className="max-h-[70vh] overflow-x-auto border rounded-lg">
-                           <table className="min-w-full text-xs divide-y divide-gray-200">
-                                <thead className="bg-gray-100 sticky top-0 z-10">
-                                    <tr>
-                                        <th className="px-2 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-20">Línea de Producción</th>
+            <div className="bg-white p-6 rounded-xl shadow-lg mt-4">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Detalle Diario por Línea (Primer Mes)</h3>
+                    <div className="max-h-[70vh] overflow-x-auto border rounded-lg">
+                    <table className="min-w-full text-xs divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0 z-10">
+                            <tr>
+                                <th className="px-2 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-100 z-20">Línea de Producción</th>
+                                {dailyPlanDays.map(day => (
+                                    <th key={day} className="px-2 py-2 text-center font-semibold text-gray-600 border-l">
+                                        Día {day}
+                                    </th>
+                                ))}
+                                <th className="px-2 py-2 text-right font-bold text-gray-700 sticky right-0 bg-gray-100 z-20 border-l">Total Mes</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredDailyPlanByLine.length > 0 ? (
+                            filteredDailyPlanByLine.map((lineData) => {
+                                const totalUnits = Object.values(lineData.dailyData).reduce((sum, day) => sum + day.units, 0);
+                                return (
+                                    <tr key={lineData.lineName} className="hover:bg-gray-50 group">
+                                        <td className="px-2 py-2 font-medium text-gray-800 sticky left-0 bg-white group-hover:bg-gray-50">{lineData.lineName}</td>
                                         {dailyPlanDays.map(day => (
-                                            <th key={day} className="px-2 py-2 text-center font-semibold text-gray-600 border-l">
-                                                Día {day}
-                                            </th>
+                                            <td key={day} className="px-1 py-1 text-center border-l">
+                                                {lineData.dailyData[day] ? (
+                                                    <div className="font-mono bg-indigo-50 rounded p-1">
+                                                        <div className="text-indigo-800 font-bold">{Math.round(lineData.dailyData[day].units).toLocaleString()}</div>
+                                                        <div className="text-gray-500 text-[10px]">{lineData.dailyData[day].hours.toFixed(1)}h</div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-gray-300">-</div>
+                                                )}
+                                            </td>
                                         ))}
-                                        <th className="px-2 py-2 text-right font-bold text-gray-700 sticky right-0 bg-gray-100 z-20 border-l">Total Mes</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredDailyPlanByLine.length > 0 ? (
-                                    filteredDailyPlanByLine.map((lineData) => {
-                                        const totalUnits = Object.values(lineData.dailyData).reduce((sum, day) => sum + day.units, 0);
-                                        return (
-                                            <tr key={lineData.lineName} className="hover:bg-gray-50 group">
-                                                <td className="px-2 py-2 font-medium text-gray-800 sticky left-0 bg-white group-hover:bg-gray-50">{lineData.lineName}</td>
-                                                {dailyPlanDays.map(day => (
-                                                    <td key={day} className="px-1 py-1 text-center border-l">
-                                                        {lineData.dailyData[day] ? (
-                                                            <div className="font-mono bg-indigo-50 rounded p-1">
-                                                                <div className="text-indigo-800 font-bold">{Math.round(lineData.dailyData[day].units).toLocaleString()}</div>
-                                                                <div className="text-gray-500 text-[10px]">{lineData.dailyData[day].hours.toFixed(1)}h</div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-gray-300">-</div>
-                                                        )}
-                                                    </td>
-                                                ))}
-                                                <td className="px-2 py-2 text-right font-bold text-indigo-800 sticky right-0 bg-white group-hover:bg-gray-50 border-l">
-                                                    {Math.round(totalUnits).toLocaleString()}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                ) : (
-                                    <tr>
-                                        <td colSpan={dailyPlanDays.length + 2} className="text-center py-8 text-gray-500">
-                                            No hay datos para mostrar con los filtros seleccionados.
+                                        <td className="px-2 py-2 text-right font-bold text-indigo-800 sticky right-0 bg-white group-hover:bg-gray-50 border-l">
+                                            {Math.round(totalUnits).toLocaleString()}
                                         </td>
                                     </tr>
-                                )}
-                                </tbody>
-                                <tfoot className="bg-gray-200 sticky bottom-0 font-bold">
-                                    <tr>
-                                        <td className="px-2 py-2 text-right sticky left-0 bg-gray-200">TOTAL</td>
-                                        {dailyPlanDays.map(day => {
-                                            const dayTotal = filteredDailyPlanByLine.reduce((sum, line) => sum + (line.dailyData[day]?.units || 0), 0);
-                                            return (
-                                                <td key={`total-${day}`} className="px-2 py-2 text-center border-l text-gray-700">
-                                                    {Math.round(dayTotal).toLocaleString()}
-                                                </td>
-                                            )
-                                        })}
-                                        <td className="px-2 py-2 text-right text-indigo-700 sticky right-0 bg-gray-200 border-l">
-                                            {Math.round(totalFilteredUnits).toLocaleString()}
+                                );
+                            })
+                        ) : (
+                            <tr>
+                                <td colSpan={dailyPlanDays.length + 2} className="text-center py-8 text-gray-500">
+                                    No hay datos para mostrar con los filtros seleccionados.
+                                </td>
+                            </tr>
+                        )}
+                        </tbody>
+                        <tfoot className="bg-gray-200 sticky bottom-0 font-bold">
+                            <tr>
+                                <td className="px-2 py-2 text-right sticky left-0 bg-gray-200">TOTAL</td>
+                                {dailyPlanDays.map(day => {
+                                    const dayTotal = filteredDailyPlanByLine.reduce((sum, line) => sum + (line.dailyData[day]?.units || 0), 0);
+                                    return (
+                                        <td key={`total-${day}`} className="px-2 py-2 text-center border-l text-gray-700">
+                                            {Math.round(dayTotal).toLocaleString()}
                                         </td>
-                                    </tr>
-                                </tfoot>
-                           </table>
-                        </div>
-                    </div>
-                </TabsContent>
-            </Tabs>
+                                    )
+                                })}
+                                <td className="px-2 py-2 text-right text-indigo-700 sticky right-0 bg-gray-200 border-l">
+                                    {Math.round(totalFilteredUnits).toLocaleString()}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div className="flex justify-end space-x-4 pt-4">
+                <Button variant="outline" onClick={() => dispatch({type: 'SET_PLANNING_STEP', payload: 3})}>Volver al Plan Mensual</Button>
+            </div>
             </div>
         )
     }
@@ -773,8 +795,18 @@ export const ProductionPlanSection: React.FC = () => {
   }
   
   // Render main view
-  if (monthlyPlan.length > 0 && !isLoading) {
-    return renderPlanWizard();
+  if ((planningStep > 0 && planningStep <= 4) && !isLoading) {
+    return (
+         <div className="p-6 md:p-8 space-y-6">
+             <div className="flex items-center space-x-3">
+                <PlanIcon />
+                <h2 className="text-2xl font-semibold text-gray-700">Asistente de Planificación a Mediano Plazo</h2>
+            </div>
+            <div className="bg-white p-6 rounded-xl shadow-lg min-h-[60vh]">
+                {renderPlanWizard()}
+            </div>
+        </div>
+    );
   }
 
   return (

@@ -91,7 +91,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
                 isLoading: false, 
                 productionPlan: action.payload,
                 planningProgress: null,
-                planningStep: 3, // Move to final results view
+                planningStep: 3, // Move to NEW monthly results view
             };
         case 'GENERATE_PRODUCTION_PLAN_ERROR':
              console.log("[AppContext] Action: GENERATE_PRODUCTION_PLAN_ERROR. isLoading: false.");
@@ -104,8 +104,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
             };
         case 'GENERATE_TACTICAL_PLAN':
             return { ...state, tacticalPlanResult: action.payload };
-        case 'SET_SYNC_STATUS':
-            return { ...state, syncStatus: action.payload };
         case 'SET_IS_LOADING':
             console.log(`[AppContext] Action: SET_IS_LOADING. Payload: ${action.payload}`);
             return { ...state, isLoading: action.payload };
@@ -149,7 +147,7 @@ type AppContextType = {
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
-    handleGeneratePlan: (inventoryFilters: { centros: string[], sectores: string[] }) => Promise<boolean>;
+    handleGenerateFullPlan: (inventoryFilters: { centros: string[], sectores: string[] }) => Promise<boolean>;
     handleGenerateTacticalPlan: (request: TacticalRequest) => TacticalPlanResult;
     setEmployees: (employees: Employee[]) => Promise<void>;
     setSkills: (skills: EmployeeSkill[]) => Promise<void>;
@@ -159,7 +157,8 @@ type AppContextType = {
     setConstraints: (constraints: AppConstraints) => Promise<void>;
     handleSyncAndValidate: () => Promise<boolean>;
     handleContinueToStep2: () => void;
-    handleContinueToStep3: (inventoryFilters: { centros: string[], sectores: string[] }) => Promise<void>;
+    handleContinueToStep3: () => void;
+    handleContinueToStep4: () => void;
 };
 
 
@@ -355,8 +354,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const handleContinueToStep2 = useCallback(() => {
         dispatch({ type: 'SET_PLANNING_STEP', payload: 2 });
     }, []);
+    
+    const handleContinueToStep3 = useCallback(() => {
+        dispatch({ type: 'SET_PLANNING_STEP', payload: 3 });
+    }, []);
+    
+    const handleContinueToStep4 = useCallback(() => {
+        dispatch({ type: 'SET_PLANNING_STEP', payload: 4 });
+    }, []);
 
-    const handleGeneratePlan = useCallback(async (inventoryFilters: { centros: string[], sectores: string[] }): Promise<boolean> => {
+    const handleGenerateFullPlan = useCallback(async (inventoryFilters: { centros: string[], sectores: string[] }): Promise<boolean> => {
         
         if (!state.year) {
             addNotification('warning', 'No hay un año seleccionado para la planificación.');
@@ -400,27 +407,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         } catch (error) {
             const errorMessage = (error as Error).message;
-            console.error('[AppProvider] Error en handleGeneratePlan:', error);
+            console.error('[AppProvider] Error en handleGenerateFullPlan:', error);
             dispatch({ type: 'GENERATE_PRODUCTION_PLAN_ERROR', payload: [errorMessage] });
             addNotification('error', `Error al generar el plan: ${errorMessage}`);
             return false;
         }
     }, [state.year, state.constraints, state.syncStatus, state.apiAssemblyData, state.apiCuboInventariosData, state.salesData, addNotification]);
 
-    const handleContinueToStep3 = useCallback(async (inventoryFilters: { centros: string[], sectores: string[] }) => {
-        if (state.demandAnalysis) {
-            dispatch({ type: 'SET_IS_LOADING', payload: true });
-            const success = await handleGeneratePlan(inventoryFilters);
-            dispatch({ type: 'SET_IS_LOADING', payload: false });
-            if (success) {
-                dispatch({ type: 'SET_PLANNING_STEP', payload: 3 });
-            }
-        } else {
-            addNotification('error', 'El análisis de demanda no se ha completado. No se puede continuar.');
-        }
-    }, [handleGeneratePlan, state.demandAnalysis]);
     
-
     const handleGenerateTacticalPlan = useCallback((request: TacticalRequest): TacticalPlanResult => {
         addNotification('info', `Generando plan táctico para ${request.targetDate}...`);
         try {
@@ -469,7 +463,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch,
         addNotification,
         handleDataImported,
-        handleGeneratePlan,
+        handleGenerateFullPlan,
         handleGenerateTacticalPlan,
         setEmployees,
         setSkills,
@@ -480,6 +474,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleSyncAndValidate,
         handleContinueToStep2,
         handleContinueToStep3,
+        handleContinueToStep4,
     };
 
   return (
@@ -488,4 +483,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-

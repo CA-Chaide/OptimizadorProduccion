@@ -537,6 +537,7 @@ export interface DemandAnalysisResult {
         centro: string;
         sector: string;
         totalUnidades: number;
+        producingCenter: string;
     }>;
     unclassifiedMaterials: Array<{
         productId: string;
@@ -563,7 +564,3 @@ export interface DemandAnalysisResult {
 
 
 import { ActiveView } from '@/constants/constants';
-
-
-
-
