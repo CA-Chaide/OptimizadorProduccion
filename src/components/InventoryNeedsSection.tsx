@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -16,7 +15,6 @@ import { Input } from '@/components/ui/input';
 // Data structure for the table
 interface InventoryNeedRow {
     centro: string;
-    mes: string;
     codigoMaterial: string;
     claseAprovisionamiento: string;
     lineaProduccion: string;
@@ -101,14 +99,13 @@ const MultiSelect: React.FC<{
 };
 
 export const InventoryNeedsSection: React.FC = () => {
-    const { constraints, apiCuboInventariosData, salesData } = useAppContext();
+    const { constraints, apiCuboInventariosData } = useAppContext();
     const [isLoading, setIsLoading] = useState(true);
     const [rows, setRows] = useState<InventoryNeedRow[]>([]);
     
     // Filter states
     const [filters, setFilters] = useState({
         centro: [] as string[],
-        mes: [] as string[],
         codigoMaterial: '',
         claseAprovisionamiento: [] as string[],
         lineaProduccion: [] as string[],
@@ -116,7 +113,6 @@ export const InventoryNeedsSection: React.FC = () => {
 
     const [filterOptions, setFilterOptions] = useState({
         centro: [] as {value: string, label: string}[],
-        mes: [] as {value: string, label: string}[],
         claseAprovisionamiento: [] as {value: string, label: string}[],
         lineaProduccion: [] as {value: string, label: string}[],
     });
@@ -125,7 +121,6 @@ export const InventoryNeedsSection: React.FC = () => {
     useEffect(() => {
         setIsLoading(true);
         if (apiCuboInventariosData.length > 0 && constraints.productProcessInfos.length > 0) {
-            const firstMonth = salesData.length > 0 ? MONTH_NAMES[salesData[0].mes - 1] : "N/A";
 
             const processedRows: InventoryNeedRow[] = apiCuboInventariosData
                 .map(item => {
@@ -144,7 +139,6 @@ export const InventoryNeedsSection: React.FC = () => {
 
                         return {
                             centro: centro,
-                            mes: firstMonth,
                             codigoMaterial: String(item.Material),
                             claseAprovisionamiento: item.ClaseAprovisionam || 'N/A',
                             lineaProduccion: linea?.name || 'N/A',
@@ -163,13 +157,12 @@ export const InventoryNeedsSection: React.FC = () => {
 
             setFilterOptions({
                 centro: [...new Set(processedRows.map(r => r.centro))].sort().map(c => ({ value: c, label: c })),
-                mes: [...new Set(processedRows.map(r => r.mes))].sort().map(m => ({ value: m, label: m })),
                 claseAprovisionamiento: [...new Set(processedRows.map(r => r.claseAprovisionamiento))].sort().map(c => ({ value: c, label: c })),
                 lineaProduccion: [...new Set(processedRows.map(r => r.lineaProduccion))].filter(l => l !== 'N/A').sort().map(l => ({ value: l, label: l })),
             });
         }
         setIsLoading(false);
-    }, [apiCuboInventariosData, constraints, salesData]);
+    }, [apiCuboInventariosData, constraints]);
 
     const handleFilterChange = (name: keyof typeof filters, value: string[] | string) => {
         setFilters(prev => ({ ...prev, [name]: value }));
@@ -178,11 +171,10 @@ export const InventoryNeedsSection: React.FC = () => {
     const filteredRows = useMemo(() => {
         return rows.filter(row => {
             const centroMatch = filters.centro.length === 0 || filters.centro.includes(row.centro);
-            const mesMatch = filters.mes.length === 0 || filters.mes.includes(row.mes);
             const claseMatch = filters.claseAprovisionamiento.length === 0 || filters.claseAprovisionamiento.includes(row.claseAprovisionamiento);
             const lineaMatch = filters.lineaProduccion.length === 0 || filters.lineaProduccion.includes(row.lineaProduccion);
             const materialMatch = filters.codigoMaterial === '' || row.codigoMaterial.toLowerCase().includes(filters.codigoMaterial.toLowerCase());
-            return centroMatch && mesMatch && claseMatch && lineaMatch && materialMatch;
+            return centroMatch && claseMatch && lineaMatch && materialMatch;
         });
     }, [rows, filters]);
     
@@ -216,9 +208,8 @@ export const InventoryNeedsSection: React.FC = () => {
                 Este reporte muestra los materiales cuyo stock disponible es inferior al stock de seguridad definido, generando una necesidad de producción para cubrir la diferencia.
             </p>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 p-4 border rounded-lg bg-gray-50 items-start">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 border rounded-lg bg-gray-50 items-start">
                 <MultiSelect label="Centro" options={filterOptions.centro} selected={filters.centro} onChange={v => handleFilterChange('centro', v)} />
-                <MultiSelect label="Mes" options={filterOptions.mes} selected={filters.mes} onChange={v => handleFilterChange('mes', v)} />
                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Código Material</label>
                     <Input placeholder="Filtrar por código..." value={filters.codigoMaterial} onChange={e => handleFilterChange('codigoMaterial', e.target.value)} />
@@ -232,7 +223,6 @@ export const InventoryNeedsSection: React.FC = () => {
                     <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
-                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código Material</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase Aprov.</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea Prod.</th>
@@ -247,7 +237,6 @@ export const InventoryNeedsSection: React.FC = () => {
                         {filteredRows.map((row, index) => (
                             <tr key={index}>
                                 <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
-                                <td className="px-2 py-2 whitespace-nowrap">{row.mes}</td>
                                 <td className="px-2 py-2 whitespace-nowrap font-mono">{row.codigoMaterial}</td>
                                 <td className="px-2 py-2 whitespace-nowrap">{row.claseAprovisionamiento}</td>
                                 <td className="px-2 py-2 whitespace-nowrap">{row.lineaProduccion}</td>
@@ -261,7 +250,7 @@ export const InventoryNeedsSection: React.FC = () => {
                     </tbody>
                     <tfoot className="bg-gray-200 sticky bottom-0 z-10 font-bold">
                         <tr>
-                            <td colSpan={5} className="px-2 py-2 text-right">TOTALES</td>
+                            <td colSpan={4} className="px-2 py-2 text-right">TOTALES</td>
                             <td className="px-2 py-2 text-right">{totals.stockDisponible.toLocaleString()}</td>
                             <td className="px-2 py-2 text-right">{totals.stockSeguridad.toLocaleString()}</td>
                             <td className="px-2 py-2 text-right text-red-600">{totals.necesidadStock.toLocaleString()}</td>
