@@ -17,6 +17,7 @@ declare var XLSX: any;
 
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
+    // Ensure it's padded to 8 digits for internal consistency if needed, though slicing seems to be the main logic.
     return codeStr.slice(-8);
 };
 
@@ -29,13 +30,45 @@ export const analyzeSalesDemand = async (
     const auditLog: string[] = [];
     auditLog.push(`[${new Date().toLocaleTimeString()}] Iniciando análisis de demanda con ${salesData.length} registros de venta y ${cuboInventariosData.length} registros de CuboInventarios.`);
     
-    // --- STEP 1: DEMANDA BRUTA (SOLO PRIMER MES) ---
+    // --- UNIVERSAL SETUP ---
+    const allProductCenterPairs = new Set<string>();
+    const initialInventoryState = new Map<string, number>();
+    const safetyStockState = new Map<string, number>();
+
+    // 1. Populate inventory and safety stock from CuboInventarios
+    cuboInventariosData.forEach(item => {
+        if(item.Material && item.Centro) {
+            const stock = Number(item.StockActual) || 0;
+            const safety = Number(item.StockSeguridad) || 0;
+            const productId = normalizeMaterialCode(item.Material);
+            const centerId = String(item.Centro).trim();
+            const key = `${productId}---${centerId}`;
+
+            allProductCenterPairs.add(key);
+            if (stock > 0) {
+                initialInventoryState.set(key, (initialInventoryState.get(key) || 0) + stock);
+            }
+            if (safety > 0) {
+                safetyStockState.set(key, (safetyStockState.get(key) || 0) + safety);
+            }
+        }
+    });
+
+    // 2. Populate demand from salesData
     const firstMonthKey = salesData.length > 0 ? `${salesData[0].año}-${String(salesData[0].mes).padStart(2, '0')}` : null;
     if (!firstMonthKey) {
         return { totalDemand: 0, demandByGroup: [], unclassifiedMaterials: [], auditLog: ['No sales data found'], transfers: [], productionNeedsFirstMonth: [] };
     }
-
+    
     const salesInFirstMonth = salesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === firstMonthKey);
+    const demandFirstMonth = new Map<string, number>();
+    salesInFirstMonth.forEach(row => {
+        const key = `${normalizeMaterialCode(row.código)}---${String(row.centro).trim()}`;
+        demandFirstMonth.set(key, (demandFirstMonth.get(key) || 0) + row.unidadesProyectado);
+        allProductCenterPairs.add(key);
+    });
+
+    // --- STEP 1: DEMANDA BRUTA (Para tabla del Paso 1) ---
     const demandByGroupMap = new Map<string, {
         claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
         centro: string;
@@ -45,13 +78,7 @@ export const analyzeSalesDemand = async (
     }>();
     const unclassifiedMaterials: DemandAnalysisResult['unclassifiedMaterials'] = [];
 
-    const aggregatedSalesFirstMonth = new Map<string, number>();
-    salesInFirstMonth.forEach(row => {
-        const key = `${normalizeMaterialCode(row.código)}---${String(row.centro).trim()}`;
-        aggregatedSalesFirstMonth.set(key, (aggregatedSalesFirstMonth.get(key) || 0) + row.unidadesProyectado);
-    });
-
-    aggregatedSalesFirstMonth.forEach((totalUnidades, key) => {
+    demandFirstMonth.forEach((totalUnidades, key) => {
         const [productId, centerId] = key.split('---');
         const saleRow = salesInFirstMonth.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === centerId)!;
         const sector = saleRow.sector || 'Sin Sector';
@@ -83,41 +110,18 @@ export const analyzeSalesDemand = async (
             demandByGroupMap.get(groupKey)!.totalUnidades += totalUnidades;
         }
     });
-
+    
     const demandByGroup = Array.from(demandByGroupMap.values())
         .sort((a, b) => a.producingCenter.localeCompare(b.producingCenter) || a.sector.localeCompare(b.sector));
-    
-    // --- STEP 2: NECESIDAD NETA DE PRODUCCIÓN (PRIMER MES) ---
-    const initialInventoryState = new Map<string, number>();
-    const filteredCuboData = cuboInventariosData.filter(item => 
-        inventoryFilters.centros.includes(String(item.Centro).trim()) &&
-        inventoryFilters.sectores.includes(item.Sector || 'Sin Sector')
-    );
-    filteredCuboData.forEach(item => {
-        if(item.Material && item.Centro && item.StockActual) {
-            const stock = Number(item.StockActual);
-            if (stock > 0) {
-                const productId = normalizeMaterialCode(item.Material);
-                const centerId = String(item.Centro).trim();
-                const key = `${productId}---${centerId}`;
-                initialInventoryState.set(key, (initialInventoryState.get(key) || 0) + stock);
-            }
-        }
-    });
 
+    // --- STEP 2: NECESIDAD NETA DE PRODUCCIÓN (Para tabla del Paso 2) ---
     const productionNeedsFirstMonth: DemandAnalysisResult['productionNeedsFirstMonth'] = [];
-
-    // Considerar todos los productos que tienen demanda O inventario para el cálculo de necesidad
-    const allProductCenterPairs = new Set([
-        ...initialInventoryState.keys(),
-        ...aggregatedSalesFirstMonth.keys(),
-    ]);
 
     allProductCenterPairs.forEach(key => {
         const [productId, demandCenterId] = key.split('---');
-        const demand = aggregatedSalesFirstMonth.get(key) || 0;
+        const demand = demandFirstMonth.get(key) || 0;
         const initialStock = initialInventoryState.get(key) || 0;
-        const safetyStock = constraints.inventorySettings.find(s => s.id === key)?.minStock || 0;
+        const safetyStock = safetyStockState.get(key) || 0;
 
         const netNeed = Math.max(0, demand + safetyStock - initialStock);
 
@@ -135,8 +139,8 @@ export const analyzeSalesDemand = async (
             }
 
             if (claseAprovisionamiento !== 'N/A') {
-                 // **CORRECCIÓN CLAVE**: Buscar el ppi usando el código de material normalizado
-                 const ppi = constraints.productProcessInfos.find(p => p.productId === productId);
+                 // **FIXED**: Use normalized code for lookup
+                 const ppi = constraints.productProcessInfos.find(p => normalizeMaterialCode(p.productId) === productId);
                  const requiredHours = (ppi?.totalManufacturingTimeHours || 0) * netNeed;
                  
                  productionNeedsFirstMonth.push({
