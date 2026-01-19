@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback } from 'react';
@@ -25,6 +26,8 @@ interface TiempoEnsambleRow {
 interface DisplayRow extends CuboInventariosRow {
     Linea: string | null;
     Tiempo: number | null;
+    NecesidadStock: number;
+    TiempoTotalRequerido: number | null;
 }
 
 // Function to normalize material codes to match sales data format
@@ -64,16 +67,11 @@ export const InventoryNeedsSection: React.FC = () => {
                 setIsLoading(false);
                 return;
             }
-             if (!tiemposData || tiemposData.length === 0) {
-                addNotification('warning', 'No se encontraron datos en TiemposEnsamblado. No se puede determinar Línea y Tiempo.');
-                // We can still show inventory data, just without line/time info.
-            }
 
             const transformedData = cuboData.map(item => {
                 const normalizedMaterial = normalizeMaterialCode(item.Material);
                 
                 let searchCenter = item.Centro;
-                // Special rule for Center 2000 and Class 'F'
                 if (item.Centro === '2000' && item.ClaseAprovisionam === 'F') {
                     searchCenter = '1000';
                 }
@@ -85,11 +83,15 @@ export const InventoryNeedsSection: React.FC = () => {
 
                 let bestTiempoEntry: TiempoEnsambleRow | null = null;
                 if (relevantTiempos.length > 0) {
-                    // Find the entry with the minimum time
                     bestTiempoEntry = relevantTiempos.reduce((min, current) => {
                         return (current.Tiempo < min.Tiempo) ? current : min;
                     }, relevantTiempos[0]);
                 }
+                
+                const necesidad = Math.max(0, (item.StockSeguridad || 0) - (item.StockActual || 0));
+                const tiempoUnitario = bestTiempoEntry?.Tiempo !== undefined ? bestTiempoEntry.Tiempo : null;
+                const tiempoTotal = tiempoUnitario !== null ? necesidad * tiempoUnitario : null;
+
 
                 return {
                     ...item,
@@ -97,12 +99,16 @@ export const InventoryNeedsSection: React.FC = () => {
                     StockActual: Math.round(item.StockActual || 0),
                     StockSeguridad: Math.round(item.StockSeguridad || 0),
                     Linea: bestTiempoEntry?.Linea || null,
-                    Tiempo: bestTiempoEntry?.Tiempo || null,
+                    Tiempo: tiempoUnitario,
+                    NecesidadStock: necesidad,
+                    TiempoTotalRequerido: tiempoTotal,
                 };
             });
             
-            setInventoryData(transformedData);
-            addNotification('success', `Se cargaron y procesaron ${cuboData.length} registros de inventario.`);
+            const finalData = transformedData.filter(item => item.Tiempo !== null);
+
+            setInventoryData(finalData);
+            addNotification('success', `Se procesaron ${finalData.length} registros con tiempos de producción definidos.`);
             
         } catch (error: any) {
             addNotification('error', `Error al consultar datos: ${error.message}`);
@@ -117,22 +123,22 @@ export const InventoryNeedsSection: React.FC = () => {
             <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                     <Sheet />
-                    <h2 className="text-2xl font-semibold text-gray-700">Consulta de Inventario</h2>
+                    <h2 className="text-2xl font-semibold text-gray-700">Necesidades de Producción para Stock de Seguridad (Primer Período)</h2>
                 </div>
                 <Button onClick={handleFetchData} disabled={isLoading}>
                     {isLoading ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Cargando...
+                            Calculando...
                         </>
                     ) : (
-                        'Cargar Datos de Inventario'
+                        'Calcular Necesidades'
                     )}
                 </Button>
             </div>
             
             <p className="text-gray-600 text-sm">
-                Esta sección muestra los datos brutos obtenidos de la tabla `CuboInventarios` y los cruza con `TiemposEnsamblado` para obtener la línea y el tiempo de producción.
+                Esta sección calcula la necesidad de producción para alcanzar los niveles de inventario de seguridad, antes de cualquier verificación de capacidad. Es el cálculo inicial para el primer mes del análisis.
             </p>
 
             <div className="border rounded-lg overflow-auto max-h-[70vh]">
@@ -143,10 +149,12 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase Aprov.</th>
-                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Tiempo</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Actual</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Seguridad</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea Prod.</th>
+                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Disp. (a)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Seg. (b)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Necesidad (c=b-a)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Unit. (d)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req. (c*d)</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -158,15 +166,17 @@ export const InventoryNeedsSection: React.FC = () => {
                                     <td className="px-2 py-2 whitespace-nowrap">{row.Descripcion || 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.ClaseAprovisionam || 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.Linea || 'N/A'}</td>
-                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{row.Tiempo !== null ? row.Tiempo.toFixed(2) : 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{(row.StockActual || 0).toLocaleString()}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{(row.StockSeguridad || 0).toLocaleString()}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{(row.NecesidadStock).toLocaleString()}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.Tiempo !== null ? row.Tiempo.toFixed(2) : 'N/A'}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.TiempoTotalRequerido !== null ? row.TiempoTotalRequerido.toFixed(2) : 'N/A'}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={8} className="text-center py-8 text-gray-500">
-                                    {isLoading ? 'Cargando datos...' : 'No hay datos para mostrar. Presione el botón para cargar.'}
+                                <td colSpan={10} className="text-center py-8 text-gray-500">
+                                    {isLoading ? 'Calculando necesidades...' : 'No hay datos para mostrar. Presione el botón para calcular.'}
                                 </td>
                             </tr>
                         )}
