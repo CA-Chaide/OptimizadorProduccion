@@ -23,7 +23,14 @@ interface TiempoEnsambleRow {
     Tiempo: number;
 }
 
-interface DisplayRow extends CuboInventariosRow {
+interface DisplayRow {
+    CentroStock: string;
+    CentroProduccion: string;
+    ClaseAprovisionam: string | null;
+    Descripcion?: string;
+    Material: string;
+    StockSeguridad: number;
+    StockActual: number;
     Linea: string | null;
     Tiempo: number | null;
     NecesidadStock: number;
@@ -70,15 +77,16 @@ export const InventoryNeedsSection: React.FC = () => {
 
             const transformedData = cuboData.map(item => {
                 const normalizedMaterial = normalizeMaterialCode(item.Material);
+                const stockCenter = String(item.Centro).trim();
                 
-                let searchCenter = item.Centro;
-                if (item.Centro === '2000' && item.ClaseAprovisionam === 'F') {
-                    searchCenter = '1000';
+                let producingCenter = stockCenter;
+                if (stockCenter === '2000' && item.ClaseAprovisionam === 'F') {
+                    producingCenter = '1000';
                 }
 
                 const relevantTiempos = tiemposData.filter(t => 
                     normalizeMaterialCode(t.CodMaterial) === normalizedMaterial &&
-                    String(t.Centro).trim() === searchCenter
+                    String(t.Centro).trim() === producingCenter
                 );
 
                 let bestTiempoEntry: TiempoEnsambleRow | null = null;
@@ -92,9 +100,11 @@ export const InventoryNeedsSection: React.FC = () => {
                 const tiempoUnitario = bestTiempoEntry?.Tiempo !== undefined ? bestTiempoEntry.Tiempo : null;
                 const tiempoTotal = tiempoUnitario !== null ? necesidad * tiempoUnitario : null;
 
-
                 return {
-                    ...item,
+                    CentroStock: stockCenter,
+                    CentroProduccion: producingCenter,
+                    ClaseAprovisionam: item.ClaseAprovisionam,
+                    Descripcion: item.Descripcion,
                     Material: normalizedMaterial,
                     StockActual: Math.round(item.StockActual || 0),
                     StockSeguridad: Math.round(item.StockSeguridad || 0),
@@ -145,10 +155,11 @@ export const InventoryNeedsSection: React.FC = () => {
                 <table className="min-w-full text-xs divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
-                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro Stock</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase Aprov.</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro Producción</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea Prod.</th>
                             <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Disp. (a)</th>
                             <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Seg. (b)</th>
@@ -160,11 +171,12 @@ export const InventoryNeedsSection: React.FC = () => {
                     <tbody className="bg-white divide-y divide-gray-200">
                         {inventoryData.length > 0 ? (
                             inventoryData.map((row, index) => (
-                                <tr key={`${row.Material}-${row.Centro}-${index}`}>
-                                    <td className="px-2 py-2 whitespace-nowrap">{row.Centro}</td>
+                                <tr key={`${row.Material}-${row.CentroStock}-${index}`}>
+                                    <td className="px-2 py-2 whitespace-nowrap">{row.CentroStock}</td>
                                     <td className="px-2 py-2 whitespace-nowrap font-mono">{row.Material}</td>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.Descripcion || 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.ClaseAprovisionam || 'N/A'}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap font-bold">{row.CentroProduccion}</td>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.Linea || 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{(row.StockActual || 0).toLocaleString()}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{(row.StockSeguridad || 0).toLocaleString()}</td>
@@ -175,7 +187,7 @@ export const InventoryNeedsSection: React.FC = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={10} className="text-center py-8 text-gray-500">
+                                <td colSpan={11} className="text-center py-8 text-gray-500">
                                     {isLoading ? 'Calculando necesidades...' : 'No hay datos para mostrar. Presione el botón para calcular.'}
                                 </td>
                             </tr>
