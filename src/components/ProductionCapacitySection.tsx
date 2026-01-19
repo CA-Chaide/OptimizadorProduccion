@@ -52,7 +52,7 @@ interface CapacityRow {
 }
 
 // Renombrar para evitar conflicto en el ámbito del archivo
-type DailyCapacityRow = OriginalDailyCapacityRow;
+type DailyCapacityRow = OriginalDailyCapacityRow & { mes: string };
 
 // Helper to get hours for a specific day
 const getDailyHours = (date: Date, constraints: AppConstraints): number => {
@@ -227,52 +227,62 @@ export const ProductionCapacitySection: React.FC = () => {
     }, [monthlyCapacityData]);
 
     const dailyCapacityData = useMemo((): DailyCapacityRow[] => {
-        const year = parseInt(planningYear, 10);
-        const month = parseInt(planningMonth, 10);
-
-        if (isNaN(year) || isNaN(month) || !constraints.shiftParameters) {
+        if (!constraints.shiftParameters) {
             return [];
         }
 
-        const daysInMonth = new Date(year, month, 0).getDate();
         const dailyRows: DailyCapacityRow[] = [];
         const weekdaysEs = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        const today = new Date();
+        const startMonthDate = new Date(today.getFullYear(), today.getMonth(), 1);
 
-        for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(year, month - 1, day);
+        for (let m = 0; m < 17; m++) {
+            const currentProcessingDate = new Date(startMonthDate);
+            currentProcessingDate.setMonth(startMonthDate.getMonth() + m);
 
-            constraints.workCenters.forEach(center => {
-                const linesInCenter = constraints.productionLines.filter(line => line.workCenterId === center.id && line.isActive);
-                linesInCenter.forEach(line => {
-                    line.assignedWorkstations.forEach(assignedWs => {
-                        const workstation = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
-                        if (!workstation) return;
-                        
-                        const maxHorasJornada = getDailyHours(date, constraints);
-                        const cantidadPuestos = assignedWs.quantity;
-                        const horasMaxDisponibles = maxHorasJornada * cantidadPuestos;
+            const year = currentProcessingDate.getFullYear();
+            const month = currentProcessingDate.getMonth() + 1;
+            const monthName = MONTH_NAMES[month - 1];
 
-                        dailyRows.push({
-                            centro: center.id,
-                            fecha: date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
-                            dia: weekdaysEs[date.getDay()],
-                            esFeriado: constraints.holidays.some(h => h.date === date.toISOString().split('T')[0]) ? 'Si' : 'No',
-                            maxHorasJornada,
-                            puestoDeTrabajo: workstation.name,
-                            linea: line.name,
-                            cantidadPuestos,
-                            horasMaxDisponibles
+            const daysInMonth = new Date(year, month, 0).getDate();
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month - 1, day);
+
+                constraints.workCenters.forEach(center => {
+                    const linesInCenter = constraints.productionLines.filter(line => line.workCenterId === center.id && line.isActive);
+                    linesInCenter.forEach(line => {
+                        line.assignedWorkstations.forEach(assignedWs => {
+                            const workstation = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
+                            if (!workstation) return;
+                            
+                            const maxHorasJornada = getDailyHours(date, constraints);
+                            const cantidadPuestos = assignedWs.quantity;
+                            const horasMaxDisponibles = maxHorasJornada * cantidadPuestos;
+
+                            dailyRows.push({
+                                centro: center.id,
+                                mes: monthName,
+                                fecha: date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
+                                dia: weekdaysEs[date.getDay()],
+                                esFeriado: constraints.holidays.some(h => h.date === date.toISOString().split('T')[0] && h.dayType === 'asueto' && h.appliesTo !== 'Distribucion') ? 'Si' : 'No',
+                                maxHorasJornada,
+                                puestoDeTrabajo: workstation.name,
+                                linea: line.name,
+                                cantidadPuestos,
+                                horasMaxDisponibles
+                            });
                         });
                     });
                 });
-            });
+            }
         }
         return dailyRows;
-    }, [planningYear, planningMonth, constraints]);
+    }, [constraints]);
     
     useEffect(() => {
         if (dailyCapacityData.length > 0) {
-            const columnsToFilter: Array<keyof DailyCapacityRow> = ['centro', 'fecha', 'dia', 'linea', 'puestoDeTrabajo'];
+            const columnsToFilter: Array<keyof DailyCapacityRow> = ['centro', 'mes', 'fecha', 'dia', 'linea', 'puestoDeTrabajo'];
             const options: Record<string, Set<string>> = {};
             columnsToFilter.forEach(col => options[col] = new Set());
             
@@ -332,11 +342,10 @@ export const ProductionCapacitySection: React.FC = () => {
             </div>
             
              <p className="text-gray-600 text-sm">
-                Esta sección desglosa la capacidad de producción disponible para el mes seleccionado ({MONTH_NAMES[Number(planningMonth)-1]}/{planningYear}),
-                tanto en una vista resumida mensual como en un detalle diario por puesto de trabajo.
+                Esta sección desglosa la capacidad de producción disponible, tanto en una vista resumida mensual como en un detalle diario por puesto de trabajo para los próximos 17 meses.
             </p>
 
-            <Tabs defaultValue="summary" className="w-full">
+            <Tabs defaultValue="details" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="summary">Resumen Mensual</TabsTrigger>
                     <TabsTrigger value="details">Detalle Diario</TabsTrigger>
@@ -403,6 +412,7 @@ export const ProductionCapacitySection: React.FC = () => {
                             <thead className="bg-gray-100 sticky top-0 z-10">
                                 <tr>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Día</th>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
@@ -414,6 +424,7 @@ export const ProductionCapacitySection: React.FC = () => {
                                 </tr>
                                 <tr>
                                     <th className="p-1"><MultiSelectFilter placeholder="Centro" options={dailyFilterOptions.centro || []} selected={(dailyFilters.centro as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('centro', value)} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Mes" options={dailyFilterOptions.mes || []} selected={(dailyFilters.mes as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('mes', value)} /></th>
                                     <th className="p-1"><MultiSelectFilter placeholder="Fecha" options={dailyFilterOptions.fecha || []} selected={(dailyFilters.fecha as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('fecha', value)} /></th>
                                     <th className="p-1"><MultiSelectFilter placeholder="Día" options={dailyFilterOptions.dia || []} selected={(dailyFilters.dia as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('dia', value)} /></th>
                                     <th className="p-1"><MultiSelectFilter placeholder="Línea" options={dailyFilterOptions.linea || []} selected={(dailyFilters.linea as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('linea', value)} /></th>
@@ -426,6 +437,7 @@ export const ProductionCapacitySection: React.FC = () => {
                                     filteredDailyData.map((row, index) => (
                                         <tr key={index} className="hover:bg-gray-50">
                                             <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
+                                            <td className="px-2 py-2 whitespace-nowrap">{row.mes}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.fecha}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.dia}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.linea}</td>
@@ -438,7 +450,7 @@ export const ProductionCapacitySection: React.FC = () => {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={9} className="text-center py-8 text-gray-500">
+                                        <td colSpan={10} className="text-center py-8 text-gray-500">
                                             No hay datos para mostrar con los filtros seleccionados.
                                         </td>
                                     </tr>
@@ -446,7 +458,7 @@ export const ProductionCapacitySection: React.FC = () => {
                             </tbody>
                              <tfoot className="bg-gray-800 text-white sticky bottom-0 font-bold">
                                 <tr>
-                                    <th colSpan={8} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
+                                    <th colSpan={9} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
                                     <td className="px-2 py-2 text-right font-mono">{dailyFooterTotals.horasMaxDisponibles.toLocaleString()}</td>
                                 </tr>
                             </tfoot>
