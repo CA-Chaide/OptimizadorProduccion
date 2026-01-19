@@ -1,13 +1,18 @@
 
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAppContext } from '@/context/AppProvider';
 import { queryApi } from '@/hooks/useApiData';
-import { Sheet, Loader2 } from 'lucide-react';
+import { Sheet, Loader2, Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ProductionLine, WorkstationDefinition, PresupuestoItem } from '@/types/types';
 import { MONTH_NAMES } from '@/constants/constants';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+
 
 interface CuboInventariosRow {
     Centro: string;
@@ -65,6 +70,82 @@ const FilterInput: React.FC<{
     />
 );
 
+const MultiSelectFilter: React.FC<{
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  placeholder?: string;
+}> = ({ options, selected, onChange, placeholder }) => {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (value: string) => {
+    const newSelected = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : [...selected, value];
+    onChange(newSelected);
+  };
+
+  return (
+    <div className="flex flex-col items-start w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between h-7 text-xs font-normal"
+          >
+            <span className="truncate">
+              {selected.length === 0
+                ? placeholder || 'Seleccionar...'
+                : `${selected.length} sel.`}
+            </span>
+            <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[200px] p-0">
+          <Command>
+            <CommandInput placeholder="Buscar..." className="h-9 text-xs" />
+            <CommandEmpty>No hay resultados.</CommandEmpty>
+            <CommandGroup className="max-h-60 overflow-y-auto">
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={(currentValue) => {
+                    const matchingOption = options.find(opt => opt.value.toLowerCase() === currentValue);
+                    if (matchingOption) {
+                      handleSelect(matchingOption.value);
+                    }
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      selected.includes(option.value) ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  <span className="text-xs">{option.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {selected.length > 0 && (
+          <div className="pt-1 text-left w-full min-h-[18px]">
+            {selected.slice(0, 1).map(value => (
+                <Badge key={value} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={options.find(opt => opt.value === value)?.label || value}>
+                    {options.find(opt => opt.value === value)?.label || value}
+                </Badge>
+            ))}
+            {selected.length > 1 && <Badge variant="secondary">+{selected.length - 1}</Badge>}
+          </div>
+      )}
+    </div>
+  );
+};
+
 
 export const InventoryNeedsSection: React.FC = () => {
     const { addNotification, constraints } = useAppContext();
@@ -77,8 +158,31 @@ export const InventoryNeedsSection: React.FC = () => {
     const [startMonth, setStartMonth] = useState<string>(String(currentMonth));
     const yearOptions = [currentYear -1, currentYear, currentYear + 1, currentYear + 2];
 
-    const [filters, setFilters] = useState<Partial<Record<keyof DisplayRow, string>>>({});
+    const [filters, setFilters] = useState<Partial<Record<keyof DisplayRow, string | string[]>>>({});
+    const [filterOptions, setFilterOptions] = useState<Record<string, { value: string, label: string }[]>>({});
 
+    useEffect(() => {
+        if (inventoryData.length > 0) {
+            const columnsToFilter: Array<keyof DisplayRow> = ['CentroStock', 'Sector', 'ClaseAprovisionam', 'CentroProduccion', 'Linea'];
+            const options: Record<string, Set<string>> = {};
+            columnsToFilter.forEach(col => options[col] = new Set());
+            
+            inventoryData.forEach(row => {
+               columnsToFilter.forEach(col => {
+                    const value = row[col];
+                    if (value !== null && value !== undefined && String(value).trim() !== '') {
+                        options[col].add(String(value));
+                    }
+               });
+            });
+
+            const formattedOptions: Record<string, { value: string, label: string }[]> = {};
+            for (const key in options) {
+                formattedOptions[key] = Array.from(options[key]).sort((a,b) => a.localeCompare(b, undefined, {numeric: true})).map(val => ({ value: val, label: val }));
+            }
+            setFilterOptions(formattedOptions);
+        }
+    }, [inventoryData]);
 
     const handleFetchData = useCallback(async () => {
         const selectedDate = new Date(Number(startYear), Number(startMonth) - 1, 1);
@@ -199,9 +303,9 @@ export const InventoryNeedsSection: React.FC = () => {
                 const salesDemand = presupuestoData
                     .filter(p => normalizeMaterialCode(p.CodMaterial) === productId && String(p.Centro).trim() === stockCenter)
                     .reduce((sum, p) => {
-                        const unitsStr = String(p.UnidadesProyectado || '0');
-                        const units = parseFloat(unitsStr);
-                        return sum + (isNaN(units) ? 0 : units);
+                         const unitsStr = String(p.UnidadesProyectado || '0');
+                         const units = parseFloat(unitsStr);
+                         return sum + (isNaN(units) ? 0 : units);
                     }, 0);
 
                 const tiempoUnitario = bestLineInfo.bottleneckTime;
@@ -244,17 +348,25 @@ export const InventoryNeedsSection: React.FC = () => {
         setFilters(prev => ({ ...prev, [column]: value }));
     };
 
+    const handleMultiSelectFilterChange = (column: keyof DisplayRow, value: string[]) => {
+        setFilters(prev => ({ ...prev, [column]: value }));
+    };
+
     const filteredData = useMemo(() => {
         if (!inventoryData) return [];
         return inventoryData.filter(row => {
-            return (Object.keys(filters) as Array<keyof DisplayRow>).every(key => {
-                const filterValue = filters[key];
-                if (!filterValue) return true;
+             return Object.keys(filters).every(key => {
+                const filterValue = filters[key as keyof typeof filters];
+                if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) return true;
 
-                const rowValue = row[key];
+                const rowValue = row[key as keyof typeof row];
                 if (rowValue === null || rowValue === undefined) return false;
 
-                return String(rowValue).toLowerCase().includes(filterValue.toLowerCase());
+                if (Array.isArray(filterValue)) { // Multi-select
+                    return filterValue.includes(String(rowValue));
+                } else { // Text filter
+                    return String(rowValue).toLowerCase().includes(String(filterValue).toLowerCase());
+                }
             });
         });
     }, [inventoryData, filters]);
@@ -335,21 +447,21 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req. Stock (c*d)</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req Ventas</th>
                         </tr>
-                        <tr>
-                            <th className="p-1"><FilterInput column="CentroStock" value={filters.CentroStock || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="Material" value={filters.Material || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="Descripcion" value={filters.Descripcion || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="Sector" value={filters.Sector || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="ClaseAprovisionam" value={filters.ClaseAprovisionam || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="CentroProduccion" value={filters.CentroProduccion || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="Linea" value={filters.Linea || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="StockActual" value={filters.StockActual || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="StockSeguridad" value={filters.StockSeguridad || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="NecesidadStock" value={filters.NecesidadStock || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="VentasMes1" value={filters.VentasMes1 || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="Tiempo" value={filters.Tiempo || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="TiempoTotalRequeridoStock" value={filters.TiempoTotalRequeridoStock || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="TiempoTotalRequeridoVentas" value={filters.TiempoTotalRequeridoVentas || ''} onChange={handleFilterChange} /></th>
+                         <tr>
+                            <th className="p-1 w-32"><MultiSelectFilter placeholder="Centro" options={filterOptions.CentroStock || []} selected={(filters.CentroStock as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('CentroStock', value)} /></th>
+                            <th className="p-1"><FilterInput column="Material" value={(filters.Material as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="Descripcion" value={(filters.Descripcion as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1 w-32"><MultiSelectFilter placeholder="Sector" options={filterOptions.Sector || []} selected={(filters.Sector as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('Sector', value)} /></th>
+                            <th className="p-1 w-32"><MultiSelectFilter placeholder="Clase" options={filterOptions.ClaseAprovisionam || []} selected={(filters.ClaseAprovisionam as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('ClaseAprovisionam', value)} /></th>
+                            <th className="p-1 w-32"><MultiSelectFilter placeholder="Centro" options={filterOptions.CentroProduccion || []} selected={(filters.CentroProduccion as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('CentroProduccion', value)} /></th>
+                            <th className="p-1 w-32"><MultiSelectFilter placeholder="Línea" options={filterOptions.Linea || []} selected={(filters.Linea as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('Linea', value)} /></th>
+                            <th className="p-1"><FilterInput column="StockActual" value={(filters.StockActual as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="StockSeguridad" value={(filters.StockSeguridad as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="NecesidadStock" value={(filters.NecesidadStock as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="VentasMes1" value={(filters.VentasMes1 as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="Tiempo" value={(filters.Tiempo as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="TiempoTotalRequeridoStock" value={(filters.TiempoTotalRequeridoStock as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="TiempoTotalRequeridoVentas" value={(filters.TiempoTotalRequeridoVentas as string | undefined) || ''} onChange={handleFilterChange} /></th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
