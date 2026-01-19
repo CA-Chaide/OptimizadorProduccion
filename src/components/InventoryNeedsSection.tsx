@@ -15,6 +15,12 @@ interface CuboInventariosRow {
     StockActual: number;
 }
 
+// Function to normalize material codes to match sales data format
+const normalizeMaterialCode = (code: string | number): string => {
+    const codeStr = String(code);
+    return codeStr.slice(-8);
+};
+
 export const InventoryNeedsSection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
@@ -26,7 +32,7 @@ export const InventoryNeedsSection: React.FC = () => {
         addNotification('info', 'Consultando datos de CuboInventarios...');
 
         try {
-            const data = await queryApi({
+            const data: CuboInventariosRow[] = await queryApi({
                 source: 'CuboInventarios',
                 operation: 'get_data',
                 columns: ["Centro", "ClaseAprovisionam", "Descripcion", "Material", "StockSeguridad", "StockActual"],
@@ -34,8 +40,16 @@ export const InventoryNeedsSection: React.FC = () => {
             });
 
             if (data && data.length > 0) {
-                setInventoryData(data);
-                addNotification('success', `Se cargaron ${data.length} registros de inventario.`);
+                // Transform data to normalize material code and round stock values
+                const transformedData = data.map(item => ({
+                    ...item,
+                    Material: normalizeMaterialCode(item.Material),
+                    StockActual: Math.round(item.StockActual || 0),
+                    StockSeguridad: Math.round(item.StockSeguridad || 0),
+                }));
+                
+                setInventoryData(transformedData);
+                addNotification('success', `Se cargaron y procesaron ${data.length} registros de inventario.`);
             } else {
                 addNotification('warning', 'No se encontraron datos en CuboInventarios.');
             }
