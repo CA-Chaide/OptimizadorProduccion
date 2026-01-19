@@ -131,11 +131,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   useEffect(() => {
     const loadFilterOptions = async () => {
       try {
-        const [añosData, centrosData, etiquetasData] = await Promise.all([
-            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' }),
-            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' }),
-            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' })
-        ]);
+        // Sequential requests to avoid server overload
+        const añosData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' });
+        const centrosData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' });
+        const etiquetasData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' });
 
         const newFilterOptions = {
           años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
@@ -162,58 +161,53 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     let allData: SalesDataRow[] = [];
     const yearsToLoad = filters.años.map(Number);
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
 
     try {
         addNotification('info', `Iniciando carga de datos para año(s): ${yearsToLoad.join(', ')}.`);
         
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
-
+        
         let queryCount = 0;
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                if (filters.meses.length === 0 && year === currentYear && month < currentMonth) {
-                    continue;
+                queryCount++;
+                addNotification('info', `Consultando... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}`);
+                
+                const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
+                if (filters.etiqueta) {
+                    queryFilters['Etiqueta'] = filters.etiqueta;
                 }
                 
-                for (const centro of centrosToLoad) {
-                    queryCount++;
-                    addNotification('info', `Consultando... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}`);
-                    
-                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
-                    if (filters.etiqueta) {
-                        queryFilters['Etiqueta'] = filters.etiqueta;
-                    }
-                    
-                    try {
-                        const response: PresupuestoItem[] = await queryApi({
-                            source: 'Presupuesto',
-                            operation: 'get_data',
-                            filters: queryFilters,
-                            pagination: { limit: 200000 }
-                        });
+                try {
+                    const response: PresupuestoItem[] = await queryApi({
+                        source: 'Presupuesto',
+                        operation: 'get_data',
+                        filters: queryFilters,
+                        pagination: { limit: 500000 } // Increased limit
+                    });
 
-                        if (response && response.length > 0) {
-                             const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                                id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
-                                año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                                etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                                código: normalizeMaterialCode(item.CodMaterial),
-                                centro: String(item.Centro).trim(), 
-                                unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
-                                dolaresProyectado: 0,
-                                descripciónMaterial: item.Material,
-                                familia: item.Familia, marca: item.Marca, 
-                                lineaProduccion: item.LineaProduccion || '',
-                            }));
-                            allData = [...allData, ...mappedData];
-                        }
-                    } catch (e) {
-                        console.error(`Fallo en consulta para ${year}-${month}-${centro}`, e);
-                        addNotification('error', `Fallo la consulta para ${MONTH_NAMES[month-1]} ${year}. Continuando...`);
+                    if (response && response.length > 0) {
+                         const centerFilteredResponse = filters.centros.length > 0
+                            ? response.filter(item => filters.centros.includes(String(item.Centro).trim()))
+                            : response;
+
+                         const mappedData: SalesDataRow[] = centerFilteredResponse.map((item, index) => ({
+                            id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                            año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                            etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                            código: normalizeMaterialCode(item.CodMaterial),
+                            centro: String(item.Centro).trim(), 
+                            unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
+                            dolaresProyectado: 0,
+                            descripciónMaterial: item.Material,
+                            familia: item.Familia, marca: item.Marca, 
+                            lineaProduccion: item.LineaProduccion || '',
+                        }));
+                        allData = [...allData, ...mappedData];
                     }
+                } catch (e) {
+                    console.error(`Fallo en consulta para ${year}-${month}`, e);
+                    addNotification('error', `Fallo la consulta para ${MONTH_NAMES[month-1]} ${year}. Continuando...`);
                 }
             }
         }
