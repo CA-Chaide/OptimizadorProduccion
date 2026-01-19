@@ -113,7 +113,7 @@ const MultiSelectFilter: React.FC<{
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
-                    const matchingOption = options.find(opt => opt.value.toLowerCase() === currentValue);
+                    const matchingOption = options.find(opt => opt.value.toLowerCase() === currentValue.toLowerCase());
                     if (matchingOption) {
                       handleSelect(matchingOption.value);
                     }
