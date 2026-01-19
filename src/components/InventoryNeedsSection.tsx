@@ -16,6 +16,7 @@ interface CuboInventariosRow {
     Material: string;
     StockSeguridad: number;
     StockActual: number;
+    Sector?: string;
 }
 
 interface TiempoEnsambleRow {
@@ -32,6 +33,7 @@ interface DisplayRow {
     ClaseAprovisionam: string | null;
     Descripcion?: string;
     Material: string;
+    Sector: string | null;
     StockSeguridad: number;
     StockActual: number;
     Linea: string | null;
@@ -79,7 +81,7 @@ export const InventoryNeedsSection: React.FC = () => {
                 queryApi({
                     source: 'CuboInventarios',
                     operation: 'get_data',
-                    columns: ["Centro", "ClaseAprovisionam", "Descripcion", "Material", "StockSeguridad", "StockActual"],
+                    columns: ["Centro", "ClaseAprovisionam", "Descripcion", "Material", "StockSeguridad", "StockActual", "Sector"],
                     pagination: { limit: 500000 }
                 }),
                 queryApi({
@@ -105,6 +107,7 @@ export const InventoryNeedsSection: React.FC = () => {
             const transformedData = cuboData.map(item => {
                 const normalizedMaterial = normalizeMaterialCode(item.Material);
                 const stockCenter = String(item.Centro).trim();
+                const sector = item.Sector || null;
                 
                 let producingCenter = stockCenter;
                 const primaryEntry = cuboData.find(i => normalizeMaterialCode(i.Material) === normalizedMaterial && String(i.Centro).trim() === stockCenter);
@@ -156,7 +159,7 @@ export const InventoryNeedsSection: React.FC = () => {
                     }
                 }
 
-                const necesidad = Math.max(0, Math.round(item.StockSeguridad || 0) - Math.round(item.StockActual || 0));
+                const necesidad = Math.max(0, Math.round(parseFloat(String(item.StockSeguridad || 0))) - Math.round(parseFloat(String(item.StockActual || 0))));
                 
                 const salesDemand = presupuestoData
                     .filter(p => normalizeMaterialCode(p.CodMaterial) === normalizedMaterial && String(p.Centro).trim() === stockCenter)
@@ -177,8 +180,9 @@ export const InventoryNeedsSection: React.FC = () => {
                     ClaseAprovisionam: item.ClaseAprovisionam,
                     Descripcion: item.Descripcion,
                     Material: normalizedMaterial,
-                    StockActual: Math.round(item.StockActual || 0),
-                    StockSeguridad: Math.round(item.StockSeguridad || 0),
+                    Sector: sector,
+                    StockActual: Math.round(parseFloat(String(item.StockActual || 0))),
+                    StockSeguridad: Math.round(parseFloat(String(item.StockSeguridad || 0))),
                     Linea: bestLineInfo.line?.name || null,
                     Tiempo: tiempoUnitario,
                     NecesidadStock: necesidad,
@@ -245,6 +249,7 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro Stock</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Sector</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase Aprov.</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro Producción</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea Prod.</th>
@@ -264,13 +269,14 @@ export const InventoryNeedsSection: React.FC = () => {
                                     <td className="px-2 py-2 whitespace-nowrap">{row.CentroStock}</td>
                                     <td className="px-2 py-2 whitespace-nowrap font-mono">{row.Material}</td>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.Descripcion || 'N/A'}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap">{row.Sector || 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.ClaseAprovisionam || 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap font-bold">{row.CentroProduccion}</td>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.Linea || 'N/A'}</td>
-                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{(row.StockActual || 0).toLocaleString()}</td>
-                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{(row.StockSeguridad || 0).toLocaleString()}</td>
-                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{(row.NecesidadStock).toLocaleString()}</td>
-                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{(row.VentasMes1).toLocaleString()}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{row.StockActual.toLocaleString()}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{row.StockSeguridad.toLocaleString()}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.NecesidadStock.toLocaleString()}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.VentasMes1.toLocaleString()}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.Tiempo !== null ? row.Tiempo.toFixed(2) : 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.TiempoTotalRequeridoStock !== null ? row.TiempoTotalRequeridoStock.toFixed(2) : 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.TiempoTotalRequeridoVentas !== null ? row.TiempoTotalRequeridoVentas.toFixed(2) : 'N/A'}</td>
@@ -278,7 +284,7 @@ export const InventoryNeedsSection: React.FC = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={13} className="text-center py-8 text-gray-500">
+                                <td colSpan={14} className="text-center py-8 text-gray-500">
                                     {isLoading ? 'Calculando necesidades...' : 'No hay datos para mostrar. Presione el botón para calcular.'}
                                 </td>
                             </tr>
