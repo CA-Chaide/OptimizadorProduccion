@@ -26,7 +26,7 @@ interface InventoryNeedRow {
 }
 
 const normalizeMaterialCode = (code: string | number): string => {
-    const codeStr = String(code);
+    const codeStr = String(code).trim();
     return codeStr.slice(-8);
 };
 
@@ -142,7 +142,7 @@ export const InventoryNeedsSection: React.FC = () => {
                         
                         // Find the process info for this product in the correct PRODUCTION center
                         const ppi = constraints.productProcessInfos.find(p => {
-                            if (p.productId !== codigoMaterialNormalized) {
+                            if (normalizeMaterialCode(p.productId) !== codigoMaterialNormalized) {
                                 return false;
                             }
                             const lineForPpi = constraints.productionLines.find(l => l.id === p.productionLineId);
