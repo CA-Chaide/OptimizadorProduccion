@@ -6,6 +6,7 @@ import { useAppContext } from '@/context/AppProvider';
 import { Activity } from 'lucide-react';
 import { AppConstraints, Holiday, ProductionLine, ShiftParameters, WorkCenter, WorkstationDefinition } from '@/types/types';
 import { MONTH_NAMES } from '@/constants/constants';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Helper function to calculate working days in a month
 const getWorkingDays = (year: number, month: number, holidays: Holiday[]): { weekdays: number; saturdays: number } => {
@@ -45,10 +46,43 @@ interface CapacityRow {
     ocupacion: number; // Placeholder for now
 }
 
+interface DailyCapacityRow {
+    centro: string;
+    fecha: string;
+    dia: string;
+    esFeriado: string;
+    maxHorasJornada: number;
+    puestoDeTrabajo: string;
+    linea: string;
+    cantidadPuestos: number;
+    horasMaxDisponibles: number;
+}
+
+// Helper to get hours for a specific day
+const getDailyHours = (date: Date, constraints: AppConstraints): number => {
+    const { holidays, shiftParameters } = constraints;
+    if (!shiftParameters) return 0;
+    
+    const dateString = date.toISOString().split('T')[0];
+    const holiday = holidays.find(h => h.date === dateString && h.appliesTo !== 'Distribucion');
+    const dayOfWeek = date.getDay(); // 0=Sun, 6=Sat
+
+    if (holiday) {
+        if (holiday.dayType === 'asueto') return 0;
+        if (holiday.dayType === 'half') return shiftParameters.saturdayAndHolidayHours;
+        return shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
+    }
+
+    if (dayOfWeek === 0) return 0; // Sunday
+    if (dayOfWeek === 6) return shiftParameters.saturdayAndHolidayHours; // Saturday
+    return shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay; // Weekday
+};
+
+
 export const ProductionCapacitySection: React.FC = () => {
     const { constraints, planningYear, planningMonth } = useAppContext();
 
-    const capacityData = useMemo((): CapacityRow[] => {
+    const monthlyCapacityData = useMemo((): CapacityRow[] => {
         const year = parseInt(planningYear, 10);
         const month = parseInt(planningMonth, 10);
 
@@ -98,10 +132,10 @@ export const ProductionCapacitySection: React.FC = () => {
         );
     }, [planningYear, planningMonth, constraints]);
     
-    const tableHierarchy = useMemo(() => {
+    const monthlyTableHierarchy = useMemo(() => {
         const hierarchy = new Map<string, { center: WorkCenter, lines: Map<string, { line: ProductionLine, workstations: CapacityRow[] }> }>();
 
-        capacityData.forEach(row => {
+        monthlyCapacityData.forEach(row => {
             if (!hierarchy.has(row.center.id)) {
                 hierarchy.set(row.center.id, { center: row.center, lines: new Map() });
             }
@@ -115,7 +149,52 @@ export const ProductionCapacitySection: React.FC = () => {
         });
 
         return Array.from(hierarchy.values());
-    }, [capacityData]);
+    }, [monthlyCapacityData]);
+
+    const dailyCapacityData = useMemo((): DailyCapacityRow[] => {
+        const year = parseInt(planningYear, 10);
+        const month = parseInt(planningMonth, 10);
+
+        if (isNaN(year) || isNaN(month) || !constraints.shiftParameters) {
+            return [];
+        }
+
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const dailyRows: DailyCapacityRow[] = [];
+        const weekdaysEs = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month - 1, day);
+
+            constraints.workCenters.forEach(center => {
+                const linesInCenter = constraints.productionLines.filter(line => line.workCenterId === center.id && line.isActive);
+                linesInCenter.forEach(line => {
+                    line.assignedWorkstations.forEach(assignedWs => {
+                        const workstation = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
+                        if (!workstation) return;
+                        
+                        const maxHorasJornada = getDailyHours(date, constraints);
+                        const cantidadPuestos = assignedWs.quantity;
+                        const horasMaxDisponibles = maxHorasJornada * cantidadPuestos;
+
+                        dailyRows.push({
+                            centro: center.id,
+                            fecha: date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
+                            dia: weekdaysEs[date.getDay()],
+                            esFeriado: constraints.holidays.some(h => h.date === date.toISOString().split('T')[0]) ? 'Si' : 'No',
+                            maxHorasJornada,
+                            puestoDeTrabajo: workstation.name,
+                            linea: line.name,
+                            cantidadPuestos,
+                            horasMaxDisponibles
+                        });
+                    });
+                });
+            });
+        }
+        return dailyRows;
+    }, [planningYear, planningMonth, constraints]);
+
 
     return (
         <div className="p-6 md:p-8 space-y-6">
@@ -124,62 +203,115 @@ export const ProductionCapacitySection: React.FC = () => {
                 <h2 className="text-2xl font-semibold text-gray-700">Análisis de Capacidad de Producción</h2>
             </div>
             
-            <p className="text-gray-600 text-sm">
-                Esta tabla desglosa la capacidad de producción disponible por centro, línea y puesto de trabajo para el mes seleccionado ({MONTH_NAMES[Number(planningMonth)-1]}/{planningYear}).
+             <p className="text-gray-600 text-sm">
+                Esta sección desglosa la capacidad de producción disponible para el mes seleccionado ({MONTH_NAMES[Number(planningMonth)-1]}/{planningYear}),
+                tanto en una vista resumida mensual como en un detalle diario por puesto de trabajo.
             </p>
 
-            <div className="border rounded-lg overflow-auto max-h-[75vh]">
-                <table className="min-w-full text-xs divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                        <tr>
-                            <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Puesto de Trabajo</th>
-                            <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Nro. Puestos</th>
-                            <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Nro. Personas x Puesto</th>
-                            <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Total Personas</th>
-                            <th className="px-3 py-2 text-right font-bold text-blue-700 uppercase tracking-wider bg-blue-50">Horas Disponibles</th>
-                            <th className="px-3 py-2 text-right font-bold text-orange-700 uppercase tracking-wider bg-orange-50">Horas Requeridas</th>
-                            <th className="px-3 py-2 text-right font-bold text-green-700 uppercase tracking-wider bg-green-50">Saldo Horas</th>
-                            <th className="px-3 py-2 text-right font-bold text-purple-700 uppercase tracking-wider bg-purple-50">% Ocupación</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {tableHierarchy.length > 0 ? (
-                            tableHierarchy.map(({ center, lines }) => (
-                                <React.Fragment key={center.id}>
-                                    <tr className="bg-gray-200 font-bold">
-                                        <td colSpan={8} className="px-3 py-2 text-gray-800">Centro: {center.name}</td>
-                                    </tr>
-                                    {Array.from(lines.values()).map(({ line, workstations }) => (
-                                        <React.Fragment key={line.id}>
-                                            <tr className="bg-gray-100 font-semibold">
-                                                <td colSpan={8} className="px-3 py-2 text-indigo-800 pl-6">Línea: {line.name}</td>
+            <Tabs defaultValue="summary" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="summary">Resumen Mensual</TabsTrigger>
+                    <TabsTrigger value="details">Detalle Diario</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="summary" className="mt-4">
+                    <div className="border rounded-lg overflow-auto max-h-[75vh]">
+                        <table className="min-w-full text-xs divide-y divide-gray-200">
+                            <thead className="bg-gray-100 sticky top-0 z-10">
+                                <tr>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Puesto de Trabajo</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Nro. Puestos</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Nro. Personas x Puesto</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Total Personas</th>
+                                    <th className="px-3 py-2 text-right font-bold text-blue-700 uppercase tracking-wider bg-blue-50">Horas Disponibles</th>
+                                    <th className="px-3 py-2 text-right font-bold text-orange-700 uppercase tracking-wider bg-orange-50">Horas Requeridas</th>
+                                    <th className="px-3 py-2 text-right font-bold text-green-700 uppercase tracking-wider bg-green-50">Saldo Horas</th>
+                                    <th className="px-3 py-2 text-right font-bold text-purple-700 uppercase tracking-wider bg-purple-50">% Ocupación</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {monthlyTableHierarchy.length > 0 ? (
+                                    monthlyTableHierarchy.map(({ center, lines }) => (
+                                        <React.Fragment key={center.id}>
+                                            <tr className="bg-gray-200 font-bold">
+                                                <td colSpan={8} className="px-3 py-2 text-gray-800">Centro: {center.name}</td>
                                             </tr>
-                                            {workstations.map(ws => (
-                                                <tr key={ws.workstation.id}>
-                                                    <td className="px-3 py-2 pl-12 text-gray-700">{ws.workstation.name}</td>
-                                                    <td className="px-3 py-2 text-right font-mono">{ws.numPuestos}</td>
-                                                    <td className="px-3 py-2 text-right font-mono">{ws.numPersonasPorPuesto}</td>
-                                                    <td className="px-3 py-2 text-right font-mono font-semibold">{ws.totalPersonas}</td>
-                                                    <td className="px-3 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{Math.round(ws.horasDisponibles).toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">{ws.horasRequeridas.toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-right font-mono font-bold text-green-800 bg-green-50">{Math.round(ws.saldoHoras).toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">{ws.ocupacion.toFixed(1)}%</td>
-                                                </tr>
+                                            {Array.from(lines.values()).map(({ line, workstations }) => (
+                                                <React.Fragment key={line.id}>
+                                                    <tr className="bg-gray-100 font-semibold">
+                                                        <td colSpan={8} className="px-3 py-2 text-indigo-800 pl-6">Línea: {line.name}</td>
+                                                    </tr>
+                                                    {workstations.map(ws => (
+                                                        <tr key={ws.workstation.id}>
+                                                            <td className="px-3 py-2 pl-12 text-gray-700">{ws.workstation.name}</td>
+                                                            <td className="px-3 py-2 text-right font-mono">{ws.numPuestos}</td>
+                                                            <td className="px-3 py-2 text-right font-mono">{ws.numPersonasPorPuesto}</td>
+                                                            <td className="px-3 py-2 text-right font-mono font-semibold">{ws.totalPersonas}</td>
+                                                            <td className="px-3 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{Math.round(ws.horasDisponibles).toLocaleString()}</td>
+                                                            <td className="px-3 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">{ws.horasRequeridas.toLocaleString()}</td>
+                                                            <td className="px-3 py-2 text-right font-mono font-bold text-green-800 bg-green-50">{Math.round(ws.saldoHoras).toLocaleString()}</td>
+                                                            <td className="px-3 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">{ws.ocupacion.toFixed(1)}%</td>
+                                                        </tr>
+                                                    ))}
+                                                </React.Fragment>
                                             ))}
                                         </React.Fragment>
-                                    ))}
-                                </React.Fragment>
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan={8} className="text-center py-8 text-gray-500">
-                                    No hay datos de capacidad para mostrar. Verifique la configuración de restricciones y el mes seleccionado.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={8} className="text-center py-8 text-gray-500">
+                                            No hay datos de capacidad para mostrar. Verifique la configuración de restricciones y el mes seleccionado.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </TabsContent>
+                
+                <TabsContent value="details" className="mt-4">
+                     <div className="border rounded-lg overflow-auto max-h-[75vh]">
+                        <table className="min-w-full text-xs divide-y divide-gray-200">
+                            <thead className="bg-gray-100 sticky top-0 z-10">
+                                <tr>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Día</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Puesto de Trabajo</th>
+                                    <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Feriado</th>
+                                    <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Máx. Horas Jornada</th>
+                                    <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Cant. Puestos</th>
+                                    <th className="px-2 py-2 text-right font-bold text-blue-700 uppercase tracking-wider bg-blue-50">Horas Máx. Disponibles</th>
+                                </tr>
+                            </thead>
+                             <tbody className="bg-white divide-y divide-gray-200">
+                                {dailyCapacityData.length > 0 ? (
+                                    dailyCapacityData.map((row, index) => (
+                                        <tr key={index} className="hover:bg-gray-50">
+                                            <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
+                                            <td className="px-2 py-2 whitespace-nowrap">{row.fecha}</td>
+                                            <td className="px-2 py-2 whitespace-nowrap">{row.dia}</td>
+                                            <td className="px-2 py-2 whitespace-nowrap">{row.linea}</td>
+                                            <td className="px-2 py-2 whitespace-nowrap">{row.puestoDeTrabajo}</td>
+                                            <td className="px-2 py-2 text-right whitespace-nowrap">{row.esFeriado}</td>
+                                            <td className="px-2 py-2 text-right font-mono">{row.maxHorasJornada}</td>
+                                            <td className="px-2 py-2 text-right font-mono">{row.cantidadPuestos}</td>
+                                            <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{row.horasMaxDisponibles}</td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={9} className="text-center py-8 text-gray-500">
+                                            No hay datos de capacidad para mostrar. Verifique la configuración.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </TabsContent>
+            </Tabs>
         </div>
     );
 };
