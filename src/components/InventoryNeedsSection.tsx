@@ -1,12 +1,13 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useAppContext } from '@/context/AppProvider';
 import { queryApi } from '@/hooks/useApiData';
 import { Sheet, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ProductionLine, WorkstationDefinition } from '@/types/types';
+import { ProductionLine, WorkstationDefinition, PresupuestoItem } from '@/types/types';
+import { MONTH_NAMES } from '@/constants/constants';
 
 interface CuboInventariosRow {
     Centro: string;
@@ -36,6 +37,7 @@ interface DisplayRow {
     Linea: string | null;
     Tiempo: number | null;
     NecesidadStock: number;
+    VentasMes1: number;
     TiempoTotalRequerido: number | null;
 }
 
@@ -49,14 +51,30 @@ export const InventoryNeedsSection: React.FC = () => {
     const { addNotification, constraints } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [inventoryData, setInventoryData] = useState<DisplayRow[]>([]);
+    
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    const [startYear, setStartYear] = useState<number>(currentYear);
+    const [startMonth, setStartMonth] = useState<number>(currentMonth);
+    const yearOptions = [currentYear -1, currentYear, currentYear + 1, currentYear + 2];
+
 
     const handleFetchData = useCallback(async () => {
+        const selectedDate = new Date(startYear, startMonth - 1, 1);
+        const today = new Date();
+        const firstDayOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+        if (selectedDate < firstDayOfCurrentMonth) {
+            addNotification('warning', 'No está permitido seleccionar un mes anterior al actual.');
+            return;
+        }
+
         setIsLoading(true);
         setInventoryData([]);
-        addNotification('info', 'Consultando datos de CuboInventarios y TiemposEnsamblado...');
+        addNotification('info', `Consultando datos para ${MONTH_NAMES[startMonth-1]} ${startYear}...`);
 
         try {
-            const [cuboData, tiemposData]: [CuboInventariosRow[], TiempoEnsambleRow[]] = await Promise.all([
+            const [cuboData, tiemposData, presupuestoData]: [CuboInventariosRow[], TiempoEnsambleRow[], PresupuestoItem[]] = await Promise.all([
                 queryApi({
                     source: 'CuboInventarios',
                     operation: 'get_data',
@@ -67,6 +85,12 @@ export const InventoryNeedsSection: React.FC = () => {
                     source: 'TiemposEnsamblado',
                     operation: 'get_data',
                     columns: ["CodMaterial", "Centro", "Linea", "PuestoTrabajo", "Tiempo"],
+                    pagination: { limit: 500000 }
+                }),
+                queryApi({
+                    source: 'Presupuesto',
+                    operation: 'get_data',
+                    filters: { 'Año': startYear, 'Mes': startMonth },
                     pagination: { limit: 500000 }
                 })
             ]);
@@ -101,7 +125,6 @@ export const InventoryNeedsSection: React.FC = () => {
                 if (possibleLines.length > 0) {
                     const linePerformances = possibleLines.map(line => {
                         const workstationEffectiveTimes: number[] = [];
-
                         line.assignedWorkstations.forEach(assignedWs => {
                             const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
                             if (!workstationDef) return;
@@ -119,9 +142,7 @@ export const InventoryNeedsSection: React.FC = () => {
                                 workstationEffectiveTimes.push(effectiveTime);
                             }
                         });
-
                         const lineBottleneck = workstationEffectiveTimes.length > 0 ? Math.max(...workstationEffectiveTimes) : Infinity;
-
                         return { line, bottleneckTime: lineBottleneck };
                     });
                     
@@ -130,14 +151,16 @@ export const InventoryNeedsSection: React.FC = () => {
                     }, { line: null as ProductionLine | null, bottleneckTime: Infinity });
 
                     if (bestPerformance.line && bestPerformance.bottleneckTime !== Infinity) {
-                        bestLineInfo = {
-                            line: bestPerformance.line,
-                            bottleneckTime: bestPerformance.bottleneckTime,
-                        };
+                        bestLineInfo = { line: bestPerformance.line, bottleneckTime: bestPerformance.bottleneckTime };
                     }
                 }
 
                 const necesidad = Math.max(0, Math.round(item.StockSeguridad || 0) - Math.round(item.StockActual || 0));
+                
+                const salesDemand = presupuestoData
+                    .filter(p => normalizeMaterialCode(p.CodMaterial) === normalizedMaterial && String(p.Centro).trim() === stockCenter)
+                    .reduce((sum, p) => sum + (p.UnidadesProyectado || 0), 0);
+
                 const tiempoUnitario = bestLineInfo.bottleneckTime;
                 const tiempoTotal = tiempoUnitario !== null ? necesidad * tiempoUnitario : null;
 
@@ -152,6 +175,7 @@ export const InventoryNeedsSection: React.FC = () => {
                     Linea: bestLineInfo.line?.name || null,
                     Tiempo: tiempoUnitario,
                     NecesidadStock: necesidad,
+                    VentasMes1: salesDemand,
                     TiempoTotalRequerido: tiempoTotal,
                 };
             });
@@ -167,7 +191,7 @@ export const InventoryNeedsSection: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [addNotification, constraints]);
+    }, [addNotification, constraints, startYear, startMonth]);
     
     return (
         <div className="p-6 md:p-8 space-y-6">
@@ -176,20 +200,34 @@ export const InventoryNeedsSection: React.FC = () => {
                     <Sheet />
                     <h2 className="text-2xl font-semibold text-gray-700">Necesidades de Producción para Stock de Seguridad (Primer Período)</h2>
                 </div>
-                <Button onClick={handleFetchData} disabled={isLoading}>
-                    {isLoading ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Calculando...
-                        </>
-                    ) : (
-                        'Calcular Necesidades'
-                    )}
-                </Button>
+                 <div className="flex items-end space-x-2">
+                    <div>
+                        <label htmlFor="startYear" className="block text-sm font-medium text-gray-700">Año de Inicio</label>
+                        <select id="startYear" value={startYear} onChange={e => setStartYear(Number(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="startMonth" className="block text-sm font-medium text-gray-700">Mes de Inicio</label>
+                        <select id="startMonth" value={startMonth} onChange={e => setStartMonth(Number(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                            {MONTH_NAMES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                        </select>
+                    </div>
+                    <Button onClick={handleFetchData} disabled={isLoading}>
+                        {isLoading ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Calculando...
+                            </>
+                        ) : (
+                            'Calcular Necesidades'
+                        )}
+                    </Button>
+                </div>
             </div>
             
             <p className="text-gray-600 text-sm">
-                Esta sección calcula la necesidad de producción para alcanzar los niveles de inventario de seguridad, antes de cualquier verificación de capacidad. Es el cálculo inicial para el primer mes del análisis.
+                Esta sección calcula la necesidad de producción para alcanzar los niveles de inventario de seguridad y cubrir las ventas del primer mes, antes de cualquier verificación de capacidad.
             </p>
 
             <div className="border rounded-lg overflow-auto max-h-[70vh]">
@@ -204,7 +242,8 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea Prod.</th>
                             <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Disp. (a)</th>
                             <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Seg. (b)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Necesidad (c=b-a)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Necesidad Stock (c=b-a)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Ventas Mes 1</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Unit. (d)</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req. (c*d)</th>
                         </tr>
@@ -222,13 +261,14 @@ export const InventoryNeedsSection: React.FC = () => {
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{(row.StockActual || 0).toLocaleString()}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono">{(row.StockSeguridad || 0).toLocaleString()}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{(row.NecesidadStock).toLocaleString()}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{(row.VentasMes1).toLocaleString()}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.Tiempo !== null ? row.Tiempo.toFixed(2) : 'N/A'}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.TiempoTotalRequerido !== null ? row.TiempoTotalRequerido.toFixed(2) : 'N/A'}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={11} className="text-center py-8 text-gray-500">
+                                <td colSpan={12} className="text-center py-8 text-gray-500">
                                     {isLoading ? 'Calculando necesidades...' : 'No hay datos para mostrar. Presione el botón para calcular.'}
                                 </td>
                             </tr>
