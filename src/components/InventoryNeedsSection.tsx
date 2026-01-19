@@ -159,7 +159,10 @@ export const InventoryNeedsSection: React.FC = () => {
                 
                 const salesDemand = presupuestoData
                     .filter(p => normalizeMaterialCode(p.CodMaterial) === normalizedMaterial && String(p.Centro).trim() === stockCenter)
-                    .reduce((sum, p) => sum + (p.UnidadesProyectado || 0), 0);
+                    .reduce((sum, p) => {
+                        const units = Number(String(p.UnidadesProyectado || '0').replace(/\./g, ''));
+                        return sum + (isNaN(units) ? 0 : units);
+                    }, 0);
 
                 const tiempoUnitario = bestLineInfo.bottleneckTime;
                 const tiempoTotal = tiempoUnitario !== null ? necesidad * tiempoUnitario : null;
