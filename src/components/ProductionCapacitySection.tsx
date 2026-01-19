@@ -1,12 +1,17 @@
 
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from '@/context/AppProvider';
-import { Activity } from 'lucide-react';
-import { AppConstraints, Holiday, ProductionLine, ShiftParameters, WorkCenter, WorkstationDefinition } from '@/types/types';
+import { Activity, Check, ChevronsUpDown } from 'lucide-react';
+import { AppConstraints, Holiday, ProductionLine, ShiftParameters, WorkCenter, WorkstationDefinition, DailyCapacityRow as OriginalDailyCapacityRow } from '@/types/types';
 import { MONTH_NAMES } from '@/constants/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 // Helper function to calculate working days in a month
 const getWorkingDays = (year: number, month: number, holidays: Holiday[]): { weekdays: number; saturdays: number } => {
@@ -46,17 +51,8 @@ interface CapacityRow {
     ocupacion: number; // Placeholder for now
 }
 
-interface DailyCapacityRow {
-    centro: string;
-    fecha: string;
-    dia: string;
-    esFeriado: string;
-    maxHorasJornada: number;
-    puestoDeTrabajo: string;
-    linea: string;
-    cantidadPuestos: number;
-    horasMaxDisponibles: number;
-}
+// Renombrar para evitar conflicto en el ámbito del archivo
+type DailyCapacityRow = OriginalDailyCapacityRow;
 
 // Helper to get hours for a specific day
 const getDailyHours = (date: Date, constraints: AppConstraints): number => {
@@ -78,9 +74,88 @@ const getDailyHours = (date: Date, constraints: AppConstraints): number => {
     return shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay; // Weekday
 };
 
+const MultiSelectFilter: React.FC<{
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  placeholder?: string;
+}> = ({ options, selected, onChange, placeholder }) => {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (value: string) => {
+    const newSelected = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : [...selected, value];
+    onChange(newSelected);
+  };
+
+  return (
+    <div className="flex flex-col items-start w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between h-7 text-xs font-normal"
+          >
+            <span className="truncate">
+              {selected.length === 0
+                ? placeholder || 'Seleccionar...'
+                : `${selected.length} sel.`}
+            </span>
+            <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[200px] p-0">
+          <Command>
+            <CommandInput placeholder="Buscar..." className="h-9 text-xs" />
+            <CommandEmpty>No hay resultados.</CommandEmpty>
+            <CommandGroup className="max-h-60 overflow-y-auto">
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={(currentValue) => {
+                    const matchingOption = options.find(opt => opt.value.toLowerCase() === currentValue.toLowerCase());
+                    if (matchingOption) {
+                      handleSelect(matchingOption.value);
+                    }
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      selected.includes(option.value) ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  <span className="text-xs">{option.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {selected.length > 0 && (
+          <div className="pt-1 text-left w-full min-h-[18px]">
+            {selected.slice(0, 1).map(value => (
+                <Badge key={value} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={options.find(opt => opt.value === value)?.label || value}>
+                    {options.find(opt => opt.value === value)?.label || value}
+                </Badge>
+            ))}
+            {selected.length > 1 && <Badge variant="secondary">+{selected.length - 1}</Badge>}
+          </div>
+      )}
+    </div>
+  );
+};
+
 
 export const ProductionCapacitySection: React.FC = () => {
     const { constraints, planningYear, planningMonth } = useAppContext();
+
+    const [dailyFilters, setDailyFilters] = useState<Partial<Record<keyof DailyCapacityRow, string | string[]>>>({});
+    const [dailyFilterOptions, setDailyFilterOptions] = useState<Record<string, { value: string, label: string }[]>>({});
 
     const monthlyCapacityData = useMemo((): CapacityRow[] => {
         const year = parseInt(planningYear, 10);
@@ -194,6 +269,59 @@ export const ProductionCapacitySection: React.FC = () => {
         }
         return dailyRows;
     }, [planningYear, planningMonth, constraints]);
+    
+    useEffect(() => {
+        if (dailyCapacityData.length > 0) {
+            const columnsToFilter: Array<keyof DailyCapacityRow> = ['centro', 'fecha', 'dia', 'linea', 'puestoDeTrabajo'];
+            const options: Record<string, Set<string>> = {};
+            columnsToFilter.forEach(col => options[col] = new Set());
+            
+            dailyCapacityData.forEach(row => {
+               columnsToFilter.forEach(col => {
+                    const value = row[col];
+                    if (value !== null && value !== undefined && String(value).trim() !== '') {
+                        options[col].add(String(value));
+                    }
+               });
+            });
+
+            const formattedOptions: Record<string, { value: string, label: string }[]> = {};
+            for (const key in options) {
+                formattedOptions[key] = Array.from(options[key]).sort((a,b) => a.localeCompare(b, undefined, {numeric: true})).map(val => ({ value: val, label: val }));
+            }
+            setDailyFilterOptions(formattedOptions);
+        }
+    }, [dailyCapacityData]);
+
+    const handleDailyMultiSelectFilterChange = (column: keyof DailyCapacityRow, value: string[]) => {
+        setDailyFilters(prev => ({ ...prev, [column]: value }));
+    };
+
+    const filteredDailyData = useMemo(() => {
+        if (!dailyCapacityData) return [];
+        return dailyCapacityData.filter(row => {
+             return Object.keys(dailyFilters).every(key => {
+                const filterValue = dailyFilters[key as keyof typeof dailyFilters];
+                if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) return true;
+
+                const rowValue = row[key as keyof DailyCapacityRow];
+                if (rowValue === null || rowValue === undefined) return false;
+
+                if (Array.isArray(filterValue)) { // Multi-select
+                    return filterValue.includes(String(rowValue));
+                } else { // Text filter
+                    return String(rowValue).toLowerCase().includes(String(filterValue).toLowerCase());
+                }
+            });
+        });
+    }, [dailyCapacityData, dailyFilters]);
+
+    const dailyFooterTotals = useMemo(() => {
+        return filteredDailyData.reduce((acc, row) => {
+            acc.horasMaxDisponibles += row.horasMaxDisponibles || 0;
+            return acc;
+        }, { horasMaxDisponibles: 0 });
+    }, [filteredDailyData]);
 
 
     return (
@@ -284,10 +412,18 @@ export const ProductionCapacitySection: React.FC = () => {
                                     <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Cant. Puestos</th>
                                     <th className="px-2 py-2 text-right font-bold text-blue-700 uppercase tracking-wider bg-blue-50">Horas Máx. Disponibles</th>
                                 </tr>
+                                <tr>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Centro" options={dailyFilterOptions.centro || []} selected={(dailyFilters.centro as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('centro', value)} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Fecha" options={dailyFilterOptions.fecha || []} selected={(dailyFilters.fecha as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('fecha', value)} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Día" options={dailyFilterOptions.dia || []} selected={(dailyFilters.dia as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('dia', value)} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Línea" options={dailyFilterOptions.linea || []} selected={(dailyFilters.linea as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('linea', value)} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Puesto" options={dailyFilterOptions.puestoDeTrabajo || []} selected={(dailyFilters.puestoDeTrabajo as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('puestoDeTrabajo', value)} /></th>
+                                    <th className="p-1" colSpan={4}></th>
+                                </tr>
                             </thead>
                              <tbody className="bg-white divide-y divide-gray-200">
-                                {dailyCapacityData.length > 0 ? (
-                                    dailyCapacityData.map((row, index) => (
+                                {filteredDailyData.length > 0 ? (
+                                    filteredDailyData.map((row, index) => (
                                         <tr key={index} className="hover:bg-gray-50">
                                             <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.fecha}</td>
@@ -303,11 +439,17 @@ export const ProductionCapacitySection: React.FC = () => {
                                 ) : (
                                     <tr>
                                         <td colSpan={9} className="text-center py-8 text-gray-500">
-                                            No hay datos de capacidad para mostrar. Verifique la configuración.
+                                            No hay datos para mostrar con los filtros seleccionados.
                                         </td>
                                     </tr>
                                 )}
                             </tbody>
+                             <tfoot className="bg-gray-800 text-white sticky bottom-0 font-bold">
+                                <tr>
+                                    <th colSpan={8} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
+                                    <td className="px-2 py-2 text-right font-mono">{dailyFooterTotals.horasMaxDisponibles.toLocaleString()}</td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </TabsContent>
