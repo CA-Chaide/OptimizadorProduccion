@@ -6,6 +6,7 @@ import { useAppContext } from '@/context/AppProvider';
 import { queryApi } from '@/hooks/useApiData';
 import { Sheet, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ProductionLine } from '@/types/types';
 
 interface CuboInventariosRow {
     Centro: string;
@@ -20,6 +21,7 @@ interface TiempoEnsambleRow {
     CodMaterial: string;
     Centro: string;
     Linea: string;
+    PuestoTrabajo: string;
     Tiempo: number;
 }
 
@@ -44,7 +46,7 @@ const normalizeMaterialCode = (code: string | number): string => {
 };
 
 export const InventoryNeedsSection: React.FC = () => {
-    const { addNotification } = useAppContext();
+    const { addNotification, constraints } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [inventoryData, setInventoryData] = useState<DisplayRow[]>([]);
 
@@ -64,7 +66,7 @@ export const InventoryNeedsSection: React.FC = () => {
                 queryApi({
                     source: 'TiemposEnsamblado',
                     operation: 'get_data',
-                    columns: ["CodMaterial", "Centro", "Linea", "Tiempo"],
+                    columns: ["CodMaterial", "Centro", "Linea", "PuestoTrabajo", "Tiempo"],
                     pagination: { limit: 500000 }
                 })
             ]);
@@ -84,20 +86,58 @@ export const InventoryNeedsSection: React.FC = () => {
                     producingCenter = '1000';
                 }
 
-                const relevantTiempos = tiemposData.filter(t => 
-                    normalizeMaterialCode(t.CodMaterial) === normalizedMaterial &&
-                    String(t.Centro).trim() === producingCenter
+                const possibleLines = constraints.productionLines.filter(line => 
+                    line.workCenterId === producingCenter &&
+                    tiemposData.some(t => 
+                        normalizeMaterialCode(t.CodMaterial) === normalizedMaterial &&
+                        String(t.Centro).trim() === producingCenter &&
+                        t.Linea.trim() === line.name
+                    )
                 );
 
-                let bestTiempoEntry: TiempoEnsambleRow | null = null;
-                if (relevantTiempos.length > 0) {
-                    bestTiempoEntry = relevantTiempos.reduce((min, current) => {
-                        return (current.Tiempo < min.Tiempo) ? current : min;
-                    }, relevantTiempos[0]);
+                let bestLineInfo: { line: ProductionLine | null; bottleneckTime: number | null } = { line: null, bottleneckTime: null };
+
+                if (possibleLines.length > 0) {
+                    const linePerformances = possibleLines.map(line => {
+                        const workstationEffectiveTimes: number[] = [];
+
+                        line.assignedWorkstations.forEach(assignedWs => {
+                            const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
+                            if (!workstationDef) return;
+
+                            const tiempoEntry = tiemposData.find(t => 
+                                normalizeMaterialCode(t.CodMaterial) === normalizedMaterial &&
+                                String(t.Centro).trim() === producingCenter &&
+                                t.Linea.trim() === line.name &&
+                                t.PuestoTrabajo.trim() === workstationDef.name
+                            );
+                            
+                            if (tiempoEntry && tiempoEntry.Tiempo > 0) {
+                                const quantityOfStations = assignedWs.quantity > 0 ? assignedWs.quantity : 1;
+                                const effectiveTime = tiempoEntry.Tiempo / quantityOfStations;
+                                workstationEffectiveTimes.push(effectiveTime);
+                            }
+                        });
+
+                        const lineBottleneck = workstationEffectiveTimes.length > 0 ? Math.max(...workstationEffectiveTimes) : Infinity;
+
+                        return { line, bottleneckTime: lineBottleneck };
+                    });
+                    
+                    const bestPerformance = linePerformances.reduce((best, current) => {
+                        return (current.bottleneckTime < best.bottleneckTime) ? current : best;
+                    }, { line: null, bottleneckTime: Infinity });
+
+                    if (bestPerformance.line && bestPerformance.bottleneckTime !== Infinity) {
+                        bestLineInfo = {
+                            line: bestPerformance.line,
+                            bottleneckTime: bestPerformance.bottleneckTime,
+                        };
+                    }
                 }
-                
-                const necesidad = Math.max(0, (item.StockSeguridad || 0) - (item.StockActual || 0));
-                const tiempoUnitario = bestTiempoEntry?.Tiempo !== undefined ? bestTiempoEntry.Tiempo : null;
+
+                const necesidad = Math.max(0, Math.round(item.StockSeguridad || 0) - Math.round(item.StockActual || 0));
+                const tiempoUnitario = bestLineInfo.bottleneckTime;
                 const tiempoTotal = tiempoUnitario !== null ? necesidad * tiempoUnitario : null;
 
                 return {
@@ -108,7 +148,7 @@ export const InventoryNeedsSection: React.FC = () => {
                     Material: normalizedMaterial,
                     StockActual: Math.round(item.StockActual || 0),
                     StockSeguridad: Math.round(item.StockSeguridad || 0),
-                    Linea: bestTiempoEntry?.Linea || null,
+                    Linea: bestLineInfo.line?.name || null,
                     Tiempo: tiempoUnitario,
                     NecesidadStock: necesidad,
                     TiempoTotalRequerido: tiempoTotal,
@@ -126,7 +166,7 @@ export const InventoryNeedsSection: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [addNotification]);
+    }, [addNotification, constraints]);
     
     return (
         <div className="p-6 md:p-8 space-y-6">
