@@ -38,7 +38,8 @@ interface DisplayRow {
     Tiempo: number | null;
     NecesidadStock: number;
     VentasMes1: number;
-    TiempoTotalRequerido: number | null;
+    TiempoTotalRequeridoStock: number | null;
+    TiempoTotalRequeridoVentas: number | null;
 }
 
 // Function to normalize material codes to match sales data format
@@ -160,12 +161,15 @@ export const InventoryNeedsSection: React.FC = () => {
                 const salesDemand = presupuestoData
                     .filter(p => normalizeMaterialCode(p.CodMaterial) === normalizedMaterial && String(p.Centro).trim() === stockCenter)
                     .reduce((sum, p) => {
-                        const units = parseFloat(String(p.UnidadesProyectado || '0'));
+                        const unitsStr = String(p.UnidadesProyectado || '0');
+                        const units = parseFloat(unitsStr);
                         return sum + (isNaN(units) ? 0 : units);
                     }, 0);
 
                 const tiempoUnitario = bestLineInfo.bottleneckTime;
-                const tiempoTotal = tiempoUnitario !== null ? necesidad * tiempoUnitario : null;
+                const tiempoTotalStock = tiempoUnitario !== null ? necesidad * tiempoUnitario : null;
+                const tiempoTotalVentas = tiempoUnitario !== null ? salesDemand * tiempoUnitario : null;
+
 
                 return {
                     CentroStock: stockCenter,
@@ -179,7 +183,8 @@ export const InventoryNeedsSection: React.FC = () => {
                     Tiempo: tiempoUnitario,
                     NecesidadStock: necesidad,
                     VentasMes1: salesDemand,
-                    TiempoTotalRequerido: tiempoTotal,
+                    TiempoTotalRequeridoStock: tiempoTotalStock,
+                    TiempoTotalRequeridoVentas: tiempoTotalVentas,
                 };
             });
             
@@ -207,13 +212,13 @@ export const InventoryNeedsSection: React.FC = () => {
                     <div>
                         <label htmlFor="startYear" className="block text-sm font-medium text-gray-700">Año de Inicio</label>
                         <select id="startYear" value={startYear} onChange={e => setStartYear(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
-                            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                            {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
                         </select>
                     </div>
                     <div>
                         <label htmlFor="startMonth" className="block text-sm font-medium text-gray-700">Mes de Inicio</label>
                         <select id="startMonth" value={startMonth} onChange={e => setStartMonth(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
-                            {MONTH_NAMES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                            {MONTH_NAMES.map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
                         </select>
                     </div>
                     <Button onClick={handleFetchData} disabled={isLoading}>
@@ -248,7 +253,8 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Necesidad Stock (C=B-A)</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Ventas Mes 1</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Unit. (d)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req. (c*d)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req. Stock (c*d)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req Ventas</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -266,12 +272,13 @@ export const InventoryNeedsSection: React.FC = () => {
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{(row.NecesidadStock).toLocaleString()}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{(row.VentasMes1).toLocaleString()}</td>
                                     <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.Tiempo !== null ? row.Tiempo.toFixed(2) : 'N/A'}</td>
-                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.TiempoTotalRequerido !== null ? row.TiempoTotalRequerido.toFixed(2) : 'N/A'}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.TiempoTotalRequeridoStock !== null ? row.TiempoTotalRequeridoStock.toFixed(2) : 'N/A'}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-green-800 bg-green-50">{row.TiempoTotalRequeridoVentas !== null ? row.TiempoTotalRequeridoVentas.toFixed(2) : 'N/A'}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={12} className="text-center py-8 text-gray-500">
+                                <td colSpan={13} className="text-center py-8 text-gray-500">
                                     {isLoading ? 'Calculando necesidades...' : 'No hay datos para mostrar. Presione el botón para calcular.'}
                                 </td>
                             </tr>
