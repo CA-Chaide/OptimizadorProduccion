@@ -111,10 +111,14 @@ export const InventoryNeedsSection: React.FC = () => {
         lineaProduccion: [] as string[],
     });
 
-    const [filterOptions, setFilterOptions] = useState({
-        centro: [] as {value: string, label: string}[],
-        claseAprovisionamiento: [] as {value: string, label: string}[],
-        lineaProduccion: [] as {value: string, label: string}[],
+    const [filterOptions, setFilterOptions] = useState<{
+        centro: {value: string, label: string}[],
+        claseAprovisionamiento: {value: string, label: string}[],
+        lineaProduccion: {value: string, label: string}[],
+    }>({
+        centro: [],
+        claseAprovisionamiento: [],
+        lineaProduccion: [],
     });
 
     // Data processing effect
