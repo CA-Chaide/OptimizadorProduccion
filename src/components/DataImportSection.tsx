@@ -3,9 +3,8 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
-import { DataImportIcon, MAX_FILE_SIZE_MB, MONTH_NAMES } from '@/constants/constants';
+import { DataImportIcon, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
-import { useRuntimeInspector } from '@/services/RuntimeInspector';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -103,7 +102,6 @@ const MultiSelect: React.FC<{
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
   const { addNotification, isLoading: isAppLoading } = useAppContext();
-  const inspector = useRuntimeInspector('DataImport');
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: string, label: string}[],
@@ -126,34 +124,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [totalLoadedRecords, setTotalLoadedRecords] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
-  // Instrumentación con RuntimeInspector
-  useEffect(() => {
-    inspector.captureState({
-        isProcessing,
-        hasFilterOptions: filterOptions.años.length > 0,
-        totalLoadedRecords,
-    }, {
-        filters,
-        filterOptions,
-    });
-    inspector.captureVariable('filters', filters, { description: 'Filtros aplicados por el usuario', source: 'user' });
-    inspector.captureVariable('filterOptions', filterOptions, { description: 'Opciones de filtro cargadas desde la API', source: 'api' });
-    inspector.captureVariable('totalLoadedRecords', totalLoadedRecords, { description: 'Total de registros importados desde la API', source: 'calculation' });
-  }, [filters, filterOptions, totalLoadedRecords, isProcessing, inspector]);
-
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
   useEffect(() => {
     const loadFilterOptions = async () => {
-      const ctxId = inspector.startContext('load_filter_options', { trigger: 'component_mount' });
       try {
-        const [añosData, centrosData, etiquetasData] = await Promise.all([
-            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' }),
-            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' }),
-            queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' })
-        ]);
+        // Sequential requests to avoid server overload
+        const añosData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' });
+        const centrosData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' });
+        const etiquetasData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' });
 
         const newFilterOptions = {
           años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
@@ -161,24 +142,20 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
           etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
         };
         setFilterOptions(newFilterOptions);
-        inspector.updateContext(ctxId, 'completed', { outputs: { optionsCount: newFilterOptions.años.length } });
-      } catch (error: any) {
+      } catch (error) {
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
-        inspector.updateContext(ctxId, 'failed', { error: error.message, stackTrace: error.stack?.split('\n') });
       }
     };
     loadFilterOptions();
-  }, [addNotification, inspector]);
+  }, [addNotification]);
   
   const handleLoadData = async () => {
-    const ctxId = inspector.startContext('load_budget_data', { filters });
     setIsProcessing(true);
     setTotalLoadedRecords(0);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
         setIsProcessing(false);
-        inspector.updateContext(ctxId, 'failed', { error: 'No year selected' });
         return;
     }
 
@@ -186,72 +163,81 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     const yearsToLoad = filters.años.map(Number);
 
     try {
-        addNotification('info', `Iniciando carga de datos... Años: ${yearsToLoad.join(', ')}.`);
+        addNotification('info', `Iniciando carga de datos para año(s): ${yearsToLoad.join(', ')}.`);
         
+        // Define the lists to iterate over. If a filter is empty, use all available options.
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
         const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
 
-        const apiCallPromises: Promise<PresupuestoItem[]>[] = [];
-
+        if (centrosToLoad.length === 0 && filters.centros.length === 0) {
+            addNotification('info', 'No hay centros seleccionados, se consultarán todos. Cargando opciones de filtro primero...');
+            // This case might require waiting for filterOptions to be populated.
+            // A robust solution would handle this gracefully. For now, we assume they load quickly.
+        }
+        
+        let queryCount = 0;
+        // The loops are now sequential. This avoids overwhelming the server with simultaneous connections.
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                for (const centro of centrosToLoad) {
-                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month, 'Centro': centro };
+                // If no centers are selected, we perform one query for the month.
+                // Otherwise, we iterate through selected centers for smaller, specific queries.
+                const iterationCentros = centrosToLoad.length > 0 ? centrosToLoad : ['']; // one empty item to make one call if no centers selected
+
+                for (const centro of iterationCentros) {
+                    queryCount++;
+                    
+                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
                     if (filters.etiqueta) {
                         queryFilters['Etiqueta'] = filters.etiqueta;
                     }
+                    if (centro) { // Only add 'Centro' to filters if it's not an empty string
+                      queryFilters['Centro'] = centro;
+                    }
                     
-                    const promise = queryApi({
-                        source: 'Presupuesto',
-                        operation: 'get_data',
-                        filters: queryFilters,
-                        pagination: { limit: 200000 }
-                    });
-                    apiCallPromises.push(promise);
+                    addNotification('info', `Consultando... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}, Centro: ${centro || 'Todos'}`);
+
+                    try {
+                        const response: PresupuestoItem[] = await queryApi({
+                            source: 'Presupuesto',
+                            operation: 'get_data',
+                            filters: queryFilters,
+                            pagination: { limit: 500000 }
+                        });
+
+                        if (response && response.length > 0) {
+                             const mappedData: SalesDataRow[] = response.map((item, index) => ({
+                                id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                                año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                                etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                                código: normalizeMaterialCode(item.CodMaterial),
+                                centro: String(item.Centro).trim(), 
+                                unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
+                                dolaresProyectado: 0,
+                                descripciónMaterial: item.Material,
+                                familia: item.Familia, marca: item.Marca, 
+                                lineaProduccion: item.LineaProduccion || '',
+                            }));
+                            allData = [...allData, ...mappedData];
+                        }
+                    } catch (e) {
+                        console.error(`Fallo en consulta para ${year}-${month}` + (centro ? ` en centro ${centro}` : ''), e);
+                        addNotification('error', `Fallo la consulta para ${MONTH_NAMES[month-1]} ${year}` + (centro ? ` en el centro ${centro}` : '') + `. Continuando...`);
+                    }
                 }
             }
         }
         
-        inspector.updateContext(ctxId, 'running', { outputs: { apiCalls: apiCallPromises.length } });
-        addNotification('info', `Realizando ${apiCallPromises.length} consultas a la API. Esto puede tardar...`);
-
-        const responses = await Promise.all(apiCallPromises);
-        addNotification('info', 'Consultas a la API completadas. Procesando resultados...');
-
-        responses.forEach(response => {
-            if (response && response.length > 0) {
-                 const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                    id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
-                    año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                    etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                    código: normalizeMaterialCode(item.CodMaterial),
-                    centro: String(item.Centro).trim(), 
-                    unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
-                    dolaresProyectado: 0,
-                    descripciónMaterial: item.Material,
-                    familia: item.Familia, marca: item.Marca, 
-                    lineaProduccion: item.LineaProduccion || '',
-                }));
-                allData = [...allData, ...mappedData];
-            }
-        });
-
-        inspector.captureVariable('totalRecords', allData.length, { description: 'Total de registros importados desde la API', source: 'calculation' });
-
         if (allData.length > 0) {
             setTotalLoadedRecords(allData.length);
             onDataImported(allData);
             addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
-            inspector.updateContext(ctxId, 'completed', { outputs: { totalRecords: allData.length } });
         } else {
             addNotification('warning', 'No se encontraron registros con los filtros seleccionados.');
-            onDataImported([]);
-            inspector.updateContext(ctxId, 'completed', { outputs: { totalRecords: 0, message: 'No records found' } });
+            onDataImported([]); // Clear data if nothing found
         }
 
-    } catch (error: any) {
-        addNotification('error', `Error durante la carga de datos: ${error.message}`);
-        inspector.updateContext(ctxId, 'failed', { error: error.message, stackTrace: error.stack?.split('\n') });
+    } catch (error) {
+        addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
     } finally {
         setIsProcessing(false);
     }
@@ -265,11 +251,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
       </div>
       
       <p className="text-gray-600">
-        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos los años seleccionados.
-        Una vez cargados, la aplicación los tendrá en memoria para el resto de los pasos.
+        Use los filtros para definir el alcance de los datos. Si no selecciona meses o centros, se cargarán todos para los años seleccionados. Una vez cargados, la aplicación los tendrá en memoria para el resto de los pasos.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start p-4 border rounded-lg bg-gray-50">
         <MultiSelect 
             label="Año(s)"
             options={filterOptions.años}
@@ -296,7 +281,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </select>
         </div>
         
-        <div className="flex flex-col justify-end h-full">
+        <div className="flex flex-col justify-end h-full pt-1">
             <button
                 onClick={handleLoadData}
                 disabled={isProcessing || isAppLoading || filters.años.length === 0}
