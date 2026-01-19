@@ -50,6 +50,22 @@ const normalizeMaterialCode = (code: string | number): string => {
     return codeStr.slice(-8);
 };
 
+const FilterInput: React.FC<{
+    column: keyof DisplayRow;
+    value: string;
+    onChange: (column: keyof DisplayRow, value: string) => void;
+}> = ({ column, value, onChange }) => (
+    <input
+        type="text"
+        placeholder="Filtrar..."
+        className="w-full text-xs p-1 border rounded border-gray-300"
+        value={value}
+        onChange={(e) => onChange(column, e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+    />
+);
+
+
 export const InventoryNeedsSection: React.FC = () => {
     const { addNotification, constraints } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
@@ -60,6 +76,8 @@ export const InventoryNeedsSection: React.FC = () => {
     const [startYear, setStartYear] = useState<string>(String(currentYear));
     const [startMonth, setStartMonth] = useState<string>(String(currentMonth));
     const yearOptions = [currentYear -1, currentYear, currentYear + 1, currentYear + 2];
+
+    const [filters, setFilters] = useState<Partial<Record<keyof DisplayRow, string>>>({});
 
 
     const handleFetchData = useCallback(async () => {
@@ -104,13 +122,28 @@ export const InventoryNeedsSection: React.FC = () => {
                 return;
             }
 
-            const transformedData = cuboData.map(item => {
-                const normalizedMaterial = normalizeMaterialCode(item.Material);
-                const stockCenter = String(item.Centro).trim();
-                const sector = item.Sector || null;
+            const allProductCenterPairs = new Set<string>();
+            cuboData.forEach(item => {
+                if (item.Material && item.Centro) {
+                    allProductCenterPairs.add(`${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}`);
+                }
+            });
+            presupuestoData.forEach(item => {
+                if (item.CodMaterial && item.Centro) {
+                    allProductCenterPairs.add(`${normalizeMaterialCode(item.CodMaterial)}---${String(item.Centro).trim()}`);
+                }
+            });
+
+            const transformedData = Array.from(allProductCenterPairs).map(key => {
+                const [productId, centerId] = key.split('---');
+
+                const cuboItem = cuboData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === centerId) || {};
+                
+                const stockCenter = centerId;
+                const sector = cuboItem.Sector || 'Sin Sector';
                 
                 let producingCenter = stockCenter;
-                const primaryEntry = cuboData.find(i => normalizeMaterialCode(i.Material) === normalizedMaterial && String(i.Centro).trim() === stockCenter);
+                const primaryEntry = cuboData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === stockCenter);
                 if (stockCenter === '2000' && primaryEntry?.ClaseAprovisionam === 'F') {
                     producingCenter = '1000';
                 }
@@ -118,7 +151,7 @@ export const InventoryNeedsSection: React.FC = () => {
                 const possibleLines = constraints.productionLines.filter(line => 
                     line.workCenterId === producingCenter &&
                     tiemposData.some(t => 
-                        normalizeMaterialCode(t.CodMaterial) === normalizedMaterial &&
+                        normalizeMaterialCode(t.CodMaterial) === productId &&
                         String(t.Centro).trim() === producingCenter &&
                         t.Linea.trim() === line.name
                     )
@@ -134,7 +167,7 @@ export const InventoryNeedsSection: React.FC = () => {
                             if (!workstationDef) return;
 
                             const tiempoEntry = tiemposData.find(t => 
-                                normalizeMaterialCode(t.CodMaterial) === normalizedMaterial &&
+                                normalizeMaterialCode(t.CodMaterial) === productId &&
                                 String(t.Centro).trim() === producingCenter &&
                                 t.Linea.trim() === line.name &&
                                 t.PuestoTrabajo.trim() === workstationDef.name
@@ -159,10 +192,12 @@ export const InventoryNeedsSection: React.FC = () => {
                     }
                 }
 
-                const necesidad = Math.max(0, Math.round(parseFloat(String(item.StockSeguridad || 0))) - Math.round(parseFloat(String(item.StockActual || 0))));
+                const stockActual = parseFloat(String(cuboItem.StockActual || '0'));
+                const stockSeguridad = parseFloat(String(cuboItem.StockSeguridad || '0'));
+                const necesidad = Math.max(0, Math.round(stockSeguridad) - Math.round(stockActual));
                 
                 const salesDemand = presupuestoData
-                    .filter(p => normalizeMaterialCode(p.CodMaterial) === normalizedMaterial && String(p.Centro).trim() === stockCenter)
+                    .filter(p => normalizeMaterialCode(p.CodMaterial) === productId && String(p.Centro).trim() === stockCenter)
                     .reduce((sum, p) => {
                         const unitsStr = String(p.UnidadesProyectado || '0');
                         const units = parseFloat(unitsStr);
@@ -177,12 +212,12 @@ export const InventoryNeedsSection: React.FC = () => {
                 return {
                     CentroStock: stockCenter,
                     CentroProduccion: producingCenter,
-                    ClaseAprovisionam: item.ClaseAprovisionam,
-                    Descripcion: item.Descripcion,
-                    Material: normalizedMaterial,
+                    ClaseAprovisionam: cuboItem.ClaseAprovisionam || null,
+                    Descripcion: cuboItem.Descripcion,
+                    Material: productId,
                     Sector: sector,
-                    StockActual: Math.round(parseFloat(String(item.StockActual || 0))),
-                    StockSeguridad: Math.round(parseFloat(String(item.StockSeguridad || 0))),
+                    StockActual: Math.round(stockActual),
+                    StockSeguridad: Math.round(stockSeguridad),
                     Linea: bestLineInfo.line?.name || null,
                     Tiempo: tiempoUnitario,
                     NecesidadStock: necesidad,
@@ -205,6 +240,45 @@ export const InventoryNeedsSection: React.FC = () => {
         }
     }, [addNotification, constraints, startYear, startMonth]);
     
+    const handleFilterChange = (column: keyof DisplayRow, value: string) => {
+        setFilters(prev => ({ ...prev, [column]: value }));
+    };
+
+    const filteredData = useMemo(() => {
+        if (!inventoryData) return [];
+        return inventoryData.filter(row => {
+            return (Object.keys(filters) as Array<keyof DisplayRow>).every(key => {
+                const filterValue = filters[key];
+                if (!filterValue) return true;
+
+                const rowValue = row[key];
+                if (rowValue === null || rowValue === undefined) return false;
+
+                return String(rowValue).toLowerCase().includes(filterValue.toLowerCase());
+            });
+        });
+    }, [inventoryData, filters]);
+
+    const footerTotals = useMemo(() => {
+        const totals: Record<keyof Omit<DisplayRow, 'CentroStock' | 'CentroProduccion' | 'ClaseAprovisionam' | 'Descripcion' | 'Material' | 'Sector' | 'Linea' | 'Tiempo'>, number> = {
+            StockActual: 0,
+            StockSeguridad: 0,
+            NecesidadStock: 0,
+            VentasMes1: 0,
+            TiempoTotalRequeridoStock: 0,
+            TiempoTotalRequeridoVentas: 0,
+        };
+        filteredData.forEach(row => {
+            totals.StockActual += row.StockActual || 0;
+            totals.StockSeguridad += row.StockSeguridad || 0;
+            totals.NecesidadStock += row.NecesidadStock || 0;
+            totals.VentasMes1 += row.VentasMes1 || 0;
+            totals.TiempoTotalRequeridoStock += row.TiempoTotalRequeridoStock || 0;
+            totals.TiempoTotalRequeridoVentas += row.TiempoTotalRequeridoVentas || 0;
+        });
+        return totals;
+    }, [filteredData]);
+
     return (
         <div className="p-6 md:p-8 space-y-6">
             <div className="flex items-center justify-between">
@@ -261,10 +335,26 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req. Stock (c*d)</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req Ventas</th>
                         </tr>
+                        <tr>
+                            <th className="p-1"><FilterInput column="CentroStock" value={filters.CentroStock || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="Material" value={filters.Material || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="Descripcion" value={filters.Descripcion || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="Sector" value={filters.Sector || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="ClaseAprovisionam" value={filters.ClaseAprovisionam || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="CentroProduccion" value={filters.CentroProduccion || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="Linea" value={filters.Linea || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="StockActual" value={filters.StockActual || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="StockSeguridad" value={filters.StockSeguridad || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="NecesidadStock" value={filters.NecesidadStock || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="VentasMes1" value={filters.VentasMes1 || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="Tiempo" value={filters.Tiempo || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="TiempoTotalRequeridoStock" value={filters.TiempoTotalRequeridoStock || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="TiempoTotalRequeridoVentas" value={filters.TiempoTotalRequeridoVentas || ''} onChange={handleFilterChange} /></th>
+                        </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {inventoryData.length > 0 ? (
-                            inventoryData.map((row, index) => (
+                        {filteredData.length > 0 ? (
+                            filteredData.map((row, index) => (
                                 <tr key={`${row.Material}-${row.CentroStock}-${index}`}>
                                     <td className="px-2 py-2 whitespace-nowrap">{row.CentroStock}</td>
                                     <td className="px-2 py-2 whitespace-nowrap font-mono">{row.Material}</td>
@@ -285,11 +375,23 @@ export const InventoryNeedsSection: React.FC = () => {
                         ) : (
                             <tr>
                                 <td colSpan={14} className="text-center py-8 text-gray-500">
-                                    {isLoading ? 'Calculando necesidades...' : 'No hay datos para mostrar. Presione el botón para calcular.'}
+                                    {isLoading ? 'Calculando necesidades...' : 'No hay datos para mostrar. Presione el botón para calcular o ajuste los filtros.'}
                                 </td>
                             </tr>
                         )}
                     </tbody>
+                     <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
+                        <tr>
+                            <th colSpan={7} className="px-2 py-2 text-right font-bold uppercase">TOTALES FILTRADOS:</th>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{footerTotals.StockActual.toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{footerTotals.StockSeguridad.toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{footerTotals.NecesidadStock.toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{footerTotals.VentasMes1.toLocaleString()}</td>
+                            <td></td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{footerTotals.TiempoTotalRequeridoStock.toFixed(2)}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{footerTotals.TiempoTotalRequeridoVentas.toFixed(2)}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
