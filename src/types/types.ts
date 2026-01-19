@@ -35,6 +35,8 @@ export type AppState = {
   demandAnalysis: DemandAnalysisResult | null;
   apiAssemblyData: TiempoEnsambleItem[];
   apiCuboInventariosData: CuboInventariosItem[];
+  planningYear: string;
+  planningMonth: string;
 };
 
 export type AppAction =
@@ -59,7 +61,9 @@ export type AppAction =
   | { type: 'SET_DEMAND_ANALYSIS'; payload: DemandAnalysisResult | null }
   | { type: 'RESET_PLANNING' }
   | { type: 'SET_API_ASSEMBLY_DATA'; payload: TiempoEnsambleItem[] }
-  | { type: 'SET_API_CUBO_INVENTARIOS_DATA'; payload: CuboInventariosItem[] };
+  | { type: 'SET_API_CUBO_INVENTARIOS_DATA'; payload: CuboInventariosItem[] }
+  | { type: 'SET_PLANNING_YEAR'; payload: string }
+  | { type: 'SET_PLANNING_MONTH'; payload: string };
 
 
 export type AbsenteeismEvent = {

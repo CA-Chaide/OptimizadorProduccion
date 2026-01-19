@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { 
     LayoutDashboard,
@@ -17,6 +18,7 @@ import {
     Truck,
     Package,
     Sheet,
+    Activity,
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -27,6 +29,7 @@ export enum ActiveView {
   DATA_IMPORT = 'DATA_IMPORT',
   CONSTRAINTS = 'CONSTRAINTS',
   INVENTORY_NEEDS = 'INVENTORY_NEEDS',
+  PRODUCTION_CAPACITY = 'PRODUCTION_CAPACITY',
   PRODUCTION_PLAN = 'MEDIUM_TERM_PLAN',
   PERSONNEL = 'PERSONNEL_MANAGEMENT',
   MAINTENANCE = 'MAINTENANCE',
@@ -49,6 +52,7 @@ export const TacticalSchedulingIcon = () => <CalendarClock className="w-5 h-5" /
 export const WorkShiftIcon = () => <CalendarCheck className="w-5 h-5" />;
 export const RealDataIcon = () => <DatabaseZap className="w-5 h-5" />;
 export const InventoryNeedsIcon = () => <Sheet className="w-5 h-5" />;
+export const CapacityIcon = () => <Activity className="w-5 h-5" />;
 
 
 // Common action icons
@@ -86,6 +90,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.DATA_IMPORT, label: 'Importar Ventas', icon: <DataImportIcon /> },
   { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
   { id: ActiveView.INVENTORY_NEEDS, label: 'Necesidades de Inventario', icon: <InventoryNeedsIcon /> },
+  { id: ActiveView.PRODUCTION_CAPACITY, label: 'Capacidad de Producción', icon: <CapacityIcon /> },
   { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon /> },
   { id: ActiveView.MAINTENANCE, label: 'Mantenimiento', icon: <MaintenanceIcon /> },
   { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon /> },

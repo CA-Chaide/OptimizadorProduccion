@@ -148,15 +148,11 @@ const MultiSelectFilter: React.FC<{
 
 
 export const InventoryNeedsSection: React.FC = () => {
-    const { addNotification, constraints } = useAppContext();
+    const { addNotification, constraints, planningYear, planningMonth, setPlanningYear, setPlanningMonth } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [inventoryData, setInventoryData] = useState<DisplayRow[]>([]);
     
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-    const [startYear, setStartYear] = useState<string>(String(currentYear));
-    const [startMonth, setStartMonth] = useState<string>(String(currentMonth));
-    const yearOptions = [currentYear -1, currentYear, currentYear + 1, currentYear + 2];
+    const yearOptions = [Number(planningYear) -1, Number(planningYear), Number(planningYear) + 1, Number(planningYear) + 2];
 
     const [filters, setFilters] = useState<Partial<Record<keyof DisplayRow, string | string[]>>>({});
     const [filterOptions, setFilterOptions] = useState<Record<string, { value: string, label: string }[]>>({});
@@ -185,7 +181,7 @@ export const InventoryNeedsSection: React.FC = () => {
     }, [inventoryData]);
 
     const handleFetchData = useCallback(async () => {
-        const selectedDate = new Date(Number(startYear), Number(startMonth) - 1, 1);
+        const selectedDate = new Date(Number(planningYear), Number(planningMonth) - 1, 1);
         const today = new Date();
         const firstDayOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
@@ -196,7 +192,7 @@ export const InventoryNeedsSection: React.FC = () => {
 
         setIsLoading(true);
         setInventoryData([]);
-        addNotification('info', `Consultando datos para ${MONTH_NAMES[Number(startMonth)-1]} ${startYear}...`);
+        addNotification('info', `Consultando datos para ${MONTH_NAMES[Number(planningMonth)-1]} ${planningYear}...`);
 
         try {
             const [cuboData, tiemposData, presupuestoData]: [CuboInventariosRow[], TiempoEnsambleRow[], PresupuestoItem[]] = await Promise.all([
@@ -215,7 +211,7 @@ export const InventoryNeedsSection: React.FC = () => {
                 queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
-                    filters: { 'Año': Number(startYear), 'Mes': Number(startMonth) },
+                    filters: { 'Año': Number(planningYear), 'Mes': Number(planningMonth) },
                     pagination: { limit: 500000 }
                 })
             ]);
@@ -342,7 +338,7 @@ export const InventoryNeedsSection: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [addNotification, constraints, startYear, startMonth]);
+    }, [addNotification, constraints, planningYear, planningMonth]);
     
     const handleFilterChange = (column: keyof DisplayRow, value: string) => {
         setFilters(prev => ({ ...prev, [column]: value }));
@@ -401,13 +397,13 @@ export const InventoryNeedsSection: React.FC = () => {
                  <div className="flex items-end space-x-2">
                     <div>
                         <label htmlFor="startYear" className="block text-sm font-medium text-gray-700">Año de Inicio</label>
-                        <select id="startYear" value={startYear} onChange={e => setStartYear(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                        <select id="startYear" value={planningYear} onChange={e => setPlanningYear(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
                             {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
                         </select>
                     </div>
                     <div>
                         <label htmlFor="startMonth" className="block text-sm font-medium text-gray-700">Mes de Inicio</label>
-                        <select id="startMonth" value={startMonth} onChange={e => setStartMonth(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                        <select id="startMonth" value={planningMonth} onChange={e => setPlanningMonth(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
                             {MONTH_NAMES.map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
                         </select>
                     </div>

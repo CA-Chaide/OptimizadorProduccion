@@ -16,6 +16,9 @@ import { queryApi } from '@/hooks/useApiData';
 import { syncDataToStore } from '@/app/actions/datastore';
 import { runtimeInspector } from '@/services/RuntimeInspector';
 
+const currentYear = new Date().getFullYear();
+const currentMonth = new Date().getMonth() + 1;
+
 const initialState: AppState = {
     year: null,
     activeView: ActiveView.DATA_IMPORT,
@@ -50,6 +53,8 @@ const initialState: AppState = {
     demandAnalysis: null,
     apiAssemblyData: [],
     apiCuboInventariosData: [],
+    planningYear: String(currentYear),
+    planningMonth: String(currentMonth),
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -121,6 +126,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, apiAssemblyData: action.payload };
         case 'SET_API_CUBO_INVENTARIOS_DATA':
             return { ...state, apiCuboInventariosData: action.payload };
+        case 'SET_PLANNING_YEAR':
+            return { ...state, planningYear: action.payload };
+        case 'SET_PLANNING_MONTH':
+            return { ...state, planningMonth: action.payload };
         default:
             return state;
     }
@@ -146,6 +155,8 @@ type AppContextType = {
     demandAnalysis: DemandAnalysisResult | null;
     apiAssemblyData: TiempoEnsambleItem[];
     apiCuboInventariosData: CuboInventariosItem[];
+    planningYear: string;
+    planningMonth: string;
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
@@ -157,6 +168,8 @@ type AppContextType = {
     setMaintenanceEvents: (events: MaintenanceEvent[]) => Promise<void>;
     setWorkShifts: (shifts: WorkShift[]) => Promise<void>;
     setConstraints: (constraints: AppConstraints) => Promise<void>;
+    setPlanningYear: (year: string) => void;
+    setPlanningMonth: (month: string) => void;
     handleSyncAndValidate: () => Promise<boolean>;
     handleContinueToStep2: () => void;
     handleContinueToStep3: () => void;
@@ -460,7 +473,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_CONSTRAINTS', payload: constraints });
     };
     
-    const value = {
+    const setPlanningYear = useCallback((year: string) => {
+        dispatch({ type: 'SET_PLANNING_YEAR', payload: year });
+    }, []);
+
+    const setPlanningMonth = useCallback((month: string) => {
+        dispatch({ type: 'SET_PLANNING_MONTH', payload: month });
+    }, []);
+
+    const value: AppContextType = {
         ...state,
         dispatch,
         addNotification,
@@ -473,6 +494,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setMaintenanceEvents,
         setWorkShifts,
         setConstraints,
+        setPlanningYear,
+        setPlanningMonth,
         handleSyncAndValidate,
         handleContinueToStep2,
         handleContinueToStep3,
