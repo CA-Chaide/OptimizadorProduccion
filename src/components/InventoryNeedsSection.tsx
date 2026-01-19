@@ -134,24 +134,26 @@ export const InventoryNeedsSection: React.FC = () => {
 
                     if (necesidadStock > 0 && item.Material && item.Centro) {
                         const codigoMaterialNormalized = normalizeMaterialCode(item.Material);
-                        const centro = String(item.Centro).trim();
+                        const centroDeNecesidad = String(item.Centro).trim();
+                        const claseAprov = item.ClaseAprovisionam || 'E'; // Default to 'E' if not specified
+
+                        // Determine the production center based on business rules
+                        const centroDeProduccion = claseAprov === 'F' ? '1000' : centroDeNecesidad;
                         
-                        // Find the specific process info for this product AND this center.
+                        // Find the process info for this product in the correct PRODUCTION center
                         const ppi = constraints.productProcessInfos.find(p => {
                             if (p.productId !== codigoMaterialNormalized) {
                                 return false;
                             }
-                            // Find the line associated with this ppi
                             const lineForPpi = constraints.productionLines.find(l => l.id === p.productionLineId);
-                            // Check if the line's work center matches the center from CuboInventarios
-                            return lineForPpi?.workCenterId === centro;
+                            return lineForPpi?.workCenterId === centroDeProduccion;
                         });
 
                         const linea = ppi ? constraints.productionLines.find(l => l.id === ppi.productionLineId) : undefined;
                         const tiempoUnitario = (ppi?.totalManufacturingTimeHours || 0) * 60; // Convert to minutes
 
                         return {
-                            centro: centro,
+                            centro: centroDeNecesidad, // The center with the need
                             codigoMaterial: String(item.Material),
                             claseAprovisionamiento: item.ClaseAprovisionam || 'N/A',
                             lineaProduccion: linea?.name || 'N/A',
