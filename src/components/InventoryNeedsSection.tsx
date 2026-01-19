@@ -136,10 +136,19 @@ export const InventoryNeedsSection: React.FC = () => {
                         const codigoMaterialNormalized = normalizeMaterialCode(item.Material);
                         const centro = String(item.Centro).trim();
                         
-                        const ppi = constraints.productProcessInfos.find(p => p.productId === codigoMaterialNormalized);
-                        const linea = constraints.productionLines.find(l => l.id === ppi?.productionLineId);
+                        // Find the specific process info for this product AND this center.
+                        const ppi = constraints.productProcessInfos.find(p => {
+                            if (p.productId !== codigoMaterialNormalized) {
+                                return false;
+                            }
+                            // Find the line associated with this ppi
+                            const lineForPpi = constraints.productionLines.find(l => l.id === p.productionLineId);
+                            // Check if the line's work center matches the center from CuboInventarios
+                            return lineForPpi?.workCenterId === centro;
+                        });
 
-                        const tiempoUnitario = (ppi?.totalManufacturingTimeHours || 0) * 60; // Convert hours to minutes
+                        const linea = ppi ? constraints.productionLines.find(l => l.id === ppi.productionLineId) : undefined;
+                        const tiempoUnitario = (ppi?.totalManufacturingTimeHours || 0) * 60; // Convert to minutes
 
                         return {
                             centro: centro,
@@ -230,11 +239,11 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Código Material</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase Aprov.</th>
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea Prod.</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Disp. (a)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Seg. (b)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Necesidad (c=b-a)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">T. Unitario (d)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">T. Total Req. (cxd)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Disp. (A)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Seg. (B)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Necesidad (C=B-A)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">T. Unitario (D)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">T. Total Req. (CXD)</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
