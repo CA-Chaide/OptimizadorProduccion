@@ -54,13 +54,13 @@ export const InventoryNeedsSection: React.FC = () => {
     
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
-    const [startYear, setStartYear] = useState<number>(currentYear);
-    const [startMonth, setStartMonth] = useState<number>(currentMonth);
+    const [startYear, setStartYear] = useState<string>(String(currentYear));
+    const [startMonth, setStartMonth] = useState<string>(String(currentMonth));
     const yearOptions = [currentYear -1, currentYear, currentYear + 1, currentYear + 2];
 
 
     const handleFetchData = useCallback(async () => {
-        const selectedDate = new Date(startYear, startMonth - 1, 1);
+        const selectedDate = new Date(Number(startYear), Number(startMonth) - 1, 1);
         const today = new Date();
         const firstDayOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
@@ -71,7 +71,7 @@ export const InventoryNeedsSection: React.FC = () => {
 
         setIsLoading(true);
         setInventoryData([]);
-        addNotification('info', `Consultando datos para ${MONTH_NAMES[startMonth-1]} ${startYear}...`);
+        addNotification('info', `Consultando datos para ${MONTH_NAMES[Number(startMonth)-1]} ${startYear}...`);
 
         try {
             const [cuboData, tiemposData, presupuestoData]: [CuboInventariosRow[], TiempoEnsambleRow[], PresupuestoItem[]] = await Promise.all([
@@ -90,7 +90,7 @@ export const InventoryNeedsSection: React.FC = () => {
                 queryApi({
                     source: 'Presupuesto',
                     operation: 'get_data',
-                    filters: { 'Año': startYear, 'Mes': startMonth },
+                    filters: { 'Año': Number(startYear), 'Mes': Number(startMonth) },
                     pagination: { limit: 500000 }
                 })
             ]);
@@ -160,7 +160,7 @@ export const InventoryNeedsSection: React.FC = () => {
                 const salesDemand = presupuestoData
                     .filter(p => normalizeMaterialCode(p.CodMaterial) === normalizedMaterial && String(p.Centro).trim() === stockCenter)
                     .reduce((sum, p) => {
-                        const units = Number(String(p.UnidadesProyectado || '0').replace(/\./g, ''));
+                        const units = parseFloat(String(p.UnidadesProyectado || '0'));
                         return sum + (isNaN(units) ? 0 : units);
                     }, 0);
 
@@ -206,13 +206,13 @@ export const InventoryNeedsSection: React.FC = () => {
                  <div className="flex items-end space-x-2">
                     <div>
                         <label htmlFor="startYear" className="block text-sm font-medium text-gray-700">Año de Inicio</label>
-                        <select id="startYear" value={startYear} onChange={e => setStartYear(Number(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                        <select id="startYear" value={startYear} onChange={e => setStartYear(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
                             {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
                     </div>
                     <div>
                         <label htmlFor="startMonth" className="block text-sm font-medium text-gray-700">Mes de Inicio</label>
-                        <select id="startMonth" value={startMonth} onChange={e => setStartMonth(Number(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                        <select id="startMonth" value={startMonth} onChange={e => setStartMonth(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
                             {MONTH_NAMES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
                         </select>
                     </div>
@@ -245,7 +245,7 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea Prod.</th>
                             <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Disp. (a)</th>
                             <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Stock Seg. (b)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Necesidad Stock (c=b-a)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Necesidad Stock (C=B-A)</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Ventas Mes 1</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Unit. (d)</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req. (c*d)</th>
