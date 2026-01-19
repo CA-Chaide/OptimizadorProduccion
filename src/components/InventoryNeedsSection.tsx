@@ -6,7 +6,7 @@ import { useAppContext } from '@/context/AppProvider';
 import { queryApi } from '@/hooks/useApiData';
 import { Sheet, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ProductionLine } from '@/types/types';
+import { ProductionLine, WorkstationDefinition } from '@/types/types';
 
 interface CuboInventariosRow {
     Centro: string;
@@ -82,7 +82,8 @@ export const InventoryNeedsSection: React.FC = () => {
                 const stockCenter = String(item.Centro).trim();
                 
                 let producingCenter = stockCenter;
-                if (stockCenter === '2000' && item.ClaseAprovisionam === 'F') {
+                const primaryEntry = cuboData.find(i => normalizeMaterialCode(i.Material) === normalizedMaterial && String(i.Centro).trim() === stockCenter);
+                if (stockCenter === '2000' && primaryEntry?.ClaseAprovisionam === 'F') {
                     producingCenter = '1000';
                 }
 
@@ -126,7 +127,7 @@ export const InventoryNeedsSection: React.FC = () => {
                     
                     const bestPerformance = linePerformances.reduce((best, current) => {
                         return (current.bottleneckTime < best.bottleneckTime) ? current : best;
-                    }, { line: null, bottleneckTime: Infinity });
+                    }, { line: null as ProductionLine | null, bottleneckTime: Infinity });
 
                     if (bestPerformance.line && bestPerformance.bottleneckTime !== Infinity) {
                         bestLineInfo = {
