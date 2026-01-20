@@ -174,7 +174,7 @@ export const ProductionCapacitySection: React.FC = () => {
                     const numPersonasPorPuesto = workstation.employeesPerWorkstation;
                     const totalPersonas = numPuestos * numPersonasPorPuesto;
                     
-                    const horasDisponibles = totalPersonas * totalHoursInMonth;
+                    const horasDisponibles = numPuestos * totalHoursInMonth;
 
                     rows.push({
                         center,
