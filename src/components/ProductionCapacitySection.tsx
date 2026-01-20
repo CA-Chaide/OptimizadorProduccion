@@ -29,6 +29,8 @@ interface CapacityRow {
 // Renombrar para evitar conflicto en el ámbito del archivo
 type DailyCapacityRow = OriginalDailyCapacityRow & { mes: string };
 
+const EFFICIENCY_FACTOR = 0.87;
+
 // Helper to get hours for a specific day
 const getDailyHours = (date: Date, constraints: AppConstraints): number => {
     const { holidays, shiftParameters } = constraints;
@@ -38,15 +40,26 @@ const getDailyHours = (date: Date, constraints: AppConstraints): number => {
     const holiday = holidays.find(h => h.date === dateString && h.appliesTo !== 'Distribucion');
     const dayOfWeek = date.getDay(); // 0=Sun, 6=Sat
 
+    let rawHours = 0;
     if (holiday) {
-        if (holiday.dayType === 'asueto') return 0;
-        if (holiday.dayType === 'half') return shiftParameters.saturdayAndHolidayHours;
-        return shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
+        if (holiday.dayType === 'asueto') {
+            rawHours = 0;
+        } else if (holiday.dayType === 'half') {
+            rawHours = shiftParameters.saturdayAndHolidayHours;
+        } else {
+            rawHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
+        }
+    } else {
+        if (dayOfWeek === 0) { // Sunday
+            rawHours = 0;
+        } else if (dayOfWeek === 6) { // Saturday
+            rawHours = shiftParameters.saturdayAndHolidayHours;
+        } else { // Weekday
+            rawHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
+        }
     }
-
-    if (dayOfWeek === 0) return 0; // Sunday
-    if (dayOfWeek === 6) return shiftParameters.saturdayAndHolidayHours; // Saturday
-    return shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay; // Weekday
+    
+    return rawHours * EFFICIENCY_FACTOR;
 };
 
 const MultiSelectFilter: React.FC<{
@@ -321,7 +334,8 @@ export const ProductionCapacitySection: React.FC = () => {
             </div>
             
              <p className="text-gray-600 text-sm">
-                Esta sección desglosa la capacidad de producción disponible, tanto en una vista resumida mensual como en un detalle diario por puesto de trabajo para los próximos 17 meses.
+                Esta sección desglosa la capacidad de producción disponible, tanto en una vista resumida mensual como en un detalle diario para los próximos 17 meses. 
+                Se aplica un factor de eficiencia del <span className="font-bold text-blue-600">{(EFFICIENCY_FACTOR * 100).toFixed(0)}%</span> sobre las horas de jornada.
             </p>
 
             <Tabs defaultValue="details" className="w-full">
@@ -422,9 +436,9 @@ export const ProductionCapacitySection: React.FC = () => {
                                             <td className="px-2 py-2 whitespace-nowrap">{row.linea}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.puestoDeTrabajo}</td>
                                             <td className="px-2 py-2 text-right whitespace-nowrap">{row.esFeriado}</td>
-                                            <td className="px-2 py-2 text-right font-mono">{row.maxHorasJornada}</td>
+                                            <td className="px-2 py-2 text-right font-mono">{row.maxHorasJornada.toFixed(2)}</td>
                                             <td className="px-2 py-2 text-right font-mono">{row.cantidadPuestos}</td>
-                                            <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{row.horasMaxDisponibles}</td>
+                                            <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{row.horasMaxDisponibles.toFixed(2)}</td>
                                         </tr>
                                     ))
                                 ) : (
@@ -438,7 +452,7 @@ export const ProductionCapacitySection: React.FC = () => {
                              <tfoot className="bg-gray-800 text-white sticky bottom-0 font-bold">
                                 <tr>
                                     <th colSpan={9} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
-                                    <td className="px-2 py-2 text-right font-mono">{dailyFooterTotals.horasMaxDisponibles.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right font-mono">{dailyFooterTotals.horasMaxDisponibles.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 </tr>
                             </tfoot>
                         </table>
