@@ -113,7 +113,7 @@ const MultiSelectFilter: React.FC<{
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
-                    const matchingOption = options.find(opt => opt.value.toLowerCase() === currentValue.toLowerCase());
+                    const matchingOption = options.find(opt => opt.label.toLowerCase() === currentValue.toLowerCase());
                     if (matchingOption) {
                       handleSelect(matchingOption.value);
                     }
@@ -395,13 +395,13 @@ export const InventoryNeedsSection: React.FC = () => {
                     <h2 className="text-2xl font-semibold text-gray-700">Necesidades de Producción para Stock de Seguridad (Primer Período)</h2>
                 </div>
                  <div className="flex items-end space-x-2">
-                    <div>
+                    <div className="w-28">
                         <label htmlFor="startYear" className="block text-sm font-medium text-gray-700">Año de Inicio</label>
                         <select id="startYear" value={planningYear} onChange={e => setPlanningYear(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
                             {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
                         </select>
                     </div>
-                    <div>
+                    <div className="w-36">
                         <label htmlFor="startMonth" className="block text-sm font-medium text-gray-700">Mes de Inicio</label>
                         <select id="startMonth" value={planningMonth} onChange={e => setPlanningMonth(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
                             {MONTH_NAMES.map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
