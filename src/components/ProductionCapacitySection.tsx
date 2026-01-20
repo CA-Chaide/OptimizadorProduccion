@@ -13,31 +13,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-// Helper function to calculate working days in a month
-const getWorkingDays = (year: number, month: number, holidays: Holiday[]): { weekdays: number; saturdays: number } => {
-    const daysInMonth = new Date(year, month, 0).getDate();
-    let weekdays = 0;
-    let saturdays = 0;
-
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay(); // 0=Sun, 6=Sat
-
-        const holiday = holidays.find(h => h.date === date.toISOString().split('T')[0]);
-
-        if (holiday && holiday.dayType === 'asueto' && holiday.appliesTo !== 'Distribucion') {
-            continue; // Skip non-working holidays for production
-        }
-
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday to Friday
-            weekdays++;
-        } else if (dayOfWeek === 6) { // Saturday
-            saturdays++;
-        }
-    }
-    return { weekdays, saturdays };
-};
-
 interface CapacityRow {
     center: WorkCenter;
     line: ProductionLine;
@@ -164,9 +139,13 @@ export const ProductionCapacitySection: React.FC = () => {
         if (isNaN(year) || isNaN(month) || !constraints.shiftParameters) {
             return [];
         }
-
-        const { weekdays, saturdays } = getWorkingDays(year, month, constraints.holidays);
-        const { regularHoursPerDay, extraHoursPerDay, saturdayAndHolidayHours } = constraints.shiftParameters;
+        
+        let totalHoursInMonth = 0;
+        const daysInMonth = new Date(year, month, 0).getDate();
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month - 1, day);
+            totalHoursInMonth += getDailyHours(date, constraints);
+        }
         
         const rows: CapacityRow[] = [];
 
@@ -182,7 +161,7 @@ export const ProductionCapacitySection: React.FC = () => {
                     const numPersonasPorPuesto = workstation.employeesPerWorkstation;
                     const totalPersonas = numPuestos * numPersonasPorPuesto;
                     
-                    const horasDisponibles = totalPersonas * ((weekdays * (regularHoursPerDay + extraHoursPerDay)) + (saturdays * saturdayAndHolidayHours));
+                    const horasDisponibles = totalPersonas * totalHoursInMonth;
 
                     rows.push({
                         center,
