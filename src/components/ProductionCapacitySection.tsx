@@ -27,7 +27,7 @@ interface CapacityRow {
 }
 
 // Renombrar para evitar conflicto en el ámbito del archivo
-type DailyCapacityRow = OriginalDailyCapacityRow & { mes: string };
+type DailyCapacityRow = OriginalDailyCapacityRow & { mes: string; año: number };
 
 const EFFICIENCY_FACTOR = 0.87;
 
@@ -255,6 +255,7 @@ export const ProductionCapacitySection: React.FC = () => {
                             dailyRows.push({
                                 centro: center.id,
                                 mes: monthName,
+                                año: year,
                                 fecha: date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
                                 dia: weekdaysEs[date.getDay()],
                                 esFeriado: constraints.holidays.some(h => h.date === date.toISOString().split('T')[0] && h.dayType === 'asueto' && h.appliesTo !== 'Distribucion') ? 'Si' : 'No',
@@ -274,7 +275,7 @@ export const ProductionCapacitySection: React.FC = () => {
     
     useEffect(() => {
         if (dailyCapacityData.length > 0) {
-            const columnsToFilter: Array<keyof DailyCapacityRow> = ['centro', 'mes', 'fecha', 'dia', 'linea', 'puestoDeTrabajo'];
+            const columnsToFilter: Array<keyof DailyCapacityRow> = ['centro', 'mes', 'año', 'fecha', 'dia', 'linea', 'puestoDeTrabajo'];
             const options: Record<string, Set<string>> = {};
             columnsToFilter.forEach(col => options[col] = new Set());
             
@@ -406,6 +407,7 @@ export const ProductionCapacitySection: React.FC = () => {
                                 <tr>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Año</th>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Día</th>
                                     <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
@@ -418,6 +420,7 @@ export const ProductionCapacitySection: React.FC = () => {
                                 <tr>
                                     <th className="p-1"><MultiSelectFilter placeholder="Centro" options={dailyFilterOptions.centro || []} selected={(dailyFilters.centro as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('centro', value)} /></th>
                                     <th className="p-1"><MultiSelectFilter placeholder="Mes" options={dailyFilterOptions.mes || []} selected={(dailyFilters.mes as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('mes', value)} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Año" options={dailyFilterOptions.año || []} selected={(dailyFilters.año as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('año', value)} /></th>
                                     <th className="p-1"><MultiSelectFilter placeholder="Fecha" options={dailyFilterOptions.fecha || []} selected={(dailyFilters.fecha as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('fecha', value)} /></th>
                                     <th className="p-1"><MultiSelectFilter placeholder="Día" options={dailyFilterOptions.dia || []} selected={(dailyFilters.dia as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('dia', value)} /></th>
                                     <th className="p-1"><MultiSelectFilter placeholder="Línea" options={dailyFilterOptions.linea || []} selected={(dailyFilters.linea as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('linea', value)} /></th>
@@ -431,6 +434,7 @@ export const ProductionCapacitySection: React.FC = () => {
                                         <tr key={index} className="hover:bg-gray-50">
                                             <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.mes}</td>
+                                            <td className="px-2 py-2 whitespace-nowrap">{row.año}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.fecha}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.dia}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.linea}</td>
@@ -443,7 +447,7 @@ export const ProductionCapacitySection: React.FC = () => {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={10} className="text-center py-8 text-gray-500">
+                                        <td colSpan={11} className="text-center py-8 text-gray-500">
                                             No hay datos para mostrar con los filtros seleccionados.
                                         </td>
                                     </tr>
@@ -451,7 +455,7 @@ export const ProductionCapacitySection: React.FC = () => {
                             </tbody>
                              <tfoot className="bg-gray-800 text-white sticky bottom-0 font-bold">
                                 <tr>
-                                    <th colSpan={9} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
+                                    <th colSpan={10} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
                                     <td className="px-2 py-2 text-right font-mono">{dailyFooterTotals.horasMaxDisponibles.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 </tr>
                             </tfoot>
