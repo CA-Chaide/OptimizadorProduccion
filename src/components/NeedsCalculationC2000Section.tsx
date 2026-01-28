@@ -380,20 +380,10 @@ export const NeedsCalculationC2000Section: React.FC = () => {
 
             const productName = sale?.descripciónMaterial || inventoryItem?.Descripcion || 'N/A';
 
-            let provisionClass: NeedsRow['provisionClass'] = 'N/A';
-            const primaryEntry = inventoryItem;
-            const fallbackEntry = apiCuboInventariosData.find(item => normalizeMaterialCode(item.Material) === productId && String(item.Centro).trim() === '1000');
+            const provisionClass: NeedsRow['provisionClass'] = inventoryItem?.ClaseAprovisionam || 'N/A';
             
-            if (primaryEntry?.ClaseAprovisionam) {
-                provisionClass = primaryEntry.ClaseAprovisionam;
-            } else if (fallbackEntry?.ClaseAprovisionam === 'F') {
-                provisionClass = 'F';
-            }
-
-            const producibleInC2000 = constraints.productProcessInfos.some(ppi => ppi.productId === productId && ppi.productionLineId.includes('---2000---'));
-            if (!producibleInC2000 && provisionClass !== 'F') {
-                provisionClass = 'F';
-            }
+            // Check for producibility is now part of getBestLineForProduct, which returns null if not producible.
+            // This is cleaner than the previous explicit check here.
 
             materials.set(productId, { productId, productName, salesNeed, initialStock, safetyStock, backlog: 0, totalNeed, provisionClass, viableProductionC2000: 0, capacityDeficitC2000: 0, transferNeedF: 0, totalTransferNeed: 0 });
         });
@@ -492,6 +482,13 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                 row.viableProductionC2000 = viableE.get(row.productId) || 0;
             } else if (row.provisionClass === 'X') {
                 row.viableProductionC2000 = viableX.get(row.productId) || 0;
+            }
+
+            // A material might not be producible in C2000 even if it's E or X
+            const { isProducible } = getBestLineForProduct(row.productId, '2000', tiemposData, constraints);
+            if (!isProducible && (row.provisionClass === 'E' || row.provisionClass === 'X')) {
+                row.viableProductionC2000 = 0;
+                row.provisionClass = 'F'; // Treat as 'F' if not producible locally
             }
 
             if (row.provisionClass === 'E' || row.provisionClass === 'X') {
