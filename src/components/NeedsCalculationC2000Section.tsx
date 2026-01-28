@@ -371,19 +371,30 @@ export const NeedsCalculationC2000Section: React.FC = () => {
 
         allProductIds.forEach(productId => {
             const sale = salesThisMonthC2000.find(s => normalizeMaterialCode(s.código) === productId);
-            const inventoryItem = apiCuboInventariosData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === '2000');
+            const inventoryItemC2000 = apiCuboInventariosData.find(i => 
+                normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === '2000'
+            );
             
             const salesNeed = sale ? sale.unidadesProyectado : 0;
-            const initialStock = Number(inventoryItem?.StockActual) || 0;
-            const safetyStock = Number(inventoryItem?.StockSeguridad) || 0;
+            const initialStock = Number(inventoryItemC2000?.StockActual) || 0;
+            const safetyStock = Number(inventoryItemC2000?.StockSeguridad) || 0;
             const totalNeed = Math.max(0, (salesNeed + safetyStock) - initialStock);
 
-            const productName = sale?.descripciónMaterial || inventoryItem?.Descripcion || 'N/A';
+            const productName = sale?.descripciónMaterial || inventoryItemC2000?.Descripcion || 'N/A';
 
-            const provisionClass: NeedsRow['provisionClass'] = inventoryItem?.ClaseAprovisionam || 'N/A';
-            
-            // Check for producibility is now part of getBestLineForProduct, which returns null if not producible.
-            // This is cleaner than the previous explicit check here.
+            let provisionClass: NeedsRow['provisionClass'] = 'N/A';
+            const classC2000 = inventoryItemC2000?.ClaseAprovisionam;
+
+            if (classC2000 === 'E' || classC2000 === 'X' || classC2000 === 'F') {
+                provisionClass = classC2000;
+            } else {
+                const inventoryItemC1000 = apiCuboInventariosData.find(i => 
+                    normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === '1000'
+                );
+                if (inventoryItemC1000?.ClaseAprovisionam === 'F') {
+                    provisionClass = 'F';
+                }
+            }
 
             materials.set(productId, { productId, productName, salesNeed, initialStock, safetyStock, backlog: 0, totalNeed, provisionClass, viableProductionC2000: 0, capacityDeficitC2000: 0, transferNeedF: 0, totalTransferNeed: 0 });
         });
@@ -484,11 +495,9 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                 row.viableProductionC2000 = viableX.get(row.productId) || 0;
             }
 
-            // A material might not be producible in C2000 even if it's E or X
-            const { isProducible } = getBestLineForProduct(row.productId, '2000', tiemposData, constraints);
-            if (!isProducible && (row.provisionClass === 'E' || row.provisionClass === 'X')) {
+            const { bestLine } = getBestLineForProduct(row.productId, '2000', tiemposData, constraints);
+            if (!bestLine && (row.provisionClass === 'E' || row.provisionClass === 'X')) {
                 row.viableProductionC2000 = 0;
-                row.provisionClass = 'F'; // Treat as 'F' if not producible locally
             }
 
             if (row.provisionClass === 'E' || row.provisionClass === 'X') {
