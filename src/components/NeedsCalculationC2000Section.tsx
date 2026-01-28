@@ -118,9 +118,7 @@ const getBestLineForProduct = (
 
         const breakdown: Record<string, number> = {};
         if (workstationEffectiveTimes.length > 0) {
-            // Recalculate breakdown based on the line bottleneck, not individual times
-            const totalTimePerUnitOnLine = lineBottleneck / 60; // in hours
-             line.assignedWorkstations.forEach(assignedWs => {
+            line.assignedWorkstations.forEach(assignedWs => {
                 const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
                 if (!workstationDef) return;
                 const tiempoEntry = tiemposData.find(t =>
@@ -130,7 +128,7 @@ const getBestLineForProduct = (
                     t.PuestoTrabajo.trim() === workstationDef.name
                 );
                 if (tiempoEntry && tiempoEntry.Tiempo > 0) {
-                    breakdown[workstationDef.id] = (tiempoEntry.Tiempo / 60); // Time in hours for ONE post
+                    breakdown[workstationDef.id] = (tiempoEntry.Tiempo / 60);
                 }
             });
         }
@@ -145,8 +143,8 @@ const getBestLineForProduct = (
     if (bestPerformance.line && bestPerformance.bottleneckTime !== Infinity) {
         return {
             bestLine: bestPerformance.line,
-            bottleneckTime: bestPerformance.bottleneckTime, // in minutes
-            workstationHourBreakdown: bestPerformance.workstationHourBreakdown // in hours/unit
+            bottleneckTime: bestPerformance.bottleneckTime,
+            workstationHourBreakdown: bestPerformance.workstationHourBreakdown
         };
     }
 
@@ -174,7 +172,6 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         const year = parseInt(planningYear, 10);
         const month = parseInt(planningMonth, 10);
         
-        // Fetch assembly times
         let tiemposData: TiempoEnsambleItem[] = [];
         try {
             tiemposData = await queryApi({
@@ -195,8 +192,6 @@ export const NeedsCalculationC2000Section: React.FC = () => {
 
 
         const materials = new Map<string, NeedsRow>();
-
-        // 1. Initialize materials from sales and inventory
         const salesThisMonthC2000 = salesData.filter(s => String(s.centro).trim() === '2000' && s.año === year && s.mes === month);
         
         salesThisMonthC2000.forEach(s => {
@@ -217,7 +212,6 @@ export const NeedsCalculationC2000Section: React.FC = () => {
             }
         });
 
-        // 2. Calculate Total Need and Provisioning Class
         materials.forEach(row => {
             row.totalNeed = (row.salesNeed + row.safetyStock) - row.initialStock;
             if (row.totalNeed < 0) row.totalNeed = 0;
@@ -231,8 +225,72 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                 row.provisionClass = 'F';
             }
         });
+        
+        const calculateViable = (
+            needs: NeedsRow[],
+            availableCapacity: Record<string, number>,
+            tiemposData: TiempoEnsambleItem[],
+            constraints: AppConstraints
+        ): { viable: Map<string, number>; hours: Record<string, number> } => {
+            
+            const detailedNeeds = needs.map(need => {
+                 const { bottleneckTime, workstationHourBreakdown } = getBestLineForProduct(need.productId, '2000', tiemposData, constraints);
+                 const isProducible = bottleneckTime !== null && bottleneckTime !== Infinity;
+                 return { ...need, isProducible, workstationHoursPerUnit: workstationHourBreakdown };
+            }).filter(n => n.isProducible);
 
-        // 3. Calculate Viable Production C2000
+            let currentNeeds = detailedNeeds.map(n => ({ ...n, qtyToProduce: n.totalNeed }));
+            
+            for (let i = 0; i < 15; i++) { // Iteration limit to prevent infinite loops
+                const requiredHours: Record<string, number> = {};
+                let bottleneck = { wsId: '', deficit: 0 };
+                
+                currentNeeds.forEach(need => {
+                    Object.entries(need.workstationHoursPerUnit).forEach(([wsId, hoursPerUnit]) => {
+                        if (!requiredHours[wsId]) requiredHours[wsId] = 0;
+                        requiredHours[wsId] += need.qtyToProduce * hoursPerUnit;
+                    });
+                });
+                
+                Object.entries(requiredHours).forEach(([wsId, hours]) => {
+                    const deficit = hours - (availableCapacity[wsId] || 0);
+                    if (deficit > bottleneck.deficit) {
+                        bottleneck = { wsId, deficit };
+                    }
+                });
+
+                if (bottleneck.deficit <= 0.01) {
+                    break;
+                }
+                
+                const hoursInBottleneck = requiredHours[bottleneck.wsId];
+                currentNeeds.forEach(need => {
+                    if (need.workstationHoursPerUnit[bottleneck.wsId]) {
+                        const productHoursInBottleneck = (need.workstationHoursPerUnit[bottleneck.wsId] || 0) * need.qtyToProduce;
+                        const participation = hoursInBottleneck > 0 ? productHoursInBottleneck / hoursInBottleneck : 0;
+                        const hoursToCut = bottleneck.deficit * participation;
+                        const unitsToCut = (need.workstationHoursPerUnit[bottleneck.wsId]) > 0
+                            ? hoursToCut / (need.workstationHoursPerUnit[bottleneck.wsId])
+                            : 0;
+                        need.qtyToProduce = Math.max(0, need.qtyToProduce - unitsToCut);
+                    }
+                });
+            }
+
+            const viable = new Map<string, number>();
+            const finalRequiredHours: Record<string, number> = {};
+            currentNeeds.forEach(need => {
+                const finalQty = Math.floor(need.qtyToProduce);
+                viable.set(need.productId, finalQty);
+                Object.entries(need.workstationHoursPerUnit).forEach(([wsId, hoursPerUnit]) => {
+                    if (!finalRequiredHours[wsId]) finalRequiredHours[wsId] = 0;
+                    finalRequiredHours[wsId] += finalQty * hoursPerUnit;
+                });
+            });
+
+            return { viable, hours: finalRequiredHours };
+        };
+        
         const needsE = Array.from(materials.values()).filter(m => m.provisionClass === 'E' && m.totalNeed > 0);
         const needsX = Array.from(materials.values()).filter(m => m.provisionClass === 'X' && m.totalNeed > 0);
         
@@ -244,81 +302,13 @@ export const NeedsCalculationC2000Section: React.FC = () => {
             capacityByWorkstation[ws.id] = getMonthlyCapacityForWorkstation(ws.id, year, month, constraints);
         });
 
-        const calculateViable = (
-            needs: NeedsRow[],
-            availableCapacity: Record<string, number>,
-            tiemposData: TiempoEnsambleItem[],
-            constraints: AppConstraints
-        ): { viable: Map<string, number>; hours: Record<string, number> } => {
-
-            const detailedNeeds = needs.map(need => {
-                 const { bottleneckTime, workstationHourBreakdown } = getBestLineForProduct(need.productId, '2000', tiemposData, constraints);
-                 const isProducible = bottleneckTime !== null && bottleneckTime !== Infinity;
-
-                 return { ...need, isProducible, workstationHoursPerUnit: workstationHourBreakdown };
-            }).filter(n => n.isProducible); // Only consider producible items
-
-            let currentNeeds = detailedNeeds.map(n => ({ ...n, qtyToProduce: n.totalNeed }));
-            
-            let iterations = 0;
-            while (iterations < 10) {
-                iterations++;
-                const requiredHours: Record<string, number> = {};
-                const bottleneck = { wsId: '', deficit: 0 };
-                
-                // Calculate load for current quantities
-                currentNeeds.forEach(need => {
-                    Object.entries(need.workstationHoursPerUnit).forEach(([wsId, hoursPerUnit]) => {
-                        if (!requiredHours[wsId]) requiredHours[wsId] = 0;
-                        requiredHours[wsId] += need.qtyToProduce * hoursPerUnit;
-                    });
-                });
-                
-                // Find this iteration's bottleneck
-                Object.entries(requiredHours).forEach(([wsId, hours]) => {
-                    const deficit = hours - (availableCapacity[wsId] || 0);
-                    if (deficit > bottleneck.deficit) {
-                        bottleneck.wsId = wsId;
-                        bottleneck.deficit = deficit;
-                    }
-                });
-
-                if (bottleneck.deficit <= 0.001) { // Exit if no significant bottleneck
-                    break;
-                }
-                
-                // Adjust quantities based on bottleneck
-                const hoursInBottleneck = requiredHours[bottleneck.wsId];
-                currentNeeds.forEach(need => {
-                    const productHoursInBottleneck = (need.workstationHoursPerUnit[bottleneck.wsId] || 0) * need.qtyToProduce;
-                    const participation = hoursInBottleneck > 0 ? productHoursInBottleneck / hoursInBottleneck : 0;
-                    const hoursToCut = bottleneck.deficit * participation;
-                    const unitsToCut = (need.workstationHoursPerUnit[bottleneck.wsId] || 1) > 0
-                        ? hoursToCut / (need.workstationHoursPerUnit[bottleneck.wsId])
-                        : 0;
-                    need.qtyToProduce = Math.max(0, Math.floor(need.qtyToProduce - unitsToCut));
-                });
-            }
-
-            const viable = new Map<string, number>();
-            const finalRequiredHours: Record<string, number> = {};
-            currentNeeds.forEach(need => {
-                viable.set(need.productId, need.qtyToProduce);
-                Object.entries(need.workstationHoursPerUnit).forEach(([wsId, hoursPerUnit]) => {
-                    if (!finalRequiredHours[wsId]) finalRequiredHours[wsId] = 0;
-                    finalRequiredHours[wsId] += need.qtyToProduce * hoursPerUnit;
-                });
-            });
-
-            return { viable, hours: finalRequiredHours };
-        };
-
-
+        // Stage 1: Plan 'E' materials
         const { viable: viableE, hours: hoursE } = calculateViable(needsE, capacityByWorkstation, tiemposData, constraints);
         
+        // Stage 2: Plan 'X' materials with remaining capacity
         const remainingCapacity = { ...capacityByWorkstation };
         Object.keys(hoursE).forEach(wsId => {
-            remainingCapacity[wsId] -= hoursE[wsId];
+            remainingCapacity[wsId] = Math.max(0, remainingCapacity[wsId] - hoursE[wsId]);
         });
 
         const { viable: viableX, hours: hoursX } = calculateViable(needsX, remainingCapacity, tiemposData, constraints);
@@ -327,7 +317,6 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         Object.keys(hoursE).forEach(k => requiredHours[k] = (requiredHours[k] || 0) + hoursE[k]);
         Object.keys(hoursX).forEach(k => requiredHours[k] = (requiredHours[k] || 0) + hoursX[k]);
 
-        // 4. Finalize rows
         materials.forEach(row => {
             if (row.provisionClass === 'E') {
                 row.viableProductionC2000 = viableE.get(row.productId) || 0;
@@ -336,7 +325,7 @@ export const NeedsCalculationC2000Section: React.FC = () => {
             }
 
             if (row.provisionClass === 'E' || row.provisionClass === 'X') {
-                row.capacityDeficitC2000 = row.totalNeed - row.viableProductionC2000;
+                row.capacityDeficitC2000 = Math.max(0, row.totalNeed - row.viableProductionC2000);
             }
             
             if (row.provisionClass === 'F') {
@@ -389,15 +378,15 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                             <tr key={row.productId}>
                                 <td className="px-2 py-2 font-mono">{row.productId}</td>
                                 <td className="px-2 py-2">{row.productName}</td>
-                                <td className="px-2 py-2 text-right font-mono">{row.salesNeed.toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono">{row.safetyStock.toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono">{row.initialStock.toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{row.totalNeed.toLocaleString()}</td>
+                                <td className="px-2 py-2 text-right font-mono">{Math.round(row.salesNeed).toLocaleString()}</td>
+                                <td className="px-2 py-2 text-right font-mono">{Math.round(row.safetyStock).toLocaleString()}</td>
+                                <td className="px-2 py-2 text-right font-mono">{Math.round(row.initialStock).toLocaleString()}</td>
+                                <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{Math.round(row.totalNeed).toLocaleString()}</td>
                                 <td className="px-2 py-2 text-center font-bold">{row.provisionClass}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-green-800 bg-green-50">{row.viableProductionC2000.toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-red-800 bg-red-50">{row.capacityDeficitC2000.toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">{row.transferNeedF.toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">{row.totalTransferNeed.toLocaleString()}</td>
+                                <td className="px-2 py-2 text-right font-mono font-bold text-green-800 bg-green-50">{Math.round(row.viableProductionC2000).toLocaleString()}</td>
+                                <td className="px-2 py-2 text-right font-mono font-bold text-red-800 bg-red-50">{Math.round(row.capacityDeficitC2000).toLocaleString()}</td>
+                                <td className="px-2 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">{Math.round(row.transferNeedF).toLocaleString()}</td>
+                                <td className="px-2 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">{Math.round(row.totalTransferNeed).toLocaleString()}</td>
                             </tr>
                         ))}
                          {results.length === 0 && !isLoading && (
