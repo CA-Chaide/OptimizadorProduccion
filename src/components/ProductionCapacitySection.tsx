@@ -21,9 +21,9 @@ interface CapacityRow {
     numPersonasPorPuesto: number;
     totalPersonas: number;
     horasDisponibles: number;
-    horasRequeridas: number; // Placeholder for now
+    horasRequeridas: number;
     saldoHoras: number;
-    ocupacion: number; // Placeholder for now
+    ocupacion: number;
 }
 
 // Renombrar para evitar conflicto en el ámbito del archivo
@@ -140,7 +140,7 @@ const MultiSelectFilter: React.FC<{
 
 
 export const ProductionCapacitySection: React.FC = () => {
-    const { constraints, planningYear, planningMonth } = useAppContext();
+    const { constraints, planningYear, planningMonth, c2000RequiredHours } = useAppContext();
 
     const [dailyFilters, setDailyFilters] = useState<Partial<Record<keyof DailyCapacityRow, string | string[]>>>({});
     const [dailyFilterOptions, setDailyFilterOptions] = useState<Record<string, { value: string, label: string }[]>>({});
@@ -175,6 +175,9 @@ export const ProductionCapacitySection: React.FC = () => {
                     const totalPersonas = numPuestos * numPersonasPorPuesto;
                     
                     const horasDisponibles = numPuestos * totalHoursInMonth;
+                    const horasRequeridas = c2000RequiredHours[workstation.id] || 0;
+                    const saldoHoras = horasDisponibles - horasRequeridas;
+                    const ocupacion = horasDisponibles > 0 ? (horasRequeridas / horasDisponibles) * 100 : 0;
 
                     rows.push({
                         center,
@@ -184,9 +187,9 @@ export const ProductionCapacitySection: React.FC = () => {
                         numPersonasPorPuesto,
                         totalPersonas,
                         horasDisponibles,
-                        horasRequeridas: 0, // Placeholder
-                        saldoHoras: horasDisponibles, // Placeholder
-                        ocupacion: 0, // Placeholder
+                        horasRequeridas,
+                        saldoHoras,
+                        ocupacion,
                     });
                 });
             });
@@ -197,7 +200,7 @@ export const ProductionCapacitySection: React.FC = () => {
             a.line.name.localeCompare(b.line.name) ||
             a.workstation.name.localeCompare(b.workstation.name)
         );
-    }, [planningYear, planningMonth, constraints]);
+    }, [planningYear, planningMonth, constraints, c2000RequiredHours]);
     
     const monthlyTableHierarchy = useMemo(() => {
         const hierarchy = new Map<string, { center: WorkCenter, lines: Map<string, { line: ProductionLine, workstations: CapacityRow[] }> }>();

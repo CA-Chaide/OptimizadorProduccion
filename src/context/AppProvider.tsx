@@ -55,6 +55,7 @@ const initialState: AppState = {
     apiCuboInventariosData: [],
     planningYear: String(currentYear),
     planningMonth: String(currentMonth),
+    c2000RequiredHours: {},
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -130,6 +131,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, planningYear: action.payload };
         case 'SET_PLANNING_MONTH':
             return { ...state, planningMonth: action.payload };
+        case 'SET_C2000_REQUIRED_HOURS':
+            return { ...state, c2000RequiredHours: action.payload };
         default:
             return state;
     }
@@ -157,6 +160,7 @@ type AppContextType = {
     apiCuboInventariosData: CuboInventariosItem[];
     planningYear: string;
     planningMonth: string;
+    c2000RequiredHours: Record<string, number>;
     dispatch: React.Dispatch<AppAction>;
     addNotification: (type: NotificationMessage['type'], text: string, errors?: string[]) => void;
     handleDataImported: (data: SalesDataRow[]) => void;
@@ -170,6 +174,7 @@ type AppContextType = {
     setConstraints: (constraints: AppConstraints) => Promise<void>;
     setPlanningYear: (year: string) => void;
     setPlanningMonth: (month: string) => void;
+    setC2000RequiredHours: (hours: Record<string, number>) => void;
     handleSyncAndValidate: () => Promise<boolean>;
     handleContinueToStep2: () => void;
     handleContinueToStep3: () => void;
@@ -480,6 +485,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const setPlanningMonth = useCallback((month: string) => {
         dispatch({ type: 'SET_PLANNING_MONTH', payload: month });
     }, []);
+    
+    const setC2000RequiredHours = useCallback((hours: Record<string, number>) => {
+        dispatch({ type: 'SET_C2000_REQUIRED_HOURS', payload: hours });
+    }, []);
 
     const value: AppContextType = {
         ...state,
@@ -496,6 +505,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setConstraints,
         setPlanningYear,
         setPlanningMonth,
+        setC2000RequiredHours,
         handleSyncAndValidate,
         handleContinueToStep2,
         handleContinueToStep3,

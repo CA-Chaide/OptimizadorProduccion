@@ -37,6 +37,7 @@ export type AppState = {
   apiCuboInventariosData: CuboInventariosItem[];
   planningYear: string;
   planningMonth: string;
+  c2000RequiredHours: Record<string, number>;
 };
 
 export type AppAction =
@@ -63,7 +64,8 @@ export type AppAction =
   | { type: 'SET_API_ASSEMBLY_DATA'; payload: TiempoEnsambleItem[] }
   | { type: 'SET_API_CUBO_INVENTARIOS_DATA'; payload: CuboInventariosItem[] }
   | { type: 'SET_PLANNING_YEAR'; payload: string }
-  | { type: 'SET_PLANNING_MONTH'; payload: string };
+  | { type: 'SET_PLANNING_MONTH'; payload: string }
+  | { type: 'SET_C2000_REQUIRED_HOURS'; payload: Record<string, number> };
 
 
 export type AbsenteeismEvent = {
@@ -569,3 +571,18 @@ export interface DemandAnalysisResult {
 
 
 import { ActiveView } from '@/constants/constants';
+
+// This is the new type for the daily capacity view
+export interface DailyCapacityRow {
+  centro: string;
+  mes: string;
+  año: number;
+  fecha: string;
+  dia: string;
+  esFeriado: string;
+  maxHorasJornada: number;
+  puestoDeTrabajo: string;
+  linea: string;
+  cantidadPuestos: number;
+  horasMaxDisponibles: number;
+}

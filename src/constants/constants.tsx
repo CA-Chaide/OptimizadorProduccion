@@ -28,6 +28,7 @@ export enum ActiveView {
   DASHBOARD = 'DASHBOARD',
   DATA_IMPORT = 'DATA_IMPORT',
   CONSTRAINTS = 'CONSTRAINTS',
+  NEEDS_CALCULATION_C2000 = 'NEEDS_CALCULATION_C2000',
   INVENTORY_NEEDS = 'INVENTORY_NEEDS',
   PRODUCTION_CAPACITY = 'PRODUCTION_CAPACITY',
   PRODUCTION_PLAN = 'MEDIUM_TERM_PLAN',
@@ -44,6 +45,7 @@ export enum ActiveView {
 export const DashboardIcon = () => <LayoutDashboard className="w-5 h-5" />;
 export const DataImportIcon = () => <Upload className="w-5 h-5" />;
 export const ConstraintsIcon = () => <SlidersHorizontal className="w-5 h-5" />;
+export const NeedsCalculationIcon = () => <Truck className="w-5 h-5" />;
 export const MaintenanceIcon = () => <Wrench className="w-5 h-5" />;
 export const PersonnelIcon = () => <Users className="w-5 h-5" />;
 export const AbsenteeismIcon = () => <CalendarX2 className="w-5 h-5" />;
@@ -89,6 +91,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon /> },
   { id: ActiveView.DATA_IMPORT, label: 'Importar Ventas', icon: <DataImportIcon /> },
   { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
+  { id: ActiveView.NEEDS_CALCULATION_C2000, label: 'Cálculo Necesidades C2000', icon: <NeedsCalculationIcon /> },
   { id: ActiveView.INVENTORY_NEEDS, label: 'Necesidades de Inventario', icon: <InventoryNeedsIcon /> },
   { id: ActiveView.PRODUCTION_CAPACITY, label: 'Capacidad de Producción', icon: <CapacityIcon /> },
   { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon /> },

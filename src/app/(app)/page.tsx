@@ -17,6 +17,7 @@ import {
   InventoryNeedsSection,
   ProductionCapacitySection,
   TacticalPlanMueblesSection,
+  NeedsCalculationC2000Section,
 } from '@/components';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -62,6 +63,8 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <DataImportSection onDataImported={handleDataImported} />;
             case ActiveView.CONSTRAINTS:
                 return <ConstraintConfigurationSection />;
+            case ActiveView.NEEDS_CALCULATION_C2000:
+                return <NeedsCalculationC2000Section />;
             case ActiveView.INVENTORY_NEEDS:
                 return <InventoryNeedsSection />;
             case ActiveView.PRODUCTION_CAPACITY:
