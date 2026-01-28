@@ -3,10 +3,11 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useAppContext } from '@/context/AppProvider';
-import { SalesDataRow, CuboInventariosItem, AppConstraints, ProductProcessInfo } from '@/types/types';
+import { SalesDataRow, CuboInventariosItem, AppConstraints, ProductProcessInfo, TiempoEnsambleItem, ProductionLine } from '@/types/types';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { NeedsCalculationIcon, MONTH_NAMES } from '@/constants/constants';
+import { queryApi } from '@/hooks/useApiData';
 
 // Helper functions
 const normalizeMaterialCode = (code: string | number): string => {
@@ -50,10 +51,10 @@ const getMonthlyCapacityForWorkstation = (workstationId: string, year: number, m
             else if (dayOfWeek === 6) dailyHours = shiftParameters.saturdayAndHolidayHours;
             else dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
         }
-        totalHours += dailyHours; // Hours are per-post, quantity applied later
+        totalHours += dailyHours; 
     }
 
-    return totalHours * totalAssignedQuantity * 0.87; // Efficiency factor applied to total hours of all posts
+    return totalHours * totalAssignedQuantity * 0.87; 
 };
 
 interface NeedsRow {
@@ -70,6 +71,88 @@ interface NeedsRow {
     transferNeedF: number;
     totalTransferNeed: number;
 }
+
+
+const getBestLineForProduct = (
+    productId: string,
+    producingCenterId: string,
+    tiemposData: TiempoEnsambleItem[],
+    constraints: AppConstraints
+): { bestLine: ProductionLine | null; bottleneckTime: number | null; workstationHourBreakdown: Record<string, number> } => {
+
+    const possibleLines = constraints.productionLines.filter(line =>
+        line.workCenterId === producingCenterId && line.isActive &&
+        tiemposData.some(t =>
+            normalizeMaterialCode(t.CodMaterial) === productId &&
+            String(t.Centro).trim() === producingCenterId &&
+            t.Linea.trim() === line.name
+        )
+    );
+
+    if (possibleLines.length === 0) {
+        return { bestLine: null, bottleneckTime: null, workstationHourBreakdown: {} };
+    }
+
+    const linePerformances = possibleLines.map(line => {
+        const workstationEffectiveTimes: { time: number, wsId: string }[] = [];
+
+        line.assignedWorkstations.forEach(assignedWs => {
+            const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
+            if (!workstationDef) return;
+
+            const tiempoEntry = tiemposData.find(t =>
+                normalizeMaterialCode(t.CodMaterial) === productId &&
+                String(t.Centro).trim() === producingCenterId &&
+                t.Linea.trim() === line.name &&
+                t.PuestoTrabajo.trim() === workstationDef.name
+            );
+
+            if (tiempoEntry && tiempoEntry.Tiempo > 0) {
+                const quantityOfStations = assignedWs.quantity > 0 ? assignedWs.quantity : 1;
+                const effectiveTime = tiempoEntry.Tiempo / quantityOfStations; // Time in minutes
+                workstationEffectiveTimes.push({ time: effectiveTime, wsId: workstationDef.id });
+            }
+        });
+
+        const lineBottleneck = workstationEffectiveTimes.length > 0 ? Math.max(...workstationEffectiveTimes.map(wet => wet.time)) : Infinity;
+
+        const breakdown: Record<string, number> = {};
+        if (workstationEffectiveTimes.length > 0) {
+            // Recalculate breakdown based on the line bottleneck, not individual times
+            const totalTimePerUnitOnLine = lineBottleneck / 60; // in hours
+             line.assignedWorkstations.forEach(assignedWs => {
+                const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
+                if (!workstationDef) return;
+                const tiempoEntry = tiemposData.find(t =>
+                    normalizeMaterialCode(t.CodMaterial) === productId &&
+                    String(t.Centro).trim() === producingCenterId &&
+                    t.Linea.trim() === line.name &&
+                    t.PuestoTrabajo.trim() === workstationDef.name
+                );
+                if (tiempoEntry && tiempoEntry.Tiempo > 0) {
+                    breakdown[workstationDef.id] = (tiempoEntry.Tiempo / 60); // Time in hours for ONE post
+                }
+            });
+        }
+        
+        return { line, bottleneckTime: lineBottleneck, workstationHourBreakdown: breakdown };
+    });
+
+    const bestPerformance = linePerformances.reduce((best, current) => {
+        return (current.bottleneckTime < best.bottleneckTime) ? current : best;
+    }, { line: null as ProductionLine | null, bottleneckTime: Infinity, workstationHourBreakdown: {} });
+
+    if (bestPerformance.line && bestPerformance.bottleneckTime !== Infinity) {
+        return {
+            bestLine: bestPerformance.line,
+            bottleneckTime: bestPerformance.bottleneckTime, // in minutes
+            workstationHourBreakdown: bestPerformance.workstationHourBreakdown // in hours/unit
+        };
+    }
+
+    return { bestLine: null, bottleneckTime: null, workstationHourBreakdown: {} };
+};
+
 
 export const NeedsCalculationC2000Section: React.FC = () => {
     const { 
@@ -90,6 +173,27 @@ export const NeedsCalculationC2000Section: React.FC = () => {
 
         const year = parseInt(planningYear, 10);
         const month = parseInt(planningMonth, 10);
+        
+        // Fetch assembly times
+        let tiemposData: TiempoEnsambleItem[] = [];
+        try {
+            tiemposData = await queryApi({
+                source: 'TiemposEnsamblado',
+                operation: 'get_data',
+                pagination: { limit: 500000 }
+            });
+            if (!tiemposData || tiemposData.length === 0) {
+                addNotification('error', 'No se pudieron cargar los tiempos de ensamble. El cálculo no puede continuar.');
+                setIsLoading(false);
+                return;
+            }
+        } catch (error) {
+            addNotification('error', `Error al cargar tiempos de ensamble: ${(error as Error).message}`);
+            setIsLoading(false);
+            return;
+        }
+
+
         const materials = new Map<string, NeedsRow>();
 
         // 1. Initialize materials from sales and inventory
@@ -139,56 +243,85 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         workstationsC2000.forEach(ws => {
             capacityByWorkstation[ws.id] = getMonthlyCapacityForWorkstation(ws.id, year, month, constraints);
         });
-        
-        const calculateViable = (
-            needs: NeedsRow[], 
-            availableCapacity: Record<string, number>,
-            producingCenterId: string
-        ): { viable: Map<string, number>, hours: Record<string, number> } => {
-            const viable = new Map<string, number>();
-            const localRequiredHours = { ...Object.fromEntries(Object.keys(availableCapacity).map(k => [k, 0])) };
 
-            needs.forEach(need => {
-                let canProduce = 0;
+        const calculateViable = (
+            needs: NeedsRow[],
+            availableCapacity: Record<string, number>,
+            tiemposData: TiempoEnsambleItem[],
+            constraints: AppConstraints
+        ): { viable: Map<string, number>; hours: Record<string, number> } => {
+
+            const detailedNeeds = needs.map(need => {
+                 const { bottleneckTime, workstationHourBreakdown } = getBestLineForProduct(need.productId, '2000', tiemposData, constraints);
+                 const isProducible = bottleneckTime !== null && bottleneckTime !== Infinity;
+
+                 return { ...need, isProducible, workstationHoursPerUnit: workstationHourBreakdown };
+            }).filter(n => n.isProducible); // Only consider producible items
+
+            let currentNeeds = detailedNeeds.map(n => ({ ...n, qtyToProduce: n.totalNeed }));
+            
+            let iterations = 0;
+            while (iterations < 10) {
+                iterations++;
+                const requiredHours: Record<string, number> = {};
+                const bottleneck = { wsId: '', deficit: 0 };
                 
-                const ppi = constraints.productProcessInfos.find(p => {
-                    if (normalizeMaterialCode(p.productId) !== normalizeMaterialCode(need.productId)) return false;
-                    const line = constraints.productionLines.find(l => l.id === p.productionLineId);
-                    return line?.workCenterId === producingCenterId;
+                // Calculate load for current quantities
+                currentNeeds.forEach(need => {
+                    Object.entries(need.workstationHoursPerUnit).forEach(([wsId, hoursPerUnit]) => {
+                        if (!requiredHours[wsId]) requiredHours[wsId] = 0;
+                        requiredHours[wsId] += need.qtyToProduce * hoursPerUnit;
+                    });
+                });
+                
+                // Find this iteration's bottleneck
+                Object.entries(requiredHours).forEach(([wsId, hours]) => {
+                    const deficit = hours - (availableCapacity[wsId] || 0);
+                    if (deficit > bottleneck.deficit) {
+                        bottleneck.wsId = wsId;
+                        bottleneck.deficit = deficit;
+                    }
                 });
 
-                if (ppi && ppi.workstationTimes.length > 0 && need.totalNeed > 0) {
-                    const bottleneckRatio = ppi.workstationTimes.reduce((minRatio, wt) => {
-                        const workstationCapacity = availableCapacity[wt.workstationDefinitionId] - (localRequiredHours[wt.workstationDefinitionId] || 0);
-                        const requiredTimeForNeed = need.totalNeed * wt.timeHours;
-                        if (requiredTimeForNeed <= 0) return minRatio;
-                        return Math.min(minRatio, workstationCapacity / requiredTimeForNeed);
-                    }, 1);
-                    
-                    canProduce = Math.floor(need.totalNeed * Math.min(1, bottleneckRatio));
-
-                    if (canProduce > 0) {
-                        ppi.workstationTimes.forEach(wt => {
-                            localRequiredHours[wt.workstationDefinitionId] = (localRequiredHours[wt.workstationDefinitionId] || 0) + (canProduce * wt.timeHours);
-                        });
-                    }
+                if (bottleneck.deficit <= 0.001) { // Exit if no significant bottleneck
+                    break;
                 }
                 
-                viable.set(need.productId, canProduce);
+                // Adjust quantities based on bottleneck
+                const hoursInBottleneck = requiredHours[bottleneck.wsId];
+                currentNeeds.forEach(need => {
+                    const productHoursInBottleneck = (need.workstationHoursPerUnit[bottleneck.wsId] || 0) * need.qtyToProduce;
+                    const participation = hoursInBottleneck > 0 ? productHoursInBottleneck / hoursInBottleneck : 0;
+                    const hoursToCut = bottleneck.deficit * participation;
+                    const unitsToCut = (need.workstationHoursPerUnit[bottleneck.wsId] || 1) > 0
+                        ? hoursToCut / (need.workstationHoursPerUnit[bottleneck.wsId])
+                        : 0;
+                    need.qtyToProduce = Math.max(0, Math.floor(need.qtyToProduce - unitsToCut));
+                });
+            }
+
+            const viable = new Map<string, number>();
+            const finalRequiredHours: Record<string, number> = {};
+            currentNeeds.forEach(need => {
+                viable.set(need.productId, need.qtyToProduce);
+                Object.entries(need.workstationHoursPerUnit).forEach(([wsId, hoursPerUnit]) => {
+                    if (!finalRequiredHours[wsId]) finalRequiredHours[wsId] = 0;
+                    finalRequiredHours[wsId] += need.qtyToProduce * hoursPerUnit;
+                });
             });
 
-            return { viable, hours: localRequiredHours };
+            return { viable, hours: finalRequiredHours };
         };
 
 
-        const { viable: viableE, hours: hoursE } = calculateViable(needsE, capacityByWorkstation, '2000');
+        const { viable: viableE, hours: hoursE } = calculateViable(needsE, capacityByWorkstation, tiemposData, constraints);
         
         const remainingCapacity = { ...capacityByWorkstation };
         Object.keys(hoursE).forEach(wsId => {
             remainingCapacity[wsId] -= hoursE[wsId];
         });
 
-        const { viable: viableX, hours: hoursX } = calculateViable(needsX, remainingCapacity, '2000');
+        const { viable: viableX, hours: hoursX } = calculateViable(needsX, remainingCapacity, tiemposData, constraints);
         
         const requiredHours: Record<string, number> = {};
         Object.keys(hoursE).forEach(k => requiredHours[k] = (requiredHours[k] || 0) + hoursE[k]);
