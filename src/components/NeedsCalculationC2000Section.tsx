@@ -1,60 +1,22 @@
 
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAppContext } from '@/context/AppProvider';
 import { SalesDataRow, CuboInventariosItem, AppConstraints, ProductProcessInfo, TiempoEnsambleItem, ProductionLine } from '@/types/types';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Check, ChevronsUpDown } from 'lucide-react';
 import { NeedsCalculationIcon, MONTH_NAMES } from '@/constants/constants';
 import { queryApi } from '@/hooks/useApiData';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 // Helper functions
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code);
     return codeStr.slice(-8);
-};
-
-const getMonthlyCapacityForWorkstation = (workstationId: string, year: number, month: number, constraints: AppConstraints): number => {
-    const { holidays, shiftParameters, productionLines, workstationDefinitions } = constraints;
-    if (!shiftParameters) return 0;
-    
-    let totalHours = 0;
-    const daysInMonth = new Date(year, month, 0).getDate();
-
-    const workstation = workstationDefinitions.find(wd => wd.id === workstationId);
-    if (!workstation) return 0;
-
-    let totalAssignedQuantity = 0;
-    productionLines.forEach(line => {
-        const assigned = line.assignedWorkstations.find(as => as.definitionId === workstationId);
-        if (assigned) {
-            totalAssignedQuantity += assigned.quantity;
-        }
-    });
-
-    if (totalAssignedQuantity === 0) return 0;
-
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dateString = date.toISOString().split('T')[0];
-        const holiday = holidays.find(h => h.date === dateString && h.appliesTo !== 'Distribucion');
-        const dayOfWeek = date.getDay();
-
-        let dailyHours = 0;
-        if (holiday) {
-            if (holiday.dayType === 'asueto') dailyHours = 0;
-            else if (holiday.dayType === 'half') dailyHours = shiftParameters.saturdayAndHolidayHours;
-            else dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
-        } else {
-            if (dayOfWeek === 0) dailyHours = 0;
-            else if (dayOfWeek === 6) dailyHours = shiftParameters.saturdayAndHolidayHours;
-            else dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
-        }
-        totalHours += dailyHours; 
-    }
-
-    return totalHours * totalAssignedQuantity * 0.87; 
 };
 
 interface NeedsRow {
@@ -71,7 +33,6 @@ interface NeedsRow {
     transferNeedF: number;
     totalTransferNeed: number;
 }
-
 
 const getBestLineForProduct = (
     productId: string,
@@ -151,6 +112,140 @@ const getBestLineForProduct = (
     return { bestLine: null, bottleneckTime: null, workstationHourBreakdown: {} };
 };
 
+const getMonthlyCapacityForWorkstation = (workstationId: string, year: number, month: number, constraints: AppConstraints): number => {
+    const { holidays, shiftParameters, productionLines, workstationDefinitions } = constraints;
+    if (!shiftParameters) return 0;
+    
+    let totalHours = 0;
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    const workstation = workstationDefinitions.find(wd => wd.id === workstationId);
+    if (!workstation) return 0;
+
+    let totalAssignedQuantity = 0;
+    productionLines.forEach(line => {
+        const assigned = line.assignedWorkstations.find(as => as.definitionId === workstationId);
+        if (assigned) {
+            totalAssignedQuantity += assigned.quantity;
+        }
+    });
+
+    if (totalAssignedQuantity === 0) return 0;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const dateString = date.toISOString().split('T')[0];
+        const holiday = holidays.find(h => h.date === dateString && h.appliesTo !== 'Distribucion');
+        const dayOfWeek = date.getDay();
+
+        let dailyHours = 0;
+        if (holiday) {
+            if (holiday.dayType === 'asueto') dailyHours = 0;
+            else if (holiday.dayType === 'half') dailyHours = shiftParameters.saturdayAndHolidayHours;
+            else dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
+        } else {
+            if (dayOfWeek === 0) dailyHours = 0;
+            else if (dayOfWeek === 6) dailyHours = shiftParameters.saturdayAndHolidayHours;
+            else dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
+        }
+        totalHours += dailyHours; 
+    }
+
+    return totalHours * totalAssignedQuantity * 0.87; 
+};
+
+// Filter Components
+const FilterInput: React.FC<{
+    column: keyof NeedsRow;
+    value: string;
+    onChange: (column: keyof NeedsRow, value: string) => void;
+}> = ({ column, value, onChange }) => (
+    <input
+        type="text"
+        placeholder="Filtrar..."
+        className="w-full text-xs p-1 border rounded border-gray-300"
+        value={value}
+        onChange={(e) => onChange(column, e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+    />
+);
+
+const MultiSelectFilter: React.FC<{
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  placeholder?: string;
+}> = ({ options, selected, onChange, placeholder }) => {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (value: string) => {
+    const newSelected = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : [...selected, value];
+    onChange(newSelected);
+  };
+
+  return (
+    <div className="flex flex-col items-start w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between h-7 text-xs font-normal"
+          >
+            <span className="truncate">
+              {selected.length === 0
+                ? placeholder || 'Seleccionar...'
+                : `${selected.length} sel.`}
+            </span>
+            <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[200px] p-0">
+          <Command>
+            <CommandInput placeholder="Buscar..." className="h-9 text-xs" />
+            <CommandEmpty>No hay resultados.</CommandEmpty>
+            <CommandGroup className="max-h-60 overflow-y-auto">
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={(currentValue) => {
+                    const matchingOption = options.find(opt => opt.value.toLowerCase() === currentValue.toLowerCase());
+                    if (matchingOption) {
+                      handleSelect(matchingOption.value);
+                    }
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      selected.includes(option.value) ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  <span className="text-xs">{option.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {selected.length > 0 && (
+          <div className="pt-1 text-left w-full min-h-[18px]">
+            {selected.slice(0, 1).map(value => (
+                <Badge key={value} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={options.find(opt => opt.value === value)?.label || value}>
+                    {options.find(opt => opt.value === value)?.label || value}
+                </Badge>
+            ))}
+            {selected.length > 1 && <Badge variant="secondary">+{selected.length - 1}</Badge>}
+          </div>
+      )}
+    </div>
+  );
+};
+
 
 export const NeedsCalculationC2000Section: React.FC = () => {
     const { 
@@ -164,6 +259,80 @@ export const NeedsCalculationC2000Section: React.FC = () => {
     } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [results, setResults] = useState<NeedsRow[]>([]);
+    
+    const [filters, setFilters] = useState<Partial<Record<keyof NeedsRow, string | string[]>>>({});
+    const [filterOptions, setFilterOptions] = useState<Record<string, { value: string, label: string }[]>>({});
+
+    useEffect(() => {
+        if (results.length > 0) {
+            const columnsToFilter: Array<keyof NeedsRow> = ['provisionClass'];
+            const options: Record<string, Set<string>> = {};
+            columnsToFilter.forEach(col => options[col] = new Set());
+            
+            results.forEach(row => {
+               columnsToFilter.forEach(col => {
+                    const value = row[col];
+                    if (value !== null && value !== undefined && String(value).trim() !== '' && value !== 'N/A') {
+                        options[col].add(String(value));
+                    }
+               });
+            });
+
+            const formattedOptions: Record<string, { value: string, label: string }[]> = {};
+            for (const key in options) {
+                formattedOptions[key] = Array.from(options[key]).sort().map(val => ({ value: val, label: val }));
+            }
+            setFilterOptions(formattedOptions);
+        }
+    }, [results]);
+
+    const handleFilterChange = (column: keyof NeedsRow, value: string) => {
+        setFilters(prev => ({ ...prev, [column]: value }));
+    };
+
+    const handleMultiSelectFilterChange = (column: keyof NeedsRow, value: string[]) => {
+        setFilters(prev => ({ ...prev, [column]: value }));
+    };
+
+    const filteredData = useMemo(() => {
+        if (!results) return [];
+        return results.filter(row => {
+             return Object.keys(filters).every(key => {
+                const filterValue = filters[key as keyof typeof filters];
+                if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) return true;
+
+                const rowValue = row[key as keyof typeof row];
+                if (rowValue === null || rowValue === undefined) return false;
+
+                if (Array.isArray(filterValue)) { // Multi-select
+                    return filterValue.includes(String(rowValue));
+                } else { // Text filter
+                    return String(rowValue).toLowerCase().includes(String(filterValue).toLowerCase());
+                }
+            });
+        });
+    }, [results, filters]);
+    
+    const footerTotals = useMemo(() => {
+        const initialTotals = {
+            salesNeed: 0, safetyStock: 0, initialStock: 0, totalNeed: 0,
+            viableProductionC2000: 0, capacityDeficitC2000: 0,
+            transferNeedF: 0, totalTransferNeed: 0,
+        };
+        if (!filteredData) return initialTotals;
+        return filteredData.reduce((acc, row) => {
+            acc.salesNeed += row.salesNeed || 0;
+            acc.safetyStock += row.safetyStock || 0;
+            acc.initialStock += row.initialStock || 0;
+            acc.totalNeed += row.totalNeed || 0;
+            acc.viableProductionC2000 += row.viableProductionC2000 || 0;
+            acc.capacityDeficitC2000 += row.capacityDeficitC2000 || 0;
+            acc.transferNeedF += row.transferNeedF || 0;
+            acc.totalTransferNeed += row.totalTransferNeed || 0;
+            return acc;
+        }, initialTotals);
+    }, [filteredData]);
+
 
     const handleCalculate = useCallback(async () => {
         setIsLoading(true);
@@ -190,40 +359,43 @@ export const NeedsCalculationC2000Section: React.FC = () => {
             return;
         }
 
-
         const materials = new Map<string, NeedsRow>();
         const salesThisMonthC2000 = salesData.filter(s => String(s.centro).trim() === '2000' && s.año === year && s.mes === month);
         
-        salesThisMonthC2000.forEach(s => {
-            const productId = normalizeMaterialCode(s.código);
-            if (!materials.has(productId)) {
-                materials.set(productId, { productId, productName: s.descripciónMaterial, salesNeed: 0, initialStock: 0, safetyStock: 0, backlog: 0, totalNeed: 0, provisionClass: 'N/A', viableProductionC2000: 0, capacityDeficitC2000: 0, transferNeedF: 0, totalTransferNeed: 0 });
-            }
-            materials.get(productId)!.salesNeed += s.unidadesProyectado;
-        });
-
+        const allProductIds = new Set(salesThisMonthC2000.map(s => normalizeMaterialCode(s.código)));
         apiCuboInventariosData.forEach(item => {
             if (String(item.Centro).trim() === '2000') {
-                const productId = normalizeMaterialCode(item.Material);
-                if (materials.has(productId)) {
-                    materials.get(productId)!.initialStock = Number(item.StockActual) || 0;
-                    materials.get(productId)!.safetyStock = Number(item.StockSeguridad) || 0;
-                }
+                allProductIds.add(normalizeMaterialCode(item.Material));
             }
         });
 
-        materials.forEach(row => {
-            row.totalNeed = (row.salesNeed + row.safetyStock) - row.initialStock;
-            if (row.totalNeed < 0) row.totalNeed = 0;
+        allProductIds.forEach(productId => {
+            const sale = salesThisMonthC2000.find(s => normalizeMaterialCode(s.código) === productId);
+            const inventoryItem = apiCuboInventariosData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === '2000');
             
-            const primaryEntry = apiCuboInventariosData.find(item => normalizeMaterialCode(item.Material) === row.productId && String(item.Centro).trim() === '2000');
-            const fallbackEntry = apiCuboInventariosData.find(item => normalizeMaterialCode(item.Material) === row.productId && String(item.Centro).trim() === '1000');
+            const salesNeed = sale ? sale.unidadesProyectado : 0;
+            const initialStock = Number(inventoryItem?.StockActual) || 0;
+            const safetyStock = Number(inventoryItem?.StockSeguridad) || 0;
+            const totalNeed = Math.max(0, (salesNeed + safetyStock) - initialStock);
 
+            const productName = sale?.descripciónMaterial || inventoryItem?.Descripcion || 'N/A';
+
+            let provisionClass: NeedsRow['provisionClass'] = 'N/A';
+            const primaryEntry = inventoryItem;
+            const fallbackEntry = apiCuboInventariosData.find(item => normalizeMaterialCode(item.Material) === productId && String(item.Centro).trim() === '1000');
+            
             if (primaryEntry?.ClaseAprovisionam) {
-                row.provisionClass = primaryEntry.ClaseAprovisionam;
+                provisionClass = primaryEntry.ClaseAprovisionam;
             } else if (fallbackEntry?.ClaseAprovisionam === 'F') {
-                row.provisionClass = 'F';
+                provisionClass = 'F';
             }
+
+            const producibleInC2000 = constraints.productProcessInfos.some(ppi => ppi.productId === productId && ppi.productionLineId.includes('---2000---'));
+            if (!producibleInC2000 && provisionClass !== 'F') {
+                provisionClass = 'F';
+            }
+
+            materials.set(productId, { productId, productName, salesNeed, initialStock, safetyStock, backlog: 0, totalNeed, provisionClass, viableProductionC2000: 0, capacityDeficitC2000: 0, transferNeedF: 0, totalTransferNeed: 0 });
         });
         
         const calculateViable = (
@@ -241,7 +413,7 @@ export const NeedsCalculationC2000Section: React.FC = () => {
 
             let currentNeeds = detailedNeeds.map(n => ({ ...n, qtyToProduce: n.totalNeed }));
             
-            for (let i = 0; i < 15; i++) { // Iteration limit to prevent infinite loops
+            for (let i = 0; i < 15; i++) {
                 const requiredHours: Record<string, number> = {};
                 let bottleneck = { wsId: '', deficit: 0 };
                 
@@ -291,9 +463,6 @@ export const NeedsCalculationC2000Section: React.FC = () => {
             return { viable, hours: finalRequiredHours };
         };
         
-        const needsE = Array.from(materials.values()).filter(m => m.provisionClass === 'E' && m.totalNeed > 0);
-        const needsX = Array.from(materials.values()).filter(m => m.provisionClass === 'X' && m.totalNeed > 0);
-        
         const workstationsC2000 = constraints.workstationDefinitions.filter(wd => 
             constraints.productionLines.some(line => line.workCenterId === '2000' && line.assignedWorkstations.some(as => as.definitionId === wd.id))
         );
@@ -303,6 +472,7 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         });
 
         // Stage 1: Plan 'E' materials
+        const needsE = Array.from(materials.values()).filter(m => m.provisionClass === 'E' && m.totalNeed > 0);
         const { viable: viableE, hours: hoursE } = calculateViable(needsE, capacityByWorkstation, tiemposData, constraints);
         
         // Stage 2: Plan 'X' materials with remaining capacity
@@ -310,7 +480,7 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         Object.keys(hoursE).forEach(wsId => {
             remainingCapacity[wsId] = Math.max(0, remainingCapacity[wsId] - hoursE[wsId]);
         });
-
+        const needsX = Array.from(materials.values()).filter(m => m.provisionClass === 'X' && m.totalNeed > 0);
         const { viable: viableX, hours: hoursX } = calculateViable(needsX, remainingCapacity, tiemposData, constraints);
         
         const requiredHours: Record<string, number> = {};
@@ -372,9 +542,22 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                             <th className="px-2 py-2 text-right font-semibold text-orange-700 bg-orange-50">Nec. Traslado (F)</th>
                             <th className="px-2 py-2 text-right font-semibold text-purple-700 bg-purple-50">Total Traslado a C1000</th>
                         </tr>
+                        <tr>
+                            <th className="p-1"><FilterInput column="productId" value={(filters.productId as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="productName" value={(filters.productName as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"></th>
+                            <th className="p-1"></th>
+                            <th className="p-1"></th>
+                            <th className="p-1"></th>
+                            <th className="p-1 w-32"><MultiSelectFilter placeholder="Clase" options={filterOptions.provisionClass || []} selected={(filters.provisionClass as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('provisionClass', value)} /></th>
+                            <th className="p-1"></th>
+                            <th className="p-1"></th>
+                            <th className="p-1"></th>
+                            <th className="p-1"></th>
+                        </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {results.map(row => (
+                        {filteredData.map(row => (
                             <tr key={row.productId}>
                                 <td className="px-2 py-2 font-mono">{row.productId}</td>
                                 <td className="px-2 py-2">{row.productName}</td>
@@ -389,6 +572,13 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                                 <td className="px-2 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">{Math.round(row.totalTransferNeed).toLocaleString()}</td>
                             </tr>
                         ))}
+                         {results.length > 0 && filteredData.length === 0 && (
+                            <tr>
+                                <td colSpan={11} className="text-center py-8 text-gray-500">
+                                    No hay resultados que coincidan con los filtros aplicados.
+                                </td>
+                            </tr>
+                         )}
                          {results.length === 0 && !isLoading && (
                             <tr>
                                 <td colSpan={11} className="text-center py-8 text-gray-500">
@@ -404,6 +594,20 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                             </tr>
                         )}
                     </tbody>
+                    <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
+                        <tr>
+                            <th colSpan={2} className="px-2 py-2 text-right font-bold uppercase">TOTALES FILTRADOS:</th>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.salesNeed).toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.safetyStock).toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.initialStock).toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.totalNeed).toLocaleString()}</td>
+                            <td></td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.viableProductionC2000).toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.capacityDeficitC2000).toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.transferNeedF).toLocaleString()}</td>
+                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.totalTransferNeed).toLocaleString()}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
