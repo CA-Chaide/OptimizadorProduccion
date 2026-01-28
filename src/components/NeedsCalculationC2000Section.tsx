@@ -19,142 +19,16 @@ const normalizeMaterialCode = (code: string | number): string => {
     return codeStr.slice(-8);
 };
 
+// Nueva interfaz de fila, simplificada para el reinicio
 interface NeedsRow {
-    productId: string;
-    productName: string;
-    backlog: number;
-    salesNeed: number;
-    safetyStock: number;
-    initialStock: number;
-    totalNeed: number;
-    provisionClass: 'E' | 'X' | 'F' | 'N/A';
-    viableProductionC2000: number;
-    capacityDeficitC2000: number;
-    transferNeedF: number;
-    totalTransferNeed: number;
+    CentroStock: string;
+    Material: string;
+    Descripcion: string;
+    Sector: string;
+    ClaseAprov: 'E' | 'X' | 'F' | 'N/A';
 }
 
-const getBestLineForProduct = (
-    productId: string,
-    producingCenterId: string,
-    tiemposData: TiempoEnsambleItem[],
-    constraints: AppConstraints
-): { bestLine: ProductionLine | null; bottleneckTime: number | null; workstationHourBreakdown: Record<string, number> } => {
-
-    const possibleLines = constraints.productionLines.filter(line =>
-        line.workCenterId === producingCenterId && line.isActive &&
-        tiemposData.some(t =>
-            normalizeMaterialCode(t.CodMaterial) === productId &&
-            String(t.Centro).trim() === producingCenterId &&
-            t.Linea.trim() === line.name
-        )
-    );
-
-    if (possibleLines.length === 0) {
-        return { bestLine: null, bottleneckTime: null, workstationHourBreakdown: {} };
-    }
-
-    const linePerformances = possibleLines.map(line => {
-        const workstationEffectiveTimes: { time: number, wsId: string }[] = [];
-
-        line.assignedWorkstations.forEach(assignedWs => {
-            const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
-            if (!workstationDef) return;
-
-            const tiempoEntry = tiemposData.find(t =>
-                normalizeMaterialCode(t.CodMaterial) === productId &&
-                String(t.Centro).trim() === producingCenterId &&
-                t.Linea.trim() === line.name &&
-                t.PuestoTrabajo.trim() === workstationDef.name
-            );
-
-            if (tiempoEntry && tiempoEntry.Tiempo > 0) {
-                const quantityOfStations = assignedWs.quantity > 0 ? assignedWs.quantity : 1;
-                const effectiveTime = tiempoEntry.Tiempo / quantityOfStations; // Time in minutes
-                workstationEffectiveTimes.push({ time: effectiveTime, wsId: workstationDef.id });
-            }
-        });
-
-        const lineBottleneck = workstationEffectiveTimes.length > 0 ? Math.max(...workstationEffectiveTimes.map(wet => wet.time)) : Infinity;
-
-        const breakdown: Record<string, number> = {};
-        if (workstationEffectiveTimes.length > 0) {
-            line.assignedWorkstations.forEach(assignedWs => {
-                const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
-                if (!workstationDef) return;
-                const tiempoEntry = tiemposData.find(t =>
-                    normalizeMaterialCode(t.CodMaterial) === productId &&
-                    String(t.Centro).trim() === producingCenterId &&
-                    t.Linea.trim() === line.name &&
-                    t.PuestoTrabajo.trim() === workstationDef.name
-                );
-                if (tiempoEntry && tiempoEntry.Tiempo > 0) {
-                    breakdown[workstationDef.id] = (tiempoEntry.Tiempo / 60);
-                }
-            });
-        }
-        
-        return { line, bottleneckTime: lineBottleneck, workstationHourBreakdown: breakdown };
-    });
-
-    const bestPerformance = linePerformances.reduce((best, current) => {
-        return (current.bottleneckTime < best.bottleneckTime) ? current : best;
-    }, { line: null as ProductionLine | null, bottleneckTime: Infinity, workstationHourBreakdown: {} });
-
-    if (bestPerformance.line && bestPerformance.bottleneckTime !== Infinity) {
-        return {
-            bestLine: bestPerformance.line,
-            bottleneckTime: bestPerformance.bottleneckTime,
-            workstationHourBreakdown: bestPerformance.workstationHourBreakdown
-        };
-    }
-
-    return { bestLine: null, bottleneckTime: null, workstationHourBreakdown: {} };
-};
-
-const getMonthlyCapacityForWorkstation = (workstationId: string, year: number, month: number, constraints: AppConstraints): number => {
-    const { holidays, shiftParameters, productionLines, workstationDefinitions } = constraints;
-    if (!shiftParameters) return 0;
-    
-    let totalHours = 0;
-    const daysInMonth = new Date(year, month, 0).getDate();
-
-    const workstation = workstationDefinitions.find(wd => wd.id === workstationId);
-    if (!workstation) return 0;
-
-    let totalAssignedQuantity = 0;
-    productionLines.forEach(line => {
-        const assigned = line.assignedWorkstations.find(as => as.definitionId === workstationId);
-        if (assigned) {
-            totalAssignedQuantity += assigned.quantity;
-        }
-    });
-
-    if (totalAssignedQuantity === 0) return 0;
-
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dateString = date.toISOString().split('T')[0];
-        const holiday = holidays.find(h => h.date === dateString && h.appliesTo !== 'Distribucion');
-        const dayOfWeek = date.getDay();
-
-        let dailyHours = 0;
-        if (holiday) {
-            if (holiday.dayType === 'asueto') dailyHours = 0;
-            else if (holiday.dayType === 'half') dailyHours = shiftParameters.saturdayAndHolidayHours;
-            else dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
-        } else {
-            if (dayOfWeek === 0) dailyHours = 0;
-            else if (dayOfWeek === 6) dailyHours = shiftParameters.saturdayAndHolidayHours;
-            else dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
-        }
-        totalHours += dailyHours; 
-    }
-
-    return totalHours * totalAssignedQuantity * 0.87; 
-};
-
-// Filter Components
+// Componentes de filtro reutilizados
 const FilterInput: React.FC<{
     column: keyof NeedsRow;
     value: string;
@@ -250,7 +124,6 @@ const MultiSelectFilter: React.FC<{
 export const NeedsCalculationC2000Section: React.FC = () => {
     const { 
         salesData, 
-        constraints, 
         apiCuboInventariosData, 
         planningYear, 
         planningMonth,
@@ -265,7 +138,7 @@ export const NeedsCalculationC2000Section: React.FC = () => {
 
     useEffect(() => {
         if (results.length > 0) {
-            const columnsToFilter: Array<keyof NeedsRow> = ['provisionClass'];
+            const columnsToFilter: Array<keyof NeedsRow> = ['CentroStock', 'Sector', 'ClaseAprov'];
             const options: Record<string, Set<string>> = {};
             columnsToFilter.forEach(col => options[col] = new Set());
             
@@ -301,7 +174,7 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                 const filterValue = filters[key as keyof typeof filters];
                 if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) return true;
 
-                const rowValue = row[key as keyof typeof row];
+                const rowValue = row[key as keyof NeedsRow];
                 if (rowValue === null || rowValue === undefined) return false;
 
                 if (Array.isArray(filterValue)) { // Multi-select
@@ -313,26 +186,6 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         });
     }, [results, filters]);
     
-    const footerTotals = useMemo(() => {
-        const initialTotals = {
-            salesNeed: 0, safetyStock: 0, initialStock: 0, totalNeed: 0,
-            viableProductionC2000: 0, capacityDeficitC2000: 0,
-            transferNeedF: 0, totalTransferNeed: 0,
-        };
-        if (!filteredData) return initialTotals;
-        return filteredData.reduce((acc, row) => {
-            acc.salesNeed += row.salesNeed || 0;
-            acc.safetyStock += row.safetyStock || 0;
-            acc.initialStock += row.initialStock || 0;
-            acc.totalNeed += row.totalNeed || 0;
-            acc.viableProductionC2000 += row.viableProductionC2000 || 0;
-            acc.capacityDeficitC2000 += row.capacityDeficitC2000 || 0;
-            acc.transferNeedF += row.transferNeedF || 0;
-            acc.totalTransferNeed += row.totalTransferNeed || 0;
-            return acc;
-        }, initialTotals);
-    }, [filteredData]);
-
 
     const handleCalculate = useCallback(async () => {
         setIsLoading(true);
@@ -341,25 +194,8 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         const year = parseInt(planningYear, 10);
         const month = parseInt(planningMonth, 10);
         
-        let tiemposData: TiempoEnsambleItem[] = [];
-        try {
-            tiemposData = await queryApi({
-                source: 'TiemposEnsamblado',
-                operation: 'get_data',
-                pagination: { limit: 500000 }
-            });
-            if (!tiemposData || tiemposData.length === 0) {
-                addNotification('error', 'No se pudieron cargar los tiempos de ensamble. El cálculo no puede continuar.');
-                setIsLoading(false);
-                return;
-            }
-        } catch (error) {
-            addNotification('error', `Error al cargar tiempos de ensamble: ${(error as Error).message}`);
-            setIsLoading(false);
-            return;
-        }
-
-        const materials = new Map<string, NeedsRow>();
+        // En este reinicio, la lógica compleja se elimina. 
+        // Solo preparamos la data base para mostrarla.
         const salesThisMonthC2000 = salesData.filter(s => String(s.centro).trim() === '2000' && s.año === year && s.mes === month);
         
         const allProductIds = new Set(salesThisMonthC2000.map(s => normalizeMaterialCode(s.código)));
@@ -369,153 +205,41 @@ export const NeedsCalculationC2000Section: React.FC = () => {
             }
         });
 
-        allProductIds.forEach(productId => {
+        const newResults: NeedsRow[] = Array.from(allProductIds).map(productId => {
             const sale = salesThisMonthC2000.find(s => normalizeMaterialCode(s.código) === productId);
-            const inventoryItemC2000 = apiCuboInventariosData.find(i => 
+            const inventoryItem = apiCuboInventariosData.find(i => 
                 normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === '2000'
             );
+
+            const productName = sale?.descripciónMaterial || inventoryItem?.Descripcion || 'N/A';
+            const sector = sale?.sector || inventoryItem?.Sector || 'Sin Sector';
             
-            const salesNeed = sale ? sale.unidadesProyectado : 0;
-            const initialStock = Number(inventoryItemC2000?.StockActual) || 0;
-            const safetyStock = Number(inventoryItemC2000?.StockSeguridad) || 0;
-            const totalNeed = Math.max(0, (salesNeed + safetyStock) - initialStock);
-
-            const productName = sale?.descripciónMaterial || inventoryItemC2000?.Descripcion || 'N/A';
-
-            let provisionClass: NeedsRow['provisionClass'] = 'N/A';
-            const classC2000 = inventoryItemC2000?.ClaseAprovisionam;
-
-            if (classC2000 === 'E' || classC2000 === 'X' || classC2000 === 'F') {
-                provisionClass = classC2000;
+            // Lógica de fallback para Clase de Aprovisionamiento
+            let claseAprov: NeedsRow['ClaseAprov'] = 'N/A';
+            if (inventoryItem && (inventoryItem.ClaseAprovisionam === 'E' || inventoryItem.ClaseAprovisionam === 'X' || inventoryItem.ClaseAprovisionam === 'F')) {
+                claseAprov = inventoryItem.ClaseAprovisionam;
             } else {
-                const inventoryItemC1000 = apiCuboInventariosData.find(i => 
-                    normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === '1000'
-                );
-                if (inventoryItemC1000?.ClaseAprovisionam === 'F') {
-                    provisionClass = 'F';
-                }
-            }
-
-            materials.set(productId, { productId, productName, salesNeed, initialStock, safetyStock, backlog: 0, totalNeed, provisionClass, viableProductionC2000: 0, capacityDeficitC2000: 0, transferNeedF: 0, totalTransferNeed: 0 });
-        });
-        
-        const calculateViable = (
-            needs: NeedsRow[],
-            availableCapacity: Record<string, number>,
-            tiemposData: TiempoEnsambleItem[],
-            constraints: AppConstraints
-        ): { viable: Map<string, number>; hours: Record<string, number> } => {
-            
-            const detailedNeeds = needs.map(need => {
-                 const { bottleneckTime, workstationHourBreakdown } = getBestLineForProduct(need.productId, '2000', tiemposData, constraints);
-                 const isProducible = bottleneckTime !== null && bottleneckTime !== Infinity;
-                 return { ...need, isProducible, workstationHoursPerUnit: workstationHourBreakdown };
-            }).filter(n => n.isProducible);
-
-            let currentNeeds = detailedNeeds.map(n => ({ ...n, qtyToProduce: n.totalNeed }));
-            
-            for (let i = 0; i < 15; i++) {
-                const requiredHours: Record<string, number> = {};
-                let bottleneck = { wsId: '', deficit: 0 };
-                
-                currentNeeds.forEach(need => {
-                    Object.entries(need.workstationHoursPerUnit).forEach(([wsId, hoursPerUnit]) => {
-                        if (!requiredHours[wsId]) requiredHours[wsId] = 0;
-                        requiredHours[wsId] += need.qtyToProduce * hoursPerUnit;
-                    });
-                });
-                
-                Object.entries(requiredHours).forEach(([wsId, hours]) => {
-                    const deficit = hours - (availableCapacity[wsId] || 0);
-                    if (deficit > bottleneck.deficit) {
-                        bottleneck = { wsId, deficit };
-                    }
-                });
-
-                if (bottleneck.deficit <= 0.01) {
-                    break;
-                }
-                
-                const hoursInBottleneck = requiredHours[bottleneck.wsId];
-                currentNeeds.forEach(need => {
-                    if (need.workstationHoursPerUnit[bottleneck.wsId]) {
-                        const productHoursInBottleneck = (need.workstationHoursPerUnit[bottleneck.wsId] || 0) * need.qtyToProduce;
-                        const participation = hoursInBottleneck > 0 ? productHoursInBottleneck / hoursInBottleneck : 0;
-                        const hoursToCut = bottleneck.deficit * participation;
-                        const unitsToCut = (need.workstationHoursPerUnit[bottleneck.wsId]) > 0
-                            ? hoursToCut / (need.workstationHoursPerUnit[bottleneck.wsId])
-                            : 0;
-                        need.qtyToProduce = Math.max(0, need.qtyToProduce - unitsToCut);
-                    }
-                });
-            }
-
-            const viable = new Map<string, number>();
-            const finalRequiredHours: Record<string, number> = {};
-            currentNeeds.forEach(need => {
-                const finalQty = Math.floor(need.qtyToProduce);
-                viable.set(need.productId, finalQty);
-                Object.entries(need.workstationHoursPerUnit).forEach(([wsId, hoursPerUnit]) => {
-                    if (!finalRequiredHours[wsId]) finalRequiredHours[wsId] = 0;
-                    finalRequiredHours[wsId] += finalQty * hoursPerUnit;
-                });
-            });
-
-            return { viable, hours: finalRequiredHours };
-        };
-        
-        const workstationsC2000 = constraints.workstationDefinitions.filter(wd => 
-            constraints.productionLines.some(line => line.workCenterId === '2000' && line.assignedWorkstations.some(as => as.definitionId === wd.id))
-        );
-        const capacityByWorkstation: Record<string, number> = {};
-        workstationsC2000.forEach(ws => {
-            capacityByWorkstation[ws.id] = getMonthlyCapacityForWorkstation(ws.id, year, month, constraints);
-        });
-
-        // Stage 1: Plan 'E' materials
-        const needsE = Array.from(materials.values()).filter(m => m.provisionClass === 'E' && m.totalNeed > 0);
-        const { viable: viableE, hours: hoursE } = calculateViable(needsE, capacityByWorkstation, tiemposData, constraints);
-        
-        // Stage 2: Plan 'X' materials with remaining capacity
-        const remainingCapacity = { ...capacityByWorkstation };
-        Object.keys(hoursE).forEach(wsId => {
-            remainingCapacity[wsId] = Math.max(0, remainingCapacity[wsId] - hoursE[wsId]);
-        });
-        const needsX = Array.from(materials.values()).filter(m => m.provisionClass === 'X' && m.totalNeed > 0);
-        const { viable: viableX, hours: hoursX } = calculateViable(needsX, remainingCapacity, tiemposData, constraints);
-        
-        const requiredHours: Record<string, number> = {};
-        Object.keys(hoursE).forEach(k => requiredHours[k] = (requiredHours[k] || 0) + hoursE[k]);
-        Object.keys(hoursX).forEach(k => requiredHours[k] = (requiredHours[k] || 0) + hoursX[k]);
-
-        materials.forEach(row => {
-            if (row.provisionClass === 'E') {
-                row.viableProductionC2000 = viableE.get(row.productId) || 0;
-            } else if (row.provisionClass === 'X') {
-                row.viableProductionC2000 = viableX.get(row.productId) || 0;
-            }
-
-            const { bestLine } = getBestLineForProduct(row.productId, '2000', tiemposData, constraints);
-            if (!bestLine && (row.provisionClass === 'E' || row.provisionClass === 'X')) {
-                row.viableProductionC2000 = 0;
-            }
-
-            if (row.provisionClass === 'E' || row.provisionClass === 'X') {
-                row.capacityDeficitC2000 = Math.max(0, row.totalNeed - row.viableProductionC2000);
+                 const fallbackItem = apiCuboInventariosData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === '1000');
+                 if (fallbackItem && fallbackItem.ClaseAprovisionam === 'F') {
+                     claseAprov = 'F';
+                 }
             }
             
-            if (row.provisionClass === 'F') {
-                row.transferNeedF = row.totalNeed;
-            }
-            
-            row.totalTransferNeed = row.capacityDeficitC2000 + row.transferNeedF;
+            return {
+                CentroStock: '2000',
+                Material: productId,
+                Descripcion: productName,
+                Sector: sector,
+                ClaseAprov: claseAprov
+            };
         });
         
-        setC2000RequiredHours(requiredHours);
-        setResults(Array.from(materials.values()));
+        setResults(newResults);
+        // Reseteamos las horas requeridas porque estamos empezando de cero
+        setC2000RequiredHours({}); 
         setIsLoading(false);
-        addNotification('success', `Cálculo para ${materials.size} materiales completado.`);
-    }, [planningYear, planningMonth, salesData, apiCuboInventariosData, constraints, addNotification, setC2000RequiredHours]);
+        addNotification('success', `Cálculo base completado. Se identificaron ${newResults.length} materiales para el Centro 2000.`);
+    }, [planningYear, planningMonth, salesData, apiCuboInventariosData, addNotification, setC2000RequiredHours]);
 
     return (
         <div className="p-6 md:p-8 space-y-6">
@@ -536,84 +260,39 @@ export const NeedsCalculationC2000Section: React.FC = () => {
                 <table className="min-w-full text-xs divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
-                            <th className="px-2 py-2 text-left font-semibold text-gray-600">Material</th>
-                            <th className="px-2 py-2 text-left font-semibold text-gray-600">Descripción</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600">Necesidad Ventas</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Seg.</th>
-                            <th className="px-2 py-2 text-right font-semibold text-gray-600">Stock Inicial</th>
-                            <th className="px-2 py-2 text-right font-semibold text-blue-700 bg-blue-50">Total Necesidad</th>
-                            <th className="px-2 py-2 text-center font-semibold text-gray-600">Clase Aprov.</th>
-                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50">Prod. Viable C2000</th>
-                            <th className="px-2 py-2 text-right font-semibold text-red-700 bg-red-50">Déficit Cap. C2000</th>
-                            <th className="px-2 py-2 text-right font-semibold text-orange-700 bg-orange-50">Nec. Traslado (F)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-purple-700 bg-purple-50">Total Traslado a C1000</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro Stock</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Material</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Sector</th>
+                            <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Clase Aprov.</th>
                         </tr>
                         <tr>
-                            <th className="p-1"><FilterInput column="productId" value={(filters.productId as string | undefined) || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"><FilterInput column="productName" value={(filters.productName as string | undefined) || ''} onChange={handleFilterChange} /></th>
-                            <th className="p-1"></th>
-                            <th className="p-1"></th>
-                            <th className="p-1"></th>
-                            <th className="p-1"></th>
-                            <th className="p-1 w-32"><MultiSelectFilter placeholder="Clase" options={filterOptions.provisionClass || []} selected={(filters.provisionClass as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('provisionClass', value)} /></th>
-                            <th className="p-1"></th>
-                            <th className="p-1"></th>
-                            <th className="p-1"></th>
-                            <th className="p-1"></th>
+                            <th className="p-1"><MultiSelectFilter placeholder="Centro" options={filterOptions.CentroStock || []} selected={(filters.CentroStock as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('CentroStock', value)} /></th>
+                            <th className="p-1"><FilterInput column="Material" value={(filters.Material as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><FilterInput column="Descripcion" value={(filters.Descripcion as string | undefined) || ''} onChange={handleFilterChange} /></th>
+                            <th className="p-1"><MultiSelectFilter placeholder="Sector" options={filterOptions.Sector || []} selected={(filters.Sector as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('Sector', value)} /></th>
+                            <th className="p-1"><MultiSelectFilter placeholder="Clase" options={filterOptions.ClaseAprov || []} selected={(filters.ClaseAprov as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('ClaseAprov', value)} /></th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredData.map(row => (
-                            <tr key={row.productId}>
-                                <td className="px-2 py-2 font-mono">{row.productId}</td>
-                                <td className="px-2 py-2">{row.productName}</td>
-                                <td className="px-2 py-2 text-right font-mono">{Math.round(row.salesNeed).toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono">{Math.round(row.safetyStock).toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono">{Math.round(row.initialStock).toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{Math.round(row.totalNeed).toLocaleString()}</td>
-                                <td className="px-2 py-2 text-center font-bold">{row.provisionClass}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-green-800 bg-green-50">{Math.round(row.viableProductionC2000).toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-red-800 bg-red-50">{Math.round(row.capacityDeficitC2000).toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">{Math.round(row.transferNeedF).toLocaleString()}</td>
-                                <td className="px-2 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">{Math.round(row.totalTransferNeed).toLocaleString()}</td>
-                            </tr>
-                        ))}
-                         {results.length > 0 && filteredData.length === 0 && (
-                            <tr>
-                                <td colSpan={11} className="text-center py-8 text-gray-500">
-                                    No hay resultados que coincidan con los filtros aplicados.
-                                </td>
-                            </tr>
-                         )}
-                         {results.length === 0 && !isLoading && (
-                            <tr>
-                                <td colSpan={11} className="text-center py-8 text-gray-500">
-                                    Presione el botón "Calcular" para ver los resultados.
-                                </td>
-                            </tr>
-                        )}
-                        {isLoading && (
+                        {filteredData.length > 0 ? (
+                            filteredData.map(row => (
+                                <tr key={row.Material}>
+                                    <td className="px-2 py-2 font-mono">{row.CentroStock}</td>
+                                    <td className="px-2 py-2 font-mono">{row.Material}</td>
+                                    <td className="px-2 py-2">{row.Descripcion}</td>
+                                    <td className="px-2 py-2">{row.Sector}</td>
+                                    <td className="px-2 py-2 text-center font-bold">{row.ClaseAprov}</td>
+                                </tr>
+                            ))
+                        ) : (
                              <tr>
-                                <td colSpan={11} className="text-center py-8 text-gray-500">
-                                    <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+                                <td colSpan={5} className="text-center py-8 text-gray-500">
+                                     {isLoading ? 'Calculando...' : 'No hay datos para mostrar. Presione el botón "Calcular".'}
                                 </td>
                             </tr>
                         )}
                     </tbody>
-                    <tfoot className="bg-gray-800 text-white sticky bottom-0 z-10">
-                        <tr>
-                            <th colSpan={2} className="px-2 py-2 text-right font-bold uppercase">TOTALES FILTRADOS:</th>
-                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.salesNeed).toLocaleString()}</td>
-                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.safetyStock).toLocaleString()}</td>
-                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.initialStock).toLocaleString()}</td>
-                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.totalNeed).toLocaleString()}</td>
-                            <td></td>
-                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.viableProductionC2000).toLocaleString()}</td>
-                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.capacityDeficitC2000).toLocaleString()}</td>
-                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.transferNeedF).toLocaleString()}</td>
-                            <td className="px-2 py-2 text-right font-mono font-bold">{Math.round(footerTotals.totalTransferNeed).toLocaleString()}</td>
-                        </tr>
-                    </tfoot>
                 </table>
             </div>
         </div>
