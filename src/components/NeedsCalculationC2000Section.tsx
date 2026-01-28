@@ -50,10 +50,10 @@ const getMonthlyCapacityForWorkstation = (workstationId: string, year: number, m
             else if (dayOfWeek === 6) dailyHours = shiftParameters.saturdayAndHolidayHours;
             else dailyHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
         }
-        totalHours += dailyHours * totalAssignedQuantity;
+        totalHours += dailyHours; // Hours are per-post, quantity applied later
     }
 
-    return totalHours * 0.87; // Efficiency factor
+    return totalHours * totalAssignedQuantity * 0.87; // Efficiency factor applied to total hours of all posts
 };
 
 interface NeedsRow {
@@ -132,54 +132,66 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         const needsE = Array.from(materials.values()).filter(m => m.provisionClass === 'E' && m.totalNeed > 0);
         const needsX = Array.from(materials.values()).filter(m => m.provisionClass === 'X' && m.totalNeed > 0);
         
-        const workstationsC2000 = constraints.workstationDefinitions.filter(wd => wd.id.includes('---2000---'));
+        const workstationsC2000 = constraints.workstationDefinitions.filter(wd => 
+            constraints.productionLines.some(line => line.workCenterId === '2000' && line.assignedWorkstations.some(as => as.definitionId === wd.id))
+        );
         const capacityByWorkstation: Record<string, number> = {};
         workstationsC2000.forEach(ws => {
             capacityByWorkstation[ws.id] = getMonthlyCapacityForWorkstation(ws.id, year, month, constraints);
         });
-
-        const requiredHours: Record<string, number> = {};
-
-        const calculateViable = (needs: NeedsRow[], availableCapacity: Record<string, number>): { viable: Map<string, number>, hours: Record<string, number> } => {
-            // Complex iterative logic would go here. For now, a simplified version.
+        
+        const calculateViable = (
+            needs: NeedsRow[], 
+            availableCapacity: Record<string, number>,
+            producingCenterId: string
+        ): { viable: Map<string, number>, hours: Record<string, number> } => {
             const viable = new Map<string, number>();
             const localRequiredHours = { ...Object.fromEntries(Object.keys(availableCapacity).map(k => [k, 0])) };
-            
+
             needs.forEach(need => {
-                let canProduce = need.totalNeed;
-                const ppi = constraints.productProcessInfos.find(p => p.productId === need.productId);
+                let canProduce = 0;
                 
-                if (ppi) {
+                const ppi = constraints.productProcessInfos.find(p => {
+                    if (normalizeMaterialCode(p.productId) !== normalizeMaterialCode(need.productId)) return false;
+                    const line = constraints.productionLines.find(l => l.id === p.productionLineId);
+                    return line?.workCenterId === producingCenterId;
+                });
+
+                if (ppi && ppi.workstationTimes.length > 0 && need.totalNeed > 0) {
                     const bottleneckRatio = ppi.workstationTimes.reduce((minRatio, wt) => {
                         const workstationCapacity = availableCapacity[wt.workstationDefinitionId] - (localRequiredHours[wt.workstationDefinitionId] || 0);
-                        const required = need.totalNeed * wt.timeHours;
-                        return required > 0 ? Math.min(minRatio, workstationCapacity / required) : minRatio;
+                        const requiredTimeForNeed = need.totalNeed * wt.timeHours;
+                        if (requiredTimeForNeed <= 0) return minRatio;
+                        return Math.min(minRatio, workstationCapacity / requiredTimeForNeed);
                     }, 1);
-
-                    canProduce = Math.floor(need.totalNeed * bottleneckRatio);
                     
+                    canProduce = Math.floor(need.totalNeed * Math.min(1, bottleneckRatio));
+
                     if (canProduce > 0) {
-                         ppi.workstationTimes.forEach(wt => {
+                        ppi.workstationTimes.forEach(wt => {
                             localRequiredHours[wt.workstationDefinitionId] = (localRequiredHours[wt.workstationDefinitionId] || 0) + (canProduce * wt.timeHours);
                         });
                     }
-                } else {
-                    canProduce = 0; // No process info, can't produce
                 }
+                
                 viable.set(need.productId, canProduce);
             });
+
             return { viable, hours: localRequiredHours };
         };
 
-        const { viable: viableE, hours: hoursE } = calculateViable(needsE, capacityByWorkstation);
-        Object.keys(hoursE).forEach(k => requiredHours[k] = (requiredHours[k] || 0) + hoursE[k]);
+
+        const { viable: viableE, hours: hoursE } = calculateViable(needsE, capacityByWorkstation, '2000');
         
         const remainingCapacity = { ...capacityByWorkstation };
         Object.keys(hoursE).forEach(wsId => {
             remainingCapacity[wsId] -= hoursE[wsId];
         });
 
-        const { viable: viableX, hours: hoursX } = calculateViable(needsX, remainingCapacity);
+        const { viable: viableX, hours: hoursX } = calculateViable(needsX, remainingCapacity, '2000');
+        
+        const requiredHours: Record<string, number> = {};
+        Object.keys(hoursE).forEach(k => requiredHours[k] = (requiredHours[k] || 0) + hoursE[k]);
         Object.keys(hoursX).forEach(k => requiredHours[k] = (requiredHours[k] || 0) + hoursX[k]);
 
         // 4. Finalize rows
@@ -204,7 +216,7 @@ export const NeedsCalculationC2000Section: React.FC = () => {
         setC2000RequiredHours(requiredHours);
         setResults(Array.from(materials.values()));
         setIsLoading(false);
-        addNotification('success', `Cálculo para ${results.length} materiales completado.`);
+        addNotification('success', `Cálculo para ${materials.size} materiales completado.`);
     }, [planningYear, planningMonth, salesData, apiCuboInventariosData, constraints, addNotification, setC2000RequiredHours]);
 
     return (
