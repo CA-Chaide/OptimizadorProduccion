@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -5,7 +6,7 @@ import { Send, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useLogs } from '@/context/LogContext';
 import { useOperations } from '@/context/OperationContext';
-import { sendMessage, ChatMessage } from '@/app/actions/chat';
+import { sendMessage, ChatMessage } from '../app/actions/chat';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppProvider';
 import {

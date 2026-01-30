@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
@@ -13,7 +12,7 @@ import {
 import { ActiveView, MONTH_NAMES } from '@/constants/constants';
 import { generateProductionPlan, processAndValidateAssemblyData, analyzeSalesDemand } from '@/services/OptimizationService';
 import { queryApi } from '@/hooks/useApiData';
-import { syncDataToStore } from '@/app/actions/datastore';
+import { syncDataToStore } from '../app/actions/datastore';
 import { runtimeInspector } from '@/services/RuntimeInspector';
 
 const currentYear = new Date().getFullYear();
