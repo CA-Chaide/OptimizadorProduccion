@@ -843,14 +843,16 @@ export const exportShiftsAndCostsTemplateToExcel = (workCenters: WorkCenter[]): 
     // Hoja 1: Configuracion_Turnos
     const turnosData = workCenters.map(wc => ({
         'Centro': wc.id,
+        'Año': new Date().getFullYear(),
+        'Mes': new Date().getMonth() + 1,
         'RespCtrlProd': '',
         'NombRespControlProd': '',
-        'Horas Jornada Normal (L-V)': 9,
-        'Horas Extra Máximas (L-V)': 2,
-        'Horas en Sábado/Feriado': 5,
+        'Horas Normales': 9,
+        'H.E. 50% (Diurnas)': 2,
+        'H.E. 100% (Sab-Dom/Fer)': 5,
     }));
     const ws_turnos = XLSX.utils.json_to_sheet(turnosData);
-    ws_turnos['!cols'] = [ { wch: 10 }, { wch: 15 }, { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 25 } ];
+    ws_turnos['!cols'] = [ { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 25 } ];
 
     // Hoja 2: Configuracion_Costos
     const costosData = [
@@ -895,12 +897,12 @@ export const parseShiftsAndCostsExcel = (file: File): Promise<{
                     throw new Error(`La hoja "${turnosSheetName}" no tiene datos.`);
                 }
                 
-                const regularHoursIndex = turnosHeaders.indexOf('Horas Jornada Normal (L-V)');
-                const extraHoursIndex = turnosHeaders.indexOf('Horas Extra Máximas (L-V)');
-                const saturdayHoursIndex = turnosHeaders.indexOf('Horas en Sábado/Feriado');
+                const regularHoursIndex = turnosHeaders.indexOf('Horas Normales');
+                const extraHoursIndex = turnosHeaders.indexOf('H.E. 50% (Diurnas)');
+                const saturdayHoursIndex = turnosHeaders.indexOf('H.E. 100% (Sab-Dom/Fer)');
 
                 if (regularHoursIndex === -1 || extraHoursIndex === -1 || saturdayHoursIndex === -1) {
-                     throw new Error(`La hoja "${turnosSheetName}" tiene cabeceras incorrectas.`);
+                     throw new Error(`La hoja "${turnosSheetName}" tiene cabeceras incorrectas. Se esperaba 'Horas Normales', 'H.E. 50% (Diurnas)', y 'H.E. 100% (Sab-Dom/Fer)'.`);
                 }
 
                 const shiftParameters: ShiftParameters = {
@@ -962,3 +964,4 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
