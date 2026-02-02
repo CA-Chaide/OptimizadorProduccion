@@ -122,7 +122,12 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [totalLoadedRecords, setTotalLoadedRecords] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [colchonesBasesMueblesSum, setColchonesBasesMueblesSum] = useState<number | null>(null);
+  const [reportSummary, setReportSummary] = useState<{
+    prioritySectors: { sector: string; totalUnidades: number }[];
+    prioritySubtotal: number;
+    otherSubtotal: number;
+    grandTotal: number;
+  } | null>(null);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -152,7 +157,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setTotalLoadedRecords(0);
-    setColchonesBasesMueblesSum(null);
+    setReportSummary(null);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -161,7 +166,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
 
     let allData: SalesDataRow[] = [];
-    let sumForReport = 0;
+    const sectorTotals = new Map<string, number>();
     const yearsToLoad = filters.años.map(Number);
 
     try {
@@ -193,14 +198,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                             ? response.filter(item => filters.centros.includes(String(item.Centro).trim()))
                             : response;
                         
-                        sumForReport += centerFilteredResponse
-                            .filter(item => {
-                                if (!item.Sector) return false;
-                                const sectorStr = String(item.Sector).trim();
-                                return sectorStr.startsWith('01') || sectorStr.startsWith('02') || sectorStr.startsWith('03');
-                            })
-                            .reduce((sum, item) => sum + (parseFloat(String(item.UnidadesProyectado)) || 0), 0);
-
+                        centerFilteredResponse.forEach(item => {
+                            const sector = item.Sector || 'Sin Sector';
+                            const unidades = parseFloat(String(item.UnidadesProyectado)) || 0;
+                            if (unidades > 0) {
+                                sectorTotals.set(sector, (sectorTotals.get(sector) || 0) + unidades);
+                            }
+                        });
+                        
                          const mappedData: SalesDataRow[] = centerFilteredResponse.map((item, index) => ({
                             id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
                             año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
@@ -223,8 +228,32 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         }
         
         if (allData.length > 0) {
+            const prioritySectorsList = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
+            const prioritySectors: { sector: string; totalUnidades: number }[] = [];
+            let prioritySubtotal = 0;
+            let otherSubtotal = 0;
+
+            for (const [sector, totalUnidades] of sectorTotals.entries()) {
+                if (prioritySectorsList.includes(sector)) {
+                    prioritySectors.push({ sector, totalUnidades });
+                    prioritySubtotal += totalUnidades;
+                } else {
+                    otherSubtotal += totalUnidades;
+                }
+            }
+            
+            prioritySectors.sort((a,b) => prioritySectorsList.indexOf(a.sector) - prioritySectorsList.indexOf(b.sector));
+            
+            const grandTotal = prioritySubtotal + otherSubtotal;
+
+            setReportSummary({
+                prioritySectors,
+                prioritySubtotal,
+                otherSubtotal,
+                grandTotal,
+            });
+
             setTotalLoadedRecords(allData.length);
-            setColchonesBasesMueblesSum(sumForReport);
             onDataImported(allData);
             addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
         } else {
@@ -288,7 +317,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         </div>
       </div>
 
-       {totalLoadedRecords > 0 && !isProcessing && (
+       {reportSummary && !isProcessing && (
          <div className="mt-6 text-center p-6 bg-green-50 border border-green-200 rounded-lg">
             <h3 className="text-xl font-semibold text-green-800">
                 ¡Carga Completada!
@@ -296,12 +325,42 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             <p className="text-green-700 mt-2">
                 Se han cargado <span className="font-bold">{totalLoadedRecords.toLocaleString()}</span> registros de ventas en la memoria de la aplicación.
             </p>
-            {colchonesBasesMueblesSum !== null && (
-                <p className="text-green-700 mt-2">
-                    Suma para Colchones, Bases y Muebles (01, 02, 03): <span className="font-bold">{colchonesBasesMueblesSum.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                </p>
-            )}
-            <p className="text-green-600 mt-1 text-sm">
+            
+            <div className="mt-4 max-w-md mx-auto text-left">
+                <h4 className="text-md font-semibold text-gray-700 mb-2 text-center">Resumen de Unidades Presupuestadas</h4>
+                <div className="border bg-white rounded-md shadow-sm">
+                    <table className="w-full text-sm">
+                        <thead className="bg-gray-100">
+                            <tr>
+                                <th className="p-2 text-left font-semibold text-gray-600">Sector</th>
+                                <th className="p-2 text-right font-semibold text-gray-600">Total Unidades</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {reportSummary.prioritySectors.map(item => (
+                                <tr key={item.sector}>
+                                    <td className="p-2">{item.sector}</td>
+                                    <td className="p-2 text-right font-mono">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                            <tr className="bg-gray-200 font-bold">
+                                <td className="p-2">Subtotal Fabricación</td>
+                                <td className="p-2 text-right font-mono">{Math.round(reportSummary.prioritySubtotal).toLocaleString()}</td>
+                            </tr>
+                            <tr>
+                                <td className="p-2">Resto de Sectores</td>
+                                <td className="p-2 text-right font-mono">{Math.round(reportSummary.otherSubtotal).toLocaleString()}</td>
+                            </tr>
+                            <tr className="bg-gray-800 text-white font-bold">
+                                <td className="p-2">TOTAL GENERAL</td>
+                                <td className="p-2 text-right font-mono">{Math.round(reportSummary.grandTotal).toLocaleString()}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p className="text-green-600 mt-4 text-sm">
                 Ahora puede proceder a las demás secciones para configurar y generar el plan de producción.
             </p>
         </div>
