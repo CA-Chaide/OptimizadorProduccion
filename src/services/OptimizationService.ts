@@ -935,7 +935,7 @@ export const parseShiftsAndCostsExcel = (file: File): Promise<{
                 });
 
             } catch (error) {
-                reject(error);
+                reject(error as Error);
             }
         };
         reader.onerror = (error) => reject(error);
@@ -950,59 +950,6 @@ export const generateTacticalPlan = ( request: TacticalRequest, context: any ): 
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
 
-export const exportHolidaysTemplateToExcel = (constraints: AppConstraints): void => {
-    const holidays2026 = [
-        { name: 'Año Nuevo', date: '2026-01-01' },
-        { name: 'Carnaval', date: '2026-02-16' },
-        { name: 'Carnaval', date: '2026-02-17' },
-        { name: 'Viernes Santo', date: '2026-04-03' },
-        { name: 'Día del Trabajo', date: '2026-05-01' },
-        { name: 'Batalla de Pichincha', date: '2026-05-25' },
-        { name: 'Primer Grito de Independencia', date: '2026-08-10' },
-        { name: 'Independencia de Guayaquil', date: '2026-10-09' },
-        { name: 'Día de los Difuntos', date: '2026-11-02' },
-        { name: 'Independencia de Cuenca', date: '2026-11-03' },
-        { name: 'Navidad', date: '2026-12-25' },
-    ];
-
-    const feriadosData = holidays2026.map(h => ({
-        'Nombre Feriado': h.name,
-        'Fecha (YYYY-MM-DD)': h.date,
-        'Aplica A': 'Toda la Planta', // Default value
-        'Tipo de Jornada': 'Asueto', // Default value
-    }));
-
-    const ws_feriados = XLSX.utils.json_to_sheet(feriadosData);
-    ws_feriados['!cols'] = [ { wch: 30 }, { wch: 20 }, { wch: 30 }, { wch: 20 } ];
-
-    const dynamicHolidayOptions = [
-        ...HOLIDAY_APPLIES_TO_OPTIONS,
-        ...constraints.workCenters.map(wc => ({ value: wc.id, label: `Producción (${wc.name})` })),
-        ...constraints.productionLines.map(line => ({ value: line.id, label: `Línea: ${line.name} (${line.workCenterId})` }))
-    ];
-
-    const valoresValidosData = [
-        { 'Valores para \'Aplica A\'': '--- Valores Generales ---' },
-        ...HOLIDAY_APPLIES_TO_OPTIONS.map(opt => ({ 'Valores para \'Aplica A\'': opt.value })),
-        { 'Valores para \'Aplica A\'': '--- Centros de Trabajo ---' },
-        ...constraints.workCenters.map(wc => ({ 'Valores para \'Aplica A\'': wc.id })),
-        { 'Valores para \'Aplica A\'': '--- Líneas de Producción ---' },
-        ...constraints.productionLines.map(line => ({ 'Valores para \'Aplica A\'': line.id })),
-        { 'Valores para \'Aplica A\'': '' },
-        { 'Valores para \'Aplica A\'': '--- Valores para \'Tipo de Jornada\' ---' },
-        ...HOLIDAY_DAY_TYPE_OPTIONS.map(opt => ({ 'Valores para \'Aplica A\'': opt.value })),
-    ];
-    
-    const ws_valores = XLSX.utils.json_to_sheet(valoresValidosData);
-    ws_valores['!cols'] = [ { wch: 50 } ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, ws_feriados, 'Feriados_2026');
-    XLSX.utils.book_append_sheet(workbook, ws_valores, 'ValoresValidos');
-    
-    XLSX.writeFile(workbook, 'Plantilla_Feriados_2026.xlsx');
-};
-
 export const parseHolidaysExcel = (file: File): Promise<Holiday[]> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -1010,7 +957,7 @@ export const parseHolidaysExcel = (file: File): Promise<Holiday[]> => {
             try {
                 const data = event.target?.result;
                 const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
-                const sheetName = 'Feriados_2026';
+                const sheetName = 'Feriados';
                 const worksheet = workbook.Sheets[sheetName];
                 if (!worksheet) {
                     throw new Error(`La hoja "${sheetName}" no fue encontrada en el archivo.`);
@@ -1018,35 +965,37 @@ export const parseHolidaysExcel = (file: File): Promise<Holiday[]> => {
                 const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
                 const holidays: Holiday[] = jsonData.map((row, index) => {
-                    const dateValue = row['Fecha (YYYY-MM-DD)'];
-                    let dateString: string;
-                     if (dateValue instanceof Date) {
-                        // For dates parsed by xlsx library
-                        dateString = `${dateValue.getFullYear()}-${String(dateValue.getMonth() + 1).padStart(2, '0')}-${String(dateValue.getDate()).padStart(2, '0')}`;
-                    } else if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-                        // For strings already in YYYY-MM-DD format
-                        dateString = dateValue;
-                    } else {
-                        throw new Error(`Fila ${index + 2}: Formato de fecha inválido. Use YYYY-MM-DD.`);
-                    }
+                    const holidayName = row['Nombre del Feriado'];
+                    const restDay = row['Día de Descanso (Puente)'];
+                    const appliesTo = row['Procesos Aplica'];
 
-                    const dayType = (row['Tipo de Jornada'] || '').trim();
-                    if (!HOLIDAY_DAY_TYPE_OPTIONS.some(opt => opt.value === dayType)) {
-                         throw new Error(`Fila ${index + 2}: Tipo de Jornada '${dayType}' no es válido. Use uno de: ${HOLIDAY_DAY_TYPE_OPTIONS.map(o => o.value).join(', ')}`);
+                    if (!holidayName || !restDay || !appliesTo) {
+                        throw new Error(`Fila ${index + 2}: Faltan datos requeridos (Nombre del Feriado, Día de Descanso (Puente), Procesos Aplica).`);
+                    }
+                    
+                    let dateString: string;
+                    if (restDay instanceof Date) {
+                        // The cellDates:true option correctly parsed the date
+                        dateString = `${restDay.getFullYear()}-${String(restDay.getMonth() + 1).padStart(2, '0')}-${String(restDay.getDate()).padStart(2, '0')}`;
+                    } else if (typeof restDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(restDay)) {
+                        // String in YYYY-MM-DD format
+                        dateString = restDay;
+                    } else {
+                        throw new Error(`Fila ${index + 2}: Formato de fecha inválido para 'Día de Descanso (Puente)'. Use YYYY-MM-DD o un formato de fecha de Excel válido.`);
                     }
 
                     return {
                         id: `holiday-${index}-${Date.now()}`,
-                        name: String(row['Nombre Feriado'] || `Feriado Fila ${index + 2}`),
+                        name: String(holidayName),
                         date: dateString,
-                        appliesTo: String(row['Aplica A'] || 'Toda la Planta'),
-                        dayType: dayType as Holiday['dayType'],
-                        isProductionAllowed: dayType !== 'asueto',
+                        appliesTo: String(appliesTo),
+                        dayType: 'asueto', // Assume 'puente' is always a full day off
+                        isProductionAllowed: false,
                     };
                 });
                 resolve(holidays);
             } catch (error) {
-                reject(error);
+                reject(error as Error);
             }
         };
         reader.onerror = (error) => reject(error);

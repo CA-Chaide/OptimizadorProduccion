@@ -11,7 +11,7 @@ import {
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS, HOLIDAY_DAY_TYPE_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
-import { exportShiftsAndCostsTemplateToExcel, parseShiftsAndCostsExcel, exportHolidaysTemplateToExcel, parseHolidaysExcel } from '@/services/OptimizationService';
+import { exportShiftsAndCostsTemplateToExcel, parseShiftsAndCostsExcel, parseHolidaysExcel } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 
@@ -137,15 +137,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
       event.target.value = '';
     }
   };
-  
-    const handleDownloadTemplate = () => {
-        if (!isDataSynced) {
-            addNotification('warning', 'Debe sincronizar los datos de estructura primero para generar una plantilla completa.');
-            return;
-        }
-        exportHolidaysTemplateToExcel(constraints);
-        addNotification('info', 'Descargando plantilla de feriados...');
-    };
 
     const handleHolidayFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -544,14 +535,9 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                     <div>
                         <h3 className="text-lg font-semibold text-gray-800">Gestión de Feriados por Excel</h3>
                         <p className="text-sm text-gray-600 mt-1">
-                            Utilice esta sección para cargar la configuración de feriados desde un archivo Excel.
-                            Puede descargar una plantilla precargada con los feriados nacionales de Ecuador para 2026.
+                            Utilice esta sección para cargar la configuración de feriados desde un archivo Excel (`Plantilla_Feriados.xlsx`). Asegúrese de que el archivo contenga la hoja `Feriados` y las columnas `Nombre del Feriado`, `Día de Descanso (Puente)` y `Procesos Aplica`.
                         </p>
                         <div className="flex items-center pt-4 gap-4">
-                            <Button onClick={handleDownloadTemplate} variant="outline" disabled={isSyncing || !isDataSynced}>
-                                <Download className="mr-2 h-4 w-4" />
-                                Descargar Plantilla Feriados 2026
-                            </Button>
                             <label className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center cursor-pointer disabled:bg-gray-400">
                                 <DataImportIcon />
                                 Importar Feriados
