@@ -40,6 +40,7 @@ const initialState: AppState = {
         supplierDeliveryTimes: [],
         qualityParameters: [],
         holidays: [],
+        importedShiftConfigs: [],
     },
     employees: [],
     employeeSkills: [],

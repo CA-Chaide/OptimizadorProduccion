@@ -184,6 +184,18 @@ export interface ShiftParameters {
   saturdayAndHolidayHours: number;
 }
 
+export interface ShiftConfigRow {
+  Centro: string;
+  Año: number;
+  Mes: number;
+  RespCtrlProd: string;
+  NombRespControlProd: string;
+  'Horas Normales': number;
+  'H.E. 50% (Diurnas)': number;
+  'H.E. 100% (Sab-Dom/Fer)': number;
+}
+
+
 export interface InventorySetting {
   id: string;
   itemId: string; 
@@ -389,6 +401,7 @@ export interface AppConstraints {
   supplierDeliveryTimes: SupplierDeliveryTime[];
   qualityParameters: QualityParameter[];
   holidays: Holiday[];
+  importedShiftConfigs?: ShiftConfigRow[];
 }
 
 export interface NotificationMessage {

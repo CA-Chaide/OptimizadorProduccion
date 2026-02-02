@@ -7,7 +7,7 @@ import {
     SupplyInfo, MonthlyProductionPlanItem, NotificationMessage, LineMonthlySummary, 
     TacticalRequest, TacticalPlanResult, TacticalOrderItem, ProvisionalOrder, Employee, EmployeeSkill, MaintenanceEvent, AbsenteeismEvent, AssignedPersonnel, ShiftParameters,
     Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, PresupuestoItem,
-    PlanningProgress, WeeklyPlanItem, DemandAnalysisResult, CuboInventariosItem
+    PlanningProgress, WeeklyPlanItem, DemandAnalysisResult, CuboInventariosItem, ShiftConfigRow
 } from '@/types/types';
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
 import { queryApi } from '@/hooks/useApiData';
@@ -872,6 +872,7 @@ export const exportShiftsAndCostsTemplateToExcel = (workCenters: WorkCenter[]): 
 };
 
 export const parseShiftsAndCostsExcel = (file: File): Promise<{
+    shiftConfigs: ShiftConfigRow[],
     shiftParameters: ShiftParameters,
     laborCostFactors: LaborCostSettings,
     globalBaseCostPerHour: number,
@@ -889,26 +890,28 @@ export const parseShiftsAndCostsExcel = (file: File): Promise<{
                 if (!turnosWorksheet) {
                     throw new Error(`La hoja "${turnosSheetName}" no fue encontrada en el archivo.`);
                 }
-                const turnosData = XLSX.utils.sheet_to_json(turnosWorksheet, { header: 1 });
-                const turnosHeaders = turnosData[0] as string[];
-                const firstTurnoRow = turnosData[1] as any[];
-
-                if (!firstTurnoRow) {
-                    throw new Error(`La hoja "${turnosSheetName}" no tiene datos.`);
+                const turnosData: any[] = XLSX.utils.sheet_to_json(turnosWorksheet);
+                
+                if (turnosData.length === 0) {
+                     throw new Error(`La hoja "${turnosSheetName}" no tiene datos.`);
                 }
                 
-                const regularHoursIndex = turnosHeaders.indexOf('Horas Normales');
-                const extraHoursIndex = turnosHeaders.indexOf('H.E. 50% (Diurnas)');
-                const saturdayHoursIndex = turnosHeaders.indexOf('H.E. 100% (Sab-Dom/Fer)');
-
-                if (regularHoursIndex === -1 || extraHoursIndex === -1 || saturdayHoursIndex === -1) {
-                     throw new Error(`La hoja "${turnosSheetName}" tiene cabeceras incorrectas. Se esperaba 'Horas Normales', 'H.E. 50% (Diurnas)', y 'H.E. 100% (Sab-Dom/Fer)'.`);
-                }
-
+                const shiftConfigs: ShiftConfigRow[] = turnosData.map(row => ({
+                    Centro: String(row['Centro'] || ''),
+                    Año: Number(row['Año']),
+                    Mes: Number(row['Mes']),
+                    RespCtrlProd: String(row['RespCtrlProd'] || ''),
+                    NombRespControlProd: String(row['NombRespControlProd'] || ''),
+                    'Horas Normales': Number(row['Horas Normales']),
+                    'H.E. 50% (Diurnas)': Number(row['H.E. 50% (Diurnas)']),
+                    'H.E. 100% (Sab-Dom/Fer)': Number(row['H.E. 100% (Sab-Dom/Fer)']),
+                }));
+                
+                const firstConfig = shiftConfigs[0];
                 const shiftParameters: ShiftParameters = {
-                    regularHoursPerDay: parseFloat(firstTurnoRow[regularHoursIndex]) || 9,
-                    extraHoursPerDay: parseFloat(firstTurnoRow[extraHoursIndex]) || 2,
-                    saturdayAndHolidayHours: parseFloat(firstTurnoRow[saturdayHoursIndex]) || 5,
+                    regularHoursPerDay: firstConfig ? firstConfig['Horas Normales'] : 9,
+                    extraHoursPerDay: firstConfig ? firstConfig['H.E. 50% (Diurnas)'] : 2,
+                    saturdayAndHolidayHours: firstConfig ? firstConfig['H.E. 100% (Sab-Dom/Fer)'] : 5,
                 };
                 
                 // --- Process Costos Sheet ---
@@ -944,6 +947,7 @@ export const parseShiftsAndCostsExcel = (file: File): Promise<{
                 });
 
                 resolve({
+                    shiftConfigs,
                     shiftParameters,
                     laborCostFactors,
                     globalBaseCostPerHour,
@@ -964,4 +968,3 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
-

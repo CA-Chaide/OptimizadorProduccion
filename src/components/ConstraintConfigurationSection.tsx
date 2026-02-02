@@ -7,12 +7,12 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { 
     AppConstraints, WorkCenter, ProductionLine, LaborCostSettings, InventorySetting, 
     Bottleneck, SupplierDeliveryTime, QualityParameter, SalesDataRow, ProductProcessInfo, 
-    NotificationMessage, Holiday, ProcessType, WorkstationDefinition, ShiftParameters, HolidayScope
+    NotificationMessage, Holiday, ProcessType, WorkstationDefinition, ShiftParameters, HolidayScope, ShiftConfigRow
 } from '@/types/types';
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
-import { exportShiftsAndCostsTemplateToExcel, parseShiftsAndCostsExcel } from '@/services/OptimizationService';
+import { parseShiftsAndCostsExcel } from '@/services/OptimizationService';
 
 
 interface ConstraintConfigurationSectionProps {
@@ -77,6 +77,9 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   const initialHolidayFormState: Omit<Holiday, 'id'> = { date: '', name: '', appliesTo: 'Toda la Planta', isProductionAllowed: false, dayType: 'asueto' };
   const [holidayForm, setHolidayForm] = useState<Omit<Holiday, 'id'>>(initialHolidayFormState);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
+  
+  const [configYear, setConfigYear] = useState<string>(new Date().getFullYear().toString());
+  const [configMonth, setConfigMonth] = useState<string>((new Date().getMonth() + 1).toString());
 
   const handleSyncClick = async () => {
     setIsSyncing(true);
@@ -111,13 +114,14 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     );
 
     try {
-      const { shiftParameters, laborCostFactors, globalBaseCostPerHour } = await parseShiftsAndCostsExcel(file);
+      const { shiftConfigs, shiftParameters, laborCostFactors, globalBaseCostPerHour } = await parseShiftsAndCostsExcel(file);
       
       onConstraintsUpdate({
         ...constraints,
         shiftParameters,
         laborCostFactors,
         globalBaseCostPerHour,
+        importedShiftConfigs: shiftConfigs,
       });
 
       operationTracker.completeOperation(opId, 'Configuración de costos y turnos importada correctamente.');
@@ -253,6 +257,13 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     const option = dynamicHolidayOptions.find(opt => opt.value === appliesTo);
     return option ? option.label : appliesTo;
   };
+  
+  const filteredShiftConfigs = useMemo(() => {
+    if (!constraints.importedShiftConfigs) return [];
+    return constraints.importedShiftConfigs.filter(config => 
+        String(config.Año) === configYear && String(config.Mes) === configMonth
+    );
+  }, [constraints.importedShiftConfigs, configYear, configMonth]);
 
 
   const tabs = [
@@ -393,8 +404,8 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                     <div className="p-4 border border-dashed rounded-lg">
                         <h4 className="font-semibold text-gray-700">Instrucciones:</h4>
                         <ol className="list-decimal list-inside mt-2 space-y-1 text-sm text-gray-600">
-                            <li>Asegúrese de que su archivo Excel (`Plantilla_Costos_y_Turnos.xlsx`) contenga las hojas `Configuracion_Turnos` y `Configuracion_Costos` con los formatos correctos.</li>
-                            <li>Presione el botón para seleccionar y cargar el archivo.</li>
+                            <li>Descargue la plantilla estandarizada, llénela con su configuración y guárdela.</li>
+                            <li>Presione el botón "Importar" para seleccionar y cargar el archivo.</li>
                             <li>La aplicación leerá los valores y actualizará la configuración global para el planificador.</li>
                         </ol>
                     </div>
@@ -411,6 +422,82 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                             />
                         </label>
                     </div>
+
+                    {constraints.importedShiftConfigs && constraints.importedShiftConfigs.length > 0 && (
+                        <div className="mt-6 space-y-6">
+                            <div>
+                                <h4 className="font-semibold text-gray-700 mb-2">Configuración de Turnos Importada</h4>
+                                <p className="text-xs text-gray-500 mb-4">
+                                  Nota: Para los cálculos del plan, el sistema utiliza la configuración de la primera fila del archivo.
+                                </p>
+                                <div className="flex items-end space-x-2 mb-4 p-4 border rounded-lg bg-gray-50">
+                                  <div>
+                                     <label htmlFor="configYear" className="block text-sm font-medium text-gray-700">Año</label>
+                                     <select id="configYear" value={configYear} onChange={e => setConfigYear(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                                        {[...new Set(constraints.importedShiftConfigs.map(c => c.Año))].sort().map(y => <option key={y} value={String(y)}>{y}</option>)}
+                                     </select>
+                                  </div>
+                                  <div>
+                                     <label htmlFor="configMonth" className="block text-sm font-medium text-gray-700">Mes</label>
+                                     <select id="configMonth" value={configMonth} onChange={e => setConfigMonth(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                                         {MONTH_NAMES.map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
+                                     </select>
+                                  </div>
+                                </div>
+
+                                <div className="border rounded-lg overflow-auto max-h-[60vh]">
+                                  <table className="min-w-full text-xs divide-y divide-gray-200">
+                                    <thead className="bg-gray-100 sticky top-0">
+                                      <tr>
+                                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
+                                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Resp. Ctrl. Prod.</th>
+                                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Nombre Resp.</th>
+                                        <th className="px-2 py-2 text-right font-semibold text-gray-600">H. Normales</th>
+                                        <th className="px-2 py-2 text-right font-semibold text-gray-600">H.E. 50%</th>
+                                        <th className="px-2 py-2 text-right font-semibold text-gray-600">H.E. 100%</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                      {filteredShiftConfigs.map((config, index) => (
+                                        <tr key={index}>
+                                          <td className="px-2 py-2">{config.Centro}</td>
+                                          <td className="px-2 py-2">{config.RespCtrlProd}</td>
+                                          <td className="px-2 py-2">{config.NombRespControlProd}</td>
+                                          <td className="px-2 py-2 text-right font-mono">{config['Horas Normales']}</td>
+                                          <td className="px-2 py-2 text-right font-mono">{config['H.E. 50% (Diurnas)']}</td>
+                                          <td className="px-2 py-2 text-right font-mono">{config['H.E. 100% (Sab-Dom/Fer)']}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-6">
+                                <h4 className="font-semibold text-gray-700 mb-2">Factores de Costo Importados</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="p-3 border rounded-lg bg-gray-50">
+                                        <p className="text-xs text-gray-500">Costo Base/Hora</p>
+                                        <p className="text-lg font-bold text-gray-800">${constraints.globalBaseCostPerHour?.toFixed(2) || '0.00'}</p>
+                                    </div>
+                                    <div className="p-3 border rounded-lg bg-gray-50">
+                                        <p className="text-xs text-gray-500">Recargo Extra Diurno</p>
+                                        <p className="text-lg font-bold text-gray-800">{constraints.laborCostFactors?.factorAdicionalDiurno || 0}%</p>
+                                    </div>
+                                     <div className="p-3 border rounded-lg bg-gray-50">
+                                        <p className="text-xs text-gray-500">Recargo Nocturno</p>
+                                        <p className="text-lg font-bold text-gray-800">{constraints.laborCostFactors?.factorRecargoNocturno || 0}%</p>
+                                    </div>
+                                    <div className="p-3 border rounded-lg bg-gray-50">
+                                        <p className="text-xs text-gray-500">Recargo FDS/Feriado</p>
+                                        <p className="text-lg font-bold text-gray-800">{constraints.laborCostFactors?.factorFinSemanaFeriado || 0}%</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    )}
+
                 </div>
             )}
              {activeTab === 'holidays' && (
