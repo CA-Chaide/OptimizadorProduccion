@@ -12,7 +12,7 @@ import {
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
-import { parseShiftsAndCostsExcel } from '@/services/OptimizationService';
+import { parseShiftsAndCostsExcel, exportShiftsAndCostsTemplateToExcel } from '@/services/OptimizationService';
 
 
 interface ConstraintConfigurationSectionProps {
@@ -137,6 +137,11 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
       // Reset file input to allow re-uploading the same file
       event.target.value = '';
     }
+  };
+  
+  const handleDownloadTemplate = () => {
+    exportShiftsAndCostsTemplateToExcel(constraints.workCenters);
+    addNotification('info', 'La plantilla de Excel ha sido generada y descargada.');
   };
 
   const handleProcessTypeChange = (lineId: string, newProcessType: ProcessType) => {
@@ -403,17 +408,13 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                 <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
                     <h3 className="text-lg font-semibold text-gray-800">Configuración de Turnos y Costos por Excel</h3>
                     <p className="text-sm text-gray-600">
-                        Utilice esta sección para cargar la configuración de turnos y costos laborales desde un archivo Excel estandarizado.
+                        Utilice esta sección para cargar la configuración de turnos y costos laborales desde un archivo Excel estandarizado. Toda la configuración se gestiona ahora desde la hoja `Configuracion_Turnos`.
                     </p>
-                    <div className="p-4 border border-dashed rounded-lg">
-                        <h4 className="font-semibold text-gray-700">Instrucciones:</h4>
-                        <ol className="list-decimal list-inside mt-2 space-y-1 text-sm text-gray-600">
-                            <li>Descargue la plantilla estandarizada, llénela con su configuración y guárdela.</li>
-                            <li>Presione el botón "Importar" para seleccionar y cargar el archivo.</li>
-                            <li>La aplicación leerá los valores y actualizará la configuración global para el planificador.</li>
-                        </ol>
-                    </div>
-                    <div className="flex items-center justify-center pt-4">
+                    <div className="flex items-center justify-center pt-4 gap-4">
+                        <Button onClick={handleDownloadTemplate} variant="outline" disabled={isSyncing || !isDataSynced}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Descargar Plantilla
+                        </Button>
                         <label className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed">
                              <DataImportIcon />
                              {isSyncing ? 'Procesando...' : 'Importar Archivo de Configuración'}
@@ -435,7 +436,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                   Mostrando la configuración activa para el período seleccionado (el sistema usa la primera fila encontrada).
                                 </p>
                                 {activeShiftConfig ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                         <div className="p-3 border rounded-lg bg-blue-50 text-center">
                                             <p className="text-sm font-medium text-blue-800">Horas Normales</p>
                                             <p className="text-2xl font-bold text-blue-900">{activeShiftConfig['Horas Normales']}h</p>
@@ -451,6 +452,11 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                             <p className="text-2xl font-bold text-blue-900">{activeShiftConfig['H.E. 100% (Sab-Dom/Fer)']}h</p>
                                             <p className="text-xs text-blue-600">(Jornada especial)</p>
                                         </div>
+                                        <div className="p-3 border rounded-lg bg-blue-50 text-center">
+                                            <p className="text-sm font-medium text-blue-800"># Turnos</p>
+                                            <p className="text-2xl font-bold text-blue-900">{activeShiftConfig['# Turnos']}</p>
+                                            <p className="text-xs text-blue-600">(Planificados)</p>
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="text-center py-4 text-gray-500">
@@ -458,14 +464,42 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                     </div>
                                 )}
                             </div>
+                            
+                            <div className="mt-6">
+                                <h4 className="font-semibold text-gray-700 mb-2">Factores de Costo</h4>
+                                 {activeShiftConfig ? (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div className="p-3 border rounded-lg bg-gray-50">
+                                            <p className="text-xs text-gray-500">Costo Base/Hora</p>
+                                            <p className="text-lg font-bold text-gray-800">${activeShiftConfig['Costo Horas Normales']?.toFixed(2) || '0.00'}</p>
+                                        </div>
+                                        <div className="p-3 border rounded-lg bg-gray-50">
+                                            <p className="text-xs text-gray-500">Recargo Extra Diurno</p>
+                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo H.E. 50% (Diurnas)'] || 0}%</p>
+                                        </div>
+                                         <div className="p-3 border rounded-lg bg-gray-50">
+                                            <p className="text-xs text-gray-500">Recargo Nocturno</p>
+                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo Recargo Jornada Nocturna (%)'] || 0}%</p>
+                                        </div>
+                                        <div className="p-3 border rounded-lg bg-gray-50">
+                                            <p className="text-xs text-gray-500">Recargo FDS/Feriado</p>
+                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo H.E. 100% (Sab-Dom/Fer)'] || 0}%</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 text-gray-500">
+                                        No hay configuración de costos para el Año y Mes seleccionados.
+                                    </div>
+                                )}
+                            </div>
 
                             <div>
-                                <h4 className="font-semibold text-gray-700 mb-2">Detalle de Configuración Importada</h4>
+                                <h4 className="font-semibold text-gray-700 mb-2">Detalle de Configuración</h4>
                                 <div className="flex items-end space-x-2 mb-4 p-4 border rounded-lg bg-gray-50">
                                   <div>
                                      <label htmlFor="configYear" className="block text-sm font-medium text-gray-700">Año</label>
                                      <select id="configYear" value={configYear} onChange={e => setConfigYear(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
-                                        {[...new Set(constraints.importedShiftConfigs.map(c => c.Año))].sort().map(y => <option key={y} value={String(y)}>{y}</option>)}
+                                        {[...new Set((constraints.importedShiftConfigs || []).map(c => c.Año))].sort().map(y => <option key={y} value={String(y)}>{y}</option>)}
                                      </select>
                                   </div>
                                   <div>
@@ -482,10 +516,14 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                       <tr>
                                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
                                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Resp. Ctrl. Prod.</th>
-                                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Nombre Resp.</th>
                                         <th className="px-2 py-2 text-right font-semibold text-gray-600">H. Normales</th>
                                         <th className="px-2 py-2 text-right font-semibold text-gray-600">H.E. 50%</th>
                                         <th className="px-2 py-2 text-right font-semibold text-gray-600">H.E. 100%</th>
+                                        <th className="px-2 py-2 text-right font-semibold text-gray-600"># Turnos</th>
+                                        <th className="px-2 py-2 text-right font-semibold text-gray-600">Costo H. Normal</th>
+                                        <th className="px-2 py-2 text-right font-semibold text-gray-600">Rec. HE 50%</th>
+                                        <th className="px-2 py-2 text-right font-semibold text-gray-600">Rec. Nocturno %</th>
+                                        <th className="px-2 py-2 text-right font-semibold text-gray-600">Rec. FDS/Fer %</th>
                                       </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
@@ -493,39 +531,20 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                         <tr key={index}>
                                           <td className="px-2 py-2">{config.Centro}</td>
                                           <td className="px-2 py-2">{config.RespCtrlProd}</td>
-                                          <td className="px-2 py-2">{config.NombRespControlProd}</td>
                                           <td className="px-2 py-2 text-right font-mono">{config['Horas Normales']}</td>
                                           <td className="px-2 py-2 text-right font-mono">{config['H.E. 50% (Diurnas)']}</td>
                                           <td className="px-2 py-2 text-right font-mono">{config['H.E. 100% (Sab-Dom/Fer)']}</td>
+                                          <td className="px-2 py-2 text-right font-mono">{config['# Turnos']}</td>
+                                          <td className="px-2 py-2 text-right font-mono">${config['Costo Horas Normales'].toFixed(2)}</td>
+                                          <td className="px-2 py-2 text-right font-mono">{config['Costo H.E. 50% (Diurnas)']}%</td>
+                                          <td className="px-2 py-2 text-right font-mono">{config['Costo Recargo Jornada Nocturna (%)']}%</td>
+                                          <td className="px-2 py-2 text-right font-mono">{config['Costo H.E. 100% (Sab-Dom/Fer)']}%</td>
                                         </tr>
                                       ))}
                                     </tbody>
                                   </table>
                                 </div>
                             </div>
-                            
-                            <div className="mt-6">
-                                <h4 className="font-semibold text-gray-700 mb-2">Factores de Costo Importados</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <div className="p-3 border rounded-lg bg-gray-50">
-                                        <p className="text-xs text-gray-500">Costo Base/Hora</p>
-                                        <p className="text-lg font-bold text-gray-800">${constraints.globalBaseCostPerHour?.toFixed(2) || '0.00'}</p>
-                                    </div>
-                                    <div className="p-3 border rounded-lg bg-gray-50">
-                                        <p className="text-xs text-gray-500">Recargo Extra Diurno</p>
-                                        <p className="text-lg font-bold text-gray-800">{constraints.laborCostFactors?.factorAdicionalDiurno || 0}%</p>
-                                    </div>
-                                     <div className="p-3 border rounded-lg bg-gray-50">
-                                        <p className="text-xs text-gray-500">Recargo Nocturno</p>
-                                        <p className="text-lg font-bold text-gray-800">{constraints.laborCostFactors?.factorRecargoNocturno || 0}%</p>
-                                    </div>
-                                    <div className="p-3 border rounded-lg bg-gray-50">
-                                        <p className="text-xs text-gray-500">Recargo FDS/Feriado</p>
-                                        <p className="text-lg font-bold text-gray-800">{constraints.laborCostFactors?.factorFinSemanaFeriado || 0}%</p>
-                                    </div>
-                                </div>
-                            </div>
-
                         </div>
                     )}
 

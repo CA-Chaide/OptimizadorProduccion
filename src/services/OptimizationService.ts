@@ -840,7 +840,7 @@ export const exportMaestroSectorSummaryToExcel = (summaryData: { 'Sector': strin
 };
 
 export const exportShiftsAndCostsTemplateToExcel = (workCenters: WorkCenter[]): void => {
-    // Hoja 1: Configuracion_Turnos
+    // Hoja única: Configuracion_Turnos
     const turnosData = workCenters.map(wc => ({
         'Centro': wc.id,
         'Año': new Date().getFullYear(),
@@ -850,24 +850,22 @@ export const exportShiftsAndCostsTemplateToExcel = (workCenters: WorkCenter[]): 
         'Horas Normales': 9,
         'H.E. 50% (Diurnas)': 2,
         'H.E. 100% (Sab-Dom/Fer)': 5,
+        '# Turnos': 1,
+        'Costo Horas Normales': 8,
+        'Costo H.E. 50% (Diurnas)': 50,
+        'Costo Recargo Jornada Nocturna (%)': 25,
+        'Costo H.E. 100% (Sab-Dom/Fer)': 100,
     }));
+    
     const ws_turnos = XLSX.utils.json_to_sheet(turnosData);
-    ws_turnos['!cols'] = [ { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 25 } ];
-
-    // Hoja 2: Configuracion_Costos
-    const costosData = [
-        { 'Tipo de Costo': 'Costo Base por Hora ($)', 'Valor': 8 },
-        { 'Tipo de Costo': 'Recargo Horas Extra Diurno (%)', 'Valor': 50 },
-        { 'Tipo de Costo': 'Recargo Jornada Nocturna (%)', 'Valor': 25 },
-        { 'Tipo de Costo': 'Recargo FDS/Feriado (%)', 'Valor': 100 },
+    ws_turnos['!cols'] = [ 
+        { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 15 }, { wch: 25 }, 
+        { wch: 15 }, { wch: 20 }, { wch: 25 }, { wch: 10 },
+        { wch: 20 }, { wch: 25 }, { wch: 35 }, { wch: 30 }
     ];
-    const ws_costos = XLSX.utils.json_to_sheet(costosData);
-    ws_costos['!cols'] = [ { wch: 30 }, { wch: 15 } ];
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, ws_turnos, 'Configuracion_Turnos');
-    XLSX.utils.book_append_sheet(workbook, ws_costos, 'Configuracion_Costos');
-
     XLSX.writeFile(workbook, 'Plantilla_Costos_y_Turnos.xlsx');
 };
 
@@ -884,7 +882,7 @@ export const parseShiftsAndCostsExcel = (file: File): Promise<{
                 const data = event.target?.result;
                 const workbook = XLSX.read(data, { type: 'binary' });
 
-                // --- Process Turnos Sheet ---
+                // --- Process Turnos Sheet (única hoja) ---
                 const turnosSheetName = 'Configuracion_Turnos';
                 const turnosWorksheet = workbook.Sheets[turnosSheetName];
                 if (!turnosWorksheet) {
@@ -897,54 +895,37 @@ export const parseShiftsAndCostsExcel = (file: File): Promise<{
                 }
                 
                 const shiftConfigs: ShiftConfigRow[] = turnosData.map(row => ({
-                    Centro: String(row['Centro'] || ''),
-                    Año: Number(row['Año']),
-                    Mes: Number(row['Mes']),
-                    RespCtrlProd: String(row['RespCtrlProd'] || ''),
-                    NombRespControlProd: String(row['NombRespControlProd'] || ''),
+                    'Centro': String(row['Centro'] || ''),
+                    'Año': Number(row['Año']),
+                    'Mes': Number(row['Mes']),
+                    'RespCtrlProd': String(row['RespCtrlProd'] || ''),
+                    'NombRespControlProd': String(row['NombRespControlProd'] || ''),
                     'Horas Normales': Number(row['Horas Normales']),
                     'H.E. 50% (Diurnas)': Number(row['H.E. 50% (Diurnas)']),
                     'H.E. 100% (Sab-Dom/Fer)': Number(row['H.E. 100% (Sab-Dom/Fer)']),
+                    '# Turnos': Number(row['# Turnos']),
+                    'Costo Horas Normales': Number(row['Costo Horas Normales']),
+                    'Costo H.E. 50% (Diurnas)': Number(row['Costo H.E. 50% (Diurnas)']),
+                    'Costo Recargo Jornada Nocturna (%)': Number(row['Costo Recargo Jornada Nocturna (%)']),
+                    'Costo H.E. 100% (Sab-Dom/Fer)': Number(row['Costo H.E. 100% (Sab-Dom/Fer)']),
                 }));
                 
-                const firstConfig = shiftConfigs[0];
+                // Assume the first row of the first center contains the global parameters
+                const firstConfig = shiftConfigs.length > 0 ? shiftConfigs[0] : null;
+
                 const shiftParameters: ShiftParameters = {
                     regularHoursPerDay: firstConfig ? firstConfig['Horas Normales'] : 9,
                     extraHoursPerDay: firstConfig ? firstConfig['H.E. 50% (Diurnas)'] : 2,
                     saturdayAndHolidayHours: firstConfig ? firstConfig['H.E. 100% (Sab-Dom/Fer)'] : 5,
                 };
-                
-                // --- Process Costos Sheet ---
-                const costosSheetName = 'Configuracion_Costos';
-                const costosWorksheet = workbook.Sheets[costosSheetName];
-                if (!costosWorksheet) {
-                    throw new Error(`La hoja "${costosSheetName}" no fue encontrada en el archivo.`);
-                }
-                const costosData = XLSX.utils.sheet_to_json(costosWorksheet);
-                
-                let globalBaseCostPerHour = 8;
+
+                const globalBaseCostPerHour = firstConfig ? firstConfig['Costo Horas Normales'] : 8;
+
                 const laborCostFactors: LaborCostSettings = {
-                    factorAdicionalDiurno: 50,
-                    factorRecargoNocturno: 25,
-                    factorFinSemanaFeriado: 100,
+                    factorAdicionalDiurno: firstConfig ? firstConfig['Costo H.E. 50% (Diurnas)'] : 50,
+                    factorRecargoNocturno: firstConfig ? firstConfig['Costo Recargo Jornada Nocturna (%)'] : 25,
+                    factorFinSemanaFeriado: firstConfig ? firstConfig['Costo H.E. 100% (Sab-Dom/Fer)'] : 100,
                 };
-
-                costosData.forEach((row: any) => {
-                    const tipo = String(row['Tipo de Costo'] || '').trim();
-                    const valor = parseFloat(String(row['Valor']));
-
-                    if (isNaN(valor)) return;
-
-                    if (tipo === 'Costo Base por Hora ($)') {
-                        globalBaseCostPerHour = valor;
-                    } else if (tipo === 'Recargo Horas Extra Diurno (%)') {
-                        laborCostFactors.factorAdicionalDiurno = valor;
-                    } else if (tipo === 'Recargo Jornada Nocturna (%)') {
-                        laborCostFactors.factorRecargoNocturno = valor;
-                    } else if (tipo === 'Recargo FDS/Feriado (%)') {
-                        laborCostFactors.factorFinSemanaFeriado = valor;
-                    }
-                });
 
                 resolve({
                     shiftConfigs,

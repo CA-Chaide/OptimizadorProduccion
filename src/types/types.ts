@@ -193,6 +193,11 @@ export interface ShiftConfigRow {
   'Horas Normales': number;
   'H.E. 50% (Diurnas)': number;
   'H.E. 100% (Sab-Dom/Fer)': number;
+  '# Turnos': number;
+  'Costo Horas Normales': number;
+  'Costo H.E. 50% (Diurnas)': number;
+  'Costo Recargo Jornada Nocturna (%)': number;
+  'Costo H.E. 100% (Sab-Dom/Fer)': number;
 }
 
 
