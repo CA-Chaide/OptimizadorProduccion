@@ -161,6 +161,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
 
     let allData: SalesDataRow[] = [];
+    let sumForReport = 0;
     const yearsToLoad = filters.años.map(Number);
 
     try {
@@ -191,6 +192,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                          const centerFilteredResponse = filters.centros.length > 0
                             ? response.filter(item => filters.centros.includes(String(item.Centro).trim()))
                             : response;
+                        
+                        sumForReport += centerFilteredResponse
+                            .filter(item => item.Sector && ['01', '02', '03'].includes(String(item.Sector).trim()))
+                            .reduce((sum, item) => sum + (Number(item.UnidadesProyectado) || 0), 0);
 
                          const mappedData: SalesDataRow[] = centerFilteredResponse.map((item, index) => ({
                             id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
@@ -215,13 +220,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         if (allData.length > 0) {
             setTotalLoadedRecords(allData.length);
-            
-            const sumForReport = allData
-                .filter(item => item.sector && ['01', '02', '03'].includes(String(item.sector).trim()))
-                .reduce((sum, item) => sum + (item.unidadesProyectado || 0), 0);
-            
             setColchonesBasesMueblesSum(sumForReport);
-            
             onDataImported(allData);
             addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
         } else {
