@@ -264,6 +264,10 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
         String(config.Año) === configYear && String(config.Mes) === configMonth
     );
   }, [constraints.importedShiftConfigs, configYear, configMonth]);
+  
+  const activeShiftConfig = useMemo(() => {
+      return filteredShiftConfigs.length > 0 ? filteredShiftConfigs[0] : null;
+  }, [filteredShiftConfigs]);
 
 
   const tabs = [
@@ -424,12 +428,39 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                     </div>
 
                     {constraints.importedShiftConfigs && constraints.importedShiftConfigs.length > 0 && (
-                        <div className="mt-6 space-y-6">
-                            <div>
-                                <h4 className="font-semibold text-gray-700 mb-2">Configuración de Turnos Importada</h4>
+                        <div className="mt-6 space-y-8">
+                             <div>
+                                <h4 className="font-semibold text-gray-700 mb-2">Resumen de Turnos para Planificación</h4>
                                 <p className="text-xs text-gray-500 mb-4">
-                                  Nota: Para los cálculos del plan, el sistema utiliza la configuración de la primera fila del archivo.
+                                  Mostrando la configuración activa para el período seleccionado (el sistema usa la primera fila encontrada).
                                 </p>
+                                {activeShiftConfig ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="p-3 border rounded-lg bg-blue-50 text-center">
+                                            <p className="text-sm font-medium text-blue-800">Horas Normales</p>
+                                            <p className="text-2xl font-bold text-blue-900">{activeShiftConfig['Horas Normales']}h</p>
+                                            <p className="text-xs text-blue-600">(Lunes a Viernes)</p>
+                                        </div>
+                                        <div className="p-3 border rounded-lg bg-blue-50 text-center">
+                                            <p className="text-sm font-medium text-blue-800">Horas Extra Máximas</p>
+                                            <p className="text-2xl font-bold text-blue-900">{activeShiftConfig['H.E. 50% (Diurnas)']}h</p>
+                                            <p className="text-xs text-blue-600">(Lunes a Viernes)</p>
+                                        </div>
+                                        <div className="p-3 border rounded-lg bg-blue-50 text-center">
+                                            <p className="text-sm font-medium text-blue-800">Horas Sábado/Feriado</p>
+                                            <p className="text-2xl font-bold text-blue-900">{activeShiftConfig['H.E. 100% (Sab-Dom/Fer)']}h</p>
+                                            <p className="text-xs text-blue-600">(Jornada especial)</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 text-gray-500">
+                                        No hay configuración de turnos para el Año y Mes seleccionados.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <h4 className="font-semibold text-gray-700 mb-2">Detalle de Configuración Importada</h4>
                                 <div className="flex items-end space-x-2 mb-4 p-4 border rounded-lg bg-gray-50">
                                   <div>
                                      <label htmlFor="configYear" className="block text-sm font-medium text-gray-700">Año</label>
