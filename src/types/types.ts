@@ -586,3 +586,39 @@ export interface DailyCapacityRow {
   cantidadPuestos: number;
   horasMaxDisponibles: number;
 }
+
+
+export interface MaestroMaterialCentro {
+  CENTRO: string;
+  MATERIAL: string;
+  TIPO_MATERIAL: string;
+  DESCRIPCION: string;
+  JERARQUIA: string;
+  MARCA: string;
+  FAMILIA: string | null;
+  ETIQUETA: string | null;
+  SECTOR: string;
+  SectorDesc: string | null;
+  PeticionBorrado: string | null;
+  RespControlProd: string | null;
+  GrupoCompras: string | null;
+  PlanifNecesidades: string | null;
+  Unidad: string;
+  Categoria: string;
+  Precio: number | null;
+  Estrategia: string | null;
+  HojaRuta: string | null;
+  NombRespControlProd: string | null;
+  GRUPO_ARTICULOS: string;
+  DESC_GRUPO_ART: string;
+  PESO_BRUTO: number;
+  PESO_NETO: number;
+  UNIDAD_PESO: string;
+  GRUPO_TIPOS_POSICION_MATERIAL: string;
+  FORMA_FABRIC: string;
+  FABRICAPROPIA: number;
+  TIEMPOTRATAEM: number;
+  CLAVEHORIZ: string;
+  PLAZOENTREGAPREV: number;
+  TIEMPOGLOBALREAP: number;
+}

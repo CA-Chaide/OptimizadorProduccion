@@ -1,4 +1,4 @@
-all# Firebase Studio
+copiloall# Firebase Studio
 
 This is a NextJS starter in Firebase Studio.
 

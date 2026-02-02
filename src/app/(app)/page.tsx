@@ -18,6 +18,7 @@ import {
   ProductionCapacitySection,
   TacticalPlanMueblesSection,
   NeedsCalculationC2000Section,
+  MaestroMaterialesSection,
 } from '@/components';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -85,6 +86,8 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <WorkShiftPlanningSection shifts={workShifts} setShifts={setWorkShifts} constraints={constraints} employees={employees} absenteeismEvents={absenteeismEvents} employeeSkills={employeeSkills} />;
             case ActiveView.DICTIONARY:
                 return <RealDataSection />;
+            case ActiveView.MAESTRO_MATERIALES:
+                return <MaestroMaterialesSection />;
             default:
                 return <DashboardSection plan={productionPlan.dailyPlan} salesData={salesData} constraints={constraints} />;
         }

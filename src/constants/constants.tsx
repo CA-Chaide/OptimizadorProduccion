@@ -19,6 +19,7 @@ import {
     Package,
     Sheet,
     Activity,
+    ClipboardList,
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -39,6 +40,7 @@ export enum ActiveView {
   TACTICAL_SCHEDULING_MUEBLES = 'TACTICAL_SCHEDULING_MUEBLES',
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
+  MAESTRO_MATERIALES = 'MAESTRO_MATERIALES',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -55,6 +57,7 @@ export const WorkShiftIcon = () => <CalendarCheck className="w-5 h-5" />;
 export const RealDataIcon = () => <DatabaseZap className="w-5 h-5" />;
 export const InventoryNeedsIcon = () => <Sheet className="w-5 h-5" />;
 export const CapacityIcon = () => <Activity className="w-5 h-5" />;
+export const MaestroMaterialesIcon = () => <ClipboardList className="w-5 h-5" />;
 
 
 // Common action icons
@@ -102,6 +105,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon /> },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon /> },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon /> },
+  { id: ActiveView.MAESTRO_MATERIALES, label: 'Maestro de Materiales', icon: <MaestroMaterialesIcon /> },
 ];
 
 
