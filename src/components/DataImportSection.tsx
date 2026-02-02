@@ -195,7 +195,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                         
                         sumForReport += centerFilteredResponse
                             .filter(item => item.Sector && ['01', '02', '03'].includes(String(item.Sector).trim()))
-                            .reduce((sum, item) => sum + (Number(item.UnidadesProyectado) || 0), 0);
+                            .reduce((sum, item) => sum + (parseFloat(String(item.UnidadesProyectado)) || 0), 0);
 
                          const mappedData: SalesDataRow[] = centerFilteredResponse.map((item, index) => ({
                             id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
