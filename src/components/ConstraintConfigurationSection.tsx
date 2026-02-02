@@ -12,7 +12,7 @@ import {
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
-import { exportShiftsAndCostsTemplateToExcel } from '@/services/OptimizationService';
+import { exportShiftsAndCostsTemplateToExcel, parseShiftsAndCostsExcel } from '@/services/OptimizationService';
 
 
 interface ConstraintConfigurationSectionProps {
@@ -97,6 +97,44 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     setIsSyncing(false);
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    addNotification('info', `Procesando archivo ${file.name}...`);
+    setIsSyncing(true); // Re-use isSyncing state for loading indicator
+
+    const opId = operationTracker.startOperation(
+      'Constraints',
+      'data_import',
+      `Importando configuración desde ${file.name}`
+    );
+
+    try {
+      const { shiftParameters, laborCostFactors, globalBaseCostPerHour } = await parseShiftsAndCostsExcel(file);
+      
+      onConstraintsUpdate({
+        ...constraints,
+        shiftParameters,
+        laborCostFactors,
+        globalBaseCostPerHour,
+      });
+
+      operationTracker.completeOperation(opId, 'Configuración de costos y turnos importada correctamente.');
+      addNotification('success', 'La configuración de costos y turnos se ha actualizado desde el archivo Excel.');
+    
+    } catch (error) {
+      console.error('Error parsing shifts and costs file:', error);
+      const errorMessage = (error as Error).message || 'Error desconocido al procesar el archivo.';
+      operationTracker.failOperation(opId, errorMessage);
+      addNotification('error', `Error al importar: ${errorMessage}`);
+    } finally {
+      setIsSyncing(false);
+      // Reset file input to allow re-uploading the same file
+      event.target.value = '';
+    }
+  };
+
   const handleProcessTypeChange = (lineId: string, newProcessType: ProcessType) => {
     const updatedLines = constraints.productionLines.map(pl => 
       pl.id === lineId ? { ...pl, processType: newProcessType } : pl
@@ -125,11 +163,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     });
     onConstraintsUpdate({ ...constraints, productionLines: updatedLines });
   };
-  
-    const handleDownloadTemplate = () => {
-        addNotification('info', 'Generando plantilla de Excel para costos y turnos...');
-        exportShiftsAndCostsTemplateToExcel(constraints.workCenters);
-    };
 
   // --- Holidays Handlers ---
   const handleHolidayFormChange = (
@@ -355,30 +388,27 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                 <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
                     <h3 className="text-lg font-semibold text-gray-800">Configuración de Turnos y Costos por Excel</h3>
                     <p className="text-sm text-gray-600">
-                        Para una gestión más flexible, ahora la configuración de los parámetros de turnos y los costos laborales se realiza a través de un archivo Excel.
+                        Utilice esta sección para cargar la configuración de turnos y costos laborales desde un archivo Excel estandarizado.
                     </p>
                     <div className="p-4 border border-dashed rounded-lg">
-                        <h4 className="font-semibold text-gray-700">Flujo de Trabajo:</h4>
+                        <h4 className="font-semibold text-gray-700">Instrucciones:</h4>
                         <ol className="list-decimal list-inside mt-2 space-y-1 text-sm text-gray-600">
-                            <li><b>Descargue la Plantilla:</b> Obtenga el archivo Excel con el formato requerido.</li>
-                            <li><b>Complete los Datos:</b> Llene las hojas 'Configuracion_Turnos' y 'Configuracion_Costos' con sus datos.</li>
-                            <li><b>Importe el Archivo:</b> Suba el archivo completo para aplicar la configuración a la aplicación.</li>
+                            <li>Asegúrese de que su archivo Excel (`Plantilla_Costos_y_Turnos.xlsx`) contenga las hojas `Configuracion_Turnos` y `Configuracion_Costos` con los formatos correctos.</li>
+                            <li>Presione el botón para seleccionar y cargar el archivo.</li>
+                            <li>La aplicación leerá los valores y actualizará la configuración global para el planificador.</li>
                         </ol>
                     </div>
-                    <div className="flex items-center justify-center space-x-4 pt-4">
-                        <button
-                            onClick={handleDownloadTemplate}
-                            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
-                        >
-                            <DataImportIcon />
-                            Descargar Plantilla
-                        </button>
-                        
-                        <label className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center cursor-pointer disabled:bg-blue-300"
-                               onClick={() => addNotification('info', 'La funcionalidad de importación se implementará en el siguiente paso.')}>
+                    <div className="flex items-center justify-center pt-4">
+                        <label className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed">
                              <DataImportIcon />
-                            Importar Plantilla
-                            <input type="file" className="hidden" disabled/>
+                             {isSyncing ? 'Procesando...' : 'Importar Archivo de Configuración'}
+                            <input 
+                                type="file" 
+                                className="hidden" 
+                                onChange={handleFileUpload}
+                                accept=".xlsx, .xls"
+                                disabled={isSyncing}
+                            />
                         </label>
                     </div>
                 </div>

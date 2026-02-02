@@ -869,6 +869,92 @@ export const exportShiftsAndCostsTemplateToExcel = (workCenters: WorkCenter[]): 
     XLSX.writeFile(workbook, 'Plantilla_Costos_y_Turnos.xlsx');
 };
 
+export const parseShiftsAndCostsExcel = (file: File): Promise<{
+    shiftParameters: ShiftParameters,
+    laborCostFactors: LaborCostSettings,
+    globalBaseCostPerHour: number,
+}> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+
+                // --- Process Turnos Sheet ---
+                const turnosSheetName = 'Configuracion_Turnos';
+                const turnosWorksheet = workbook.Sheets[turnosSheetName];
+                if (!turnosWorksheet) {
+                    throw new Error(`La hoja "${turnosSheetName}" no fue encontrada en el archivo.`);
+                }
+                const turnosData = XLSX.utils.sheet_to_json(turnosWorksheet, { header: 1 });
+                const turnosHeaders = turnosData[0] as string[];
+                const firstTurnoRow = turnosData[1] as any[];
+
+                if (!firstTurnoRow) {
+                    throw new Error(`La hoja "${turnosSheetName}" no tiene datos.`);
+                }
+                
+                const regularHoursIndex = turnosHeaders.indexOf('Horas Jornada Normal (L-V)');
+                const extraHoursIndex = turnosHeaders.indexOf('Horas Extra Máximas (L-V)');
+                const saturdayHoursIndex = turnosHeaders.indexOf('Horas en Sábado/Feriado');
+
+                if (regularHoursIndex === -1 || extraHoursIndex === -1 || saturdayHoursIndex === -1) {
+                     throw new Error(`La hoja "${turnosSheetName}" tiene cabeceras incorrectas.`);
+                }
+
+                const shiftParameters: ShiftParameters = {
+                    regularHoursPerDay: parseFloat(firstTurnoRow[regularHoursIndex]) || 9,
+                    extraHoursPerDay: parseFloat(firstTurnoRow[extraHoursIndex]) || 2,
+                    saturdayAndHolidayHours: parseFloat(firstTurnoRow[saturdayHoursIndex]) || 5,
+                };
+                
+                // --- Process Costos Sheet ---
+                const costosSheetName = 'Configuracion_Costos';
+                const costosWorksheet = workbook.Sheets[costosSheetName];
+                if (!costosWorksheet) {
+                    throw new Error(`La hoja "${costosSheetName}" no fue encontrada en el archivo.`);
+                }
+                const costosData = XLSX.utils.sheet_to_json(costosWorksheet);
+                
+                let globalBaseCostPerHour = 8;
+                const laborCostFactors: LaborCostSettings = {
+                    factorAdicionalDiurno: 50,
+                    factorRecargoNocturno: 25,
+                    factorFinSemanaFeriado: 100,
+                };
+
+                costosData.forEach((row: any) => {
+                    const tipo = row['Tipo de Costo'];
+                    const valor = parseFloat(String(row['Valor']));
+
+                    if (isNaN(valor)) return;
+
+                    if (tipo === 'Costo Base por Hora ($)') {
+                        globalBaseCostPerHour = valor;
+                    } else if (tipo === 'Recargo Horas Extra Diurno (%)') {
+                        laborCostFactors.factorAdicionalDiurno = valor;
+                    } else if (tipo === 'Recargo Jornada Nocturna (%)') {
+                        laborCostFactors.factorRecargoNocturno = valor;
+                    } else if (tipo === 'Recargo FDS/Feriado (%)') {
+                        laborCostFactors.factorFinSemanaFeriado = valor;
+                    }
+                });
+
+                resolve({
+                    shiftParameters,
+                    laborCostFactors,
+                    globalBaseCostPerHour,
+                });
+
+            } catch (error) {
+                reject(error);
+            }
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsBinaryString(file);
+    });
+};
 
 
 export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]> => { return Promise.resolve([]); };
