@@ -1,5 +1,3 @@
-
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
@@ -124,6 +122,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [totalLoadedRecords, setTotalLoadedRecords] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isReportLoading, setIsReportLoading] = useState<boolean>(false);
+  const [reportResult, setReportResult] = useState<number | null>(null);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -153,6 +152,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setTotalLoadedRecords(0);
+    setReportResult(null);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -231,56 +231,66 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const handleReportSuma = async () => {
     setIsReportLoading(true);
-    
+    setReportResult(null);
+    setTotalLoadedRecords(0);
+
     if (filters.años.length === 0) {
-        addNotification('warning', 'Por favor, seleccione al menos un año para el reporte.');
-        setIsReportLoading(false);
-        return;
+      addNotification('warning', 'Por favor, seleccione al menos un año para el reporte.');
+      setIsReportLoading(false);
+      return;
     }
 
     let totalSum = 0;
     const yearsToLoad = filters.años.map(Number);
-    
+
     try {
-        addNotification('info', `Generando reporte para año(s): ${yearsToLoad.join(', ')}.`);
-        
-        const monthsToLoad = Array.from({length: 12}, (_, i) => i + 1);
-        
-        let queryCount = 0;
-        for (const year of yearsToLoad) {
-            for (const month of monthsToLoad) {
-                queryCount++;
-                addNotification('info', `Consultando para reporte... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}`);
-                
-                const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
-                
-                try {
-                    const response: PresupuestoItem[] = await queryApi({
-                        source: 'Presupuesto',
-                        operation: 'get_data',
-                        filters: queryFilters,
-                        pagination: { limit: 500000 }
-                    });
+      addNotification('info', `Generando reporte para los filtros seleccionados...`);
+      
+      const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
+      
+      let queryCount = 0;
+      for (const year of yearsToLoad) {
+        for (const month of monthsToLoad) {
+          queryCount++;
+          addNotification('info', `Consultando para reporte... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}`);
+          
+          const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
+          if (filters.etiqueta) {
+              queryFilters['Etiqueta'] = filters.etiqueta;
+          }
+          
+          try {
+            const response: PresupuestoItem[] = await queryApi({
+              source: 'Presupuesto',
+              operation: 'get_data',
+              filters: queryFilters,
+              pagination: { limit: 500000 }
+            });
 
-                    if (response && response.length > 0) {
-                         const sectorFilteredResponse = response.filter(item => 
-                             item.Sector && ['01', '02', '03'].includes(String(item.Sector).trim())
-                         );
+            if (response && response.length > 0) {
+              const centerFilteredResponse = filters.centros.length > 0
+                ? response.filter(item => filters.centros.includes(String(item.Centro).trim()))
+                : response;
 
-                         const sumForMonth = sectorFilteredResponse.reduce((sum, item) => {
-                             return sum + (parseFloat(String(item.UnidadesProyectado)) || 0);
-                         }, 0);
-                         
-                         totalSum += sumForMonth;
-                    }
-                } catch (e) {
-                    console.error(`Fallo en consulta de reporte para ${year}-${month}`, e);
-                    addNotification('error', `Fallo la consulta de reporte para ${MONTH_NAMES[month-1]} ${year}. Continuando...`);
-                }
+              const sectorFilteredResponse = centerFilteredResponse.filter(item => 
+                item.Sector && ['01', '02', '03'].includes(String(item.Sector).trim())
+              );
+
+              const sumForMonth = sectorFilteredResponse.reduce((sum, item) => {
+                return sum + (parseFloat(String(item.UnidadesProyectado)) || 0);
+              }, 0);
+              
+              totalSum += sumForMonth;
             }
+          } catch (e) {
+            console.error(`Fallo en consulta de reporte para ${year}-${month}`, e);
+            addNotification('error', `Fallo la consulta de reporte para ${MONTH_NAMES[month-1]} ${year}. Continuando...`);
+          }
         }
-        
-        addNotification('success', `Reporte: La suma para Sectores 01, 02, 03 en los años seleccionados es: ${Math.round(totalSum).toLocaleString()}`);
+      }
+      
+      setReportResult(totalSum);
+      addNotification('success', `Reporte generado. La suma es: ${Math.round(totalSum).toLocaleString()}`);
 
     } catch (error) {
         addNotification('error', `Error durante la generación del reporte: ${(error as Error).message}`);
@@ -355,6 +365,17 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </p>
             <p className="text-green-600 mt-1 text-sm">
                 Ahora puede proceder a las demás secciones para configurar y generar el plan de producción.
+            </p>
+        </div>
+      )}
+
+      {reportResult !== null && !isReportLoading && (
+         <div className="mt-6 text-center p-6 bg-blue-50 border border-blue-200 rounded-lg">
+            <h3 className="text-xl font-semibold text-blue-800">
+                Resultado del Reporte
+            </h3>
+            <p className="text-blue-700 mt-2">
+                La suma de unidades para los filtros y sectores seleccionados es: <span className="font-bold">{reportResult.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
             </p>
         </div>
       )}
