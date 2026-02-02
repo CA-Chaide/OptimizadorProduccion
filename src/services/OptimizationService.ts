@@ -969,19 +969,44 @@ export const parseHolidaysExcel = (file: File): Promise<Holiday[]> => {
                     const restDay = row['Día de Descanso (Puente)'];
                     const appliesTo = row['Procesos Aplica'];
 
-                    if (!holidayName || !restDay || !appliesTo) {
+                    if (!holidayName || restDay === undefined || restDay === null || !appliesTo) {
                         throw new Error(`Fila ${index + 2}: Faltan datos requeridos (Nombre del Feriado, Día de Descanso (Puente), Procesos Aplica).`);
                     }
                     
                     let dateString: string;
+
+                    const formatDate = (d: Date): string => {
+                        const year = d.getUTCFullYear();
+                        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                        const day = String(d.getUTCDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    };
+                    
+                    let finalDate: Date | null = null;
+
                     if (restDay instanceof Date) {
-                        // The cellDates:true option correctly parsed the date
-                        dateString = `${restDay.getFullYear()}-${String(restDay.getMonth() + 1).padStart(2, '0')}-${String(restDay.getDate()).padStart(2, '0')}`;
-                    } else if (typeof restDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(restDay)) {
-                        // String in YYYY-MM-DD format
-                        dateString = restDay;
+                        finalDate = restDay;
+                    } else if (typeof restDay === 'number') {
+                        // This formula is for dates from 1900 epoch on Windows. It's generally safe.
+                        // The number represents days since 1899-12-30.
+                        finalDate = new Date(Date.UTC(1900, 0, restDay - 1));
+                    } else if (typeof restDay === 'string') {
+                        const trimmed = restDay.trim();
+                        // Try YYYY-MM-DD
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+                           finalDate = new Date(`${trimmed}T00:00:00Z`); // Treat as UTC
+                        } 
+                        // Try DD/MM/YYYY or DD-MM-YYYY
+                        else if (/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/.test(trimmed)) {
+                           const parts = trimmed.split(/[\/-]/);
+                           finalDate = new Date(Date.UTC(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])));
+                        }
+                    }
+
+                    if (finalDate && !isNaN(finalDate.getTime())) {
+                        dateString = formatDate(finalDate);
                     } else {
-                        throw new Error(`Fila ${index + 2}: Formato de fecha inválido para 'Día de Descanso (Puente)'. Use YYYY-MM-DD o un formato de fecha de Excel válido.`);
+                        throw new Error(`Fila ${index + 2}: Formato de fecha inválido para 'Día de Descanso (Puente)'. Se recibió '${restDay}'. Use formato YYYY-MM-DD, DD/MM/YYYY o un número de fecha de Excel.`);
                     }
 
                     return {
@@ -989,7 +1014,7 @@ export const parseHolidaysExcel = (file: File): Promise<Holiday[]> => {
                         name: String(holidayName),
                         date: dateString,
                         appliesTo: String(appliesTo),
-                        dayType: 'asueto', // Assume 'puente' is always a full day off
+                        dayType: 'asueto',
                         isProductionAllowed: false,
                     };
                 });
