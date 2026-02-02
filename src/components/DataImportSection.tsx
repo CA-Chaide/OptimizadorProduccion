@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
 import { queryApi } from '@/hooks/useApiData';
@@ -121,8 +122,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [totalLoadedRecords, setTotalLoadedRecords] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [isReportLoading, setIsReportLoading] = useState<boolean>(false);
-  const [reportResult, setReportResult] = useState<number | null>(null);
+  const [colchonesBasesMueblesSum, setColchonesBasesMueblesSum] = useState<number | null>(null);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -152,7 +152,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const handleLoadData = async () => {
     setIsProcessing(true);
     setTotalLoadedRecords(0);
-    setReportResult(null);
+    setColchonesBasesMueblesSum(null);
     
     if (filters.años.length === 0) {
         addNotification('warning', 'Por favor, seleccione al menos un año.');
@@ -215,6 +215,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         if (allData.length > 0) {
             setTotalLoadedRecords(allData.length);
+            
+            const sumForReport = allData
+                .filter(item => item.sector && ['01', '02', '03'].includes(String(item.sector).trim()))
+                .reduce((sum, item) => sum + (item.unidadesProyectado || 0), 0);
+            
+            setColchonesBasesMueblesSum(sumForReport);
+            
             onDataImported(allData);
             addNotification('success', `Carga completada. Se importaron ${allData.length} registros.`);
         } else {
@@ -226,76 +233,6 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
     } finally {
         setIsProcessing(false);
-    }
-  };
-
-  const handleReportSuma = async () => {
-    setIsReportLoading(true);
-    setReportResult(null);
-    setTotalLoadedRecords(0);
-
-    if (filters.años.length === 0) {
-      addNotification('warning', 'Por favor, seleccione al menos un año para el reporte.');
-      setIsReportLoading(false);
-      return;
-    }
-
-    let totalSum = 0;
-    const yearsToLoad = filters.años.map(Number);
-
-    try {
-      addNotification('info', `Generando reporte para los filtros seleccionados...`);
-      
-      const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-      
-      let queryCount = 0;
-      for (const year of yearsToLoad) {
-        for (const month of monthsToLoad) {
-          queryCount++;
-          addNotification('info', `Consultando para reporte... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}`);
-          
-          const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
-          if (filters.etiqueta) {
-              queryFilters['Etiqueta'] = filters.etiqueta;
-          }
-          
-          try {
-            const response: PresupuestoItem[] = await queryApi({
-              source: 'Presupuesto',
-              operation: 'get_data',
-              filters: queryFilters,
-              pagination: { limit: 500000 }
-            });
-
-            if (response && response.length > 0) {
-              const centerFilteredResponse = filters.centros.length > 0
-                ? response.filter(item => filters.centros.includes(String(item.Centro).trim()))
-                : response;
-
-              const sectorFilteredResponse = centerFilteredResponse.filter(item => 
-                item.Sector && ['01', '02', '03'].includes(String(item.Sector).trim())
-              );
-
-              const sumForMonth = sectorFilteredResponse.reduce((sum, item) => {
-                return sum + (parseFloat(String(item.UnidadesProyectado)) || 0);
-              }, 0);
-              
-              totalSum += sumForMonth;
-            }
-          } catch (e) {
-            console.error(`Fallo en consulta de reporte para ${year}-${month}`, e);
-            addNotification('error', `Fallo la consulta de reporte para ${MONTH_NAMES[month-1]} ${year}. Continuando...`);
-          }
-        }
-      }
-      
-      setReportResult(totalSum);
-      addNotification('success', `Reporte generado. La suma es: ${Math.round(totalSum).toLocaleString()}`);
-
-    } catch (error) {
-        addNotification('error', `Error durante la generación del reporte: ${(error as Error).message}`);
-    } finally {
-        setIsReportLoading(false);
     }
   };
   
@@ -337,20 +274,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </select>
         </div>
         
-        <div className="flex flex-col justify-end h-full pt-1 space-y-2">
+        <div className="flex flex-col justify-end h-full pt-1">
             <button
                 onClick={handleLoadData}
-                disabled={isProcessing || isAppLoading || isReportLoading || filters.años.length === 0}
+                disabled={isProcessing || isAppLoading || filters.años.length === 0}
                 className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
                 {isProcessing ? 'Cargando...' : 'Cargar Datos'}
-            </button>
-            <button
-                onClick={handleReportSuma}
-                disabled={isProcessing || isAppLoading || isReportLoading || filters.años.length === 0}
-                className="w-full h-10 px-4 py-2 bg-green-600 text-white font-bold rounded-md shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-                {isReportLoading ? 'Calculando...' : 'Suma Colchones + Bases + Muebles'}
             </button>
         </div>
       </div>
@@ -363,19 +293,13 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             <p className="text-green-700 mt-2">
                 Se han cargado <span className="font-bold">{totalLoadedRecords.toLocaleString()}</span> registros de ventas en la memoria de la aplicación.
             </p>
+            {colchonesBasesMueblesSum !== null && (
+                <p className="text-green-700 mt-2">
+                    Suma para Colchones, Bases y Muebles (01, 02, 03): <span className="font-bold">{colchonesBasesMueblesSum.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </p>
+            )}
             <p className="text-green-600 mt-1 text-sm">
                 Ahora puede proceder a las demás secciones para configurar y generar el plan de producción.
-            </p>
-        </div>
-      )}
-
-      {reportResult !== null && !isReportLoading && (
-         <div className="mt-6 text-center p-6 bg-blue-50 border border-blue-200 rounded-lg">
-            <h3 className="text-xl font-semibold text-blue-800">
-                Resultado del Reporte
-            </h3>
-            <p className="text-blue-700 mt-2">
-                La suma de unidades para los filtros y sectores seleccionados es: <span className="font-bold">{reportResult.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
             </p>
         </div>
       )}
