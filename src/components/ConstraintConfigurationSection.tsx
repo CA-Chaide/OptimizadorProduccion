@@ -14,6 +14,7 @@ import { useAppContext } from '@/context/AppProvider';
 import { exportShiftsAndCostsTemplateToExcel, parseShiftsAndCostsExcel, parseHolidaysExcel } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 
 interface ConstraintConfigurationSectionProps {
