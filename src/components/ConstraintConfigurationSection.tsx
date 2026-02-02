@@ -12,6 +12,7 @@ import {
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
+import { exportShiftsAndCostsTemplateToExcel } from '@/services/OptimizationService';
 
 
 interface ConstraintConfigurationSectionProps {
@@ -73,41 +74,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   const [activeTab, setActiveTab] = useState<string>('syncAndConfig');
   const [isSyncing, setIsSyncing] = useState(false);
   
-  const [globalBaseCostDisplay, setGlobalBaseCostDisplay] = useState<string>('');
-  const [laborFactorsDisplay, setLaborFactorsDisplay] = useState({
-    factorAdicionalDiurno: '',
-    factorRecargoNocturno: '',
-    factorFinSemanaFeriado: '',
-  });
-  
-  const [shiftParamsDisplay, setShiftParamsDisplay] = useState({
-    regularHoursPerDay: '',
-    extraHoursPerDay: '',
-    saturdayAndHolidayHours: '',
-  });
-
-  useEffect(() => {
-    setGlobalBaseCostDisplay(
-      constraints.globalBaseCostPerHour === null || constraints.globalBaseCostPerHour === undefined
-        ? ''
-        : String(constraints.globalBaseCostPerHour)
-    );
-    if (constraints.laborCostFactors) {
-      setLaborFactorsDisplay({
-        factorAdicionalDiurno: String(constraints.laborCostFactors.factorAdicionalDiurno),
-        factorRecargoNocturno: String(constraints.laborCostFactors.factorRecargoNocturno),
-        factorFinSemanaFeriado: String(constraints.laborCostFactors.factorFinSemanaFeriado),
-      });
-    }
-    if (constraints.shiftParameters) {
-      setShiftParamsDisplay({
-        regularHoursPerDay: String(constraints.shiftParameters.regularHoursPerDay),
-        extraHoursPerDay: String(constraints.shiftParameters.extraHoursPerDay),
-        saturdayAndHolidayHours: String(constraints.shiftParameters.saturdayAndHolidayHours),
-      });
-    }
-  }, [constraints.globalBaseCostPerHour, constraints.laborCostFactors, constraints.shiftParameters]);
-  
   const initialHolidayFormState: Omit<Holiday, 'id'> = { date: '', name: '', appliesTo: 'Toda la Planta', isProductionAllowed: false, dayType: 'asueto' };
   const [holidayForm, setHolidayForm] = useState<Omit<Holiday, 'id'>>(initialHolidayFormState);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
@@ -160,60 +126,10 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     onConstraintsUpdate({ ...constraints, productionLines: updatedLines });
   };
   
-  const handleSaveGlobalCosts = () => {
-    const opId = operationTracker.startOperation(
-      'Constraints',
-      'config_update',
-      'Guardando configuración de costos laborales globales'
-    );
-    
-    const baseCost = parseFloat(globalBaseCostDisplay);
-    const factors: LaborCostSettings = {
-        factorAdicionalDiurno: parseFloat(laborFactorsDisplay.factorAdicionalDiurno),
-        factorRecargoNocturno: parseFloat(laborFactorsDisplay.factorRecargoNocturno),
-        factorFinSemanaFeriado: parseFloat(laborFactorsDisplay.factorFinSemanaFeriado),
+    const handleDownloadTemplate = () => {
+        addNotification('info', 'Generando plantilla de Excel para costos y turnos...');
+        exportShiftsAndCostsTemplateToExcel(constraints.workCenters);
     };
-    if (isNaN(baseCost) || baseCost <= 0) { 
-      addNotification('warning', 'El costo base por hora debe ser un número positivo.');
-      operationTracker.failOperation(opId, 'Invalid base cost value');
-      return;
-    }
-    if (isNaN(factors.factorAdicionalDiurno) || isNaN(factors.factorRecargoNocturno) || isNaN(factors.factorFinSemanaFeriado)) { 
-      addNotification('warning', 'Todos los factores de costo deben ser números válidos.');
-      operationTracker.failOperation(opId, 'Invalid factor values');
-      return;
-    }
-    onConstraintsUpdate({ ...constraints, globalBaseCostPerHour: baseCost, laborCostFactors: factors });
-    operationTracker.completeOperation(opId, 'Costos laborales actualizados', { baseCost, factors });
-    addNotification('success', 'Costos globales actualizados.');
-  };
-
-  const handleSaveShiftParams = () => {
-    const opId = operationTracker.startOperation(
-      'Constraints',
-      'config_update',
-      'Guardando parámetros de turnos de trabajo'
-    );
-    
-    const params: ShiftParameters = {
-        regularHoursPerDay: parseFloat(shiftParamsDisplay.regularHoursPerDay),
-        extraHoursPerDay: parseFloat(shiftParamsDisplay.extraHoursPerDay),
-        saturdayAndHolidayHours: parseFloat(shiftParamsDisplay.saturdayAndHolidayHours),
-    };
-    if (isNaN(params.regularHoursPerDay) || isNaN(params.extraHoursPerDay) || isNaN(params.saturdayAndHolidayHours)) {
-        addNotification('warning', 'Todos los parámetros de turno deben ser números válidos.');
-        operationTracker.failOperation(opId, 'Invalid shift parameters');
-        return;
-    }
-    if (params.regularHoursPerDay < 0 || params.extraHoursPerDay < 0 || params.saturdayAndHolidayHours < 0) {
-        addNotification('warning', 'Los valores de horas no pueden ser negativos.');
-        operationTracker.failOperation(opId, 'Negative hour values');
-        return;
-    }
-    onConstraintsUpdate({ ...constraints, shiftParameters: params });
-    operationTracker.completeOperation(opId, 'Parámetros de turno actualizados', { params });
-    addNotification('success', 'Parámetros de turno actualizados.');
-  };
 
   // --- Holidays Handlers ---
   const handleHolidayFormChange = (
@@ -436,34 +352,36 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
               </div>
             )}
             {activeTab === 'costsAndShifts' && (
-              <div className="space-y-8">
-                 <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Parámetros de Turnos de Trabajo</h3>
-                     <p className="text-sm text-gray-600">Define las horas base para cada tipo de día. Estos valores serán usados por el planificador de producción.</p>
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <InputField label="Horas Jornada Normal (L-V)" id="regularHours" type="number" placeholder="9" value={shiftParamsDisplay.regularHoursPerDay} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, regularHoursPerDay: e.target.value})} />
-                        <InputField label="Horas Extra Máximas (L-V)" id="extraHours" type="number" placeholder="2" value={shiftParamsDisplay.extraHoursPerDay} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, extraHoursPerDay: e.target.value})} />
-                        <InputField label="Horas en Sábado/Feriado" id="holidayHours" type="number" placeholder="5" value={shiftParamsDisplay.saturdayAndHolidayHours} onChange={e => setShiftParamsDisplay({...shiftParamsDisplay, saturdayAndHolidayHours: e.target.value})} />
-                     </div>
-                      <div className="flex justify-end">
-                      <button onClick={handleSaveShiftParams} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Guardar Parámetros de Turno</button>
+                <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Configuración de Turnos y Costos por Excel</h3>
+                    <p className="text-sm text-gray-600">
+                        Para una gestión más flexible, ahora la configuración de los parámetros de turnos y los costos laborales se realiza a través de un archivo Excel.
+                    </p>
+                    <div className="p-4 border border-dashed rounded-lg">
+                        <h4 className="font-semibold text-gray-700">Flujo de Trabajo:</h4>
+                        <ol className="list-decimal list-inside mt-2 space-y-1 text-sm text-gray-600">
+                            <li><b>Descargue la Plantilla:</b> Obtenga el archivo Excel con el formato requerido.</li>
+                            <li><b>Complete los Datos:</b> Llene las hojas 'Configuracion_Turnos' y 'Configuracion_Costos' con sus datos.</li>
+                            <li><b>Importe el Archivo:</b> Suba el archivo completo para aplicar la configuración a la aplicación.</li>
+                        </ol>
                     </div>
-                 </div>
-
-                 <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Costos Laborales Globales</h3>
-                    <p className="text-sm text-gray-600">Estos factores se aplicarán sobre los horarios de trabajo para calcular el costo del plan.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <InputField label="Costo Base Global por Hora ($)" id="globalBaseCost" type="number" placeholder="10.00" value={globalBaseCostDisplay} onChange={e => setGlobalBaseCostDisplay(e.target.value)} />
-                        <InputField label="Factor Recargo Extra (%)" id="factorDiurno" type="number" placeholder="25" title="Recargo para horas extra de Lunes a Viernes." value={laborFactorsDisplay.factorAdicionalDiurno} onChange={e => setLaborFactorsDisplay({...laborFactorsDisplay, factorAdicionalDiurno: e.target.value})} />
-                        <InputField label="Factor Recargo Nocturno (%)" id="factorNocturno" type="number" placeholder="50" value={laborFactorsDisplay.factorRecargoNocturno} onChange={e => setLaborFactorsDisplay({...laborFactorsDisplay, factorRecargoNocturno: e.target.value})} />
-                        <InputField label="Factor FDS/Feriado (%)" id="factorFeriado" type="number" placeholder="100" title="Recargo para todas las horas en Sábado o feriado productivo." value={laborFactorsDisplay.factorFinSemanaFeriado} onChange={e => setLaborFactorsDisplay({...laborFactorsDisplay, factorFinSemanaFeriado: e.target.value})} />
+                    <div className="flex items-center justify-center space-x-4 pt-4">
+                        <button
+                            onClick={handleDownloadTemplate}
+                            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
+                        >
+                            <DataImportIcon />
+                            Descargar Plantilla
+                        </button>
+                        
+                        <label className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center cursor-pointer disabled:bg-blue-300"
+                               onClick={() => addNotification('info', 'La funcionalidad de importación se implementará en el siguiente paso.')}>
+                             <DataImportIcon />
+                            Importar Plantilla
+                            <input type="file" className="hidden" disabled/>
+                        </label>
                     </div>
-                    <div className="flex justify-end">
-                      <button onClick={handleSaveGlobalCosts} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Guardar Costos</button>
-                    </div>
-                 </div>
-              </div>
+                </div>
             )}
              {activeTab === 'holidays' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

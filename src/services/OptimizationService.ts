@@ -839,6 +839,37 @@ export const exportMaestroSectorSummaryToExcel = (summaryData: { 'Sector': strin
     XLSX.writeFile(workbook, 'Resumen_Maestro_Por_Sector.xlsx');
 };
 
+export const exportShiftsAndCostsTemplateToExcel = (workCenters: WorkCenter[]): void => {
+    // Hoja 1: Configuracion_Turnos
+    const turnosData = workCenters.map(wc => ({
+        'Centro': wc.id,
+        'RespCtrlProd': '',
+        'NombRespControlProd': '',
+        'Horas Jornada Normal (L-V)': 9,
+        'Horas Extra Máximas (L-V)': 2,
+        'Horas en Sábado/Feriado': 5,
+    }));
+    const ws_turnos = XLSX.utils.json_to_sheet(turnosData);
+    ws_turnos['!cols'] = [ { wch: 10 }, { wch: 15 }, { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 25 } ];
+
+    // Hoja 2: Configuracion_Costos
+    const costosData = [
+        { 'Tipo de Costo': 'Costo Base por Hora ($)', 'Valor': 8 },
+        { 'Tipo de Costo': 'Recargo Horas Extra Diurno (%)', 'Valor': 50 },
+        { 'Tipo de Costo': 'Recargo Jornada Nocturna (%)', 'Valor': 25 },
+        { 'Tipo de Costo': 'Recargo FDS/Feriado (%)', 'Valor': 100 },
+    ];
+    const ws_costos = XLSX.utils.json_to_sheet(costosData);
+    ws_costos['!cols'] = [ { wch: 30 }, { wch: 15 } ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, ws_turnos, 'Configuracion_Turnos');
+    XLSX.utils.book_append_sheet(workbook, ws_costos, 'Configuracion_Costos');
+
+    XLSX.writeFile(workbook, 'Plantilla_Costos_y_Turnos.xlsx');
+};
+
+
 
 export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]> => { return Promise.resolve([]); };
 
