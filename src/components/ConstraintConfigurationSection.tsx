@@ -13,6 +13,8 @@ import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCES
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
 import { parseShiftsAndCostsExcel, exportShiftsAndCostsTemplateToExcel } from '@/services/OptimizationService';
+import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
 
 
 interface ConstraintConfigurationSectionProps {
