@@ -124,6 +124,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [reportSummary, setReportSummary] = useState<{
     prioritySectors: { sector: string; totalUnidades: number }[];
+    otherSectors: { sector: string; totalUnidades: number }[];
     prioritySubtotal: number;
     otherSubtotal: number;
     grandTotal: number;
@@ -230,6 +231,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         if (allData.length > 0) {
             const prioritySectorsList = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
             const prioritySectors: { sector: string; totalUnidades: number }[] = [];
+            const otherSectors: { sector: string; totalUnidades: number }[] = [];
             let prioritySubtotal = 0;
             let otherSubtotal = 0;
 
@@ -238,16 +240,19 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     prioritySectors.push({ sector, totalUnidades });
                     prioritySubtotal += totalUnidades;
                 } else {
+                    otherSectors.push({ sector, totalUnidades });
                     otherSubtotal += totalUnidades;
                 }
             }
             
             prioritySectors.sort((a,b) => prioritySectorsList.indexOf(a.sector) - prioritySectorsList.indexOf(b.sector));
-            
+            otherSectors.sort((a, b) => a.sector.localeCompare(b.sector));
+
             const grandTotal = prioritySubtotal + otherSubtotal;
 
             setReportSummary({
                 prioritySectors,
+                otherSectors,
                 prioritySubtotal,
                 otherSubtotal,
                 grandTotal,
@@ -347,8 +352,14 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                 <td className="p-2">Subtotal Fabricación</td>
                                 <td className="p-2 text-right font-mono">{Math.round(reportSummary.prioritySubtotal).toLocaleString()}</td>
                             </tr>
-                            <tr>
-                                <td className="p-2">Resto de Sectores</td>
+                            {reportSummary.otherSectors.map(item => (
+                                <tr key={item.sector}>
+                                    <td className="p-2">{item.sector}</td>
+                                    <td className="p-2 text-right font-mono">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                             <tr className="bg-gray-200 font-bold">
+                                <td className="p-2">Subtotal Otros Sectores</td>
                                 <td className="p-2 text-right font-mono">{Math.round(reportSummary.otherSubtotal).toLocaleString()}</td>
                             </tr>
                             <tr className="bg-gray-800 text-white font-bold">
