@@ -8,10 +8,10 @@ import {
     Bottleneck, SupplierDeliveryTime, QualityParameter, SalesDataRow, ProductProcessInfo, 
     NotificationMessage, Holiday, ProcessType, WorkstationDefinition, ShiftParameters, HolidayScope, ShiftConfigRow
 } from '@/types/types';
-import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
+import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS, HOLIDAY_DAY_TYPE_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
-import { exportShiftsAndCostsTemplateToExcel, parseShiftsAndCostsExcel } from '@/services/OptimizationService';
+import { exportShiftsAndCostsTemplateToExcel, parseShiftsAndCostsExcel, exportHolidaysTemplateToExcel, parseHolidaysExcel } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 
@@ -74,10 +74,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
 
   const [activeTab, setActiveTab] = useState<string>('syncAndConfig');
   const [isSyncing, setIsSyncing] = useState(false);
-  
-  const initialHolidayFormState: Omit<Holiday, 'id'> = { date: '', name: '', appliesTo: 'Toda la Planta', isProductionAllowed: false, dayType: 'asueto' };
-  const [holidayForm, setHolidayForm] = useState<Omit<Holiday, 'id'>>(initialHolidayFormState);
-  const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
   
   const [configYear, setConfigYear] = useState<string>(new Date().getFullYear().toString());
   const [configMonth, setConfigMonth] = useState<string>((new Date().getMonth() + 1).toString());
@@ -142,6 +138,38 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     }
   };
   
+    const handleDownloadTemplate = () => {
+        if (!isDataSynced) {
+            addNotification('warning', 'Debe sincronizar los datos de estructura primero para generar una plantilla completa.');
+            return;
+        }
+        exportHolidaysTemplateToExcel(constraints);
+        addNotification('info', 'Descargando plantilla de feriados...');
+    };
+
+    const handleHolidayFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        addNotification('info', `Procesando archivo de feriados: ${file.name}...`);
+        setIsSyncing(true);
+        const opId = operationTracker.startOperation('Constraints', 'data_import', `Importando feriados desde ${file.name}`);
+
+        try {
+            const holidays = await parseHolidaysExcel(file);
+            onConstraintsUpdate({ ...constraints, holidays });
+            operationTracker.completeOperation(opId, 'Feriados importados correctamente.', { count: holidays.length });
+            addNotification('success', `${holidays.length} feriados han sido importados y configurados.`);
+        } catch (error) {
+            const errorMessage = (error as Error).message || 'Error desconocido al procesar el archivo de feriados.';
+            operationTracker.failOperation(opId, errorMessage);
+            addNotification('error', `Error al importar feriados: ${errorMessage}`);
+        } finally {
+            setIsSyncing(false);
+            event.target.value = ''; // Reset file input
+        }
+    };
+
 
   const handleProcessTypeChange = (lineId: string, newProcessType: ProcessType) => {
     const updatedLines = constraints.productionLines.map(pl => 
@@ -173,76 +201,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   };
 
   // --- Holidays Handlers ---
-  const handleHolidayFormChange = (
-    field: keyof Omit<Holiday, 'id'>, 
-    value: string | boolean
-  ) => {
-    setHolidayForm(prev => {
-      const newState = { ...prev, [field]: value };
-
-      // Automatic logic for isProductionAllowed
-      if (field === 'dayType') {
-        if (value === 'asueto') {
-          newState.isProductionAllowed = false;
-        } else {
-          newState.isProductionAllowed = true;
-        }
-      }
-      return newState;
-    });
-  };
-
-  const handleSaveHoliday = () => {
-    const opId = operationTracker.startOperation(
-      'Constraints',
-      'config_update',
-      `${editingHoliday ? 'Actualizando' : 'Agregando'} feriado: ${holidayForm.name}`
-    );
-    
-    if (!holidayForm.name?.trim() || !holidayForm.date || !holidayForm.appliesTo) { 
-      addNotification('warning', 'Nombre, fecha y a qué aplica el feriado son requeridos.');
-      operationTracker.failOperation(opId, 'Missing required holiday fields');
-      return;
-    }
-    
-    // Si aplica a ventas (Distribucion), no se permite produccion
-    if (holidayForm.appliesTo === 'Distribucion' && holidayForm.isProductionAllowed) {
-        addNotification('warning', 'No se puede permitir producción en un feriado que aplica a Ventas/Distribución.');
-        operationTracker.failOperation(opId, 'Invalid holiday configuration');
-        return;
-    }
-
-    if (editingHoliday) {
-        onConstraintsUpdate({ ...constraints, holidays: constraints.holidays.map(h => h.id === editingHoliday.id ? { ...editingHoliday, ...holidayForm } : h) });
-        operationTracker.completeOperation(opId, `Feriado '${holidayForm.name}' actualizado`, { holiday: holidayForm });
-        addNotification('success', `Feriado '${holidayForm.name}' actualizado.`);
-    } else {
-        const newHoliday: Holiday = { id: Date.now().toString(), ...holidayForm };
-        onConstraintsUpdate({ ...constraints, holidays: [...constraints.holidays, newHoliday] });
-        operationTracker.completeOperation(opId, `Feriado '${holidayForm.name}' agregado`, { holiday: newHoliday });
-        addNotification('success', `Feriado '${holidayForm.name}' agregado.`);
-    }
-    setHolidayForm(initialHolidayFormState);
-    setEditingHoliday(null);
-  };
-  
-  const handleEditHoliday = (holiday: Holiday) => { 
-    setEditingHoliday(holiday); 
-    setHolidayForm({ name: holiday.name, date: holiday.date, appliesTo: holiday.appliesTo, isProductionAllowed: holiday.isProductionAllowed, dayType: holiday.dayType || 'asueto' }); 
-  };
-  
-  const handleDeleteHoliday = (id: string) => {
-    const holiday = constraints.holidays.find(h => h.id === id);
-    const opId = operationTracker.startOperation(
-      'Constraints',
-      'config_update',
-      `Eliminando feriado: ${holiday?.name || 'Unknown'}`
-    );
-    
-    onConstraintsUpdate({ ...constraints, holidays: constraints.holidays.filter(h => h.id !== id) });
-    operationTracker.completeOperation(opId, `Feriado eliminado`);
-    addNotification('info', 'Feriado eliminado.');
-  };
 
   const dynamicHolidayOptions = useMemo(() => {
     const plantOptions = constraints.workCenters.map(wc => ({
@@ -288,8 +246,8 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     return constraints.importedShiftConfigs.filter(config => {
         const yearMatch = String(config.Año) === configYear;
         const monthMatch = String(config.Mes) === configMonth;
-        const centroMatch = !lowerCentro || String(config.Centro).toLowerCase().includes(lowerCentro);
-        const nombRespMatch = !lowerNombResp || String(config.NombRespControlProd).toLowerCase().includes(lowerNombResp);
+        const centroMatch = !textFilters.centro || String(config.Centro) === textFilters.centro;
+        const nombRespMatch = !textFilters.nombResp || String(config.NombRespControlProd) === textFilters.nombResp;
 
         return yearMatch && monthMatch && centroMatch && nombRespMatch;
     });
@@ -304,12 +262,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     { id: 'syncAndConfig', label: '1. Sincronización y Configuración' },
     { id: 'costsAndShifts', label: '2. Costos y Turnos' },
     { id: 'holidays', label: '3. Feriados' },
-  ];
-
-  const holidayDayTypeOptions = [
-      { value: 'asueto', label: 'Asueto (No se trabaja)' },
-      { value: 'half', label: 'Media Jornada (5 horas)' },
-      { value: 'full', label: 'Jornada Completa (Horas de L-V)' },
   ];
 
   return (
@@ -588,53 +540,55 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                 </div>
             )}
              {activeTab === 'holidays' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-800">{editingHoliday ? 'Editar' : 'Agregar'} Feriado</h3>
-                      <InputField label="Nombre del Feriado" id="holidayName" value={holidayForm.name || ''} onChange={e => handleHolidayFormChange('name', e.target.value)} placeholder="Año Nuevo" />
-                      <InputField label="Fecha" id="holidayDate" type="date" value={holidayForm.date || ''} onChange={e => handleHolidayFormChange('date', e.target.value)} />
-                      <SelectField label="Aplica a" id="holidayAppliesTo" value={holidayForm.appliesTo} onChange={e => handleHolidayFormChange('appliesTo', e.target.value as HolidayScope)} options={dynamicHolidayOptions} />
-                      <SelectField 
-                        label="Tipo de Jornada" 
-                        id="holidayDayType" 
-                        value={holidayForm.dayType} 
-                        onChange={e => handleHolidayFormChange('dayType', e.target.value as Holiday['dayType'])}
-                        options={holidayDayTypeOptions}
-                        disabled={holidayForm.appliesTo === 'Distribucion'}
-                      />
-                      
-                      <div className="flex justify-end space-x-3 pt-2">
-                          {editingHoliday && <button onClick={() => { setEditingHoliday(null); setHolidayForm(initialHolidayFormState); }} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancelar</button>}
-                          <button onClick={handleSaveHoliday} className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">{editingHoliday ? 'Guardar Cambios' : 'Agregar Feriado'}</button>
+                <div className="bg-white p-6 rounded-xl shadow-lg space-y-6">
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-800">Gestión de Feriados por Excel</h3>
+                        <p className="text-sm text-gray-600 mt-1">
+                            Utilice esta sección para cargar la configuración de feriados desde un archivo Excel.
+                            Puede descargar una plantilla precargada con los feriados nacionales de Ecuador para 2026.
+                        </p>
+                        <div className="flex items-center pt-4 gap-4">
+                            <Button onClick={handleDownloadTemplate} variant="outline" disabled={isSyncing || !isDataSynced}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Descargar Plantilla Feriados 2026
+                            </Button>
+                            <label className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center cursor-pointer disabled:bg-gray-400">
+                                <DataImportIcon />
+                                Importar Feriados
+                                <input
+                                    type="file"
+                                    className="hidden"
+                                    onChange={handleHolidayFileUpload}
+                                    accept=".xlsx, .xls"
+                                    disabled={isSyncing}
+                                />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 pt-4">
+                      <h3 className="text-lg font-semibold text-gray-800">Feriados Cargados ({constraints.holidays.length})</h3>
+                      <div className="max-h-96 overflow-y-auto border rounded-lg">
+                          <ul className="divide-y divide-gray-200">
+                            {constraints.holidays.sort((a,b) => a.date.localeCompare(b.date)).map(h => (
+                               <li key={h.id} className="p-3">
+                                  <div className="flex justify-between items-center">
+                                     <div>
+                                        <p className="font-medium text-gray-900">{h.name}</p>
+                                        <p className="text-sm text-gray-500">{h.date} (Aplica: {getHolidayAppliesToLabel(h.appliesTo)})</p>
+                                     </div>
+                                      <div>
+                                        <Badge variant={h.dayType === 'asueto' ? 'destructive' : 'secondary'}>
+                                            {HOLIDAY_DAY_TYPE_OPTIONS.find(opt => opt.value === h.dayType)?.label || h.dayType}
+                                        </Badge>
+                                      </div>
+                                  </div>
+                               </li>
+                            ))}
+                          </ul>
                       </div>
-                  </div>
-                  <div className="bg-white p-6 rounded-xl shadow-lg space-y-3">
-                      <h3 className="text-lg font-semibold text-gray-800">Feriados Existentes ({constraints.holidays.length})</h3>
-                      <ul className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-                        {constraints.holidays.sort((a,b) => a.date.localeCompare(b.date)).map(h => (
-                           <li key={h.id} className="py-3 flex justify-between items-center">
-                              <div>
-                                <p className="font-medium text-gray-900">{h.name}</p>
-                                <p className="text-sm text-gray-500">{h.date} (Aplica: {getHolidayAppliesToLabel(h.appliesTo)})</p>
-                                {h.isProductionAllowed ? (
-                                    <p className="text-xs text-green-600 font-semibold">
-                                        Producción permitida ({holidayDayTypeOptions.find(opt => opt.value === h.dayType)?.label || h.dayType})
-                                    </p>
-                                ) : (
-                                    <p className="text-xs text-red-600 font-semibold">
-                                        Asueto (No se trabaja)
-                                    </p>
-                                )}
-                              </div>
-                              <div className="flex items-center space-x-3">
-                                <button onClick={() => handleEditHoliday(h)} className="text-indigo-600 hover:text-indigo-800"><EditIcon/></button>
-                                <button onClick={() => handleDeleteHoliday(h.id)} className="text-red-500 hover:text-red-700"><DeleteIcon/></button>
-                              </div>
-                           </li>
-                        ))}
-                      </ul>
-                  </div>
-              </div>
+                    </div>
+                </div>
              )}
         </div>
     </div>

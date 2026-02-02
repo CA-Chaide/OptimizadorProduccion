@@ -9,7 +9,7 @@ import {
     Machine, Qualification, TiempoEnsambleItem, DetailedProductionPlan, PlanningGroupMonthlyDetail, MonthlyNeed, MonthlyAssignment, PresupuestoItem,
     PlanningProgress, WeeklyPlanItem, DemandAnalysisResult, CuboInventariosItem, ShiftConfigRow
 } from '@/types/types';
-import { MONTH_NAMES, PROCESS_TYPE_OPTIONS } from '@/constants/constants'; 
+import { MONTH_NAMES, PROCESS_TYPE_OPTIONS, HOLIDAY_APPLIES_TO_OPTIONS, HOLIDAY_DAY_TYPE_OPTIONS } from '@/constants/constants'; 
 import { queryApi } from '@/hooks/useApiData';
 import { logger } from './LogService';
 
@@ -949,3 +949,107 @@ export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]
 export const generateTacticalPlan = ( request: TacticalRequest, context: any ): TacticalPlanResult => { return { plan: [], alerts: [] }; };
 
 export const exportSkillsToExcel = ( employees: Employee[], skills: EmployeeSkill[], machines: Machine[], constraints: AppConstraints ): void => {};
+
+export const exportHolidaysTemplateToExcel = (constraints: AppConstraints): void => {
+    const holidays2026 = [
+        { name: 'Año Nuevo', date: '2026-01-01' },
+        { name: 'Carnaval', date: '2026-02-16' },
+        { name: 'Carnaval', date: '2026-02-17' },
+        { name: 'Viernes Santo', date: '2026-04-03' },
+        { name: 'Día del Trabajo', date: '2026-05-01' },
+        { name: 'Batalla de Pichincha', date: '2026-05-25' },
+        { name: 'Primer Grito de Independencia', date: '2026-08-10' },
+        { name: 'Independencia de Guayaquil', date: '2026-10-09' },
+        { name: 'Día de los Difuntos', date: '2026-11-02' },
+        { name: 'Independencia de Cuenca', date: '2026-11-03' },
+        { name: 'Navidad', date: '2026-12-25' },
+    ];
+
+    const feriadosData = holidays2026.map(h => ({
+        'Nombre Feriado': h.name,
+        'Fecha (YYYY-MM-DD)': h.date,
+        'Aplica A': 'Toda la Planta', // Default value
+        'Tipo de Jornada': 'Asueto', // Default value
+    }));
+
+    const ws_feriados = XLSX.utils.json_to_sheet(feriadosData);
+    ws_feriados['!cols'] = [ { wch: 30 }, { wch: 20 }, { wch: 30 }, { wch: 20 } ];
+
+    const dynamicHolidayOptions = [
+        ...HOLIDAY_APPLIES_TO_OPTIONS,
+        ...constraints.workCenters.map(wc => ({ value: wc.id, label: `Producción (${wc.name})` })),
+        ...constraints.productionLines.map(line => ({ value: line.id, label: `Línea: ${line.name} (${line.workCenterId})` }))
+    ];
+
+    const valoresValidosData = [
+        { 'Valores para \'Aplica A\'': '--- Valores Generales ---' },
+        ...HOLIDAY_APPLIES_TO_OPTIONS.map(opt => ({ 'Valores para \'Aplica A\'': opt.value })),
+        { 'Valores para \'Aplica A\'': '--- Centros de Trabajo ---' },
+        ...constraints.workCenters.map(wc => ({ 'Valores para \'Aplica A\'': wc.id })),
+        { 'Valores para \'Aplica A\'': '--- Líneas de Producción ---' },
+        ...constraints.productionLines.map(line => ({ 'Valores para \'Aplica A\'': line.id })),
+        { 'Valores para \'Aplica A\'': '' },
+        { 'Valores para \'Aplica A\'': '--- Valores para \'Tipo de Jornada\' ---' },
+        ...HOLIDAY_DAY_TYPE_OPTIONS.map(opt => ({ 'Valores para \'Aplica A\'': opt.value })),
+    ];
+    
+    const ws_valores = XLSX.utils.json_to_sheet(valoresValidosData);
+    ws_valores['!cols'] = [ { wch: 50 } ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, ws_feriados, 'Feriados_2026');
+    XLSX.utils.book_append_sheet(workbook, ws_valores, 'ValoresValidos');
+    
+    XLSX.writeFile(workbook, 'Plantilla_Feriados_2026.xlsx');
+};
+
+export const parseHolidaysExcel = (file: File): Promise<Holiday[]> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
+                const sheetName = 'Feriados_2026';
+                const worksheet = workbook.Sheets[sheetName];
+                if (!worksheet) {
+                    throw new Error(`La hoja "${sheetName}" no fue encontrada en el archivo.`);
+                }
+                const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+                const holidays: Holiday[] = jsonData.map((row, index) => {
+                    const dateValue = row['Fecha (YYYY-MM-DD)'];
+                    let dateString: string;
+                     if (dateValue instanceof Date) {
+                        // For dates parsed by xlsx library
+                        dateString = `${dateValue.getFullYear()}-${String(dateValue.getMonth() + 1).padStart(2, '0')}-${String(dateValue.getDate()).padStart(2, '0')}`;
+                    } else if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+                        // For strings already in YYYY-MM-DD format
+                        dateString = dateValue;
+                    } else {
+                        throw new Error(`Fila ${index + 2}: Formato de fecha inválido. Use YYYY-MM-DD.`);
+                    }
+
+                    const dayType = (row['Tipo de Jornada'] || '').trim();
+                    if (!HOLIDAY_DAY_TYPE_OPTIONS.some(opt => opt.value === dayType)) {
+                         throw new Error(`Fila ${index + 2}: Tipo de Jornada '${dayType}' no es válido. Use uno de: ${HOLIDAY_DAY_TYPE_OPTIONS.map(o => o.value).join(', ')}`);
+                    }
+
+                    return {
+                        id: `holiday-${index}-${Date.now()}`,
+                        name: String(row['Nombre Feriado'] || `Feriado Fila ${index + 2}`),
+                        date: dateString,
+                        appliesTo: String(row['Aplica A'] || 'Toda la Planta'),
+                        dayType: dayType as Holiday['dayType'],
+                        isProductionAllowed: dayType !== 'asueto',
+                    };
+                });
+                resolve(holidays);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsBinaryString(file);
+    });
+};

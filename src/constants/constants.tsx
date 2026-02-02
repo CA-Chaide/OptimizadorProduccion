@@ -85,6 +85,12 @@ export const HOLIDAY_APPLIES_TO_OPTIONS: Array<{ value: HolidayScope, label: str
     ...PROCESS_TYPE_OPTIONS.map(p => ({ value: p.value, label: `Producción (${p.label})`})),
 ];
 
+export const HOLIDAY_DAY_TYPE_OPTIONS: Array<{ value: Holiday['dayType'], label: string }> = [
+    { value: 'asueto', label: 'Asueto (No se trabaja)' },
+    { value: 'half', label: 'Media Jornada (5 horas)' },
+    { value: 'full', label: 'Jornada Completa (Horas de L-V)' },
+];
+
 
 export const MAX_FILE_SIZE_MB = 10;
 export const APP_VERSION = '1.0.0-next';
