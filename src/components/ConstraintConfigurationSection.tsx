@@ -12,9 +12,8 @@ import {
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
-import { parseShiftsAndCostsExcel, exportShiftsAndCostsTemplateToExcel } from '@/services/OptimizationService';
+import { parseShiftsAndCostsExcel } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
 
 
 interface ConstraintConfigurationSectionProps {
@@ -141,10 +140,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     }
   };
   
-  const handleDownloadTemplate = () => {
-    exportShiftsAndCostsTemplateToExcel(constraints.workCenters);
-    addNotification('info', 'La plantilla de Excel ha sido generada y descargada.');
-  };
 
   const handleProcessTypeChange = (lineId: string, newProcessType: ProcessType) => {
     const updatedLines = constraints.productionLines.map(pl => 
@@ -413,10 +408,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                         Utilice esta sección para cargar la configuración de turnos y costos laborales desde un archivo Excel estandarizado. Toda la configuración se gestiona ahora desde la hoja `Configuracion_Turnos`.
                     </p>
                     <div className="flex items-center justify-center pt-4 gap-4">
-                        <Button onClick={handleDownloadTemplate} variant="outline" disabled={isSyncing || !isDataSynced}>
-                            <Download className="mr-2 h-4 w-4" />
-                            Descargar Plantilla
-                        </Button>
                         <label className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed">
                              <DataImportIcon />
                              {isSyncing ? 'Procesando...' : 'Importar Archivo de Configuración'}
