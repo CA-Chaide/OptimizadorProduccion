@@ -1,5 +1,4 @@
 
-
 import React, { useState, useCallback, useMemo, ChangeEvent, useEffect, useRef } from 'react';
 import { logger } from '@/services/LogService';
 import { operationTracker } from '@/services/OperationTracker';
@@ -82,6 +81,8 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
   
   const [configYear, setConfigYear] = useState<string>(new Date().getFullYear().toString());
   const [configMonth, setConfigMonth] = useState<string>((new Date().getMonth() + 1).toString());
+  const [textFilters, setTextFilters] = useState({ centro: '', nombResp: '' });
+
 
   const handleSyncClick = async () => {
     setIsSyncing(true);
@@ -101,15 +102,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     
     setIsSyncing(false);
   };
-  
-    const handleDownloadTemplate = () => {
-        if (!isDataSynced) {
-            addNotification('warning', 'Debe sincronizar los datos primero para generar una plantilla con los centros correctos.');
-            return;
-        }
-        exportShiftsAndCostsTemplateToExcel(constraints.workCenters);
-        addNotification('success', 'Plantilla de configuración de costos y turnos descargada.');
-    };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -269,13 +261,27 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     const option = dynamicHolidayOptions.find(opt => opt.value === appliesTo);
     return option ? option.label : appliesTo;
   };
+
+  const handleTextFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setTextFilters(prev => ({ ...prev, [name]: value }));
+  };
   
   const filteredShiftConfigs = useMemo(() => {
     if (!constraints.importedShiftConfigs) return [];
-    return constraints.importedShiftConfigs.filter(config => 
-        String(config.Año) === configYear && String(config.Mes) === configMonth
-    );
-  }, [constraints.importedShiftConfigs, configYear, configMonth]);
+    
+    const lowerCentro = textFilters.centro.toLowerCase();
+    const lowerNombResp = textFilters.nombResp.toLowerCase();
+
+    return constraints.importedShiftConfigs.filter(config => {
+        const yearMatch = String(config.Año) === configYear;
+        const monthMatch = String(config.Mes) === configMonth;
+        const centroMatch = !lowerCentro || String(config.Centro).toLowerCase().includes(lowerCentro);
+        const nombRespMatch = !lowerNombResp || String(config.NombRespControlProd).toLowerCase().includes(lowerNombResp);
+
+        return yearMatch && monthMatch && centroMatch && nombRespMatch;
+    });
+  }, [constraints.importedShiftConfigs, configYear, configMonth, textFilters]);
   
   const activeShiftConfig = useMemo(() => {
       return filteredShiftConfigs.length > 0 ? filteredShiftConfigs[0] : null;
@@ -474,19 +480,19 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                         <div className="p-3 border rounded-lg bg-gray-50">
                                             <p className="text-xs text-gray-500">Costo Base/Hora</p>
-                                            <p className="text-lg font-bold text-gray-800">${activeShiftConfig['Costo Horas Normales']?.toFixed(2) || '0.00'}</p>
+                                            <p className="text-lg font-bold text-gray-800">${activeShiftConfig['Costo Horas Normales'].toFixed(2)}</p>
                                         </div>
                                         <div className="p-3 border rounded-lg bg-gray-50">
                                             <p className="text-xs text-gray-500">Recargo Extra Diurno</p>
-                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo H.E. 50% (Diurnas)'] || 0}%</p>
+                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo H.E. 50% (Diurnas)']}%</p>
                                         </div>
                                          <div className="p-3 border rounded-lg bg-gray-50">
                                             <p className="text-xs text-gray-500">Recargo Nocturno</p>
-                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo Recargo Jornada Nocturna (%)'] || 0}%</p>
+                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo Recargo Jornada Nocturna (%)']}%</p>
                                         </div>
                                         <div className="p-3 border rounded-lg bg-gray-50">
                                             <p className="text-xs text-gray-500">Recargo FDS/Feriado</p>
-                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo H.E. 100% (Sab-Dom/Fer)'] || 0}%</p>
+                                            <p className="text-lg font-bold text-gray-800">{activeShiftConfig['Costo H.E. 100% (Sab-Dom/Fer)']}%</p>
                                         </div>
                                     </div>
                                 ) : (
@@ -498,7 +504,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
 
                             <div>
                                 <h4 className="font-semibold text-gray-700 mb-2">Detalle de Configuración</h4>
-                                <div className="flex items-end space-x-2 mb-4 p-4 border rounded-lg bg-gray-50">
+                                <div className="flex flex-wrap items-end space-x-2 mb-4 p-4 border rounded-lg bg-gray-50">
                                   <div>
                                      <label htmlFor="configYear" className="block text-sm font-medium text-gray-700">Año</label>
                                      <select id="configYear" value={configYear} onChange={e => setConfigYear(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
@@ -510,6 +516,14 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                      <select id="configMonth" value={configMonth} onChange={e => setConfigMonth(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
                                          {MONTH_NAMES.map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
                                      </select>
+                                  </div>
+                                  <div className="flex-grow">
+                                     <label htmlFor="filterCentro" className="block text-sm font-medium text-gray-700">Centro</label>
+                                     <input type="text" id="filterCentro" name="centro" value={textFilters.centro} onChange={handleTextFilterChange} className="mt-1 block w-full pl-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border" />
+                                  </div>
+                                   <div className="flex-grow">
+                                     <label htmlFor="filterNombResp" className="block text-sm font-medium text-gray-700">Nombre Resp.</label>
+                                     <input type="text" id="filterNombResp" name="nombResp" value={textFilters.nombResp} onChange={handleTextFilterChange} className="mt-1 block w-full pl-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border" />
                                   </div>
                                 </div>
 
