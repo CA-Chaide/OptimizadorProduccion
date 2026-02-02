@@ -123,6 +123,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [totalLoadedRecords, setTotalLoadedRecords] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [isReportLoading, setIsReportLoading] = useState<boolean>(false);
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -165,64 +166,49 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     try {
         addNotification('info', `Iniciando carga de datos para año(s): ${yearsToLoad.join(', ')}.`);
         
-        // Define the lists to iterate over. If a filter is empty, use all available options.
         const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-        const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
-
-        if (centrosToLoad.length === 0 && filters.centros.length === 0) {
-            addNotification('info', 'No hay centros seleccionados, se consultarán todos. Cargando opciones de filtro primero...');
-            // This case might require waiting for filterOptions to be populated.
-            // A robust solution would handle this gracefully. For now, we assume they load quickly.
-        }
         
         let queryCount = 0;
-        // The loops are now sequential. This avoids overwhelming the server with simultaneous connections.
         for (const year of yearsToLoad) {
             for (const month of monthsToLoad) {
-                // If no centers are selected, we perform one query for the month.
-                // Otherwise, we iterate through selected centers for smaller, specific queries.
-                const iterationCentros = centrosToLoad.length > 0 ? centrosToLoad : ['']; // one empty item to make one call if no centers selected
+                queryCount++;
+                addNotification('info', `Consultando... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}`);
+                
+                const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
+                if (filters.etiqueta) {
+                    queryFilters['Etiqueta'] = filters.etiqueta;
+                }
+                
+                try {
+                    const response: PresupuestoItem[] = await queryApi({
+                        source: 'Presupuesto',
+                        operation: 'get_data',
+                        filters: queryFilters,
+                        pagination: { limit: 500000 } // Increased limit
+                    });
 
-                for (const centro of iterationCentros) {
-                    queryCount++;
-                    
-                    const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
-                    if (filters.etiqueta) {
-                        queryFilters['Etiqueta'] = filters.etiqueta;
-                    }
-                    if (centro) { // Only add 'Centro' to filters if it's not an empty string
-                      queryFilters['Centro'] = centro;
-                    }
-                    
-                    addNotification('info', `Consultando... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}, Centro: ${centro || 'Todos'}`);
+                    if (response && response.length > 0) {
+                         const centerFilteredResponse = filters.centros.length > 0
+                            ? response.filter(item => filters.centros.includes(String(item.Centro).trim()))
+                            : response;
 
-                    try {
-                        const response: PresupuestoItem[] = await queryApi({
-                            source: 'Presupuesto',
-                            operation: 'get_data',
-                            filters: queryFilters,
-                            pagination: { limit: 500000 }
-                        });
-
-                        if (response && response.length > 0) {
-                             const mappedData: SalesDataRow[] = response.map((item, index) => ({
-                                id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
-                                año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
-                                etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                                código: normalizeMaterialCode(item.CodMaterial),
-                                centro: String(item.Centro).trim(), 
-                                unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
-                                dolaresProyectado: 0,
-                                descripciónMaterial: item.Material,
-                                familia: item.Familia, marca: item.Marca, 
-                                lineaProduccion: item.LineaProduccion || '',
-                            }));
-                            allData = [...allData, ...mappedData];
-                        }
-                    } catch (e) {
-                        console.error(`Fallo en consulta para ${year}-${month}` + (centro ? ` en centro ${centro}` : ''), e);
-                        addNotification('error', `Fallo la consulta para ${MONTH_NAMES[month-1]} ${year}` + (centro ? ` en el centro ${centro}` : '') + `. Continuando...`);
+                         const mappedData: SalesDataRow[] = centerFilteredResponse.map((item, index) => ({
+                            id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
+                            año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                            etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                            código: normalizeMaterialCode(item.CodMaterial),
+                            centro: String(item.Centro).trim(), 
+                            unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
+                            dolaresProyectado: 0,
+                            descripciónMaterial: item.Material,
+                            familia: item.Familia, marca: item.Marca, 
+                            lineaProduccion: item.LineaProduccion || '',
+                        }));
+                        allData = [...allData, ...mappedData];
                     }
+                } catch (e) {
+                    console.error(`Fallo en consulta para ${year}-${month}`, e);
+                    addNotification('error', `Fallo la consulta para ${MONTH_NAMES[month-1]} ${year}. Continuando...`);
                 }
             }
         }
@@ -240,6 +226,66 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
     } finally {
         setIsProcessing(false);
+    }
+  };
+
+  const handleReportSuma = async () => {
+    setIsReportLoading(true);
+    
+    if (filters.años.length === 0) {
+        addNotification('warning', 'Por favor, seleccione al menos un año para el reporte.');
+        setIsReportLoading(false);
+        return;
+    }
+
+    let totalSum = 0;
+    const yearsToLoad = filters.años.map(Number);
+    
+    try {
+        addNotification('info', `Generando reporte para año(s): ${yearsToLoad.join(', ')}.`);
+        
+        const monthsToLoad = Array.from({length: 12}, (_, i) => i + 1);
+        
+        let queryCount = 0;
+        for (const year of yearsToLoad) {
+            for (const month of monthsToLoad) {
+                queryCount++;
+                addNotification('info', `Consultando para reporte... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}`);
+                
+                const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
+                
+                try {
+                    const response: PresupuestoItem[] = await queryApi({
+                        source: 'Presupuesto',
+                        operation: 'get_data',
+                        filters: queryFilters,
+                        pagination: { limit: 500000 }
+                    });
+
+                    if (response && response.length > 0) {
+                         const sectorFilteredResponse = response.filter(item => 
+                             item.Sector && ['01', '02', '03'].includes(String(item.Sector).trim())
+                         );
+
+                         const sumForMonth = sectorFilteredResponse.reduce((sum, item) => {
+                             return sum + (parseFloat(String(item.UnidadesProyectado)) || 0);
+                         }, 0);
+                         
+                         totalSum += sumForMonth;
+                    }
+                } catch (e) {
+                    console.error(`Fallo en consulta de reporte para ${year}-${month}`, e);
+                    addNotification('error', `Fallo la consulta de reporte para ${MONTH_NAMES[month-1]} ${year}. Continuando...`);
+                }
+            }
+        }
+        
+        addNotification('success', `Reporte: La suma para Sectores 01, 02, 03 en los años seleccionados es: ${Math.round(totalSum).toLocaleString()}`);
+
+    } catch (error) {
+        addNotification('error', `Error durante la generación del reporte: ${(error as Error).message}`);
+    } finally {
+        setIsReportLoading(false);
     }
   };
   
@@ -281,13 +327,20 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </select>
         </div>
         
-        <div className="flex flex-col justify-end h-full pt-1">
+        <div className="flex flex-col justify-end h-full pt-1 space-y-2">
             <button
                 onClick={handleLoadData}
-                disabled={isProcessing || isAppLoading || filters.años.length === 0}
+                disabled={isProcessing || isAppLoading || isReportLoading || filters.años.length === 0}
                 className="w-full h-10 px-4 py-2 bg-blue-600 text-white font-bold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
                 {isProcessing ? 'Cargando...' : 'Cargar Datos'}
+            </button>
+            <button
+                onClick={handleReportSuma}
+                disabled={isProcessing || isAppLoading || isReportLoading || filters.años.length === 0}
+                className="w-full h-10 px-4 py-2 bg-green-600 text-white font-bold rounded-md shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+                {isReportLoading ? 'Calculando...' : 'Suma Colchones + Bases + Muebles'}
             </button>
         </div>
       </div>
