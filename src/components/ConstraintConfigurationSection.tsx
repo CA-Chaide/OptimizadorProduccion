@@ -12,8 +12,9 @@ import {
 import { ConstraintsIcon, PlusIcon, EditIcon, DeleteIcon, DataImportIcon, PROCESS_TYPE_OPTIONS, MONTH_NAMES, HOLIDAY_APPLIES_TO_OPTIONS } from '@/constants/constants';
 import { MACHINE_CATALOG } from '@/lib/catalogs/machineCatalog';
 import { useAppContext } from '@/context/AppProvider';
-import { parseShiftsAndCostsExcel } from '@/services/OptimizationService';
+import { exportShiftsAndCostsTemplateToExcel, parseShiftsAndCostsExcel } from '@/services/OptimizationService';
 import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
 
 
 interface ConstraintConfigurationSectionProps {
@@ -100,6 +101,15 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     
     setIsSyncing(false);
   };
+  
+    const handleDownloadTemplate = () => {
+        if (!isDataSynced) {
+            addNotification('warning', 'Debe sincronizar los datos primero para generar una plantilla con los centros correctos.');
+            return;
+        }
+        exportShiftsAndCostsTemplateToExcel(constraints.workCenters);
+        addNotification('success', 'Plantilla de configuración de costos y turnos descargada.');
+    };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -509,6 +519,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                       <tr>
                                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Centro</th>
                                         <th className="px-2 py-2 text-left font-semibold text-gray-600">Resp. Ctrl. Prod.</th>
+                                        <th className="px-2 py-2 text-left font-semibold text-gray-600">Nombre Resp.</th>
                                         <th className="px-2 py-2 text-right font-semibold text-gray-600">H. Normales</th>
                                         <th className="px-2 py-2 text-right font-semibold text-gray-600">H.E. 50%</th>
                                         <th className="px-2 py-2 text-right font-semibold text-gray-600">H.E. 100%</th>
@@ -524,6 +535,7 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                         <tr key={index}>
                                           <td className="px-2 py-2">{config.Centro}</td>
                                           <td className="px-2 py-2">{config.RespCtrlProd}</td>
+                                          <td className="px-2 py-2">{config.NombRespControlProd}</td>
                                           <td className="px-2 py-2 text-right font-mono">{config['Horas Normales']}</td>
                                           <td className="px-2 py-2 text-right font-mono">{config['H.E. 50% (Diurnas)']}</td>
                                           <td className="px-2 py-2 text-right font-mono">{config['H.E. 100% (Sab-Dom/Fer)']}</td>
