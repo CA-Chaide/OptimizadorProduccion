@@ -262,11 +262,23 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     return option ? option.label : appliesTo;
   };
 
-  const handleTextFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTextFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setTextFilters(prev => ({ ...prev, [name]: value }));
   };
   
+  const filterOptions = useMemo(() => {
+    if (!constraints.importedShiftConfigs) {
+        return { centros: [], nombResps: [] };
+    }
+    const centros = [...new Set(constraints.importedShiftConfigs.map(c => String(c.Centro)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const nombResps = [...new Set(constraints.importedShiftConfigs.map(c => String(c.NombRespControlProd)))].sort();
+    return {
+        centros: centros.map(c => ({ value: c, label: c })),
+        nombResps: nombResps.map(n => ({ value: n, label: n })),
+    };
+  }, [constraints.importedShiftConfigs]);
+
   const filteredShiftConfigs = useMemo(() => {
     if (!constraints.importedShiftConfigs) return [];
     
@@ -519,11 +531,17 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                                   </div>
                                   <div className="flex-grow">
                                      <label htmlFor="filterCentro" className="block text-sm font-medium text-gray-700">Centro</label>
-                                     <input type="text" id="filterCentro" name="centro" value={textFilters.centro} onChange={handleTextFilterChange} className="mt-1 block w-full pl-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border" />
+                                     <select id="filterCentro" name="centro" value={textFilters.centro} onChange={handleTextFilterChange} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                                        <option value="">Todos</option>
+                                        {filterOptions.centros.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                     </select>
                                   </div>
                                    <div className="flex-grow">
                                      <label htmlFor="filterNombResp" className="block text-sm font-medium text-gray-700">Nombre Resp.</label>
-                                     <input type="text" id="filterNombResp" name="nombResp" value={textFilters.nombResp} onChange={handleTextFilterChange} className="mt-1 block w-full pl-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border" />
+                                      <select id="filterNombResp" name="nombResp" value={textFilters.nombResp} onChange={handleTextFilterChange} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                                        <option value="">Todos</option>
+                                        {filterOptions.nombResps.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                     </select>
                                   </div>
                                 </div>
 
