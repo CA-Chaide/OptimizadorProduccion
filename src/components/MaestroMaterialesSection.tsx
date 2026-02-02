@@ -1,8 +1,10 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { MaestroMaterialCentro } from '@/types/types';
 import { estacionService } from '@/services/MaestroMaterialCentro.service';
+import { exportMaestroSectorSummaryToExcel } from '@/services/OptimizationService';
 import { Loader2, ClipboardList } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
 
@@ -10,6 +12,7 @@ export const MaestroMaterialesSection: React.FC = () => {
     const { addNotification } = useAppContext();
     const [materiales, setMateriales] = useState<MaestroMaterialCentro[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isReportLoading, setIsReportLoading] = useState(false);
     const [totalRecords, setTotalRecords] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
@@ -21,8 +24,8 @@ export const MaestroMaterialesSection: React.FC = () => {
             let response;
             if (currentFilters.centro || currentFilters.material) {
                 response = await estacionService.getMaterialPorCentroYMaterial(currentFilters.centro, currentFilters.material, page, limit);
-                if (response && response.length) {
-                    setTotalRecords(response.length);
+                if (response && response.data) {
+                    setTotalRecords(response.length || response.data.length);
                 } else {
                     setTotalRecords(0);
                 }
@@ -69,6 +72,66 @@ export const MaestroMaterialesSection: React.FC = () => {
         setFilters(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleGenerateReport = async () => {
+        addNotification('info', 'Generando reporte de todos los materiales...');
+        setIsReportLoading(true);
+        try {
+            const totalResponse = await estacionService.getTotalMateriales();
+            if (!totalResponse || !totalResponse.data || totalResponse.data.length === 0) {
+                addNotification('error', 'No se pudo obtener el número total de materiales.');
+                setIsReportLoading(false);
+                return;
+            }
+            const total = totalResponse.data[0];
+    
+            const allMaterialsResponse = await estacionService.getMaterialesPaginados(1, total);
+            
+            if (!allMaterialsResponse || !allMaterialsResponse.data) {
+                 addNotification('error', 'No se pudieron obtener todos los materiales para el reporte.');
+                 setIsReportLoading(false);
+                 return;
+            }
+            
+            const allMaterials = allMaterialsResponse.data;
+    
+            const sectorsToReport = ['01', '02', '03'];
+            const dataForReport = allMaterials.filter(m => m.SECTOR && sectorsToReport.includes(m.SECTOR));
+    
+            if (dataForReport.length === 0) {
+                addNotification('warning', 'No se encontraron materiales en los sectores 01, 02, o 03.');
+                setIsReportLoading(false);
+                return;
+            }
+    
+            const summaryBySector = dataForReport.reduce((acc, material) => {
+                const sector = material.SECTOR;
+                if (!acc[sector]) {
+                    acc[sector] = {
+                        count: 0,
+                        totalPrecio: 0,
+                    };
+                }
+                acc[sector].count++;
+                acc[sector].totalPrecio += material.Precio || 0;
+                return acc;
+            }, {} as Record<string, { count: number; totalPrecio: number; }>);
+            
+            const summaryArray = Object.keys(summaryBySector).sort().map(sector => ({
+                'Sector': sector,
+                'Cantidad de Materiales': summaryBySector[sector].count,
+                'Suma de Precios': summaryBySector[sector].totalPrecio,
+            }));
+    
+            exportMaestroSectorSummaryToExcel(summaryArray);
+            addNotification('success', `Reporte para ${dataForReport.length} materiales en sectores 01, 02, 03 generado y descargado.`);
+    
+        } catch (error) {
+            addNotification('error', `Error al generar el reporte: ${(error as Error).message}`);
+        } finally {
+            setIsReportLoading(false);
+        }
+    };
+
     const totalPages = totalRecords > 0 ? Math.ceil(totalRecords / rowsPerPage) : 1;
 
     return (
@@ -95,6 +158,12 @@ export const MaestroMaterialesSection: React.FC = () => {
                     <div className="flex space-x-2">
                          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">Filtrar</button>
                          <button type="button" onClick={handleClearFilters} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 text-sm">Limpiar</button>
+                    </div>
+                     <div className="flex justify-end">
+                        <button type="button" onClick={handleGenerateReport} disabled={isLoading || isReportLoading} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm disabled:bg-gray-400 flex items-center">
+                            {isReportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Reporte Sectores
+                        </button>
                     </div>
                 </form>
 

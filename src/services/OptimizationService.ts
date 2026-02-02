@@ -829,6 +829,16 @@ export const exportMonthlyPlanToExcel = (plan: MonthlyProductionPlanItem[], cent
     XLSX.writeFile(workbook, 'Resumen_Inventario_Mensual.xlsx');
 };
 
+export const exportMaestroSectorSummaryToExcel = (summaryData: { 'Sector': string; 'Cantidad de Materiales': number; 'Suma de Precios': number }[]): void => {
+    if (!summaryData || summaryData.length === 0) return;
+  
+    const worksheet = XLSX.utils.json_to_sheet(summaryData);
+    worksheet['!cols'] = [ { wch: 15 }, { wch: 25 }, { wch: 20 } ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Resumen por Sector');
+    XLSX.writeFile(workbook, 'Resumen_Maestro_Por_Sector.xlsx');
+};
+
 
 export const parseTacticalOrdersExcel = (file: File): Promise<ProvisionalOrder[]> => { return Promise.resolve([]); };
 
