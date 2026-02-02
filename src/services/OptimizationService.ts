@@ -930,7 +930,7 @@ export const parseShiftsAndCostsExcel = (file: File): Promise<{
                 };
 
                 costosData.forEach((row: any) => {
-                    const tipo = row['Tipo de Costo'];
+                    const tipo = String(row['Tipo de Costo'] || '').trim();
                     const valor = parseFloat(String(row['Valor']));
 
                     if (isNaN(valor)) return;
