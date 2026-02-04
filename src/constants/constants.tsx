@@ -40,6 +40,7 @@ export enum ActiveView {
   TACTICAL_SCHEDULING_MUEBLES = 'TACTICAL_SCHEDULING_MUEBLES',
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
+  PARAMETROS = 'PARAMETROS',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -95,22 +96,44 @@ export const MAX_FILE_SIZE_MB = 10;
 export const APP_VERSION = '1.0.0-next';
 
 const NAVIGATION_ITEMS = [
-  { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon /> },
-  { id: ActiveView.DATA_IMPORT, label: 'Importar Ventas', icon: <DataImportIcon /> },
-  { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon /> },
-  { id: ActiveView.NEEDS_CALCULATION_C2000, label: 'Cálculo Necesidades C2000', icon: <NeedsCalculationIcon /> },
-  { id: ActiveView.INVENTORY_NEEDS, label: 'Necesidades de Inventario', icon: <InventoryNeedsIcon /> },
-  { id: ActiveView.PRODUCTION_CAPACITY, label: 'Capacidad de Producción', icon: <CapacityIcon /> },
-  { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon /> },
-  { id: ActiveView.MAINTENANCE, label: 'Mantenimiento', icon: <MaintenanceIcon /> },
-  { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon /> },
-  { id: ActiveView.PRODUCTION_PLAN, label: 'Plan de Producción', icon: <PlanIcon /> },
-  { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon /> },
-  { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon /> },
-  { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon /> },
-  { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon /> },
+  { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon />, href: '/dashboard' },
+  { id: ActiveView.DATA_IMPORT, label: 'Importar Ventas', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventas' },
+  { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon />, href: '/dashboard/opciones/definir-restricciones' },
+  { id: ActiveView.NEEDS_CALCULATION_C2000, label: 'Cálculo Necesidades C2000', icon: <NeedsCalculationIcon />, href: '/dashboard/opciones/calculo-necesidades-c2000' },
+  { id: ActiveView.INVENTORY_NEEDS, label: 'Necesidades de Inventario', icon: <InventoryNeedsIcon />, href: '/dashboard/opciones/necesidades-inventario' },
+  { id: ActiveView.PRODUCTION_CAPACITY, label: 'Capacidad de Producción', icon: <CapacityIcon />, href: '/dashboard/opciones/capacidad-produccion' },
+  { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon />, href: '/dashboard/opciones/calificacion-tecnica' },
+  { id: ActiveView.MAINTENANCE, label: 'Mantenimiento', icon: <MaintenanceIcon />, href: '/dashboard/opciones/mantenimiento' },
+  { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon />, href: '/dashboard/opciones/gestion-ausentismos' },
+  { id: ActiveView.PRODUCTION_PLAN, label: 'Plan de Producción', icon: <PlanIcon />, href: '/dashboard/opciones/plan-produccion' },
+  { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica' },
+  { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica-muebles' },
+  { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
+  { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
+  { id: ActiveView.PARAMETROS, label: 'Parámetros', icon: <ClipboardList />, href: '/dashboard/parametros' },
 ];
 
+// Items que van dentro de la sección "Opciones" (contraíble)
+export const OPCIONES_ITEMS: ActiveView[] = [
+  ActiveView.DATA_IMPORT,
+  ActiveView.CONSTRAINTS,
+  ActiveView.NEEDS_CALCULATION_C2000,
+  ActiveView.INVENTORY_NEEDS,
+  ActiveView.PRODUCTION_CAPACITY,
+  ActiveView.PERSONNEL,
+  ActiveView.MAINTENANCE,
+  ActiveView.ABSENTEEISM,
+  ActiveView.PRODUCTION_PLAN,
+  ActiveView.TACTICAL_SCHEDULING,
+  ActiveView.TACTICAL_SCHEDULING_MUEBLES,
+  ActiveView.WORK_SHIFT_PLANNING,
+  ActiveView.DICTIONARY,
+];
 
-export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element }> = 
-  Object.fromEntries(NAVIGATION_ITEMS.map(item => [item.id, { title: item.label, icon: item.icon }])) as Record<ActiveView, { title: string; icon: JSX.Element }>;
+// Items que van dentro de la sección "Parámetros" (contraíble)
+export const PARAMETROS_ITEMS: ActiveView[] = [
+  ActiveView.PARAMETROS,
+];
+
+export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element; href: string }> = 
+  Object.fromEntries(NAVIGATION_ITEMS.map(item => [item.id, { title: item.label, icon: item.icon, href: item.href }])) as Record<ActiveView, { title: string; icon: JSX.Element; href: string }>;

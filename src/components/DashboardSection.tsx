@@ -29,10 +29,20 @@ interface InteractiveAreaData {
 
 export const DashboardSection: React.FC<{ plan: ProductionPlanItem[]; salesData: SalesDataRow[]; constraints: AppConstraints; }> = ({ plan, salesData, constraints }) => {
   const [interactiveAreaContent, setInteractiveAreaContent] = useState<string>('');
-  const [interactiveAreaData, setInteractiveAreaData] = useState<InteractiveAreaData>(() => {
-    const savedData = localStorage.getItem('interactiveAreaData');
-    return savedData ? JSON.parse(savedData) : { barChartData: [], pieChartData: [], scatterPlotData: [] };
+  const [interactiveAreaData, setInteractiveAreaData] = useState<InteractiveAreaData>({
+    barChartData: [],
+    pieChartData: [],
+    scatterPlotData: []
   });
+
+  // Cargar datos de localStorage solo en cliente
+  useEffect(() => {
+    const savedData = localStorage.getItem('interactiveAreaData');
+    if (savedData) {
+      setInteractiveAreaData(JSON.parse(savedData));
+    }
+  }, []);
+
   // Log de montaje del componente
   useEffect(() => {
     logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[DashboardSection] Montado.`);

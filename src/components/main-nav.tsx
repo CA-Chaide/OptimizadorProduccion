@@ -1,44 +1,129 @@
 'use client';
 
-import React from 'react';
-import { ActiveView, viewConfig } from '@/constants/constants';
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { ActiveView, viewConfig, OPCIONES_ITEMS, PARAMETROS_ITEMS } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronRight, LayoutDashboard, Settings, Folder } from 'lucide-react';
+
+interface CollapsibleSectionProps {
+  title: string;
+  icon: React.ReactNode;
+  items: ActiveView[];
+  isOpen: boolean;
+  onToggle: () => void;
+  pathname: string;
+  isLoading: boolean;
+}
+
+function CollapsibleSection({ title, icon, items, isOpen, onToggle, pathname, isLoading }: CollapsibleSectionProps) {
+  const hasActiveChild = items.some(viewId => {
+    const config = viewConfig[viewId];
+    return config && pathname === config.href;
+  });
+
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={onToggle}
+        className={cn(
+          'w-full flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
+          hasActiveChild && 'bg-white/15'
+        )}
+      >
+        {icon}
+        <span className="flex-1 text-left">{title}</span>
+        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      </button>
+      
+      {isOpen && (
+        <div className="ml-4 pl-2 border-l border-white/20 space-y-1">
+          {items.map(viewId => {
+            const config = viewConfig[viewId];
+            if (!config || !config.href) return null;
+            
+            const isActive = pathname === config.href;
+
+            return (
+              <Link
+                key={viewId}
+                href={config.href}
+                className={cn(
+                  'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
+                  isActive && 'bg-white/25',
+                  isLoading ? 'cursor-not-allowed opacity-50' : ''
+                )}
+                aria-disabled={isLoading}
+                onClick={(e) => {
+                  if (isLoading) e.preventDefault();
+                }}
+              >
+                {React.cloneElement(config.icon, { className: 'h-4 w-4' })}
+                <span className="flex-1 text-xs">{config.title}</span>
+                {isLoading && viewId === ActiveView.PRODUCTION_PLAN && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
-  const { activeView, dispatch, isLoading } = useAppContext();
+  const { isLoading } = useAppContext();
+  const pathname = usePathname();
+  
+  const [opcionesOpen, setOpcionesOpen] = useState(true);
+  const [parametrosOpen, setParametrosOpen] = useState(false);
+
+  const dashboardConfig = viewConfig[ActiveView.DASHBOARD];
+  const isDashboardActive = pathname === dashboardConfig?.href;
 
   return (
     <nav className={cn('flex flex-col space-y-2', className)} {...props}>
-      {Object.values(ActiveView).map(viewId => {
-        const config = viewConfig[viewId];
-        if (!config) return null;
-        
-        const isActive = activeView === viewId;
+      {/* Dashboard - enlace directo */}
+      <Link
+        href={dashboardConfig?.href || '/dashboard'}
+        className={cn(
+          'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
+          isDashboardActive && 'bg-white/25',
+          isLoading ? 'cursor-not-allowed opacity-50' : ''
+        )}
+        aria-disabled={isLoading}
+        onClick={(e) => {
+          if (isLoading) e.preventDefault();
+        }}
+      >
+        <LayoutDashboard className="h-5 w-5" />
+        <span className="flex-1">Dashboard</span>
+      </Link>
 
-        return (
-          <a
-            key={viewId}
-            href="#"
-            onClick={(e) => {
-                e.preventDefault();
-                dispatch({ type: 'SET_ACTIVE_VIEW', payload: viewId })
-            }}
-            className={cn(
-              'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
-              isActive && 'bg-white/25',
-              isLoading ? 'cursor-not-allowed opacity-50' : ''
-            )}
-          >
-            {React.cloneElement(config.icon, { className: 'h-5 w-5' })}
-            <span className="flex-1">{config.title}</span>
-            {isLoading && viewId === ActiveView.PRODUCTION_PLAN && (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            )}
-          </a>
-        );
-      })}
+      {/* Opciones - sección contraíble */}
+      <CollapsibleSection
+        title="Opciones"
+        icon={<Folder className="h-5 w-5" />}
+        items={OPCIONES_ITEMS}
+        isOpen={opcionesOpen}
+        onToggle={() => setOpcionesOpen(!opcionesOpen)}
+        pathname={pathname}
+        isLoading={isLoading}
+      />
+
+      {/* Parámetros - sección contraíble */}
+      <CollapsibleSection
+        title="Parámetros"
+        icon={<Settings className="h-5 w-5" />}
+        items={PARAMETROS_ITEMS}
+        isOpen={parametrosOpen}
+        onToggle={() => setParametrosOpen(!parametrosOpen)}
+        pathname={pathname}
+        isLoading={isLoading}
+      />
     </nav>
   );
 }
