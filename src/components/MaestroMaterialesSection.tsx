@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { MaestroMaterialCentro } from '@/types/types';
-import { estacionService } from '@/services/MaestroMaterialCentro.service';
+import { maestroMaterialCentroService } from '@/services/MaestroMaterialCentro.service';
 import { exportMaestroSectorSummaryToExcel } from '@/services/OptimizationService';
 import { Loader2, ClipboardList } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
@@ -23,7 +23,7 @@ export const MaestroMaterialesSection: React.FC = () => {
         try {
             let response;
             if (currentFilters.centro || currentFilters.material) {
-                response = await estacionService.getMaterialPorCentroYMaterial(currentFilters.centro, currentFilters.material, page, limit);
+                response = await maestroMaterialCentroService.getMaterialPorCentroYMaterial(currentFilters.centro, currentFilters.material, page, limit);
                 if (response && response.data) {
                     setTotalRecords(response.length || response.data.length);
                 } else {
@@ -31,11 +31,11 @@ export const MaestroMaterialesSection: React.FC = () => {
                 }
             } else {
                 // Fetch total only if not filtering
-                const totalResponse = await estacionService.getTotalMateriales();
+                const totalResponse = await maestroMaterialCentroService.getTotalMateriales();
                 if (totalResponse && totalResponse.data && totalResponse.data.length > 0) {
                     setTotalRecords(totalResponse.data[0]);
                 }
-                response = await estacionService.getMaterialesPaginados(page, limit);
+                response = await maestroMaterialCentroService.getMaterialesPaginados(page, limit);
             }
 
             if (response && response.data) {
@@ -76,7 +76,7 @@ export const MaestroMaterialesSection: React.FC = () => {
         addNotification('info', 'Generando reporte de todos los materiales...');
         setIsReportLoading(true);
         try {
-            const totalResponse = await estacionService.getTotalMateriales();
+            const totalResponse = await maestroMaterialCentroService.getTotalMateriales();
             if (!totalResponse || !totalResponse.data || totalResponse.data.length === 0) {
                 addNotification('error', 'No se pudo obtener el número total de materiales.');
                 setIsReportLoading(false);
@@ -84,7 +84,7 @@ export const MaestroMaterialesSection: React.FC = () => {
             }
             const total = totalResponse.data[0];
     
-            const allMaterialsResponse = await estacionService.getMaterialesPaginados(1, total);
+            const allMaterialsResponse = await maestroMaterialCentroService.getMaterialesPaginados(1, total);
             
             if (!allMaterialsResponse || !allMaterialsResponse.data) {
                  addNotification('error', 'No se pudieron obtener todos los materiales para el reporte.');

@@ -1,4 +1,3 @@
-
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
@@ -6,7 +5,7 @@ import { MaestroMaterialCentro } from "@/types/types";
 
 const API_URL = `${environment.apiURL}/api/MaestroMaterialCentro`;
 
-export const estacionService = {
+export const maestroMaterialCentroService = {
 
   async getTotalMateriales(): Promise<BodyResponse<MaestroMaterialCentro>> {
     const response = await fetch(API_URL + '/total', {

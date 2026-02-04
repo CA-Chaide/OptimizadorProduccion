@@ -1,9 +1,9 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { PlanGlobal } from "./interfaces";
+import { PlanGlobal } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/planglobal`;
+const API_URL = `${environment.apiURL}/api/plan_global`;
 
 export const planGlobalService = {
   async getAll(): Promise<BodyListResponse<PlanGlobal>> {

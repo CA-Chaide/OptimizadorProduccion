@@ -40,6 +40,7 @@ export enum ActiveView {
   TACTICAL_SCHEDULING_MUEBLES = 'TACTICAL_SCHEDULING_MUEBLES',
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
+  MAESTRO_MATERIALES = 'MAESTRO_MATERIALES',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -110,6 +111,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon /> },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon /> },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon /> },
+  { id: ActiveView.MAESTRO_MATERIALES, label: 'Maestro de Materiales', icon: <MaestroMaterialesIcon /> },
 ];
 
 

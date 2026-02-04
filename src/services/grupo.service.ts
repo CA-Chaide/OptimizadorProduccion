@@ -1,50 +1,50 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { Linea } from "./interfaces";
+import { Grupo } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/linea`;
+const API_URL = `${environment.apiURL}/api/grupo`;
 
-export const lineaService = {
-  async getAll(): Promise<BodyListResponse<Linea>> {
+export const grupoService = {
+  async getAll(): Promise<BodyListResponse<Grupo>> {
     const response = await fetch(API_URL);
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al obtener las Líneas');
+      throw new Error(errorBody.message || 'Error al obtener los Grupos');
     }
     return response.json();
   },
 
-  async getById(codigo_linea: number): Promise<BodyResponse<Linea>> {
-    const response = await fetch(`${API_URL}/${codigo_linea}`);
+  async getById(codigo_grupo: number): Promise<BodyResponse<Grupo>> {
+    const response = await fetch(`${API_URL}/${codigo_grupo}`);
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Línea no encontrada');
+      throw new Error(errorBody.message || 'Grupo no encontrado');
     }
     return response.json();
   },
 
-  async save(linea: Linea): Promise<BodyResponse<Linea>> {
+  async save(grupo: Grupo): Promise<BodyResponse<Grupo>> {
     const response = await fetch(`${API_URL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(linea),
+      body: JSON.stringify(grupo),
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al guardar la línea');
+      throw new Error(errorBody.message || 'Error al guardar el grupo');
     }
     return response.json();
   },
 
-  async delete(codigo_linea: number): Promise<BodyResponse<void>> {
-    const response = await fetch(`${API_URL}/${codigo_linea}`, {
+  async delete(codigo_grupo: number): Promise<BodyResponse<void>> {
+    const response = await fetch(`${API_URL}/${codigo_grupo}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al eliminar la línea');
+      throw new Error(errorBody.message || 'Error al eliminar el grupo');
     }
     return response.json();
   },

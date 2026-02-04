@@ -1,50 +1,50 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { Restriccion } from "./interfaces";
+import { Ausentismo } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/restriccion`;
+const API_URL = `${environment.apiURL}/api/ausentismo`;
 
-export const restriccionService = {
-  async getAll(): Promise<BodyListResponse<Restriccion>> {
+export const ausentimoService = {
+  async getAll(): Promise<BodyListResponse<Ausentismo>> {
     const response = await fetch(API_URL);
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al obtener las Restricciones');
+      throw new Error(errorBody.message || 'Error al obtener los Ausentismos');
     }
     return response.json();
   },
 
-  async getById(codigo_restriccion: number): Promise<BodyResponse<Restriccion>> {
-    const response = await fetch(`${API_URL}/${codigo_restriccion}`);
+  async getById(codigo_ausentismo: number): Promise<BodyResponse<Ausentismo>> {
+    const response = await fetch(`${API_URL}/${codigo_ausentismo}`);
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Restriccion no encontrada');
+      throw new Error(errorBody.message || 'Ausentismo no encontrado');
     }
     return response.json();
   },
 
-  async save(restriccion: Restriccion): Promise<BodyResponse<Restriccion>> {
+  async save(ausentismo: Ausentismo): Promise<BodyResponse<Ausentismo>> {
     const response = await fetch(`${API_URL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(restriccion),
+      body: JSON.stringify(ausentismo),
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al guardar la restricción');
+      throw new Error(errorBody.message || 'Error al guardar el ausentismo');
     }
     return response.json();
   },
 
-  async delete(codigo_restriccion: number): Promise<BodyResponse<void>> {
-    const response = await fetch(`${API_URL}/${codigo_restriccion}`, {
+  async delete(codigo_ausentismo: number): Promise<BodyResponse<void>> {
+    const response = await fetch(`${API_URL}/${codigo_ausentismo}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al eliminar la restriccipon');
+      throw new Error(errorBody.message || 'Error al eliminar el ausentismo');
     }
     return response.json();
   },

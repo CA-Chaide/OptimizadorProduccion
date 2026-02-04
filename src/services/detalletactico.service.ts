@@ -1,50 +1,50 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { TipoDetalle } from "./interfaces";
+import { DetalleTactico } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/tipodetalle`;
+const API_URL = `${environment.apiURL}/api/detalle_tactico`;
 
-export const tipoDetalleService = {
-  async getAll(): Promise<BodyListResponse<TipoDetalle>> {
+export const detalleTacticoService = {
+  async getAll(): Promise<BodyListResponse<DetalleTactico>> {
     const response = await fetch(API_URL);
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al obtener los Tipos de Detalle');
+      throw new Error(errorBody.message || 'Error al obtener los Detalles Tácticos');
     }
     return response.json();
   },
 
-  async getById(codigo_tipo_detalle: number): Promise<BodyResponse<TipoDetalle>> {
-    const response = await fetch(`${API_URL}/${codigo_tipo_detalle}`);
+  async getById(codigo_detalle_tactico: number): Promise<BodyResponse<DetalleTactico>> {
+    const response = await fetch(`${API_URL}/${codigo_detalle_tactico}`);
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Tipo de Detalle no encontrado');
+      throw new Error(errorBody.message || 'Detalle Táctico no encontrado');
     }
     return response.json();
   },
 
-  async save(tipo: TipoDetalle): Promise<BodyResponse<TipoDetalle>> {
+  async save(detalle: DetalleTactico): Promise<BodyResponse<DetalleTactico>> {
     const response = await fetch(`${API_URL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tipo),
+      body: JSON.stringify(detalle),
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al guardar el tipo de detalle');
+      throw new Error(errorBody.message || 'Error al guardar el detalle táctico');
     }
     return response.json();
   },
 
-  async delete(codigo_tipo_detalle: number): Promise<BodyResponse<void>> {
-    const response = await fetch(`${API_URL}/${codigo_tipo_detalle}`, {
+  async delete(codigo_detalle_tactico: number): Promise<BodyResponse<void>> {
+    const response = await fetch(`${API_URL}/${codigo_detalle_tactico}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al eliminar el tipo de detalle');
+      throw new Error(errorBody.message || 'Error al eliminar el detalle táctico');
     }
     return response.json();
   },

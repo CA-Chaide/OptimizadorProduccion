@@ -1,50 +1,50 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { Grupo } from "./interfaces";
+import { TipoAusentismo } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/grupo`;
+const API_URL = `${environment.apiURL}/api/tipo_ausentismo`;
 
-export const grupoService = {
-  async getAll(): Promise<BodyListResponse<Grupo>> {
+export const tipoAusentismoService = {
+  async getAll(): Promise<BodyListResponse<TipoAusentismo>> {
     const response = await fetch(API_URL);
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al obtener los Grupos');
+      throw new Error(errorBody.message || 'Error al obtener los Tipos de Ausentismo');
     }
     return response.json();
   },
 
-  async getById(codigo_grupo: number): Promise<BodyResponse<Grupo>> {
-    const response = await fetch(`${API_URL}/${codigo_grupo}`);
+  async getById(codigo_tipo_ausentismo: number): Promise<BodyResponse<TipoAusentismo>> {
+    const response = await fetch(`${API_URL}/${codigo_tipo_ausentismo}`);
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Grupo no encontrado');
+      throw new Error(errorBody.message || 'Tipo de Ausentismo no encontrado');
     }
     return response.json();
   },
 
-  async save(grupo: Grupo): Promise<BodyResponse<Grupo>> {
+  async save(tipo: TipoAusentismo): Promise<BodyResponse<TipoAusentismo>> {
     const response = await fetch(`${API_URL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(grupo),
+      body: JSON.stringify(tipo),
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al guardar el grupo');
+      throw new Error(errorBody.message || 'Error al guardar el tipo de ausentismo');
     }
     return response.json();
   },
 
-  async delete(codigo_grupo: number): Promise<BodyResponse<void>> {
-    const response = await fetch(`${API_URL}/${codigo_grupo}`, {
+  async delete(codigo_tipo_ausentismo: number): Promise<BodyResponse<void>> {
+    const response = await fetch(`${API_URL}/${codigo_tipo_ausentismo}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
-      throw new Error(errorBody.message || 'Error al eliminar el grupo');
+      throw new Error(errorBody.message || 'Error al eliminar el tipo de ausentismo');
     }
     return response.json();
   },
