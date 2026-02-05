@@ -41,6 +41,10 @@ export enum ActiveView {
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
   PARAMETROS = 'PARAMETROS',
+  PARAMETROS_TURNOS = 'PARAMETROS_TURNOS',
+  PARAMETROS_TIPO_DETALLE = 'PARAMETROS_TIPO_DETALLE',
+  PARAMETROS_TIPO_AUSENTISMO = 'PARAMETROS_TIPO_AUSENTISMO',
+  PARAMETROS_GRUPO = 'PARAMETROS_GRUPO',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -111,6 +115,10 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
   { id: ActiveView.PARAMETROS, label: 'Parámetros', icon: <ClipboardList />, href: '/dashboard/parametros' },
+  { id: ActiveView.PARAMETROS_TURNOS, label: 'Turnos', icon: <WorkShiftIcon />, href: '/dashboard/parametros/turnos' },
+  { id: ActiveView.PARAMETROS_TIPO_DETALLE, label: 'Tipos de Detalle', icon: <PlanIcon />, href: '/dashboard/parametros/tipo-detalle' },
+  { id: ActiveView.PARAMETROS_TIPO_AUSENTISMO, label: 'Tipos de Ausentismo', icon: <AbsenteeismIcon />, href: '/dashboard/parametros/tipo-ausentismo' },
+  { id: ActiveView.PARAMETROS_GRUPO, label: 'Grupos', icon: <PersonnelIcon />, href: '/dashboard/parametros/grupos' },
 ];
 
 // Items que van dentro de la sección "Opciones" (contraíble)
@@ -133,6 +141,10 @@ export const OPCIONES_ITEMS: ActiveView[] = [
 // Items que van dentro de la sección "Parámetros" (contraíble)
 export const PARAMETROS_ITEMS: ActiveView[] = [
   ActiveView.PARAMETROS,
+  ActiveView.PARAMETROS_TURNOS,
+  ActiveView.PARAMETROS_TIPO_DETALLE,
+  ActiveView.PARAMETROS_TIPO_AUSENTISMO,
+  ActiveView.PARAMETROS_GRUPO,
 ];
 
 export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element; href: string }> = 
