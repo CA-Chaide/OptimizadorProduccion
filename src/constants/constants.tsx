@@ -20,6 +20,7 @@ import {
     Sheet,
     Activity,
     ClipboardList,
+    Link2,
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -45,6 +46,7 @@ export enum ActiveView {
   PARAMETROS_TIPO_DETALLE = 'PARAMETROS_TIPO_DETALLE',
   PARAMETROS_TIPO_AUSENTISMO = 'PARAMETROS_TIPO_AUSENTISMO',
   PARAMETROS_GRUPO = 'PARAMETROS_GRUPO',
+  PARAMETROS_CONEXIONES = 'PARAMETROS_CONEXIONES',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -61,6 +63,7 @@ export const WorkShiftIcon = () => <CalendarCheck className="w-5 h-5" />;
 export const RealDataIcon = () => <DatabaseZap className="w-5 h-5" />;
 export const InventoryNeedsIcon = () => <Sheet className="w-5 h-5" />;
 export const CapacityIcon = () => <Activity className="w-5 h-5" />;
+export const ConnectionsIcon = () => <Link2 className="w-5 h-5" />;
 
 
 // Common action icons
@@ -119,6 +122,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.PARAMETROS_TIPO_DETALLE, label: 'Tipos de Detalle', icon: <PlanIcon />, href: '/dashboard/parametros/tipo-detalle' },
   { id: ActiveView.PARAMETROS_TIPO_AUSENTISMO, label: 'Tipos de Ausentismo', icon: <AbsenteeismIcon />, href: '/dashboard/parametros/tipo-ausentismo' },
   { id: ActiveView.PARAMETROS_GRUPO, label: 'Grupos', icon: <PersonnelIcon />, href: '/dashboard/parametros/grupos' },
+  { id: ActiveView.PARAMETROS_CONEXIONES, label: 'Conexiones', icon: <ConnectionsIcon />, href: '/dashboard/parametros/conexiones' },
 ];
 
 // Items que van dentro de la sección "Opciones" (contraíble)
@@ -145,6 +149,7 @@ export const PARAMETROS_ITEMS: ActiveView[] = [
   ActiveView.PARAMETROS_TIPO_DETALLE,
   ActiveView.PARAMETROS_TIPO_AUSENTISMO,
   ActiveView.PARAMETROS_GRUPO,
+  ActiveView.PARAMETROS_CONEXIONES,
 ];
 
 export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element; href: string }> = 
