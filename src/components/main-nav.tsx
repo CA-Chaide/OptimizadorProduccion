@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ActiveView, viewConfig, OPCIONES_ITEMS, PARAMETROS_ITEMS } from '@/constants/constants';
+import { ActiveView, viewConfig, OPCIONES_ITEMS, PARAMETROS_ITEMS, CONFIGURACIONES_ITEMS } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 import { cn } from '@/lib/utils';
 import { Loader2, ChevronDown, ChevronRight, LayoutDashboard, Settings, Folder } from 'lucide-react';
@@ -18,10 +18,18 @@ interface CollapsibleSectionProps {
   isLoading: boolean;
 }
 
-function CollapsibleSection({ title, icon, items, isOpen, onToggle, pathname, isLoading }: CollapsibleSectionProps) {
+function CollapsibleSection({ 
+  title, 
+  icon, 
+  items, 
+  isOpen, 
+  onToggle, 
+  pathname, 
+  isLoading 
+}: Readonly<CollapsibleSectionProps>) {
   const hasActiveChild = items.some(viewId => {
     const config = viewConfig[viewId];
-    return config && pathname === config.href;
+    return config?.href && pathname === config.href;
   });
 
   return (
@@ -42,7 +50,7 @@ function CollapsibleSection({ title, icon, items, isOpen, onToggle, pathname, is
         <div className="ml-4 pl-2 border-l border-white/20 space-y-1">
           {items.map(viewId => {
             const config = viewConfig[viewId];
-            if (!config || !config.href) return null;
+            if (!config?.href) return null;
             
             const isActive = pathname === config.href;
 
@@ -74,12 +82,13 @@ function CollapsibleSection({ title, icon, items, isOpen, onToggle, pathname, is
   );
 }
 
-export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
+export function MainNav({ className, ...props }: Readonly<React.HTMLAttributes<HTMLElement>>) {
   const { isLoading } = useAppContext();
   const pathname = usePathname();
   
   const [opcionesOpen, setOpcionesOpen] = useState(true);
   const [parametrosOpen, setParametrosOpen] = useState(false);
+  const [configuracionesOpen, setConfiguracionesOpen] = useState(false);
 
   const dashboardConfig = viewConfig[ActiveView.DASHBOARD];
   const isDashboardActive = pathname === dashboardConfig?.href;
@@ -121,6 +130,17 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
         items={PARAMETROS_ITEMS}
         isOpen={parametrosOpen}
         onToggle={() => setParametrosOpen(!parametrosOpen)}
+        pathname={pathname}
+        isLoading={isLoading}
+      />
+
+      {/* Configuraciones - sección contraíble */}
+      <CollapsibleSection
+        title="Configuraciones"
+        icon={<Settings className="h-5 w-5" />}
+        items={CONFIGURACIONES_ITEMS}
+        isOpen={configuracionesOpen}
+        onToggle={() => setConfiguracionesOpen(!configuracionesOpen)}
         pathname={pathname}
         isLoading={isLoading}
       />

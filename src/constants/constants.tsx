@@ -16,7 +16,6 @@ import {
     CalendarCheck,
     DatabaseZap,
     Truck,
-    Package,
     Sheet,
     Activity,
     ClipboardList,
@@ -47,6 +46,7 @@ export enum ActiveView {
   PARAMETROS_TIPO_AUSENTISMO = 'PARAMETROS_TIPO_AUSENTISMO',
   PARAMETROS_GRUPO = 'PARAMETROS_GRUPO',
   PARAMETROS_CONEXIONES = 'PARAMETROS_CONEXIONES',
+  CONFIGURACIONES_CALENDARIO_AREA = 'CONFIGURACIONES_CALENDARIO_AREA',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -64,9 +64,8 @@ export const RealDataIcon = () => <DatabaseZap className="w-5 h-5" />;
 export const InventoryNeedsIcon = () => <Sheet className="w-5 h-5" />;
 export const CapacityIcon = () => <Activity className="w-5 h-5" />;
 export const ConnectionsIcon = () => <Link2 className="w-5 h-5" />;
+export const CalendarIcon = () => <CalendarClock className="w-5 h-5" />;
 
-
-// Common action icons
 export const PlusIcon = () => <Plus className="w-4 h-4 mr-1" />;
 export const EditIcon = () => <Pencil className="w-4 h-4" />;
 export const DeleteIcon = () => <Trash2 className="w-4 h-4" />;
@@ -123,6 +122,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.PARAMETROS_TIPO_AUSENTISMO, label: 'Tipos de Ausentismo', icon: <AbsenteeismIcon />, href: '/dashboard/parametros/tipo-ausentismo' },
   { id: ActiveView.PARAMETROS_GRUPO, label: 'Grupos', icon: <PersonnelIcon />, href: '/dashboard/parametros/grupos' },
   { id: ActiveView.PARAMETROS_CONEXIONES, label: 'Conexiones', icon: <ConnectionsIcon />, href: '/dashboard/parametros/conexiones' },
+  { id: ActiveView.CONFIGURACIONES_CALENDARIO_AREA, label: 'Calendario - Área', icon: <CalendarIcon />, href: '/dashboard/configuraciones/calendario-area' },
 ];
 
 // Items que van dentro de la sección "Opciones" (contraíble)
@@ -150,6 +150,11 @@ export const PARAMETROS_ITEMS: ActiveView[] = [
   ActiveView.PARAMETROS_TIPO_AUSENTISMO,
   ActiveView.PARAMETROS_GRUPO,
   ActiveView.PARAMETROS_CONEXIONES,
+];
+
+// Items que van dentro de la sección "Configuraciones" (contraíble)
+export const CONFIGURACIONES_ITEMS: ActiveView[] = [
+  ActiveView.CONFIGURACIONES_CALENDARIO_AREA,
 ];
 
 export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element; href: string }> = 

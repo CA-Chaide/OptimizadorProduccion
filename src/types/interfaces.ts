@@ -33,6 +33,7 @@ export interface DetalleCalendario {
     fecha_real: Date;
     fecha_inicio: Date;
     fecha_fin: Date;
+    codigo_tipo_detalle: number;
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;

@@ -37,6 +37,19 @@ export const detalleCalendarioService = {
     return response.json();
   },
 
+  async saveBatch(detalles: DetalleCalendario[]): Promise<BodyListResponse<DetalleCalendario>> {
+    const response = await fetch(`${API_URL}/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(detalles),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorBody.message || 'Error al guardar los detalles de calendario');
+    }
+    return response.json();
+  },
+
   async delete(codigo_detalle: number): Promise<BodyResponse<void>> {
     const response = await fetch(`${API_URL}/${codigo_detalle}`, {
       method: 'DELETE',
@@ -49,3 +62,4 @@ export const detalleCalendarioService = {
     return response.json();
   },
 };
+
