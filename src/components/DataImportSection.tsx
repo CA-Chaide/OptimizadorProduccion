@@ -1,9 +1,9 @@
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { SalesDataRow, NotificationMessage, PresupuestoItem } from '@/types/types';
-import { queryApi } from '@/hooks/useApiData';
+import React, { useState, useEffect } from 'react';
+import { SalesDataRow } from '@/types/types';
 import { DataImportIcon, MONTH_NAMES } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
+import { serviciosService } from '@/services/servicios.service';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -137,18 +137,25 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   useEffect(() => {
     const loadFilterOptions = async () => {
       try {
-        // Sequential requests to avoid server overload
-        const añosData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Año' });
-        const centrosData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Centro' });
-        const etiquetasData = await queryApi({ source: 'Presupuesto', operation: 'get_distinct_values', column: 'Etiqueta' });
+        // Use new servicios endpoints
+        const yearsResponse = await serviciosService.getYears();
+        const centrosResponse = await serviciosService.getCentros();
+        await serviciosService.getMeses();
 
         const newFilterOptions = {
-          años: añosData.map((item: any) => ({ value: String(item['Año']), label: String(item['Año']) })).sort((a:any,b:any) => b.value - a.value),
-          centros: centrosData.map((item: any) => ({ value: item['Centro'], label: item['Centro'] })),
-          etiquetas: etiquetasData.map((item: any) => ({ value: item['Etiqueta'], label: item['Etiqueta'] })),
+          años: (yearsResponse.data || []).map((item: any) => ({ 
+            value: String(item.Año || item.año || item), 
+            label: String(item.Año || item.año || item) 
+          })).sort((a: any, b: any) => b.value - a.value),
+          centros: (centrosResponse.data || []).map((item: any) => ({ 
+            value: item.Centro || item.centro || item, 
+            label: item.Centro || item.centro || item 
+          })),
+          etiquetas: [] as {value: string, label: string}[], // Etiquetas no disponibles en nuevo endpoint
         };
         setFilterOptions(newFilterOptions);
       } catch (error) {
+        console.error('Error al cargar filtros:', error);
         addNotification('error', 'No se pudieron cargar las opciones para los filtros desde la API.');
       }
     };
@@ -168,38 +175,28 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
     let allData: SalesDataRow[] = [];
     const sectorTotals = new Map<string, number>();
-    const yearsToLoad = filters.años.map(Number);
+    const ROWS_PER_PAGE = 50000;
 
     try {
-        addNotification('info', `Iniciando carga de datos para año(s): ${yearsToLoad.join(', ')}.`);
+        // Determine if we should use getPresupuesto (no filters) or getPresupuestoPorMesesYAnio (with filters)
+        const hasFilters = filters.centros.length > 0 || filters.meses.length > 0;
         
-        const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(Number) : Array.from({length: 12}, (_, i) => i + 1);
-        
-        let queryCount = 0;
-        for (const year of yearsToLoad) {
-            for (const month of monthsToLoad) {
-                queryCount++;
-                addNotification('info', `Consultando... (Petición #${queryCount}) Año: ${year}, Mes: ${MONTH_NAMES[month-1]}`);
+        if (!hasFilters) {
+            // Use getPresupuesto for complete data without filters - paginated
+            addNotification('info', 'Cargando presupuesto completo sin filtros...');
+            
+            try {
+                let page = 1;
+                let hasMoreData = true;
                 
-                const queryFilters: { [key: string]: any } = { 'Año': year, 'Mes': month };
-                if (filters.etiqueta) {
-                    queryFilters['Etiqueta'] = filters.etiqueta;
-                }
-                
-                try {
-                    const response: PresupuestoItem[] = await queryApi({
-                        source: 'Presupuesto',
-                        operation: 'get_data',
-                        filters: queryFilters,
-                        pagination: { limit: 500000 } // Increased limit
-                    });
-
-                    if (response && response.length > 0) {
-                         const centerFilteredResponse = filters.centros.length > 0
-                            ? response.filter(item => filters.centros.includes(String(item.Centro).trim()))
-                            : response;
-                        
-                        centerFilteredResponse.forEach(item => {
+                while (hasMoreData) {
+                    addNotification('info', `Consultando página ${page} (${(page - 1) * ROWS_PER_PAGE + 1} - ${page * ROWS_PER_PAGE} registros)...`);
+                    
+                    const response = await serviciosService.getPresupuesto(page, ROWS_PER_PAGE);
+                    const presupuestoItems = response.data || [];
+                    
+                    if (presupuestoItems && presupuestoItems.length > 0) {
+                        presupuestoItems.forEach((item: any) => {
                             const sector = item.Sector || 'Sin Sector';
                             const unidades = parseFloat(String(item.UnidadesProyectado)) || 0;
                             if (unidades > 0) {
@@ -207,23 +204,103 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                             }
                         });
                         
-                         const mappedData: SalesDataRow[] = centerFilteredResponse.map((item, index) => ({
-                            id: `row-${item.Año}-${item.Mes}-${item.Centro}-${index}`,
-                            año: item.Año, mes: item.Mes, sector: item.Sector || 'Sin Sector',
+                        const mappedData: SalesDataRow[] = presupuestoItems.map((item: any, index: number) => ({
+                            id: `row-${item.Año}-${item.Mes}-${item.Centro}-${page}-${index}`,
+                            año: item.Año, 
+                            mes: item.Mes, 
+                            sector: item.Sector || 'Sin Sector',
                             etiqueta: item.Etiqueta || 'Sin Etiqueta',
                             código: normalizeMaterialCode(item.CodMaterial),
                             centro: String(item.Centro).trim(), 
                             unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
                             dolaresProyectado: 0,
                             descripciónMaterial: item.Material,
-                            familia: item.Familia, marca: item.Marca, 
+                            familia: item.Familia, 
+                            marca: item.Marca, 
                             lineaProduccion: item.LineaProduccion || '',
                         }));
                         allData = [...allData, ...mappedData];
+                        
+                        // Si recibimos menos registros que el límite, significa que es la última página
+                        if (presupuestoItems.length < ROWS_PER_PAGE) {
+                            hasMoreData = false;
+                        } else {
+                            page++;
+                        }
+                    } else {
+                        hasMoreData = false;
+                    }
+                }
+            } catch (e) {
+                console.error('Fallo al cargar presupuesto completo', e);
+                addNotification('error', 'Fallo al cargar el presupuesto completo. Continuando...');
+            }
+        } else {
+            // Use getPresupuestoPorMesesYAnio for filtered data - paginated
+            const yearsToLoad = filters.años.map(Number);
+            const monthsToLoad = filters.meses.length > 0 ? filters.meses : Array.from({length: 12}, (_, i) => String(i + 1));
+            const centrosStr = filters.centros.join(',');
+            
+            addNotification('info', `Iniciando carga de datos para año(s): ${yearsToLoad.join(', ')}.`);
+            
+            for (const year of yearsToLoad) {
+                const mesesStr = monthsToLoad.join('&');
+                
+                try {
+                    addNotification('info', `Consultando datos para Año: ${year}, Meses: ${mesesStr}`);
+                    
+                    let page = 1;
+                    let hasMoreData = true;
+                    
+                    while (hasMoreData) {
+                        const response = await serviciosService.getPresupuestoPorMesesYAnio(
+                            String(year),
+                            centrosStr,
+                            mesesStr,
+                            page,
+                            ROWS_PER_PAGE
+                        );
+
+                        const presupuestoItems = response.data || [];
+                        if (presupuestoItems && presupuestoItems.length > 0) {
+                            presupuestoItems.forEach((item: any) => {
+                                const sector = item.Sector || 'Sin Sector';
+                                const unidades = parseFloat(String(item.UnidadesProyectado)) || 0;
+                                if (unidades > 0) {
+                                    sectorTotals.set(sector, (sectorTotals.get(sector) || 0) + unidades);
+                                }
+                            });
+                            
+                            const mappedData: SalesDataRow[] = presupuestoItems.map((item: any, index: number) => ({
+                                id: `row-${item.Año}-${item.Mes}-${item.Centro}-${page}-${index}`,
+                                año: item.Año, 
+                                mes: item.Mes, 
+                                sector: item.Sector || 'Sin Sector',
+                                etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                                código: normalizeMaterialCode(item.CodMaterial),
+                                centro: String(item.Centro).trim(), 
+                                unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
+                                dolaresProyectado: 0,
+                                descripciónMaterial: item.Material,
+                                familia: item.Familia, 
+                                marca: item.Marca, 
+                                lineaProduccion: item.LineaProduccion || '',
+                            }));
+                            allData = [...allData, ...mappedData];
+                            
+                            // Si recibimos menos registros que el límite, significa que es la última página
+                            if (presupuestoItems.length < ROWS_PER_PAGE) {
+                                hasMoreData = false;
+                            } else {
+                                page++;
+                            }
+                        } else {
+                            hasMoreData = false;
+                        }
                     }
                 } catch (e) {
-                    console.error(`Fallo en consulta para ${year}-${month}`, e);
-                    addNotification('error', `Fallo la consulta para ${MONTH_NAMES[month-1]} ${year}. Continuando...`);
+                    console.error(`Fallo en consulta para ${year}`, e);
+                    addNotification('error', `Fallo la consulta para el año ${year}. Continuando...`);
                 }
             }
         }
