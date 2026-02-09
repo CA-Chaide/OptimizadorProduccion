@@ -47,6 +47,7 @@ export enum ActiveView {
   PARAMETROS_GRUPO = 'PARAMETROS_GRUPO',
   PARAMETROS_CONEXIONES = 'PARAMETROS_CONEXIONES',
   CONFIGURACIONES_CALENDARIO_AREA = 'CONFIGURACIONES_CALENDARIO_AREA',
+  CONFIGURACIONES_GRUPO_OPERADORES = 'CONFIGURACIONES_GRUPO_OPERADORES',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -123,6 +124,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.PARAMETROS_GRUPO, label: 'Grupos', icon: <PersonnelIcon />, href: '/dashboard/parametros/grupos' },
   { id: ActiveView.PARAMETROS_CONEXIONES, label: 'Conexiones', icon: <ConnectionsIcon />, href: '/dashboard/parametros/conexiones' },
   { id: ActiveView.CONFIGURACIONES_CALENDARIO_AREA, label: 'Calendario - Área', icon: <CalendarIcon />, href: '/dashboard/configuraciones/calendario-area' },
+  { id: ActiveView.CONFIGURACIONES_GRUPO_OPERADORES, label: 'Grupo - Operadores', icon: <PersonnelIcon />, href: '/dashboard/configuraciones/grupo-operadores' },
 ];
 
 // Items que van dentro de la sección "Opciones" (contraíble)
@@ -155,6 +157,7 @@ export const PARAMETROS_ITEMS: ActiveView[] = [
 // Items que van dentro de la sección "Configuraciones" (contraíble)
 export const CONFIGURACIONES_ITEMS: ActiveView[] = [
   ActiveView.CONFIGURACIONES_CALENDARIO_AREA,
+  ActiveView.CONFIGURACIONES_GRUPO_OPERADORES,
 ];
 
 export const viewConfig: Record<ActiveView, { title: string; icon: JSX.Element; href: string }> = 

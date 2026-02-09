@@ -1,3 +1,16 @@
+export interface User {
+  codigo_usuario: number;
+  usuario: string;
+  correo_usuario: string;
+  condicion: string;
+}
+export interface Auth {
+  message: string;
+  token: string;
+  expiresIn: string;
+  user:User;
+  perfiles: any;
+}
 export interface Ausentismo {
     codigo_ausentismo: number;
     codigo_tipo_ausentismo: number;
@@ -149,7 +162,7 @@ export interface Restriccion {
     codigo_grupo: number;
     nombre_restriccion: string;
     valor_restriccion: string;
-    decripcion: string;
+    descripcion: string;
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;

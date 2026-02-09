@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import GrupoForm from './components/form';
 import GrupoTable from './components/table';
+import RestriccionesModal from './components/restricciones-modal';
+import RelacionesModal from './components/relaciones-modal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Grupo } from '@/types/interfaces';
 import { grupoService } from '@/services/grupo.service';
@@ -11,8 +13,12 @@ import { grupoService } from '@/services/grupo.service';
 export default function GruposPage() {
   const [records, setRecords] = useState<Grupo[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<Grupo | null>(null);
+  const [selectedGrupoParaRestricciones, setSelectedGrupoParaRestricciones] = useState<Grupo | null>(null);
+  const [selectedGrupoParaRelaciones, setSelectedGrupoParaRelaciones] = useState<Grupo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isRestriccionesModalOpen, setIsRestriccionesModalOpen] = useState(false);
+  const [isRelacionesModalOpen, setIsRelacionesModalOpen] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const { toast } = useToast();
 
@@ -36,12 +42,20 @@ export default function GruposPage() {
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
   const handleEdit = (record: Grupo) => { setSelectedRecord(record); setIsFormOpen(true); };
   const handleAddNew = () => { setSelectedRecord(null); setIsFormOpen(true); };
+  const handleManageRestricciones = (record: Grupo) => {
+    setSelectedGrupoParaRestricciones(record);
+    setIsRestriccionesModalOpen(true);
+  };
+  const handleManageRelaciones = (record: Grupo) => {
+    setSelectedGrupoParaRelaciones(record);
+    setIsRelacionesModalOpen(true);
+  };
 
   // handle deletion triggered from table
   useEffect(() => {
     const onChanged = () => fetchRecords();
-    window.addEventListener('records-changed', onChanged as EventListener);
-    return () => window.removeEventListener('records-changed', onChanged as EventListener);
+    globalThis.window?.addEventListener('records-changed', onChanged as EventListener);
+    return () => globalThis.window?.removeEventListener('records-changed', onChanged as EventListener);
   }, [fetchRecords]);
   const handleSuccess = () => { fetchRecords(); setIsFormOpen(false); setSelectedRecord(null); };
   const handleCancel = () => { if (records.length > 0) { setIsFormOpen(false); setSelectedRecord(null); } };
@@ -66,8 +80,33 @@ export default function GruposPage() {
       {isFormOpen ? (
         <GrupoForm record={selectedRecord} onSuccess={handleSuccess} onCancel={handleCancel} />
       ) : showTable ? (
-        <GrupoTable records={records} isLoading={isLoading} onEdit={handleEdit} onAddNew={handleAddNew} />
+        <GrupoTable 
+          records={records} 
+          isLoading={isLoading} 
+          onEdit={handleEdit} 
+          onAddNew={handleAddNew}
+          onManageRestricciones={handleManageRestricciones}
+          onManageRelaciones={handleManageRelaciones}
+        />
       ) : null}
+
+      <RestriccionesModal
+        grupo={selectedGrupoParaRestricciones}
+        isOpen={isRestriccionesModalOpen}
+        onClose={() => {
+          setIsRestriccionesModalOpen(false);
+          setSelectedGrupoParaRestricciones(null);
+        }}
+      />
+
+      <RelacionesModal
+        grupo={selectedGrupoParaRelaciones}
+        isOpen={isRelacionesModalOpen}
+        onClose={() => {
+          setIsRelacionesModalOpen(false);
+          setSelectedGrupoParaRelaciones(null);
+        }}
+      />
     </div>
   );
 }
