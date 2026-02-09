@@ -5,15 +5,17 @@ import { useToast } from '@/hooks/use-toast';
 import CalendarioForm from './components/form';
 import CalendarGeneral from './components/calendar-general';
 import CalendarView from './components/calendar-view';
-import { Calendario, DetalleCalendario } from '@/types/interfaces';
+import { Calendario, DetalleCalendario, Restriccion } from '@/types/interfaces';
 import { calendarioService } from '@/services/calendario.service';
 import { detalleCalendarioService } from '@/services/detallecalendario.service';
+import { restriccionService } from '@/services/restriccion.service';
 
 type ViewMode = 'calendar' | 'form' | 'detail-calendar';
 
 export default function CalendarioAreaPage() {
   const [records, setRecords] = useState<Calendario[]>([]);
   const [allDetalles, setAllDetalles] = useState<DetalleCalendario[]>([]);
+  const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<Calendario | null>(null);
   const [selectedDetalles, setSelectedDetalles] = useState<DetalleCalendario[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -23,12 +25,14 @@ export default function CalendarioAreaPage() {
   const fetchAll = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [calRes, detRes] = await Promise.all([
+      const [calRes, detRes, restRes] = await Promise.all([
         calendarioService.getAll(),
         detalleCalendarioService.getAll(),
+        restriccionService.getAll(),
       ]);
       setRecords(calRes.data || []);
       setAllDetalles(detRes.data || []);
+      setRestricciones(restRes.data || []);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error al cargar datos';
       toast({ title: 'Error', description: errorMessage, variant: 'destructive' });
@@ -100,6 +104,7 @@ export default function CalendarioAreaPage() {
         <CalendarGeneral
           calendarios={records}
           allDetalles={allDetalles}
+          restricciones={restricciones}
           onAddNew={handleAddNew}
           onEditCalendario={handleEditCalendario}
           onManageDetalles={handleManageDetalles}

@@ -2,11 +2,12 @@
 
 import { useState, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Settings, Calendar } from 'lucide-react';
-import { Calendario, DetalleCalendario } from '@/types/interfaces';
+import { Calendario, DetalleCalendario, Restriccion } from '@/types/interfaces';
 
 interface CalendarGeneralProps {
   readonly calendarios: Calendario[];
   readonly allDetalles: DetalleCalendario[];
+  readonly restricciones: Restriccion[];
   readonly onAddNew: () => void;
   readonly onEditCalendario: (cal: Calendario) => void;
   readonly onManageDetalles: (cal: Calendario) => void;
@@ -44,6 +45,9 @@ interface TooltipData {
     centro: string;
     turnoName: string;
     jornada: string;
+    horaInicio: string;
+    horaFin: string;
+    maxExtras: string;
     details: { nombre: string; tipo: string }[];
     color: { bg: string; text: string; dot: string };
   }[];
@@ -53,6 +57,7 @@ interface TooltipData {
 export default function CalendarGeneral({
   calendarios,
   allDetalles,
+  restricciones,
   onAddNew,
   onEditCalendario,
   onManageDetalles,
@@ -69,6 +74,35 @@ export default function CalendarGeneral({
     if (jornada === 'Jornada Reducida') return 'text-yellow-600';
     if (jornada === 'Sin Trabajo') return 'text-gray-400';
     return 'text-green-600';
+  };
+
+  // Calcular hora final basada en restricciones
+  const calcularHoraFinal = (horaInicioStr: string, horasTrabajo: number): string => {
+    if (!horaInicioStr) return '';
+
+    const [horas, minutos] = horaInicioStr.split(':').map(Number);
+    const horaInicial = new Date();
+    horaInicial.setHours(horas, minutos, 0);
+
+    const horaFinal = new Date(horaInicial.getTime() + horasTrabajo * 60 * 60 * 1000);
+
+    const h = String(horaFinal.getHours()).padStart(2, '0');
+    const m = String(horaFinal.getMinutes()).padStart(2, '0');
+
+    return `${h}:${m}`;
+  };
+
+  // Obtener restricciones de un grupo
+  const getGroupRestrictions = (codigoGrupo: number) => {
+    const groupRestrictions = restricciones.filter(r => r.codigo_grupo === codigoGrupo);
+
+    const horasTrabajo = groupRestrictions.find(r => r.nombre_restriccion === 'HORAS_TRABAJO');
+    const maxExtras = groupRestrictions.find(r => r.nombre_restriccion === 'MAX_EXTRAS_HORAS');
+
+    return {
+      horasTrabajo: horasTrabajo ? Number(horasTrabajo.valor_restriccion) : 0,
+      maxExtras: maxExtras ? maxExtras.valor_restriccion : '0',
+    };
   };
 
   const monthDays = getDaysInMonth(currentDate);
@@ -205,11 +239,19 @@ export default function CalendarGeneral({
         }
       }
 
+      // Get restrictions for this group
+      const groupRestrictions = getGroupRestrictions(cal.codigo_grupo);
+      const horaInicio = cal.hora_inicio || '00:00';
+      const horaFin = calcularHoraFinal(horaInicio, groupRestrictions.horasTrabajo);
+
       return {
         groupName: cal.grupo?.nombre_grupo || `Grupo ${cal.codigo_grupo}`,
         centro: cal.grupo?.centro || 'Sin centro',
         turnoName: cal.turno?.nombre_turno || 'Sin turno',
         jornada: groupJornada,
+        horaInicio,
+        horaFin,
+        maxExtras: groupRestrictions.maxExtras,
         details: nonFeriadoDetails,
         color: getGroupColor(cal.codigo_grupo),
       };
@@ -288,6 +330,9 @@ export default function CalendarGeneral({
           <div className="overflow-y-auto max-h-[700px]">
             {calendarios.map(cal => {
               const color = getGroupColor(cal.codigo_grupo);
+              const groupRestrictions = getGroupRestrictions(cal.codigo_grupo);
+              const horaInicio = cal.hora_inicio || '00:00';
+              const horaFin = calcularHoraFinal(horaInicio, groupRestrictions.horasTrabajo);
               return (
                 <div
                   key={cal.codigo_calendario}
@@ -297,6 +342,7 @@ export default function CalendarGeneral({
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-gray-900 truncate">{cal.grupo?.nombre_grupo || 'Sin grupo'}</div>
                     <div className="text-xs text-gray-500 truncate">Centro: {cal.grupo?.centro || '-'} · {cal.turno?.nombre_turno || 'Sin turno'}</div>
+                    <div className="text-xs font-medium text-blue-600 mt-1">{horaInicio} → {horaFin} {groupRestrictions.maxExtras !== '0' && `+ ${groupRestrictions.maxExtras} hrs`}</div>
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition">
                     <button
@@ -513,6 +559,9 @@ export default function CalendarGeneral({
                         </div>
                         <div className="text-xs text-gray-600 ml-5 mt-0.5">
                           Turno: {g.turnoName} · <span className="font-semibold">{g.jornada}</span>
+                        </div>
+                        <div className="text-xs font-medium text-blue-700 ml-5 mt-1">
+                          {g.horaInicio} → {g.horaFin} {g.maxExtras !== '0' && `+ ${g.maxExtras} horas extras`}
                         </div>
                         {g.details.length > 0 && (
                           <div className="mt-1.5 ml-5 space-y-0.5">
