@@ -32,6 +32,7 @@ export interface Calendario {
     codigo_turno: number;
     codigo_grupo: number;
     nombre_calendario: string;
+    hora_inicio: string;
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;
@@ -125,6 +126,7 @@ export interface Linea {
 export interface Operador {
     codigo_operador: number;
     codigo_grupo: number;
+    codigo_calendario?: number;
     identificador_operador: string;
     estado: string;
     fecha_creacion: Date;

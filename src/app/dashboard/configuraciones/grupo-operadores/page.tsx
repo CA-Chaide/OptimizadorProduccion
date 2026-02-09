@@ -5,15 +5,19 @@ import { useToast } from '@/hooks/use-toast';
 import GrupoOperadorForm from './components/form';
 import GrupoOperadorTable from './components/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Operador, Grupo } from '@/types/interfaces';
+import type { Operador, Grupo, Calendario, Restriccion } from '@/types/interfaces';
 import { operadorService } from '@/services/operador.service';
 import { grupoService } from '@/services/grupo.service';
 import { authService } from '@/services/auth.service';
+import { calendarioService } from '@/services/calendario.service';
+import { restriccionService } from '@/services/restriccion.service';
 
 export default function GrupoOperadoresPage() {
   const [records, setRecords] = useState<Operador[]>([]);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [usuarios, setUsuarios] = useState<any[]>([]);
+  const [calendarios, setCalendarios] = useState<Calendario[]>([]);
+  const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<Operador | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -35,6 +39,14 @@ export default function GrupoOperadoresPage() {
       // Fetch usuarios
       const usuariosResponse = await authService.getUsersInfo();
       setUsuarios(usuariosResponse.data || []);
+
+      // Fetch calendarios
+      const calendariosResponse = await calendarioService.getAll();
+      setCalendarios(calendariosResponse.data || []);
+
+      // Fetch restricciones
+      const restriccionesResponse = await restriccionService.getAll();
+      setRestricciones(restriccionesResponse.data || []);
 
       if (data.length === 0) setIsFormOpen(true);
     } catch (error) {
@@ -111,6 +123,8 @@ export default function GrupoOperadoresPage() {
           record={selectedRecord}
           grupos={grupos}
           usuarios={usuarios}
+          calendarios={calendarios}
+          restricciones={restricciones}
           onSuccess={handleSuccess}
           onCancel={handleCancel}
         />

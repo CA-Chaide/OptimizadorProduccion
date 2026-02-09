@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { operadorService } from '@/services/operador.service';
-import type { Operador, Grupo } from '@/types/interfaces';
+import type { Operador, Grupo, Calendario, Restriccion } from '@/types/interfaces';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,12 +16,15 @@ interface GrupoOperadorFormProps {
   record: Operador | null;
   grupos: Grupo[];
   usuarios: any[];
+  calendarios: Calendario[];
+  restricciones: Restriccion[];
   onSuccess: () => void;
   onCancel: () => void;
 }
 
 const formSchema = z.object({
   codigo_grupo: z.string().min(1, 'El grupo es requerido.'),
+  codigo_calendario: z.string().optional(),
   identificador_operador: z.string().min(1, 'El operador es requerido.'),
   estado: z.string().min(1, 'El estado es requerido.'),
 });
@@ -88,6 +91,8 @@ export default function GrupoOperadorForm({
   record,
   grupos,
   usuarios,
+  calendarios,
+  restricciones,
   onSuccess,
   onCancel,
 }: Readonly<GrupoOperadorFormProps>) {
@@ -105,12 +110,62 @@ export default function GrupoOperadorForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       codigo_grupo: record?.codigo_grupo.toString() || '',
+      codigo_calendario: record?.codigo_calendario?.toString() || '',
       identificador_operador: record?.identificador_operador || '',
       estado: record?.estado || 'A',
     },
   });
 
   const operadoresAgrupados = agruparOperadores(usuarios);
+
+  // Obtener restricciones del grupo seleccionado
+  const getGroupRestrictions = (codigoGrupo: string) => {
+    const groupCode = Number(codigoGrupo);
+    const groupRestrictions = restricciones.filter(r => r.codigo_grupo === groupCode);
+    
+    const horasTrabajo = groupRestrictions.find(r => r.nombre_restriccion === 'HORAS_TRABAJO');
+    const maxExtras = groupRestrictions.find(r => r.nombre_restriccion === 'MAX_EXTRAS_HORAS');
+    
+
+    console.log('Restricciones para grupo', codigoGrupo, { horasTrabajo, maxExtras });
+
+    return {
+      horasTrabajo: horasTrabajo ? Number(horasTrabajo.valor_restriccion) : 0,
+      maxExtras: maxExtras ? maxExtras.valor_restriccion : '0',
+    };
+  };
+
+  // Calcular hora final
+  const calcularHoraFinal = (horaInicioStr: string, horasTrabajo: number): string => {
+    if (!horaInicioStr) return '';
+    
+    const [horas, minutos] = horaInicioStr.split(':').map(Number);
+    const horaInicial = new Date();
+    horaInicial.setHours(horas, minutos, 0);
+    
+    const horaFinal = new Date(horaInicial.getTime() + horasTrabajo * 60 * 60 * 1000);
+    
+    const h = String(horaFinal.getHours()).padStart(2, '0');
+    const m = String(horaFinal.getMinutes()).padStart(2, '0');
+    
+    return `${h}:${m}`;
+  };
+
+  const codigoGrupoSeleccionado = form.watch('codigo_grupo');
+  const codigoCalendarioSeleccionado = form.watch('codigo_calendario');
+  
+  // Solo obtener restricciones si hay un grupo seleccionado
+  const restrictions = codigoGrupoSeleccionado && codigoGrupoSeleccionado !== '' 
+    ? getGroupRestrictions(codigoGrupoSeleccionado)
+    : { horasTrabajo: 0, maxExtras: '0' };
+  
+  const calendarioSeleccionado = calendarios.find(
+    c => c.codigo_calendario === Number(codigoCalendarioSeleccionado)
+  );
+  
+  const horaFinal = calendarioSeleccionado?.hora_inicio 
+    ? calcularHoraFinal(calendarioSeleccionado.hora_inicio, restrictions.horasTrabajo)
+    : '';
 
   const toggleOperador = (codigo: string) => {
     setSelectedOperadores((prev) =>
@@ -154,6 +209,11 @@ export default function GrupoOperadorForm({
           fecha_creacion: timestamp,
         };
 
+        // Agregar calendario si está seleccionado
+        if (values.codigo_calendario) {
+          data.codigo_calendario = Number(values.codigo_calendario);
+        }
+
         if (record) {
           data.codigo_operador = record.codigo_operador;
           // Si estamos editando, solo actualizamos el primero
@@ -185,26 +245,56 @@ export default function GrupoOperadorForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="codigo_grupo" className="block text-sm font-medium text-gray-700">
-              Grupo <span className="text-red-500">*</span>
-            </label>
-            <select
-              id="codigo_grupo"
-              {...form.register('codigo_grupo')}
-              className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              disabled={isLoading || !!record}
-            >
-              <option value="">Seleccionar grupo...</option>
-              {grupos.map((g) => (
-                <option key={g.codigo_grupo} value={g.codigo_grupo}>
-                  {g.nombre_grupo} - {g.centro}
-                </option>
-              ))}
-            </select>
-            {form.formState.errors.codigo_grupo && (
-              <p className="text-sm text-red-600">{form.formState.errors.codigo_grupo.message}</p>
-            )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="codigo_grupo" className="block text-sm font-medium text-gray-700">
+                Grupo <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="codigo_grupo"
+                {...form.register('codigo_grupo')}
+                className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                disabled={isLoading || !!record}
+              >
+                <option value="">Seleccionar grupo...</option>
+                {grupos.map((g) => (
+                  <option key={g.codigo_grupo} value={g.codigo_grupo}>
+                    {g.nombre_grupo} - {g.centro}
+                  </option>
+                ))}
+              </select>
+              {form.formState.errors.codigo_grupo && (
+                <p className="text-sm text-red-600">{form.formState.errors.codigo_grupo.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="codigo_calendario" className="block text-sm font-medium text-gray-700">
+                Horario <span className="text-gray-500">(Opcional)</span>
+              </label>
+              <select
+                id="codigo_calendario"
+                {...form.register('codigo_calendario')}
+                className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                disabled={isLoading || !codigoGrupoSeleccionado || codigoGrupoSeleccionado === ''}
+              >
+                <option value="">Seleccionar horario...</option>
+                {calendarios.map((c) => {
+                  const horaFinalCalc = calcularHoraFinal(c.hora_inicio, restrictions.horasTrabajo);
+                  return (
+                    <option key={c.codigo_calendario} value={c.codigo_calendario}>
+                      {c.nombre_calendario} - {c.hora_inicio} → {horaFinalCalc} + {restrictions.maxExtras} horas extras
+                    </option>
+                  );
+                })}
+              </select>
+              {(!codigoGrupoSeleccionado || codigoGrupoSeleccionado === '') && (
+                <p className="text-sm text-gray-500 italic">Selecciona un grupo primero para ver los horarios disponibles</p>
+              )}
+              {form.formState.errors.codigo_calendario && (
+                <p className="text-sm text-red-600">{form.formState.errors.codigo_calendario.message}</p>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -251,13 +341,13 @@ export default function GrupoOperadorForm({
                     })()}
 
                     {expandedDepts.has(grupo.departamento) && (
-                      <div className="ml-6 space-y-2 mt-2">
+                      <div className="ml-6 space-y-2 mt-2 relative pb-2">
                         {grupo.operadores.map((op) => (
                           <label
                             key={op.CODIGO}
                             className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${
                               selectedOperadores.includes(op.CODIGO)
-                                ? 'bg-blue-50'
+                                ? 'bg-green-100 border-l-4 border-green-500'
                                 : 'hover:bg-gray-50'
                             }`}
                           >
@@ -267,18 +357,23 @@ export default function GrupoOperadorForm({
                               disabled={isLoading || !!record}
                               className={`${
                                 selectedOperadores.includes(op.CODIGO)
-                                  ? 'border-[#0055b8] data-[state=checked]:bg-[#0055b8]'
+                                  ? 'border-green-500 data-[state=checked]:bg-green-500'
                                   : ''
                               }`}
                             />
                             <div className="flex-1">
-                              <div className="text-sm font-medium text-gray-900">{op.NOMBRE}</div>
-                              <div className="text-xs text-gray-500">
+                              <div className={`text-sm font-medium ${selectedOperadores.includes(op.CODIGO) ? 'text-green-700' : 'text-gray-900'}`}>{op.NOMBRE}</div>
+                              <div className={`text-xs ${selectedOperadores.includes(op.CODIGO) ? 'text-green-600' : 'text-gray-500'}`}>
                                 {op.CODIGO} • {op.CARGO}
                               </div>
                             </div>
                           </label>
                         ))}
+                        {grupo.operadores.some((op) => selectedOperadores.includes(op.CODIGO)) && (
+                          <div className="flex justify-center pt-1">
+                            <div className="w-2 h-2 rounded-full bg-green-400 opacity-50"></div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -286,7 +381,14 @@ export default function GrupoOperadorForm({
               )}
             </div>
             {selectedOperadores.length > 0 && (
-              <p className="text-xs text-gray-600">{selectedOperadores.length} operador(es) seleccionado(s)</p>
+              <div className="text-xs text-gray-600 mt-2">
+                <span className="font-semibold">Seleccionados: </span>
+                {operadoresAgrupados
+                  .flatMap((grupo) => grupo.operadores)
+                  .filter((op) => selectedOperadores.includes(op.CODIGO))
+                  .map((op) => op.NOMBRE)
+                  .join(', ')}
+              </div>
             )}
             {form.formState.errors.identificador_operador && (
               <p className="text-sm text-red-600">{form.formState.errors.identificador_operador.message}</p>
