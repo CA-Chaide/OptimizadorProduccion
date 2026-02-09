@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Calendario, Grupo, Turno, DetalleCalendario, TipoDetalle } from '@/types/interfaces';
 import { calendarioService } from '@/services/calendario.service';
 import { grupoService } from '@/services/grupo.service';
@@ -10,7 +11,8 @@ import { turnoService } from '@/services/turno.service';
 import { detalleCalendarioService } from '@/services/detallecalendario.service';
 import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
 import { tipoDetalleService } from '@/services/tipodetalle.service';
-import CalendarPreview from './calendar-preview';
+import DetallesModal from './detalles-modal';
+import { Settings } from 'lucide-react';
 
 interface CalendarioFormProps {
   record: Calendario | null;
@@ -24,6 +26,7 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
     nombre_calendario: record?.nombre_calendario || '',
     codigo_grupo: record?.codigo_grupo,
     codigo_turno: record?.codigo_turno,
+    hora_inicio: record?.hora_inicio || '',
     estado: record?.estado || 'A',
   });
 
@@ -32,6 +35,7 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [showHolidayImport, setShowHolidayImport] = useState(false);
+  const [showDetallesModal, setShowDetallesModal] = useState(false);
   const [previewDetalles, setPreviewDetalles] = useState<DetalleCalendario[]>([]);
   const [holidaysToImport, setHolidaysToImport] = useState<any[]>([]);
   const [codigoTipoFeriado, setCodigoTipoFeriado] = useState<number | null>(null);
@@ -72,6 +76,40 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
 
     loadOptions();
   }, [toast]);
+
+  // Auto-cargar feriados cuando se selecciona grupo y turno
+  useEffect(() => {
+    const autoLoadHolidays = async () => {
+      if (!formData.codigo_grupo || !codigoTipoFeriado) return;
+
+      try {
+        const year = new Date().getFullYear();
+        const holidays = await ecuadorHolidaysService.getHolidaysForYear(year);
+        
+        // Crear detalles de calendario para el preview
+        const newDetalles: DetalleCalendario[] = holidays.map((holiday: any, idx: number) => ({
+          codigo_detalle: -(idx + 1),
+          codigo_calendario: formData.codigo_calendario || 0,
+          nombre_detalle: holiday.name,
+          fecha_real: new Date(holiday.date),
+          fecha_inicio: new Date(holiday.date),
+          fecha_fin: new Date(holiday.date),
+          estado: 'A',
+          codigo_tipo_detalle: codigoTipoFeriado,
+          nombre_tipo_detalle: 'Feriados',
+          usuario_modificacion: 'admin',
+          fecha_modificacion: new Date(),
+        }));
+        
+        setHolidaysToImport(holidays);
+        setPreviewDetalles(newDetalles);
+      } catch (error) {
+        console.error('Error cargando feriados:', error);
+      }
+    };
+
+    autoLoadHolidays();
+  }, [formData.codigo_grupo, codigoTipoFeriado]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -127,60 +165,53 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
     }
   };
 
-  const handleImportHolidays = async () => {
-    if (!formData.codigo_grupo) {
-      toast({ title: 'Advertencia', description: 'Selecciona un grupo primero', variant: 'destructive' });
-      return;
-    }
+  // Auto-cargar feriados cuando se selecciona grupo y tipo feriado
+  // Auto-cargar feriados SOLO para calendarios nuevos
+  useEffect(() => {
+    // Solo cargar si es un nuevo calendario (sin codigo_calendario) y se seleccionó grupo
+    if (formData.codigo_calendario || !formData.codigo_grupo || !codigoTipoFeriado) return;
 
-    setIsLoading(true);
-    try {
-      const year = new Date().getFullYear();
-      const holidays = await ecuadorHolidaysService.getHolidaysForYear(year);
-      
-      console.log(`📥 Se obtuvieron ${holidays.length} feriados de la API`);
-      
-      if (!codigoTipoFeriado) {
-        throw new Error('No se encontró el tipo de detalle "Feriado" en la base de datos');
-      }
-      
-      // Obtener el tipo de detalle para mostrarlo
-      const tipoFeriado = tipoDetalles.find(t => t.codigo_tipo_detalle === codigoTipoFeriado);
-      
-      // Crear detalles de calendario para el preview
-      const newDetalles: DetalleCalendario[] = holidays.map((holiday: any, idx: number) => ({
-        codigo_detalle: -(idx + 1),
-        codigo_calendario: formData.codigo_calendario || 0,
-        nombre_detalle: holiday.name,
-        fecha_real: new Date(holiday.date),
-        fecha_inicio: new Date(holiday.date),
-        fecha_fin: new Date(holiday.date),
-        estado: 'A',
-        codigo_tipo_detalle: codigoTipoFeriado,
-        tipo_detalle: tipoFeriado || {
-          codigo_tipo_detalle: codigoTipoFeriado,
-          nombre_tipo_detalle: 'Feriados',
+    const loadHolidaysAutomatically = async () => {
+      setIsLoading(true);
+      try {
+        const year = new Date().getFullYear();
+        const holidays = await ecuadorHolidaysService.getHolidaysForYear(year);
+        
+        console.log(`📥 Se obtuvieron ${holidays.length} feriados de la API para nuevo calendario`);
+        
+        // Crear detalles de calendario para el preview
+        const newDetalles: DetalleCalendario[] = holidays.map((holiday: any, idx: number) => ({
+          codigo_detalle: -(idx + 1),
+          codigo_calendario: 0,
+          nombre_detalle: holiday.name,
+          fecha_real: new Date(holiday.date),
+          fecha_inicio: new Date(holiday.date),
+          fecha_fin: new Date(holiday.date),
           estado: 'A',
-        },
-      }));
-      
-      // Guardar el array de feriados para crear después
-      setHolidaysToImport(holidays);
-      setPreviewDetalles(newDetalles);
-      
-      toast({ 
-        title: 'Éxito', 
-        description: `${holidays.length} feriados de Ecuador cargados. Se guardarán cuando crees el calendario.` 
-      });
-      setShowHolidayImport(false);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar feriados';
-      console.error('Error importando feriados:', error);
-      toast({ title: 'Error', description: errorMessage, variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+          codigo_tipo_detalle: codigoTipoFeriado,
+          usuario_modificacion: 'admin',
+          fecha_modificacion: new Date(),
+        }));
+        
+        // Guardar el array de feriados para crear después
+        setHolidaysToImport(holidays);
+        setPreviewDetalles(newDetalles);
+        
+        toast({ 
+          title: 'Éxito', 
+          description: `${holidays.length} feriados de Ecuador cargados automáticamente.` 
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Error al importar feriados';
+        console.error('Error importando feriados:', error);
+        toast({ title: 'Error', description: errorMessage, variant: 'destructive' });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadHolidaysAutomatically();
+  }, [formData.codigo_grupo, codigoTipoFeriado, formData.codigo_calendario, tipoDetalles, toast]);
 
   const createHolidayDetails = async (codigoCalendario: number) => {
     if (holidaysToImport.length === 0) {
@@ -188,7 +219,22 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
       return;
     }
 
-    console.log(`\n🎯 Iniciando creación de ${holidaysToImport.length} detalles de feriados para calendario ${codigoCalendario}\n`);
+    // Filtrar solo feriados que aún no han pasado
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const futureFeriados = holidaysToImport.filter((holiday: any) => {
+      const holidayDate = new Date(holiday.date);
+      holidayDate.setHours(0, 0, 0, 0);
+      return holidayDate >= today;
+    });
+
+    if (futureFeriados.length === 0) {
+      console.log('ℹ️ No hay feriados futuros para importar');
+      return;
+    }
+
+    console.log(`\n🎯 Iniciando creación de ${futureFeriados.length} detalles de feriados futuros para calendario ${codigoCalendario}\n`);
 
     try {
       if (!codigoTipoFeriado) {
@@ -196,7 +242,7 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
       }
       
       // Preparar array de detalles
-      const detallesACrear: DetalleCalendario[] = holidaysToImport.map((holiday: any) => ({
+      const detallesACrear: DetalleCalendario[] = futureFeriados.map((holiday: any) => ({
         codigo_detalle: 0,
         codigo_calendario: codigoCalendario,
         nombre_detalle: holiday.name,
@@ -358,6 +404,56 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
               </select>
             </div>
 
+            {/* Hora Inicio */}
+            <div className="space-y-2">
+              <label htmlFor="hora_inicio_hour" className="block text-sm font-medium text-gray-700">
+                Hora de Inicio <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-2">
+                <select
+                  id="hora_inicio_hour"
+                  name="hora_inicio_hour"
+                  value={formData.hora_inicio ? formData.hora_inicio.split(':')[0] : '00'}
+                  onChange={(e) => {
+                    const hour = e.target.value;
+                    const minute = formData.hora_inicio ? formData.hora_inicio.split(':')[1] : '00';
+                    setFormData(prev => ({
+                      ...prev,
+                      hora_inicio: `${hour}:${minute}`
+                    }));
+                  }}
+                  className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  required
+                >
+                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(hour => (
+                    <option key={hour} value={hour}>{hour}</option>
+                  ))}
+                </select>
+                <span className="flex items-center text-gray-700 font-semibold">:</span>
+                <select
+                  name="hora_inicio_minute"
+                  value={formData.hora_inicio ? formData.hora_inicio.split(':')[1] : '00'}
+                  onChange={(e) => {
+                    const minute = e.target.value;
+                    const hour = formData.hora_inicio ? formData.hora_inicio.split(':')[0] : '00';
+                    setFormData(prev => ({
+                      ...prev,
+                      hora_inicio: `${hour}:${minute}`
+                    }));
+                  }}
+                  className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  required
+                >
+                  {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(minute => (
+                    <option key={minute} value={minute}>{minute}</option>
+                  ))}
+                </select>
+              </div>
+              {formData.hora_inicio && (
+                <p className="text-sm font-semibold text-green-200">Hora seleccionada: {formData.hora_inicio}</p>
+              )}
+            </div>
+
             {/* Estado */}
             <div className="space-y-2">
               <label htmlFor="estado" className="block text-sm font-medium text-gray-700">
@@ -389,35 +485,36 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
               </button>
             </div>
 
-            {showHolidayImport && (
-              <div className="bg-blue-50 p-4 rounded-md space-y-4 mb-6">
-                <p className="text-sm text-gray-600">
-                  Importa los feriados oficiales de Ecuador para el año en curso. Estos se agregarán a los detalles del calendario.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleImportHolidays}
-                  disabled={isLoading || !formData.codigo_grupo}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isLoading ? 'Importando...' : 'Importar Feriados de Ecuador'}
-                </button>
-                <p className="text-xs text-gray-500">
-                  Los feriados se crearán automáticamente cuando guardes el calendario.
-                </p>
-              </div>
-            )}
-
             {previewDetalles.length > 0 && (
-              <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">
-                  Vista Previa del Calendario ({previewDetalles.length} días cargados)
+              <div className="space-y-3 mb-6">
+                <h4 className="text-sm font-semibold text-gray-700">
+                  Feriados Importados ({previewDetalles.length})
                 </h4>
-                <CalendarPreview 
-                  detalles={previewDetalles}
-                  year={new Date().getFullYear()}
-                  month={new Date().getMonth()}
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto">
+                  {previewDetalles.map((detalle) => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const fechaDetalle = new Date(detalle.fecha_inicio);
+                    fechaDetalle.setHours(0, 0, 0, 0);
+                    const isPast = fechaDetalle < today;
+                    
+                    return (
+                      <div
+                        key={detalle.codigo_detalle}
+                        className={`p-3 border border-gray-300 rounded-md ${
+                          isPast ? 'bg-gray-100 text-gray-500' : 'bg-red-50'
+                        }`}
+                      >
+                        <p className={`text-sm font-semibold ${isPast ? 'text-gray-500' : 'text-gray-900'}`}>
+                          {detalle.nombre_detalle}
+                        </p>
+                        <p className={`text-xs ${isPast ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {new Date(detalle.fecha_inicio).toLocaleDateString('es-ES')}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -431,6 +528,17 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
             >
               {isLoading ? 'Guardando...' : 'Guardar Calendario'}
             </button>
+            {record && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowDetallesModal(true)}
+                disabled={isLoading}
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Gestionar Detalles
+              </Button>
+            )}
             <button
               type="button"
               onClick={onCancel}
@@ -441,6 +549,17 @@ export default function CalendarioForm({ record, onSuccess, onCancel }: Readonly
             </button>
           </div>
         </form>
+
+        <DetallesModal
+          calendario={record}
+          selectedDate={null}
+          jornada=""
+          isOpen={showDetallesModal}
+          onClose={() => setShowDetallesModal(false)}
+          onSuccess={() => {
+            globalThis.dispatchEvent(new Event('records-changed'));
+          }}
+        />
       </CardContent>
     </Card>
   );

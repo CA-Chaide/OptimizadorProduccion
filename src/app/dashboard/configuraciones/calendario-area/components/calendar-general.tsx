@@ -488,8 +488,8 @@ export default function CalendarGeneral({
               {tooltip.feriados.length > 0 && (
                 <div className="mb-3">
                   <div className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-1">🏴 Feriados</div>
-                  {tooltip.feriados.map(f => (
-                    <div key={f.nombre} className="flex items-center gap-2 py-1">
+                  {tooltip.feriados.map((f, idx) => (
+                    <div key={`feriado-${idx}-${f.nombre}`} className="flex items-center gap-2 py-1">
                       <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
                       <span className="text-sm text-gray-800">{f.nombre}</span>
                     </div>
@@ -502,8 +502,8 @@ export default function CalendarGeneral({
                 <div>
                   <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Grupos que trabajan</div>
                   <div className="space-y-2">
-                    {tooltip.groups.map(g => (
-                      <div key={g.groupName} className={`${g.color.bg} rounded-lg p-2.5`}>
+                    {tooltip.groups.map((g, idx) => (
+                      <div key={`group-${idx}-${g.groupName}-${g.centro}`} className={`${g.color.bg} rounded-lg p-2.5`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <div className={`w-2.5 h-2.5 rounded-full ${g.color.dot}`} />

@@ -1,8 +1,9 @@
-"use client";
+'use client';
 
-import { useState, useRef } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import type { Calendario, DetalleCalendario } from '@/types/interfaces';
+import DetallesModal from './detalles-modal';
 
 interface CalendarViewProps {
   readonly calendario: Calendario;
@@ -21,7 +22,30 @@ interface TooltipData {
 export default function CalendarView({ calendario, detalles }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+  const [showDetallesModal, setShowDetallesModal] = useState(false);
+  const [selectedDayDate, setSelectedDayDate] = useState<Date | null>(null);
+  const [selectedDayJornada, setSelectedDayJornada] = useState('');
   const calendarRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar tooltip al hacer click fuera o presionar Escape
+  const handleGlobalClick = useCallback((e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('.tooltip-container') || target.closest('.day-cell')) return;
+    setTooltip(null);
+  }, []);
+
+  const handleEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') setTooltip(null);
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('mousedown', handleGlobalClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [handleGlobalClick, handleEscape]);
 
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
@@ -55,7 +79,7 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
     );
   };
 
-  const handleDayHover = (day: number, event: React.MouseEvent<HTMLElement>) => {
+  const handleDayClick = (day: number, event: React.MouseEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const parentRect = calendarRef.current?.getBoundingClientRect();
     if (!parentRect) return;
@@ -111,8 +135,6 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
       feriados: uniqueFeriados,
     });
   };
-
-  const handleDayLeave = () => setTooltip(null);
 
   const previousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
@@ -229,15 +251,12 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
               <button
                 key={day}
                 type="button"
-                className={`min-h-28 border-r border-b border-gray-200 last:border-r-0 p-1.5 transition-colors relative text-left block w-full
+                className={`day-cell min-h-28 border-r border-b border-gray-200 last:border-r-0 p-1.5 transition-colors relative text-left block w-full
                   ${cellBg}
                   ${isToday ? 'ring-2 ring-[#0055b8] ring-inset' : ''}
                   hover:brightness-95 focus:outline-none focus:brightness-95
                 `}
-                onMouseEnter={(e) => handleDayHover(day, e)}
-                onMouseLeave={handleDayLeave}
-                onFocus={(e) => handleDayHover(day, e as unknown as React.MouseEvent<HTMLElement>)}
-                onBlur={handleDayLeave}
+                onClick={(e) => handleDayClick(day, e)}
               >
                 {/* Day number */}
                 <div className="flex items-center justify-between mb-1">
@@ -278,13 +297,14 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
         </div>
 
         {/* Floating Tooltip */}
-        {tooltip && (tooltip.details.length > 0 || tooltip.feriados.length > 0 || tooltip.jornada !== 'Sin Trabajo') && (
+        {tooltip && (
           <div
-            className="absolute z-50 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 min-w-72 max-w-[380px] pointer-events-none"
+            className="absolute z-50 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 min-w-72 max-w-[380px] tooltip-container"
             style={{
               left: Math.min(Math.max(tooltip.x - 140, 8), (calendarRef.current?.clientWidth ?? 800) - 400),
               top: tooltip.y - 10,
               transform: 'translateY(-100%)',
+              pointerEvents: 'auto',
             }}
           >
             {/* Day header */}
@@ -348,6 +368,25 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
             {tooltip.feriados.length === 0 && tooltip.details.length === 0 && tooltip.jornada === 'Sin Trabajo' && (
               <div className="text-sm text-gray-400 text-center py-2">Sin actividad programada</div>
             )}
+
+            {/* Gestionar Detalles Button */}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  if (tooltip) {
+                    setSelectedDayDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), tooltip.day));
+                    setSelectedDayJornada(tooltip.jornada);
+                  }
+                  setShowDetallesModal(true);
+                  setTooltip(null);
+                }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium rounded-md transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                Gestionar Detalles
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -371,6 +410,17 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
           <span>Domingo (Sin trabajo)</span>
         </div>
       </div>
+
+      <DetallesModal
+        calendario={calendario}
+        selectedDate={selectedDayDate}
+        jornada={selectedDayJornada}
+        isOpen={showDetallesModal}
+        onClose={() => setShowDetallesModal(false)}
+        onSuccess={() => {
+          globalThis.dispatchEvent(new Event('records-changed'));
+        }}
+      />
     </div>
   );
 }

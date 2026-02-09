@@ -118,7 +118,7 @@ export default function GrupoOperadoresPage() {
         </CardContent>
       </Card>
 
-      {isFormOpen ? (
+      {isFormOpen && (
         <GrupoOperadorForm
           record={selectedRecord}
           grupos={grupos}
@@ -128,7 +128,8 @@ export default function GrupoOperadoresPage() {
           onSuccess={handleSuccess}
           onCancel={handleCancel}
         />
-      ) : showTable ? (
+      )}
+      {!isFormOpen && showTable && (
         <GrupoOperadorTable
           records={records}
           isLoading={isLoading}
@@ -137,7 +138,7 @@ export default function GrupoOperadoresPage() {
           getGrupoNombre={getGrupoNombre}
           getUsuarioInfo={getUsuarioInfo}
         />
-      ) : null}
+      )}
     </div>
   );
 }

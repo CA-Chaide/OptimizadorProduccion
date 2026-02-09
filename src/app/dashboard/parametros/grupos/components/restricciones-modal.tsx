@@ -322,11 +322,9 @@ function RestrictionsList({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
-                  <LoadingRow />
-                ) : filteredRestricciones.length === 0 ? (
-                  <EmptyRow />
-                ) : (
+                {isLoading && <LoadingRow />}
+                {!isLoading && filteredRestricciones.length === 0 && <EmptyRow />}
+                {!isLoading && filteredRestricciones.length > 0 && (
                   <RestrictionTableRows
                     restricciones={filteredRestricciones}
                     onEdit={onEdit}

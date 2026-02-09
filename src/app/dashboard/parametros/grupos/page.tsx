@@ -77,9 +77,10 @@ export default function GruposPage() {
         </CardContent>
       </Card>
 
-      {isFormOpen ? (
+      {isFormOpen && (
         <GrupoForm record={selectedRecord} onSuccess={handleSuccess} onCancel={handleCancel} />
-      ) : showTable ? (
+      )}
+      {!isFormOpen && showTable && (
         <GrupoTable 
           records={records} 
           isLoading={isLoading} 
@@ -88,7 +89,7 @@ export default function GruposPage() {
           onManageRestricciones={handleManageRestricciones}
           onManageRelaciones={handleManageRelaciones}
         />
-      ) : null}
+      )}
 
       <RestriccionesModal
         grupo={selectedGrupoParaRestricciones}

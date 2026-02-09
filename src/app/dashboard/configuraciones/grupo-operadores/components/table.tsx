@@ -71,8 +71,8 @@ export default function GrupoOperadorTable({
   if (page > totalPages && totalPages > 0) setPage(totalPages);
 
   const renderSkeleton = () => (
-    new Array(5).fill(null).map((_) => (
-      <TableRow key={`skeleton-${Math.random()}`}>
+    ['sk-1', 'sk-2', 'sk-3', 'sk-4', 'sk-5'].map((key) => (
+      <TableRow key={key}>
         <TableCell><Skeleton className="h-4 w-12" /></TableCell>
         <TableCell><Skeleton className="h-4 w-32" /></TableCell>
         <TableCell><Skeleton className="h-4 w-32" /></TableCell>

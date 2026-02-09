@@ -152,20 +152,11 @@ export default function GrupoOperadorForm({
   };
 
   const codigoGrupoSeleccionado = form.watch('codigo_grupo');
-  const codigoCalendarioSeleccionado = form.watch('codigo_calendario');
   
   // Solo obtener restricciones si hay un grupo seleccionado
   const restrictions = codigoGrupoSeleccionado && codigoGrupoSeleccionado !== '' 
     ? getGroupRestrictions(codigoGrupoSeleccionado)
     : { horasTrabajo: 0, maxExtras: '0' };
-  
-  const calendarioSeleccionado = calendarios.find(
-    c => c.codigo_calendario === Number(codigoCalendarioSeleccionado)
-  );
-  
-  const horaFinal = calendarioSeleccionado?.hora_inicio 
-    ? calcularHoraFinal(calendarioSeleccionado.hora_inicio, restrictions.horasTrabajo)
-    : '';
 
   const toggleOperador = (codigo: string) => {
     setSelectedOperadores((prev) =>
@@ -306,9 +297,9 @@ export default function GrupoOperadorForm({
                 <p className="text-gray-100">No hay operadores disponibles.</p>
               )}
               {operadoresAgrupados.length > 0 && (
-                operadoresAgrupados.map((grupo) => (
+                operadoresAgrupados.map((grupo, idx) => (
                   <div 
-                    key={`${grupo.departamento}-${grupo.grupoDepartamento}`} 
+                    key={`grupo-${idx}-${grupo.departamento}-${grupo.grupoDepartamento}`} 
                     className="mb-4"
                   >
                     {(() => {

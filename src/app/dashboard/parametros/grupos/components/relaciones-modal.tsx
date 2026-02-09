@@ -71,6 +71,12 @@ const formatDateForSQLServer = (date: Date): string => {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
 };
 
+// Helper para evitar ternarios anidados en botones
+function getButtonLabel(isLoading: boolean, isEditing: boolean): string {
+  if (isLoading) return 'Guardando...';
+  return isEditing ? 'Actualizar' : 'Guardar';
+}
+
 export default function RelacionesModal({
   grupo,
   isOpen,
@@ -120,8 +126,8 @@ export default function RelacionesModal({
       // Fetch all estaciones and filter by lineas that belong to grupo
       const estacionesResponse = await estacionService.getAll();
       const allEstaciones = estacionesResponse.data || [];
-      const lineaIds = filteredLineas.map(l => l.codigo_linea);
-      const filteredEstaciones = allEstaciones.filter((e: Estacion) => lineaIds.includes(e.codigo_linea));
+      const lineaIds = new Set(filteredLineas.map(l => l.codigo_linea));
+      const filteredEstaciones = allEstaciones.filter((e: Estacion) => lineaIds.has(e.codigo_linea));
       setEstaciones(filteredEstaciones);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'No se pudieron cargar las relaciones.';
@@ -424,11 +430,9 @@ function LineasList({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
-                  <LoadingRow colSpan={3} />
-                ) : filteredLineas.length === 0 ? (
-                  <EmptyRow colSpan={3} />
-                ) : (
+                {isLoading && <LoadingRow colSpan={3} />}
+                {!isLoading && filteredLineas.length === 0 && <EmptyRow colSpan={3} />}
+                {!isLoading && filteredLineas.length > 0 && (
                   <LineaTableRows
                     lineas={filteredLineas}
                     onEdit={onEdit}
@@ -549,7 +553,7 @@ function LineaForm({
           Cancelar
         </Button>
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? 'Guardando...' : selectedLinea ? 'Actualizar' : 'Guardar'}
+          {getButtonLabel(isLoading, Boolean(selectedLinea))}
         </Button>
       </DialogFooter>
     </form>
@@ -605,11 +609,9 @@ function EstacionesList({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
-                  <LoadingRow colSpan={4} />
-                ) : filteredEstaciones.length === 0 ? (
-                  <EmptyRow colSpan={4} />
-                ) : (
+                {isLoading && <LoadingRow colSpan={4} />}
+                {!isLoading && filteredEstaciones.length === 0 && <EmptyRow colSpan={4} />}
+                {!isLoading && filteredEstaciones.length > 0 && (
                   <EstacionTableRows
                     estaciones={filteredEstaciones}
                     onEdit={onEdit}
@@ -761,14 +763,14 @@ function EstacionForm({
           Cancelar
         </Button>
         <Button type="submit" disabled={isLoading || lineas.length === 0}>
-          {isLoading ? 'Guardando...' : selectedEstacion ? 'Actualizar' : 'Guardar'}
+          {getButtonLabel(isLoading, Boolean(selectedEstacion))}
         </Button>
       </DialogFooter>
     </form>
   );
 }
 
-function LoadingRow({ colSpan }: { colSpan: number }) {
+function LoadingRow({ colSpan }: Readonly<{ colSpan: number }>) {
   return (
     <TableRow>
       <TableCell colSpan={colSpan} className="text-center h-24">
@@ -778,7 +780,7 @@ function LoadingRow({ colSpan }: { colSpan: number }) {
   );
 }
 
-function EmptyRow({ colSpan }: { colSpan: number }) {
+function EmptyRow({ colSpan }: Readonly<{ colSpan: number }>) {
   return (
     <TableRow>
       <TableCell colSpan={colSpan} className="text-center h-24">
