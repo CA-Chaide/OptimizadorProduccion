@@ -3,6 +3,14 @@ export interface User {
   usuario: string;
   correo_usuario: string;
   condicion: string;
+    CODIGO?: string;
+    CEDULA?: string;
+    LOCALIDAD?: string;
+    NOMBRE?: string;
+    GRUPO_DEPARTAMENTO?: string;
+    DEPARTAMENTO?: string;
+    CARGO?: string;
+    STATUS?: string;
 }
 export interface Auth {
   message: string;
@@ -14,7 +22,8 @@ export interface Auth {
 export interface Ausentismo {
     codigo_ausentismo: number;
     codigo_tipo_ausentismo: number;
-    codigo_operador: string;
+    codigo_operador: string | null;
+    codigo_empleado: string;
     fecha_inicio: Date;
     fecha_fin: Date;
     tiempo_efectivo: string;

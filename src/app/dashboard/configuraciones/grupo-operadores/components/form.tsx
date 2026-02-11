@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,7 @@ interface GrupoOperadorFormProps {
   usuarios: any[];
   calendarios: Calendario[];
   restricciones: Restriccion[];
+  operadorRecords: Operador[];
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -25,7 +26,6 @@ interface GrupoOperadorFormProps {
 const formSchema = z.object({
   codigo_grupo: z.string().min(1, 'El grupo es requerido.'),
   codigo_calendario: z.string().optional(),
-  identificador_operador: z.string().min(1, 'El operador es requerido.'),
   estado: z.string().min(1, 'El estado es requerido.'),
 });
 
@@ -93,6 +93,7 @@ export default function GrupoOperadorForm({
   usuarios,
   calendarios,
   restricciones,
+  operadorRecords,
   onSuccess,
   onCancel,
 }: Readonly<GrupoOperadorFormProps>) {
@@ -101,6 +102,8 @@ export default function GrupoOperadorForm({
     record ? [record.identificador_operador] : []
   );
   const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
+  const [calendarAssociations, setCalendarAssociations] = useState<Operador[]>([]);
+  const [calendarAssociationKey, setCalendarAssociationKey] = useState<string | null>(null);
   const { toast } = useToast();
   const user = globalThis.window
     ? JSON.parse(globalThis.window.localStorage.getItem('user') || '{}')
@@ -111,7 +114,6 @@ export default function GrupoOperadorForm({
     defaultValues: {
       codigo_grupo: record?.codigo_grupo.toString() || '',
       codigo_calendario: record?.codigo_calendario?.toString() || '',
-      identificador_operador: record?.identificador_operador || '',
       estado: record?.estado || 'A',
     },
   });
@@ -152,11 +154,56 @@ export default function GrupoOperadorForm({
   };
 
   const codigoGrupoSeleccionado = form.watch('codigo_grupo');
+  const codigoCalendarioSeleccionado = form.watch('codigo_calendario');
   
   // Solo obtener restricciones si hay un grupo seleccionado
   const restrictions = codigoGrupoSeleccionado && codigoGrupoSeleccionado !== '' 
     ? getGroupRestrictions(codigoGrupoSeleccionado)
     : { horasTrabajo: 0, maxExtras: '0' };
+
+  useEffect(() => {
+    if (record) return;
+
+    const groupSelected = codigoGrupoSeleccionado && codigoGrupoSeleccionado !== '';
+    const calendarSelected = codigoCalendarioSeleccionado && codigoCalendarioSeleccionado !== '';
+
+    if (!groupSelected || !calendarSelected) {
+      if (calendarAssociationKey !== null) {
+        setCalendarAssociationKey(null);
+        setCalendarAssociations([]);
+        setSelectedOperadores([]);
+      }
+      return;
+    }
+
+    const key = `${codigoGrupoSeleccionado}-${codigoCalendarioSeleccionado}`;
+    if (calendarAssociationKey === key) return;
+
+    const grupoCodigo = Number(codigoGrupoSeleccionado);
+    const calendarioCodigo = Number(codigoCalendarioSeleccionado);
+    if (Number.isNaN(grupoCodigo) || Number.isNaN(calendarioCodigo)) return;
+
+    const matches = operadorRecords.filter(
+      (op) => op.codigo_grupo === grupoCodigo && op.codigo_calendario === calendarioCodigo
+    );
+
+    if (matches.length === 0) {
+      setCalendarAssociationKey(null);
+      setCalendarAssociations([]);
+      setSelectedOperadores([]);
+      return;
+    }
+
+    setCalendarAssociationKey(key);
+    setCalendarAssociations(matches);
+    setSelectedOperadores(matches.map((op) => op.identificador_operador));
+  }, [
+    codigoGrupoSeleccionado,
+    codigoCalendarioSeleccionado,
+    operadorRecords,
+    record,
+    calendarAssociationKey,
+  ]);
 
   const toggleOperador = (codigo: string) => {
     setSelectedOperadores((prev) =>
@@ -189,8 +236,25 @@ export default function GrupoOperadorForm({
     setIsLoading(true);
     try {
       const timestamp = formatDateForSQLServer(new Date());
-      
-      // Crear un registro por cada operador seleccionado
+      const isCalendarEditMode = calendarAssociationKey !== null && !record;
+      const existingMap = isCalendarEditMode
+        ? new Map(calendarAssociations.map((op) => [op.identificador_operador, op]))
+        : new Map<string, Operador>();
+      const removedOperators = isCalendarEditMode
+        ? calendarAssociations.filter((op) => !selectedOperadores.includes(op.identificador_operador))
+        : [];
+
+      if (isCalendarEditMode && removedOperators.length > 0) {
+        for (const operadorToRemove of removedOperators) {
+          await operadorService.delete(operadorToRemove.codigo_operador);
+        }
+      }
+
+      const addedCount = isCalendarEditMode
+        ? selectedOperadores.filter((id) => !existingMap.has(id)).length
+        : 0;
+      const removedCount = removedOperators.length;
+
       for (const operadorCodigo of selectedOperadores) {
         const data: any = {
           codigo_grupo: Number(values.codigo_grupo),
@@ -200,25 +264,26 @@ export default function GrupoOperadorForm({
           fecha_creacion: timestamp,
         };
 
-        // Agregar calendario si está seleccionado
         if (values.codigo_calendario) {
           data.codigo_calendario = Number(values.codigo_calendario);
         }
 
         if (record) {
           data.codigo_operador = record.codigo_operador;
-          // Si estamos editando, solo actualizamos el primero
-          if (operadorCodigo === selectedOperadores[0]) {
-            await operadorService.save(data);
-          }
-        } else {
-          await operadorService.save(data);
+        } else if (isCalendarEditMode && existingMap.has(operadorCodigo)) {
+          data.codigo_operador = existingMap.get(operadorCodigo)?.codigo_operador;
         }
+
+        await operadorService.save(data);
       }
+
+      const successDescription = isCalendarEditMode
+        ? `Se agregaron ${addedCount} operador(es) y se quitaron ${removedCount} para este calendario.`
+        : `${selectedOperadores.length} Grupo-Operador(es) ${record ? 'actualizado(s)' : 'creado(s)'} correctamente.`;
 
       toast({
         title: 'Éxito',
-        description: `${selectedOperadores.length} Grupo-Operador(es) ${record ? 'actualizado(s)' : 'creado(s)'} correctamente.`,
+        description: successDescription,
       });
       onSuccess();
     } catch (error) {
@@ -380,9 +445,6 @@ export default function GrupoOperadorForm({
                   .map((op) => op.NOMBRE)
                   .join(', ')}
               </div>
-            )}
-            {form.formState.errors.identificador_operador && (
-              <p className="text-sm text-red-600">{form.formState.errors.identificador_operador.message}</p>
             )}
           </div>
 

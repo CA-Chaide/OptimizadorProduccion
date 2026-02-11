@@ -1,4 +1,4 @@
-import type { Auth } from "@/types/interfaces";
+import type { Auth, User } from "@/types/interfaces";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { BodyListResponse } from "@/types/body-list-response";
@@ -54,7 +54,7 @@ export const authService = {
     return response.json();
   },
 
-  async getUsersInfo(): Promise<BodyListResponse<any[]>> {
+  async getUsersInfo(): Promise<BodyListResponse<User>> {
     const response = await fetch(
       `${environment.apiURLSeguridades}/api/usuarios/fichasUsuarios`,
       {

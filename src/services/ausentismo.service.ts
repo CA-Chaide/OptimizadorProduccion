@@ -48,4 +48,18 @@ export const ausentimoService = {
     }
     return response.json();
   },
+
+
+  async getAusentismosEmpleado(codigoEmpleado: string): Promise<BodyListResponse<Ausentismo>> {
+    const response = await fetch(`${API_URL}/ausentiosmoOperador`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigoEmpleado: codigoEmpleado }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorBody.message || 'Error al obtener los ausentismos del empleado');
+    }
+    return response.json();
+  },
 };

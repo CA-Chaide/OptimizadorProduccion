@@ -125,6 +125,7 @@ export default function GrupoOperadoresPage() {
           usuarios={usuarios}
           calendarios={calendarios}
           restricciones={restricciones}
+          operadorRecords={records}
           onSuccess={handleSuccess}
           onCancel={handleCancel}
         />
