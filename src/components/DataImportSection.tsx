@@ -122,6 +122,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [totalLoadedRecords, setTotalLoadedRecords] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number; month: string }>({ current: 0, total: 0, month: '' });
   const [reportSummary, setReportSummary] = useState<{
     prioritySectors: { sector: string; totalUnidades: number }[];
     otherSectors: { sector: string; totalUnidades: number }[];
@@ -237,70 +238,82 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             }
         } else {
             // Use getPresupuestoPorMesesYAnio for filtered data - paginated
+            // Iterar sobre cada año, mes y centro individual
             const yearsToLoad = filters.años.map(Number);
-            const monthsToLoad = filters.meses.length > 0 ? filters.meses : Array.from({length: 12}, (_, i) => String(i + 1));
-            const centrosStr = filters.centros.join(',');
+            const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(m => String(Number(m))) : Array.from({length: 12}, (_, i) => String(i + 1));
+            // Si no hay centros seleccionados, usar todos los centros disponibles
+            const centrosToLoad = filters.centros.length > 0 ? filters.centros : filterOptions.centros.map(c => c.value);
+            
+            const MONTH_NAMES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            const totalMesesYAños = yearsToLoad.length * monthsToLoad.length * centrosToLoad.length;
+            let currentProgress = 0;
             
             addNotification('info', `Iniciando carga de datos para año(s): ${yearsToLoad.join(', ')}.`);
             
             for (const year of yearsToLoad) {
-                const mesesStr = monthsToLoad.join('&');
-                
-                try {
-                    addNotification('info', `Consultando datos para Año: ${year}, Meses: ${mesesStr}`);
-                    
-                    let page = 1;
-                    let hasMoreData = true;
-                    
-                    while (hasMoreData) {
-                        const response = await serviciosService.getPresupuestoPorMesesYAnio(
-                            String(year),
-                            centrosStr,
-                            mesesStr,
-                            page,
-                            ROWS_PER_PAGE
-                        );
+                for (const month of monthsToLoad) {
+                    for (const centro of centrosToLoad) {
+                        currentProgress++;
+                        const monthName = MONTH_NAMES_ES[Number(month) - 1];
+                        setDownloadProgress({ current: currentProgress, total: totalMesesYAños, month: `${monthName} ${year} - ${centro}` });
+                        
+                        try {
+                            addNotification('info', `Descargando ${monthName} ${year} - Centro: ${centro} (${currentProgress} de ${totalMesesYAños})...`);
+                            
+                            let page = 1;
+                            let hasMoreData = true;
+                            
+                            while (hasMoreData) {
+                                const response = await serviciosService.getPresupuestoPorMesesYAnio(
+                                    String(year),
+                                    centro,
+                                    month,
+                                    page,
+                                    ROWS_PER_PAGE
+                                );
 
-                        const presupuestoItems = response.data || [];
-                        if (presupuestoItems && presupuestoItems.length > 0) {
-                            presupuestoItems.forEach((item: any) => {
-                                const sector = item.Sector || 'Sin Sector';
-                                const unidades = parseFloat(String(item.UnidadesProyectado)) || 0;
-                                if (unidades > 0) {
-                                    sectorTotals.set(sector, (sectorTotals.get(sector) || 0) + unidades);
+                                const presupuestoItems = response.data || [];
+                                if (presupuestoItems && presupuestoItems.length > 0) {
+                                    presupuestoItems.forEach((item: any) => {
+                                        const sector = item.Sector || 'Sin Sector';
+                                        const unidades = parseFloat(String(item.UnidadesProyectado)) || 0;
+                                        if (unidades > 0) {
+                                            sectorTotals.set(sector, (sectorTotals.get(sector) || 0) + unidades);
+                                        }
+                                    });
+                                    
+                                    const mappedData: SalesDataRow[] = presupuestoItems.map((item: any, index: number) => ({
+                                        id: `row-${item.Año}-${item.Mes}-${item.Centro}-${page}-${index}`,
+                                        año: item.Año, 
+                                        mes: item.Mes, 
+                                        sector: item.Sector || 'Sin Sector',
+                                        etiqueta: item.Etiqueta || 'Sin Etiqueta',
+                                        código: normalizeMaterialCode(item.CodMaterial),
+                                        centro: String(item.Centro).trim(), 
+                                        unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
+                                        dolaresProyectado: 0,
+                                        descripciónMaterial: item.Material,
+                                        familia: item.Familia, 
+                                        marca: item.Marca, 
+                                        lineaProduccion: item.LineaProduccion || '',
+                                    }));
+                                    allData = [...allData, ...mappedData];
+                                    
+                                    // Si recibimos menos registros que el límite, significa que es la última página
+                                    if (presupuestoItems.length < ROWS_PER_PAGE) {
+                                        hasMoreData = false;
+                                    } else {
+                                        page++;
+                                    }
+                                } else {
+                                    hasMoreData = false;
                                 }
-                            });
-                            
-                            const mappedData: SalesDataRow[] = presupuestoItems.map((item: any, index: number) => ({
-                                id: `row-${item.Año}-${item.Mes}-${item.Centro}-${page}-${index}`,
-                                año: item.Año, 
-                                mes: item.Mes, 
-                                sector: item.Sector || 'Sin Sector',
-                                etiqueta: item.Etiqueta || 'Sin Etiqueta',
-                                código: normalizeMaterialCode(item.CodMaterial),
-                                centro: String(item.Centro).trim(), 
-                                unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
-                                dolaresProyectado: 0,
-                                descripciónMaterial: item.Material,
-                                familia: item.Familia, 
-                                marca: item.Marca, 
-                                lineaProduccion: item.LineaProduccion || '',
-                            }));
-                            allData = [...allData, ...mappedData];
-                            
-                            // Si recibimos menos registros que el límite, significa que es la última página
-                            if (presupuestoItems.length < ROWS_PER_PAGE) {
-                                hasMoreData = false;
-                            } else {
-                                page++;
                             }
-                        } else {
-                            hasMoreData = false;
+                        } catch (e) {
+                            console.error(`Fallo al consultar ${monthName} ${year} - Centro: ${centro}`, e);
+                            addNotification('error', `Fallo la consulta para ${monthName} ${year} - Centro: ${centro}. Continuando...`);
                         }
                     }
-                } catch (e) {
-                    console.error(`Fallo en consulta para ${year}`, e);
-                    addNotification('error', `Fallo la consulta para el año ${year}. Continuando...`);
                 }
             }
         }
@@ -347,6 +360,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
     } finally {
         setIsProcessing(false);
+        setDownloadProgress({ current: 0, total: 0, month: '' });
     }
   };
   
@@ -398,6 +412,24 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             </button>
         </div>
       </div>
+
+      {isProcessing && downloadProgress.total > 0 && (
+        <div className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-blue-900">Descargando datos...</h3>
+            <span className="text-sm font-medium text-blue-700">{downloadProgress.current} de {downloadProgress.total}</span>
+          </div>
+          <div className="mb-2">
+            <div className="w-full bg-blue-200 rounded-full h-2.5">
+              <div 
+                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                style={{ width: `${(downloadProgress.current / downloadProgress.total) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+          <p className="text-sm text-blue-700">Mes actual: <span className="font-semibold">{downloadProgress.month}</span></p>
+        </div>
+      )}
 
        {reportSummary && !isProcessing && (
          <div className="mt-6 text-center p-6 bg-green-50 border border-green-200 rounded-lg">
