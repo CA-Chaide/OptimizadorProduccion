@@ -138,6 +138,8 @@ export default function CalendarioAreaPage() {
           <CalendarView
             calendario={selectedRecord}
             detalles={selectedDetalles}
+            calendarios={records}
+            restricciones={restricciones}
           />
         </div>
       )}

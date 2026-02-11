@@ -547,7 +547,7 @@ export default function CalendarGeneral({
               {tooltip.groups.length > 0 && (
                 <div>
                   <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Grupos que trabajan</div>
-                  <div className="space-y-2">
+                  <div className={`space-y-2 ${tooltip.groups.length > 3 ? 'max-h-60 overflow-y-auto' : ''}`}>
                     {tooltip.groups.map((g, idx) => (
                       <div key={`group-${idx}-${g.groupName}-${g.centro}`} className={`${g.color.bg} rounded-lg p-2.5`}>
                         <div className="flex items-center justify-between">

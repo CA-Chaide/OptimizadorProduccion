@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
-import type { Calendario, DetalleCalendario } from '@/types/interfaces';
+import { ChevronLeft, ChevronRight, Settings, RefreshCw, Users } from 'lucide-react';
+import type { Calendario, DetalleCalendario, Restriccion } from '@/types/interfaces';
+import { detalleCalendarioService } from '@/services/detallecalendario.service';
 import DetallesModal from './detalles-modal';
+import OperadoresCalendarioModal from './operadores-calendario-modal';
 
 interface CalendarViewProps {
   readonly calendario: Calendario;
   readonly detalles: DetalleCalendario[];
+  readonly calendarios: Calendario[];
+  readonly restricciones: Restriccion[];
 }
 
 interface TooltipData {
@@ -19,13 +23,45 @@ interface TooltipData {
   feriados: { nombre: string }[];
 }
 
-export default function CalendarView({ calendario, detalles }: CalendarViewProps) {
+export default function CalendarView({ calendario, detalles: initialDetalles, calendarios, restricciones }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const [showDetallesModal, setShowDetallesModal] = useState(false);
+  const [showOperadoresModal, setShowOperadoresModal] = useState(false);
   const [selectedDayDate, setSelectedDayDate] = useState<Date | null>(null);
   const [selectedDayJornada, setSelectedDayJornada] = useState('');
+  const [detalles, setDetalles] = useState<DetalleCalendario[]>(initialDetalles);
+  const [isLoadingDetalles, setIsLoadingDetalles] = useState(false);
   const calendarRef = useRef<HTMLDivElement>(null);
+
+  // Cargar detalles específicos del calendario
+  const loadDetalles = useCallback(async () => {
+    setIsLoadingDetalles(true);
+    try {
+      const res = await detalleCalendarioService.getAll();
+      const filtered = (res.data || []).filter(
+        d => d.codigo_calendario === calendario.codigo_calendario
+      );
+      setDetalles(filtered);
+    } catch (error) {
+      console.error('Error cargando detalles:', error);
+      setDetalles(initialDetalles);
+    } finally {
+      setIsLoadingDetalles(false);
+    }
+  }, [calendario.codigo_calendario, initialDetalles]);
+
+  // Cargar detalles al montar y cuando cambia el calendario
+  useEffect(() => {
+    loadDetalles();
+  }, [loadDetalles]);
+
+  // Sincronizar cuando hay cambios globales
+  useEffect(() => {
+    const onChanged = () => loadDetalles();
+    globalThis.addEventListener('records-changed', onChanged as EventListener);
+    return () => globalThis.removeEventListener('records-changed', onChanged as EventListener);
+  }, [loadDetalles]);
 
   // Cerrar tooltip al hacer click fuera o presionar Escape
   const handleGlobalClick = useCallback((e: MouseEvent) => {
@@ -171,6 +207,25 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
             {monthName} de {yearName}
           </h2>
         </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowOperadoresModal(true)}
+            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition"
+            title="Ver operadores y calendarios"
+          >
+            <Users className="h-5 w-5 text-gray-600" />
+            <span className="text-sm font-medium text-gray-700">Operadores</span>
+          </button>
+          <button
+            onClick={loadDetalles}
+            disabled={isLoadingDetalles}
+            className="p-2 hover:bg-gray-100 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Recargar horario"
+          >
+            <RefreshCw className={`h-5 w-5 text-gray-600 ${isLoadingDetalles ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Group info header */}
@@ -210,7 +265,11 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
               currentDate.getMonth() === new Date().getMonth() &&
               currentDate.getFullYear() === new Date().getFullYear();
 
+            const dayDetails = getDetailsForDay(day);
             const feriados = getFeriadosForDay(day);
+            const nonFeriadoDetails = dayDetails.filter(d =>
+              !d.tipo_detalle?.nombre_tipo_detalle?.toLowerCase().includes('feriado')
+            );
             const isSunday = dayOfWeek === 0;
             const isSaturday = dayOfWeek === 6;
 
@@ -263,6 +322,12 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
                   <span className={`text-sm font-medium ${dayNumClass}`}>
                     {day}
                   </span>
+                  {/* Event indicator dot */}
+                  {nonFeriadoDetails.length > 0 && (
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 rounded-full bg-blue-500" title={`${nonFeriadoDetails.length} evento(s)`} />
+                    </div>
+                  )}
                 </div>
 
                 {/* Jornada / Feriado rectangular labels */}
@@ -291,6 +356,26 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
                       )
                   }
                 </div>
+
+                {/* Event details preview */}
+                {nonFeriadoDetails.length > 0 && (
+                  <div className="mt-1 space-y-0.5 text-[10px]">
+                    {nonFeriadoDetails.slice(0, 2).map((detail, idx) => (
+                      <div
+                        key={`${detail.codigo_detalle_calendario}-${idx}`}
+                        className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded truncate"
+                        title={detail.nombre_detalle}
+                      >
+                        {detail.nombre_detalle}
+                      </div>
+                    ))}
+                    {nonFeriadoDetails.length > 2 && (
+                      <div className="text-gray-600 px-1.5 py-0.5">
+                        +{nonFeriadoDetails.length - 2} más
+                      </div>
+                    )}
+                  </div>
+                )}
               </button>
             );
           })}
@@ -420,6 +505,13 @@ export default function CalendarView({ calendario, detalles }: CalendarViewProps
         onSuccess={() => {
           globalThis.dispatchEvent(new Event('records-changed'));
         }}
+      />
+
+      <OperadoresCalendarioModal
+        isOpen={showOperadoresModal}
+        onClose={() => setShowOperadoresModal(false)}
+        calendarios={calendarios}
+        restricciones={restricciones}
       />
     </div>
   );
