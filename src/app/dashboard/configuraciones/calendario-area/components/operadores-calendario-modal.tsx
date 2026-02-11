@@ -12,11 +12,11 @@ import { operadorService } from '@/services/operador.service';
 import { authService } from '@/services/auth.service';
 
 interface OperadoresCalendarioModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  calendario: Calendario;
-  calendarios: Calendario[];
-  restricciones: Restriccion[];
+  readonly isOpen: boolean;
+  readonly onClose: () => void;
+  readonly calendario: Calendario;
+  readonly calendarios: Calendario[];
+  readonly restricciones: Restriccion[];
 }
 
 interface OperadorAgrupado {
@@ -56,7 +56,7 @@ export default function OperadoresCalendarioModal({
   calendario,
   calendarios,
   restricciones,
-}: OperadoresCalendarioModalProps) {
+}: Readonly<OperadoresCalendarioModalProps>) {
   const [allOperadores, setAllOperadores] = useState<Operador[]>([]);
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -66,8 +66,8 @@ export default function OperadoresCalendarioModal({
   const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
-  const user = typeof window !== 'undefined'
-    ? JSON.parse(window.localStorage.getItem('user') || '{}')
+  const user = globalThis.window !== undefined
+    ? JSON.parse(globalThis.localStorage.getItem('user') || '{}')
     : {};
 
   const calcularHoraFinal = (horaInicioStr: string, horasTrabajo: number): string => {
@@ -393,15 +393,16 @@ export default function OperadoresCalendarioModal({
                               const yaEnEste = operadoresDelCalendario.some(o => o.identificador_operador === op.CODIGO);
                               const yaEnOtro = idsYaAsignados.has(op.CODIGO) && !yaEnEste;
                               const disabled = yaEnEste || yaEnOtro;
+                              const getRowClass = () => {
+                                if (yaEnEste) return 'bg-blue-50 opacity-60 cursor-not-allowed';
+                                if (yaEnOtro) return 'bg-yellow-50 opacity-60 cursor-not-allowed';
+                                if (selectedToAdd.includes(op.CODIGO)) return 'bg-green-100 border-l-4 border-green-500';
+                                return 'hover:bg-white';
+                              };
                               return (
                                 <label
                                   key={op.CODIGO}
-                                  className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors text-sm ${
-                                    yaEnEste ? 'bg-blue-50 opacity-60 cursor-not-allowed'
-                                    : yaEnOtro ? 'bg-yellow-50 opacity-60 cursor-not-allowed'
-                                    : selectedToAdd.includes(op.CODIGO) ? 'bg-green-100 border-l-4 border-green-500'
-                                    : 'hover:bg-white'
-                                  }`}
+                                  className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors text-sm ${getRowClass()}`}
                                 >
                                   <Checkbox
                                     checked={selectedToAdd.includes(op.CODIGO) || yaEnEste}

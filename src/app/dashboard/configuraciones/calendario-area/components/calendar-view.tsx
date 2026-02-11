@@ -510,6 +510,7 @@ export default function CalendarView({ calendario, detalles: initialDetalles, ca
       <OperadoresCalendarioModal
         isOpen={showOperadoresModal}
         onClose={() => setShowOperadoresModal(false)}
+        calendario={calendario}
         calendarios={calendarios}
         restricciones={restricciones}
       />
