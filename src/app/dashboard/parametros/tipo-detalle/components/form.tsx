@@ -24,6 +24,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useState } from 'react';
 import { TipoDetalle } from '@/types/interfaces';
+import { tipoDetalleService } from '@/services/tipodetalle.service';
 
 const formSchema = z.object({
   codigo_tipo_detalle: z.number().optional(),
