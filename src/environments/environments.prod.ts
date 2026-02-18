@@ -1,7 +1,8 @@
 export const environment = {
     production: true,
     nombreAplicacion: "APP_MARCACIONES_WEB",
-
+    
+    //apiURL : 'http://localhost:5400',
     apiURL : 'https://apps.chaide.com/ProductionOptimizer',
     apiURLSeguridades : 'https://apps.chaide.com/seguridades',
 

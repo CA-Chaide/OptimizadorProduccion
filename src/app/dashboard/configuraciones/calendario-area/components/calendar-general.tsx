@@ -26,7 +26,7 @@ const COLOR_POOL = [
   { bg: 'bg-indigo-100', text: 'text-indigo-800', dot: 'bg-indigo-500' },
 ];
 
-function getGroupColor(groupId: number) {
+function getGroupColor(groupId: number = 0) {
   if (!GROUP_COLORS[groupId]) {
     const index = Object.keys(GROUP_COLORS).length % COLOR_POOL.length;
     GROUP_COLORS[groupId] = COLOR_POOL[index];
@@ -93,7 +93,11 @@ export default function CalendarGeneral({
   };
 
   // Obtener restricciones de un grupo
-  const getGroupRestrictions = (codigoGrupo: number) => {
+  const getGroupRestrictions = (codigoGrupo?: number) => {
+    if (!codigoGrupo) {
+      return { horasTrabajo: 0, maxExtras: '0' };
+    }
+
     const groupRestrictions = restricciones.filter(r => r.codigo_grupo === codigoGrupo);
 
     const horasTrabajo = groupRestrictions.find(r => r.nombre_restriccion === 'HORAS_TRABAJO');

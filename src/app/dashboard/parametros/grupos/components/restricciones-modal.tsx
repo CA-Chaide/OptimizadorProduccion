@@ -215,6 +215,22 @@ export default function RestriccionesModal({
     }
   };
 
+  const handleReplicarRestriccion = async (restriccion: Restriccion) => {
+    if (!grupo) return;
+    if (!confirm(`¿Confirma replicar la restricción "${restriccion.nombre_restriccion}"?`)) return;
+    setIsLoading(true);
+    try {
+      await restriccionService.replicarRestriccion(restriccion.nombre_restriccion);
+      toast({ title: 'Éxito', description: 'Restricción replicada correctamente.' });
+      await fetchRestricciones();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error al replicar';
+      toast({ title: 'Error', description: errorMessage, variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const filteredRestricciones = restricciones.filter((r) => {
     if (!filter.trim()) return true;
     const f = filter.toLowerCase();
@@ -263,6 +279,7 @@ export default function RestriccionesModal({
             onFilterChange={setFilter}
             onEdit={handleEditRestriccion}
             onDelete={handleDelete}
+            onReplicate={handleReplicarRestriccion}
             onAddNew={handleAddNew}
             onClose={onClose}
           />
@@ -279,6 +296,7 @@ interface RestrictionListProps {
   onFilterChange: (filter: string) => void;
   onEdit: (restriccion: Restriccion) => void;
   onDelete: (restriccion: Restriccion) => Promise<void>;
+  onReplicate: (restriccion: Restriccion) => Promise<void>;
   onAddNew: () => void;
   onClose: () => void;
 }
@@ -290,6 +308,7 @@ function RestrictionsList({
   onFilterChange,
   onEdit,
   onDelete,
+  onReplicate,
   onAddNew,
   onClose,
 }: Readonly<RestrictionListProps>) {
@@ -329,6 +348,7 @@ function RestrictionsList({
                     restricciones={filteredRestricciones}
                     onEdit={onEdit}
                     onDelete={onDelete}
+                    onReplicate={onReplicate}
                   />
                 )}
               </TableBody>
@@ -350,12 +370,14 @@ interface RestrictionTableRowsProps {
   restricciones: Restriccion[];
   onEdit: (restriccion: Restriccion) => void;
   onDelete: (restriccion: Restriccion) => Promise<void>;
+  onReplicate: (restriccion: Restriccion) => Promise<void> | void;
 }
 
 function RestrictionTableRows({
   restricciones,
   onEdit,
   onDelete,
+  onReplicate,
 }: Readonly<RestrictionTableRowsProps>) {
   return (
     <>
@@ -384,6 +406,10 @@ function RestrictionTableRows({
                 <DropdownMenuItem onClick={() => onEdit(restriccion)}>
                   <Edit className="mr-2 h-4 w-4" />
                   Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onReplicate(restriccion)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Replicar
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onDelete(restriccion)} className="text-red-600">
                   <Trash className="mr-2 h-4 w-4" />

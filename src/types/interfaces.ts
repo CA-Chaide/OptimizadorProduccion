@@ -38,13 +38,17 @@ export interface Ausentismo {
 
 export interface Calendario {
     codigo_calendario: number;
+    codigo_grupo?: number;
     codigo_turno: number;
-    codigo_grupo: number;
+    codigo_linea: number;
+    codigo_lineas?: number[];
     nombre_calendario: string;
     hora_inicio: string;
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;
+    linea?: Linea;
+    lineas?: Linea[];
     grupo?: Grupo;
     turno?: Turno;
 }
@@ -52,6 +56,7 @@ export interface Calendario {
 export interface DetalleCalendario {
     codigo_detalle: number;
     codigo_calendario: number;
+    codigo_estacion: number;
     nombre_detalle: string;
     fecha_real: Date;
     fecha_inicio: Date;
@@ -62,6 +67,7 @@ export interface DetalleCalendario {
     usuario_modificacion: string;
     tipo_detalle?: TipoDetalle;
     calendario?: Calendario;
+    estacion?: Estacion;
 }
 
 export interface DetalleTactico {
@@ -134,13 +140,10 @@ export interface Linea {
 
 export interface Operador {
     codigo_operador: number;
-    codigo_grupo: number;
-    codigo_calendario?: number;
     identificador_operador: string;
     estado: string;
     fecha_creacion: Date;
     usuario_creacion: string;
-    grupo?: Grupo;
 }
 
 export interface PlanGlobal {

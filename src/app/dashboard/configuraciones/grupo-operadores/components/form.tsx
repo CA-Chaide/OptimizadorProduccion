@@ -6,46 +6,26 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { operadorService } from '@/services/operador.service';
-import type { Operador, Grupo, Calendario, Restriccion } from '@/types/interfaces';
-import { z } from 'zod';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import type { Operador } from '@/types/interfaces';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface GrupoOperadorFormProps {
   record: Operador | null;
-  grupos: Grupo[];
   usuarios: any[];
-  calendarios: Calendario[];
-  restricciones: Restriccion[];
   operadorRecords: Operador[];
   onSuccess: () => void;
   onCancel: () => void;
+  grupos?: any[];
+  calendarios?: any[];
+  restricciones?: any[];
+  tiposDetalle?: any[];
 }
-
-const formSchema = z.object({
-  codigo_grupo: z.string().min(1, 'El grupo es requerido.'),
-  codigo_calendario: z.string().optional(),
-  estado: z.string().min(1, 'El estado es requerido.'),
-});
 
 interface OperadorAgrupado {
   departamento: string;
   grupoDepartamento: string;
   operadores: any[];
 }
-
-const formatDateForSQLServer = (date: Date): string => {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-  const ms = date.getMilliseconds().toString().padStart(3, '0');
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
-};
 
 const agruparOperadores = (usuarios: any[]): OperadorAgrupado[] => {
   const grupos = new Map<string, Map<string, any[]>>();
@@ -89,10 +69,7 @@ const agruparOperadores = (usuarios: any[]): OperadorAgrupado[] => {
 
 export default function GrupoOperadorForm({
   record,
-  grupos,
   usuarios,
-  calendarios,
-  restricciones,
   operadorRecords,
   onSuccess,
   onCancel,
@@ -102,108 +79,14 @@ export default function GrupoOperadorForm({
     record ? [record.identificador_operador] : []
   );
   const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
-  const [calendarAssociations, setCalendarAssociations] = useState<Operador[]>([]);
-  const [calendarAssociationKey, setCalendarAssociationKey] = useState<string | null>(null);
+  const [estado, setEstado] = useState(record?.estado || 'A');
   const { toast } = useToast();
+  
   const user = globalThis.window
     ? JSON.parse(globalThis.window.localStorage.getItem('user') || '{}')
     : {};
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      codigo_grupo: record?.codigo_grupo.toString() || '',
-      codigo_calendario: record?.codigo_calendario?.toString() || '',
-      estado: record?.estado || 'A',
-    },
-  });
-
   const operadoresAgrupados = agruparOperadores(usuarios);
-
-  // Obtener restricciones del grupo seleccionado
-  const getGroupRestrictions = (codigoGrupo: string) => {
-    const groupCode = Number(codigoGrupo);
-    const groupRestrictions = restricciones.filter(r => r.codigo_grupo === groupCode);
-    
-    const horasTrabajo = groupRestrictions.find(r => r.nombre_restriccion === 'HORAS_TRABAJO');
-    const maxExtras = groupRestrictions.find(r => r.nombre_restriccion === 'MAX_EXTRAS_HORAS');
-    
-
-    console.log('Restricciones para grupo', codigoGrupo, { horasTrabajo, maxExtras });
-
-    return {
-      horasTrabajo: horasTrabajo ? Number(horasTrabajo.valor_restriccion) : 0,
-      maxExtras: maxExtras ? maxExtras.valor_restriccion : '0',
-    };
-  };
-
-  // Calcular hora final
-  const calcularHoraFinal = (horaInicioStr: string, horasTrabajo: number): string => {
-    if (!horaInicioStr) return '';
-    
-    const [horas, minutos] = horaInicioStr.split(':').map(Number);
-    const horaInicial = new Date();
-    horaInicial.setHours(horas, minutos, 0);
-    
-    const horaFinal = new Date(horaInicial.getTime() + horasTrabajo * 60 * 60 * 1000);
-    
-    const h = String(horaFinal.getHours()).padStart(2, '0');
-    const m = String(horaFinal.getMinutes()).padStart(2, '0');
-    
-    return `${h}:${m}`;
-  };
-
-  const codigoGrupoSeleccionado = form.watch('codigo_grupo');
-  const codigoCalendarioSeleccionado = form.watch('codigo_calendario');
-  
-  // Solo obtener restricciones si hay un grupo seleccionado
-  const restrictions = codigoGrupoSeleccionado && codigoGrupoSeleccionado !== '' 
-    ? getGroupRestrictions(codigoGrupoSeleccionado)
-    : { horasTrabajo: 0, maxExtras: '0' };
-
-  useEffect(() => {
-    if (record) return;
-
-    const groupSelected = codigoGrupoSeleccionado && codigoGrupoSeleccionado !== '';
-    const calendarSelected = codigoCalendarioSeleccionado && codigoCalendarioSeleccionado !== '';
-
-    if (!groupSelected || !calendarSelected) {
-      if (calendarAssociationKey !== null) {
-        setCalendarAssociationKey(null);
-        setCalendarAssociations([]);
-        setSelectedOperadores([]);
-      }
-      return;
-    }
-
-    const key = `${codigoGrupoSeleccionado}-${codigoCalendarioSeleccionado}`;
-    if (calendarAssociationKey === key) return;
-
-    const grupoCodigo = Number(codigoGrupoSeleccionado);
-    const calendarioCodigo = Number(codigoCalendarioSeleccionado);
-    if (Number.isNaN(grupoCodigo) || Number.isNaN(calendarioCodigo)) return;
-
-    const matches = operadorRecords.filter(
-      (op) => op.codigo_grupo === grupoCodigo && op.codigo_calendario === calendarioCodigo
-    );
-
-    if (matches.length === 0) {
-      setCalendarAssociationKey(null);
-      setCalendarAssociations([]);
-      setSelectedOperadores([]);
-      return;
-    }
-
-    setCalendarAssociationKey(key);
-    setCalendarAssociations(matches);
-    setSelectedOperadores(matches.map((op) => op.identificador_operador));
-  }, [
-    codigoGrupoSeleccionado,
-    codigoCalendarioSeleccionado,
-    operadorRecords,
-    record,
-    calendarAssociationKey,
-  ]);
 
   const toggleOperador = (codigo: string) => {
     setSelectedOperadores((prev) =>
@@ -223,7 +106,9 @@ export default function GrupoOperadorForm({
     });
   };
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
     if (selectedOperadores.length === 0) {
       toast({
         title: 'Error',
@@ -235,56 +120,30 @@ export default function GrupoOperadorForm({
 
     setIsLoading(true);
     try {
-      const timestamp = formatDateForSQLServer(new Date());
-      const isCalendarEditMode = calendarAssociationKey !== null && !record;
-      const existingMap = isCalendarEditMode
-        ? new Map(calendarAssociations.map((op) => [op.identificador_operador, op]))
-        : new Map<string, Operador>();
-      const removedOperators = isCalendarEditMode
-        ? calendarAssociations.filter((op) => !selectedOperadores.includes(op.identificador_operador))
-        : [];
-
-      if (isCalendarEditMode && removedOperators.length > 0) {
-        for (const operadorToRemove of removedOperators) {
-          await operadorService.delete(operadorToRemove.codigo_operador);
-        }
-      }
-
-      const addedCount = isCalendarEditMode
-        ? selectedOperadores.filter((id) => !existingMap.has(id)).length
-        : 0;
-      const removedCount = removedOperators.length;
-
+      const now = new Date();
+      
       for (const operadorCodigo of selectedOperadores) {
-        const data: any = {
-          codigo_grupo: Number(values.codigo_grupo),
+        const data: Operador = {
+          codigo_operador: record?.codigo_operador || 0,
           identificador_operador: operadorCodigo,
-          estado: values.estado,
+          estado: estado,
           usuario_creacion: user?.name || 'admin',
-          fecha_creacion: timestamp,
+          fecha_creacion: record?.fecha_creacion || now,
         };
-
-        if (values.codigo_calendario) {
-          data.codigo_calendario = Number(values.codigo_calendario);
-        }
-
-        if (record) {
-          data.codigo_operador = record.codigo_operador;
-        } else if (isCalendarEditMode && existingMap.has(operadorCodigo)) {
-          data.codigo_operador = existingMap.get(operadorCodigo)?.codigo_operador;
-        }
 
         await operadorService.save(data);
       }
 
-      const successDescription = isCalendarEditMode
-        ? `Se agregaron ${addedCount} operador(es) y se quitaron ${removedCount} para este calendario.`
-        : `${selectedOperadores.length} Grupo-Operador(es) ${record ? 'actualizado(s)' : 'creado(s)'} correctamente.`;
+      const message = record 
+        ? `Operador ${selectedOperadores.length > 1 ? 'es' : ''} actualizado(s) correctamente.`
+        : `${selectedOperadores.length} operador(es) creado(s) correctamente.`;
 
       toast({
         title: 'Éxito',
-        description: successDescription,
+        description: message,
       });
+      
+      globalThis.dispatchEvent(new Event('records-changed'));
       onSuccess();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Ocurrió un error inesperado.';
@@ -297,69 +156,19 @@ export default function GrupoOperadorForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{record ? 'Editar' : 'Crear'} Grupo-Operador</CardTitle>
+        <CardTitle>{record ? 'Editar' : 'Crear'} Operador</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label htmlFor="codigo_grupo" className="block text-sm font-medium text-gray-700">
-                Grupo <span className="text-red-500">*</span>
-              </label>
-              <select
-                id="codigo_grupo"
-                {...form.register('codigo_grupo')}
-                className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                disabled={isLoading || !!record}
-              >
-                <option value="">Seleccionar grupo...</option>
-                {grupos.map((g) => (
-                  <option key={g.codigo_grupo} value={g.codigo_grupo}>
-                    {g.nombre_grupo} - {g.centro}
-                  </option>
-                ))}
-              </select>
-              {form.formState.errors.codigo_grupo && (
-                <p className="text-sm text-red-600">{form.formState.errors.codigo_grupo.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="codigo_calendario" className="block text-sm font-medium text-gray-700">
-                Horario <span className="text-gray-500">(Opcional)</span>
-              </label>
-              <select
-                id="codigo_calendario"
-                {...form.register('codigo_calendario')}
-                className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                disabled={isLoading || !codigoGrupoSeleccionado || codigoGrupoSeleccionado === ''}
-              >
-                <option value="">Seleccionar horario...</option>
-                {calendarios.map((c) => {
-                  const horaFinalCalc = calcularHoraFinal(c.hora_inicio, restrictions.horasTrabajo);
-                  return (
-                    <option key={c.codigo_calendario} value={c.codigo_calendario}>
-                      {c.nombre_calendario} - {c.hora_inicio} → {horaFinalCalc} + {restrictions.maxExtras} horas extras
-                    </option>
-                  );
-                })}
-              </select>
-              {(!codigoGrupoSeleccionado || codigoGrupoSeleccionado === '') && (
-                <p className="text-sm text-gray-500 italic">Selecciona un grupo primero para ver los horarios disponibles</p>
-              )}
-              {form.formState.errors.codigo_calendario && (
-                <p className="text-sm text-red-600">{form.formState.errors.codigo_calendario.message}</p>
-              )}
-            </div>
-          </div>
-
+        <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* Operadores */}
           <div className="space-y-2">
             <label htmlFor="operadores-list" className="block text-sm font-medium text-gray-700">
               Operadores <span className="text-red-500">*</span>
             </label>
             <div id="operadores-list" className="border rounded-lg p-4 max-h-96 overflow-y-auto">
               {operadoresAgrupados.length === 0 && (
-                <p className="text-gray-100">No hay operadores disponibles.</p>
+                <p className="text-gray-500">No hay operadores disponibles.</p>
               )}
               {operadoresAgrupados.length > 0 && (
                 operadoresAgrupados.map((grupo, idx) => (
@@ -410,7 +219,7 @@ export default function GrupoOperadorForm({
                             <Checkbox
                               checked={selectedOperadores.includes(op.CODIGO)}
                               onCheckedChange={() => toggleOperador(op.CODIGO)}
-                              disabled={isLoading || !!record}
+                              disabled={isLoading}
                               className={`${
                                 selectedOperadores.includes(op.CODIGO)
                                   ? 'border-green-500 data-[state=checked]:bg-green-500'
@@ -418,7 +227,9 @@ export default function GrupoOperadorForm({
                               }`}
                             />
                             <div className="flex-1">
-                              <div className={`text-sm font-medium ${selectedOperadores.includes(op.CODIGO) ? 'text-green-700' : 'text-gray-900'}`}>{op.NOMBRE}</div>
+                              <div className={`text-sm font-medium ${selectedOperadores.includes(op.CODIGO) ? 'text-green-700' : 'text-gray-900'}`}>
+                                {op.NOMBRE}
+                              </div>
                               <div className={`text-xs ${selectedOperadores.includes(op.CODIGO) ? 'text-green-600' : 'text-gray-500'}`}>
                                 {op.CODIGO} • {op.CARGO}
                               </div>
@@ -448,39 +259,37 @@ export default function GrupoOperadorForm({
             )}
           </div>
 
+          {/* Estado */}
           <div className="space-y-2">
             <label htmlFor="estado" className="block text-sm font-medium text-gray-700">
               Estado <span className="text-red-500">*</span>
             </label>
             <select
               id="estado"
-              {...form.register('estado')}
+              value={estado}
+              onChange={(e) => setEstado(e.target.value)}
               className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               disabled={isLoading}
             >
               <option value="A">Activo</option>
               <option value="I">Inactivo</option>
             </select>
-            {form.formState.errors.estado && (
-              <p className="text-sm text-red-600">{form.formState.errors.estado.message}</p>
-            )}
           </div>
 
+          {/* Botones de acción */}
           <div className="flex gap-4">
-            {!isLoading && (
-              <Button 
-                type="submit" 
-                disabled={selectedOperadores.length === 0}
-              >
-                {record ? 'Actualizar' : 'Crear'}
-              </Button>
-            )}
-            {isLoading && (
-              <Button type="submit" disabled>
-                Guardando...
-              </Button>
-            )}
-            <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+            <Button 
+              type="submit" 
+              disabled={isLoading || selectedOperadores.length === 0}
+            >
+              {isLoading ? 'Guardando...' : (record ? 'Actualizar' : 'Crear')}
+            </Button>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={onCancel} 
+              disabled={isLoading}
+            >
               Cancelar
             </Button>
           </div>

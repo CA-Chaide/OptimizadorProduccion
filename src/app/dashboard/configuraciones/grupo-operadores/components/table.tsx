@@ -23,13 +23,29 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useMemo } from 'react';
 
+// Helper para formato de fecha/hora en zona horaria de Ecuador (UTC-5)
+const formatEcuadorDateTime = (date: string | Date | undefined): string => {
+  if (!date) return '-';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toLocaleString('es-EC', { 
+    timeZone: 'America/Guayaquil',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+};
+
 interface GrupoOperadorTableProps {
   records: Operador[];
   isLoading: boolean;
   onEdit: (record: Operador) => void;
   onAddNew: () => void;
-  getGrupoNombre: (codigo_grupo: number) => string;
-  getUsuarioInfo: (identificador: string) => any;
+  getGrupoNombre?: (codigo_grupo: number) => string;
+  getUsuarioInfo?: (identificador: string) => any;
+  getCalendarioNombre?: (codigo_calendario: number) => string;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20];
@@ -39,8 +55,9 @@ export default function GrupoOperadorTable({
   isLoading,
   onEdit,
   onAddNew,
-  getGrupoNombre,
-  getUsuarioInfo,
+  getGrupoNombre = () => '-',
+  getUsuarioInfo = () => ({}),
+  getCalendarioNombre = () => '-',
 }: Readonly<GrupoOperadorTableProps>) {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
@@ -50,16 +67,14 @@ export default function GrupoOperadorTable({
     if (!filter.trim()) return records;
     const f = filter.toLowerCase();
     return records.filter((r) => {
-      const grupo = getGrupoNombre(r.codigo_grupo);
       const usuario = getUsuarioInfo(r.identificador_operador);
       const nombre = usuario?.NOMBRE || '';
       return (
         r.identificador_operador.toLowerCase().includes(f) ||
-        nombre.toLowerCase().includes(f) ||
-        grupo.toLowerCase().includes(f)
+        nombre.toLowerCase().includes(f)
       );
     });
-  }, [records, filter, getGrupoNombre, getUsuarioInfo]);
+  }, [records, filter, getUsuarioInfo]);
 
   const totalRows = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
@@ -76,6 +91,9 @@ export default function GrupoOperadorTable({
         <TableCell><Skeleton className="h-4 w-12" /></TableCell>
         <TableCell><Skeleton className="h-4 w-32" /></TableCell>
         <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+        <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
         <TableCell className="text-right"><Skeleton className="h-8 w-8" /></TableCell>
@@ -100,7 +118,7 @@ export default function GrupoOperadorTable({
           <input
             type="text"
             className="border rounded px-3 py-2 w-full max-w-xs text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="Filtrar por grupo, código o nombre..."
+            placeholder="Filtrar por código o nombre..."
             value={filter}
             onChange={e => { setFilter(e.target.value); setPage(1); }}
           />
@@ -112,66 +130,75 @@ export default function GrupoOperadorTable({
               <TableRow>
                 <TableHead>Código Operador</TableHead>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Grupo</TableHead>
                 <TableHead>Cargo</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? renderSkeleton() : paginated.map(record => {
-                const usuario = getUsuarioInfo(record.identificador_operador);
-                const grupo = getGrupoNombre(record.codigo_grupo);
-                return (
-                  <TableRow key={record.codigo_operador}>
-                    <TableCell className="font-medium">{record.identificador_operador}</TableCell>
-                    <TableCell>{usuario?.NOMBRE || '-'}</TableCell>
-                    <TableCell>{grupo}</TableCell>
-                    <TableCell>{usuario?.CARGO || '-'}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={record.estado === 'A' ? 'default' : 'destructive'}
-                        className={record.estado === 'A' ? 'bg-green-600' : ''}
-                      >
-                        {record.estado === 'A' ? 'Activo' : 'Inactivo'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Abrir menú</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => onEdit(record)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={async () => {
-                            if (!confirm('¿Confirma eliminar esta asociación?')) return;
-                            try {
-                              await operadorService.delete(record.codigo_operador);
-                              globalThis.window?.dispatchEvent(new CustomEvent('records-changed'));
-                              alert('Asociación eliminada correctamente.');
-                            } catch (err) {
-                              const msg = err instanceof Error ? err.message : 'Error al eliminar';
-                              alert(msg);
-                            }
-                          }} className="text-red-600">
-                            <Trash className="mr-2 h-4 w-4" />
-                            Eliminar
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+              {isLoading ? (
+                ['sk-1', 'sk-2', 'sk-3', 'sk-4', 'sk-5'].map((key) => (
+                  <TableRow key={key}>
+                    <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-8" /></TableCell>
                   </TableRow>
-                );
-              })}
+                ))
+              ) : (
+                paginated.map(record => {
+                  const usuario = getUsuarioInfo(record.identificador_operador);
+                  return (
+                    <TableRow key={record.codigo_operador}>
+                      <TableCell className="font-medium">{record.identificador_operador}</TableCell>
+                      <TableCell>{usuario?.NOMBRE || '-'}</TableCell>
+                      <TableCell>{usuario?.CARGO || '-'}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={record.estado === 'A' ? 'default' : 'destructive'}
+                          className={record.estado === 'A' ? 'bg-green-600' : ''}
+                        >
+                          {record.estado === 'A' ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Abrir menú</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => onEdit(record)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={async () => {
+                              if (!confirm('¿Confirma eliminar este operador?')) return;
+                              try {
+                                await operadorService.delete(record.codigo_operador);
+                                globalThis.window?.dispatchEvent(new CustomEvent('records-changed'));
+                                alert('Operador eliminado correctamente.');
+                              } catch (err) {
+                                const msg = err instanceof Error ? err.message : 'Error al eliminar';
+                                alert(msg);
+                              }
+                            }} className="text-red-600">
+                              <Trash className="mr-2 h-4 w-4" />
+                              Eliminar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
               {!isLoading && paginated.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">No se encontraron registros.</TableCell>
+                  <TableCell colSpan={5} className="h-24 text-center">No se encontraron registros.</TableCell>
                 </TableRow>
               )}
             </TableBody>

@@ -48,4 +48,18 @@ export const restriccionService = {
     }
     return response.json();
   },
+
+
+    async replicarRestriccion(restriccion: string): Promise<BodyListResponse<Restriccion>> {
+    const response = await fetch(`${API_URL}/replicar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre_restriccion: restriccion }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorBody.message || 'Error al guardar la restricción');
+    }
+    return response.json();
+  },
 };

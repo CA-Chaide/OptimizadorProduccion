@@ -5,12 +5,13 @@ import { useToast } from '@/hooks/use-toast';
 import GrupoOperadorForm from './components/form';
 import GrupoOperadorTable from './components/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Operador, Grupo, Calendario, Restriccion } from '@/types/interfaces';
+import type { Operador, Grupo, Calendario, Restriccion, TipoDetalle } from '@/types/interfaces';
 import { operadorService } from '@/services/operador.service';
 import { grupoService } from '@/services/grupo.service';
 import { authService } from '@/services/auth.service';
 import { calendarioService } from '@/services/calendario.service';
 import { restriccionService } from '@/services/restriccion.service';
+import { tipoDetalleService } from '@/services/tipodetalle.service';
 
 export default function GrupoOperadoresPage() {
   const [records, setRecords] = useState<Operador[]>([]);
@@ -18,6 +19,7 @@ export default function GrupoOperadoresPage() {
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [calendarios, setCalendarios] = useState<Calendario[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
+  const [tiposDetalle, setTiposDetalle] = useState<TipoDetalle[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<Operador | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -27,26 +29,14 @@ export default function GrupoOperadoresPage() {
   const fetchRecords = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Fetch grupo-operadores
+      // Fetch operadores
       const operadoresResponse = await operadorService.getAll();
       const data = operadoresResponse.data || [];
       setRecords(data);
 
-      // Fetch grupos
-      const gruposResponse = await grupoService.getAll();
-      setGrupos(gruposResponse.data || []);
-
       // Fetch usuarios
       const usuariosResponse = await authService.getUsersInfo();
       setUsuarios(usuariosResponse.data || []);
-
-      // Fetch calendarios
-      const calendariosResponse = await calendarioService.getAll();
-      setCalendarios(calendariosResponse.data || []);
-
-      // Fetch restricciones
-      const restriccionesResponse = await restriccionService.getAll();
-      setRestricciones(restriccionesResponse.data || []);
 
       if (data.length === 0) setIsFormOpen(true);
     } catch (error) {
@@ -103,6 +93,10 @@ export default function GrupoOperadoresPage() {
     return usuarios.find(u => u.CODIGO === identificador);
   };
 
+  const getCalendarioNombre = (codigo_calendario: number): string => {
+    return calendarios.find(c => c.codigo_calendario === codigo_calendario)?.nombre_calendario || '-';
+  };
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-3">
@@ -121,10 +115,7 @@ export default function GrupoOperadoresPage() {
       {isFormOpen && (
         <GrupoOperadorForm
           record={selectedRecord}
-          grupos={grupos}
           usuarios={usuarios}
-          calendarios={calendarios}
-          restricciones={restricciones}
           operadorRecords={records}
           onSuccess={handleSuccess}
           onCancel={handleCancel}
@@ -138,6 +129,7 @@ export default function GrupoOperadoresPage() {
           onAddNew={handleAddNew}
           getGrupoNombre={getGrupoNombre}
           getUsuarioInfo={getUsuarioInfo}
+          getCalendarioNombre={getCalendarioNombre}
         />
       )}
     </div>

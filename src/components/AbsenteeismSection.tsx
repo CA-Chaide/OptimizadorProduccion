@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MoreHorizontal, Clock, Plus, AlertCircle, History, X, ChevronUp, ChevronDown, Edit } from 'lucide-react';
+import { MoreHorizontal, Clock, Plus, AlertCircle, History, X, ChevronUp, ChevronDown, Edit, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { ausentimoService } from '@/services/ausentismo.service';
 import { tipoAusentismoService } from '@/services/tipoausentismo.service';
 import { authService } from '@/services/auth.service';
@@ -98,6 +98,8 @@ export const AbsenteeismSection: React.FC = () => {
   const [sortField, setSortField] = useState<'fecha_inicio' | 'fecha_fin' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [editingAusentismo, setEditingAusentismo] = useState<Ausentismo | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const filteredUsuarios = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -114,6 +116,30 @@ export const AbsenteeismSection: React.FC = () => {
       ].some(value => value.toLowerCase().includes(query));
     });
   }, [usuarios, searchTerm]);
+
+  // Reset to first page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredUsuarios.length / pageSize));
+  const paginatedUsuarios = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredUsuarios.slice(start, start + pageSize);
+  }, [filteredUsuarios, currentPage, pageSize]);
+
+  const getPageNumbers = (current: number, total: number): (number | '...')[] => {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages: (number | '...')[] = [1];
+    const left = Math.max(2, current - 1);
+    const right = Math.min(total - 1, current + 1);
+    if (left > 2) pages.push('...');
+    for (let i = left; i <= right; i++) pages.push(i);
+    if (right < total - 1) pages.push('...');
+    pages.push(total);
+    return pages;
+  };
 
   // Sort history records
   const sortedHistoryRecords = useMemo(() => {
@@ -344,11 +370,11 @@ export const AbsenteeismSection: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Gestión de Ausentismos</h1>
-          <p className="text-gray-600 mt-1">Registra y gestiona los ausentismos de los usuarios</p>
+          <p className="text-gray-600 mt-1">Registra y gestiona los ausentismos</p>
         </div>
         <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
           <Clock className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-medium text-blue-600">{usuarios.length} usuarios</span>
+          <span className="text-sm font-medium text-blue-600">{usuarios.length} Empleados</span>
         </div>
       </div>
 
@@ -356,8 +382,8 @@ export const AbsenteeismSection: React.FC = () => {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Usuarios - Mantenimiento de aplicaciones de Usuarios</CardTitle>
-              <CardDescription>Total registros: {usuarios.length}</CardDescription>
+              <CardTitle>Empleados - Mantenimiento de ausentismos de Empleados</CardTitle>
+              <CardDescription>Total registros: {filteredUsuarios.length}{filteredUsuarios.length !== usuarios.length ? ` (de ${usuarios.length})` : ''} — Página {currentPage} de {totalPages}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -392,6 +418,7 @@ export const AbsenteeismSection: React.FC = () => {
               <p>No se encontraron usuarios que coincidan con la búsqueda</p>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -408,7 +435,7 @@ export const AbsenteeismSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredUsuarios.map((usuario, index) => {
+                  {paginatedUsuarios.map((usuario, index) => {
                     const display = getUsuarioDisplayData(usuario);
                     const statusIsActive = isStatusActive(display.status);
                     const statusLabel = getStatusLabel(display.status);
@@ -457,8 +484,71 @@ export const AbsenteeismSection: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Paginador */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-1 pt-4">
+                {/* Primera página */}
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Primera página"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+                {/* Anterior */}
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {/* Números de página */}
+                {getPageNumbers(currentPage, totalPages).map((page, idx) =>
+                  page === '...' ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 text-gray-400 select-none">…</span>
+                  ) : (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`min-w-[36px] h-9 rounded-md text-sm font-medium transition-colors ${
+                        currentPage === page
+                          ? 'bg-cyan-500 text-white shadow-sm'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  )
+                )}
+
+                {/* Siguiente */}
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Página siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                {/* Última página */}
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Última página"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+            </>
           )}
-          </CardContent>
+        </CardContent>
       </Card>
 
       {/* Dialog para registrar ausentismo */}
