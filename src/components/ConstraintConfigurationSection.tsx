@@ -52,7 +52,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
       constraints, 
       setConstraints: onConstraintsUpdate,
       addNotification, 
-      handleSyncAndValidate, 
       syncStatus 
     } = useAppContext();
     
@@ -222,9 +221,75 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
       return grouped;
     }, [restricciones, grupos]);
 
+    // Mapeo de nombres de feriados inglés → español
+    const holidayTranslations: { [key: string]: string } = {
+        'New Year': 'Año Nuevo',
+        'New Year\'s Day': 'Año Nuevo',
+        'Maundy Thursday': 'Jueves Santo',
+        'Good Friday': 'Viernes Santo',
+        'Easter Sunday': 'Domingo de Pascua',
+        'Easter Monday': 'Lunes de Pascua',
+        'Carnival': 'Carnaval',
+        'Carnival Monday': 'Carnaval (Lunes)',
+        'Carnival Tuesday': 'Carnaval (Martes)',
+        'Ash Wednesday': 'Miércoles de Ceniza',
+        'Labour Day': 'Día del Trabajo',
+        'Labor Day': 'Día del Trabajo',
+        'May Day': 'Día del Trabajo',
+        'Day of Labor': 'Día del Trabajo',
+        'Battle of Pichincha': 'Batalla de Pichincha',
+        'First Call for Independence': 'Primer Grito de Independencia',
+        'Independence of Guayaquil': 'Independencia de Guayaquil',
+        'Independencia de Guayaquil': 'Independencia de Guayaquil',
+        'All Saints Day': 'Día de Difuntos',
+        'All Souls Day': 'Día de Difuntos',
+        'Independence of Cuenca': 'Independencia de Cuenca',
+        'Independencia de Cuenca': 'Independencia de Cuenca',
+        'Columbus Day': 'Colón descubre América',
+        'Simón Bolívar\'s Birthday': 'Natalicio de Simón Bolívar',
+        'Simon Bolivar\'s Birthday': 'Natalicio de Simón Bolívar',
+        'Foundation of Quito': 'Fundación de Quito',
+        'Founding of Quito': 'Fundación de Quito',
+        'Independence of Latacunga': 'Independencia de Latacunga',
+        'Independencia de Latacunga': 'Independencia de Latacunga',
+        'Christmas': 'Navidad',
+        'Christmas Day': 'Navidad',
+        'Viernes Santo': 'Viernes Santo',
+        'Sábado de Gloria': 'Sábado de Gloria',
+        'Carnaval (Viernes)': 'Carnaval (Viernes)',
+        'Carnaval (Sábado)': 'Carnaval (Sábado)',
+    };
+
+    // Función para traducir nombre de feriado
+    const translateHolidayName = (name: string): string => {
+        return holidayTranslations[name] || name;
+    };
+
+    // Parsea 'YYYY-MM-DD' como fecha LOCAL evitando que JS la interprete como UTC
+    const parseLocalDate = (dateStr: string): Date => {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    };
+
+    // Agrupar y ordenar feriados por mes
+    const holidaysByMonth = useMemo(() => {
+      const monthMap = new Map<number, typeof holidays>();
+        
+      [...holidays].sort((a, b) => parseLocalDate(a.date).getTime() - parseLocalDate(b.date).getTime()).forEach(holiday => {
+        const date = parseLocalDate(holiday.date);
+        const month = date.getMonth(); // 0-11
+        if (!monthMap.has(month)) {
+          monthMap.set(month, []);
+        }
+        monthMap.get(month)!.push(holiday);
+      });
+        
+      return monthMap;
+    }, [holidays]);
+
     // Calcular color del feriado según mes
     const getHolidayColor = (dateStr: string) => {
-      const holidayDate = new Date(dateStr);
+      const holidayDate = parseLocalDate(dateStr);
       const today = new Date();
       const currentMonth = today.getMonth();
       const currentYear = today.getFullYear();
@@ -238,25 +303,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
       } else {
         return 'bg-yellow-100 border-yellow-300'; // Mes futuro
       }
-    };
-
-    const handleSyncClick = async () => {
-      setIsSyncing(true);
-      
-      const opId = operationTracker.startOperation(
-        'Constraints',
-        'api_call',
-        'Sincronizando estructura y tiempos de ensamble desde la API...'
-      );
-      
-      try {
-        await handleSyncAndValidate();
-        operationTracker.completeOperation(opId, 'Sincronización completada exitosamente');
-      } catch (error) {
-        operationTracker.failOperation(opId, (error as Error).message);
-      }
-      
-      setIsSyncing(false);
     };
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -330,10 +376,6 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
     const activeShiftConfig = useMemo(() => {
         return filteredShiftConfigs.length > 0 ? filteredShiftConfigs[0] : null;
     }, [filteredShiftConfigs]);
-
-    const sortedHolidays = useMemo(() => {
-      return [...holidays].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    }, [holidays]);
 
     const tabs = [
       { id: 'generales', label: '0. Generales' },
@@ -695,19 +737,34 @@ export const ConstraintConfigurationSection: React.FC<ConstraintConfigurationSec
                         <p className="text-gray-600">Cargando feriados...</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {sortedHolidays.map((holiday) => {
-                          const colorClass = getHolidayColor(holiday.date);
-                          const date = new Date(holiday.date);
-                          const formatted = date.toLocaleDateString('es-EC', { year: 'numeric', month: 'long', day: 'numeric' });
+                      <div className="space-y-6">
+                        {Array.from(holidaysByMonth.entries()).map(([monthIndex, monthHolidays]) => {
+                          const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                          const monthName = monthNames[monthIndex];
                           
                           return (
-                            <div key={holiday.date} className={`border-2 rounded-lg p-4 ${colorClass}`}>
-                              <h4 className="font-semibold text-gray-900">{holiday.name}</h4>
-                              <p className="text-sm text-gray-700 mt-1">{formatted}</p>
-                              <Badge variant="outline" className="mt-2">
-                                {new Date(holiday.date).toLocaleDateString('es-EC', { weekday: 'short' })}
-                              </Badge>
+                            <div key={monthIndex} className="border rounded-lg p-4 bg-gray-50">
+                              <h4 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b-2 border-indigo-300">
+                                {monthName} (2026)
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {monthHolidays.map((holiday) => {
+                                  const colorClass = getHolidayColor(holiday.date);
+                                  const date = parseLocalDate(holiday.date);
+                                  const formatted = date.toLocaleDateString('es-EC', { year: 'numeric', month: 'long', day: 'numeric' });
+                                  const translatedName = translateHolidayName(holiday.name);
+                                  
+                                  return (
+                                    <div key={holiday.date} className={`border-2 rounded-lg p-4 ${colorClass}`}>
+                                      <h5 className="font-semibold text-gray-900 text-sm">{translatedName}</h5>
+                                      <p className="text-xs text-gray-700 mt-1">{formatted}</p>
+                                      <Badge variant="outline" className="mt-2 text-xs">
+                                        {parseLocalDate(holiday.date).toLocaleDateString('es-EC', { weekday: 'short' })}
+                                      </Badge>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           );
                         })}
