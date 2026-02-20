@@ -56,6 +56,7 @@ const lineaFormSchema = z.object({
 const estacionFormSchema = z.object({
   nombre_estacion: z.string().min(1, 'El nombre es requerido.'),
   codigo_linea: z.string().min(1, 'La línea es requerida.'),
+  numero_puestos: z.number().min(1, 'El número de puestos debe ser mayor a 0.'),
   estado: z.string().min(1, 'El estado es requerido.'),
 });
 
@@ -172,6 +173,7 @@ export default function RelacionesModal({
     estacionForm.reset({
       nombre_estacion: estacion.nombre_estacion,
       codigo_linea: estacion.codigo_linea.toString(),
+      numero_puestos: estacion.numero_puestos,
       estado: estacion.estado,
     });
     setIsEstacionFormOpen(true);
@@ -182,6 +184,7 @@ export default function RelacionesModal({
     estacionForm.reset({
       nombre_estacion: '',
       codigo_linea: '',
+      numero_puestos: 1,
       estado: 'A',
     });
     setIsEstacionFormOpen(true);
@@ -604,13 +607,14 @@ function EstacionesList({
                 <TableRow>
                   <TableHead>Nombre</TableHead>
                   <TableHead>Línea</TableHead>
+                  <TableHead className="text-center">Nº Puestos</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading && <LoadingRow colSpan={4} />}
-                {!isLoading && filteredEstaciones.length === 0 && <EmptyRow colSpan={4} />}
+                {isLoading && <LoadingRow colSpan={5} />}
+                {!isLoading && filteredEstaciones.length === 0 && <EmptyRow colSpan={5} />}
                 {!isLoading && filteredEstaciones.length > 0 && (
                   <EstacionTableRows
                     estaciones={filteredEstaciones}
@@ -647,6 +651,7 @@ function EstacionTableRows({
         <TableRow key={estacion.codigo_estacion}>
           <TableCell className="font-medium">{estacion.nombre_estacion}</TableCell>
           <TableCell>{getLineaNameById(estacion.codigo_linea)}</TableCell>
+          <TableCell className="text-center">{estacion.numero_puestos}</TableCell>
           <TableCell>
             <Badge
               variant={estacion.estado === 'A' ? 'default' : 'destructive'}
@@ -737,6 +742,23 @@ function EstacionForm({
         )}
         {lineas.length === 0 && (
           <p className="text-sm text-yellow-600">Debe crear líneas primero para agregar estaciones.</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="numero_puestos" className="block text-sm font-medium text-gray-700">
+          Número de Puestos <span className="text-red-500">*</span>
+        </label>
+        <Input
+          id="numero_puestos"
+          type="number"
+          {...form.register('numero_puestos', { valueAsNumber: true })}
+          placeholder="Ej: 5"
+          disabled={isLoading}
+          min="1"
+        />
+        {form.formState.errors.numero_puestos && (
+          <p className="text-sm text-red-600">{form.formState.errors.numero_puestos.message}</p>
         )}
       </div>
 

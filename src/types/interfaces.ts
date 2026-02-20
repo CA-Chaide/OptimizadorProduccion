@@ -105,6 +105,7 @@ export interface Estacion {
     codigo_estacion: number;
     codigo_linea: number;
     nombre_estacion: string;
+    numero_puestos: number;
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;
