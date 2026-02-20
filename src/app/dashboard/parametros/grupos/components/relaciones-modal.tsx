@@ -48,6 +48,15 @@ interface RelacionesModalProps {
   onClose: () => void;
 }
 
+interface EstacionAgrupada {
+  nombre_estacion: string;
+  codigo_linea: number;
+  original: Estacion | null;
+  latest: Estacion;
+  numeroPuestosOriginal: number;
+  numeroPuestosLatest: number;
+}
+
 const lineaFormSchema = z.object({
   nombre_linea: z.string().min(1, 'El nombre es requerido.'),
   estado: z.string().min(1, 'El estado es requerido.'),
@@ -78,13 +87,52 @@ function getButtonLabel(isLoading: boolean, isEditing: boolean): string {
   return isEditing ? 'Actualizar' : 'Guardar';
 }
 
+function getButtonVariant(isEditing: boolean): 'default' | 'destructive' {
+  return isEditing ? 'destructive' : 'default';
+}
+
+// Agrupa estaciones por nombre_estacion y codigo_linea, mostrando original y última versión
+function agruparEstaciones(estaciones: Estacion[]): EstacionAgrupada[] {
+  const grupos = new Map<string, Estacion[]>();
+  
+  // Agrupar por nombre_estacion + codigo_linea
+  estaciones.forEach(estacion => {
+    const key = `${estacion.nombre_estacion}|${estacion.codigo_linea}`;
+    if (!grupos.has(key)) {
+      grupos.set(key, []);
+    }
+    grupos.get(key)!.push(estacion);
+  });
+  
+  // Procesar cada grupo
+  const agrupadas: EstacionAgrupada[] = [];
+  grupos.forEach((estacionesDelGrupo, key) => {
+    // Ordenar por codigo_estacion
+    estacionesDelGrupo.sort((a, b) => a.codigo_estacion - b.codigo_estacion);
+    
+    const original = estacionesDelGrupo[0];
+    const latest = estacionesDelGrupo[estacionesDelGrupo.length - 1];
+    
+    agrupadas.push({
+      nombre_estacion: original.nombre_estacion,
+      codigo_linea: original.codigo_linea,
+      original: original.codigo_estacion === latest.codigo_estacion ? null : original,
+      latest,
+      numeroPuestosOriginal: original.numero_puestos,
+      numeroPuestosLatest: latest.numero_puestos,
+    });
+  });
+  
+  return agrupadas;
+}
+
 export default function RelacionesModal({
   grupo,
   isOpen,
   onClose,
 }: Readonly<RelacionesModalProps>) {
   const [lineas, setLineas] = useState<Linea[]>([]);
-  const [estaciones, setEstaciones] = useState<Estacion[]>([]);
+  const [estacionesAgrupadas, setEstacionesAgrupadas] = useState<EstacionAgrupada[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLineaFormOpen, setIsLineaFormOpen] = useState(false);
   const [isEstacionFormOpen, setIsEstacionFormOpen] = useState(false);
@@ -129,7 +177,7 @@ export default function RelacionesModal({
       const allEstaciones = estacionesResponse.data || [];
       const lineaIds = new Set(filteredLineas.map(l => l.codigo_linea));
       const filteredEstaciones = allEstaciones.filter((e: Estacion) => lineaIds.has(e.codigo_linea));
-      setEstaciones(filteredEstaciones);
+      setEstacionesAgrupadas(agruparEstaciones(filteredEstaciones));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'No se pudieron cargar las relaciones.';
       toast({ title: 'Error', description: errorMessage, variant: 'destructive' });
@@ -168,13 +216,13 @@ export default function RelacionesModal({
     setIsLineaFormOpen(true);
   };
 
-  const handleEditEstacion = (estacion: Estacion) => {
-    setSelectedEstacion(estacion);
+  const handleEditEstacion = (estacionAgrupada: EstacionAgrupada) => {
+    setSelectedEstacion(estacionAgrupada.latest);
     estacionForm.reset({
-      nombre_estacion: estacion.nombre_estacion,
-      codigo_linea: estacion.codigo_linea.toString(),
-      numero_puestos: estacion.numero_puestos,
-      estado: estacion.estado,
+      nombre_estacion: estacionAgrupada.latest.nombre_estacion,
+      codigo_linea: estacionAgrupada.latest.codigo_linea.toString(),
+      numero_puestos: estacionAgrupada.latest.numero_puestos,
+      estado: estacionAgrupada.latest.estado,
     });
     setIsEstacionFormOpen(true);
   };
@@ -214,6 +262,7 @@ export default function RelacionesModal({
 
       setIsLineaFormOpen(false);
       setSelectedLinea(null);
+      await lineaService.getAll();
       await fetchRelaciones();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Ocurrió un error inesperado.';
@@ -227,14 +276,13 @@ export default function RelacionesModal({
     setIsLoading(true);
     try {
       const data: any = {
+        codigo_estacion: 0,
         codigo_linea: Number(values.codigo_linea),
         nombre_estacion: values.nombre_estacion,
+        numero_puestos: values.numero_puestos,
         estado: values.estado,
       };
 
-      if (selectedEstacion) {
-        data.codigo_estacion = selectedEstacion.codigo_estacion;
-      }
       data.usuario_modificacion = user?.name || 'admin';
       data.fecha_modificacion = formatDateForSQLServer(new Date());
 
@@ -246,6 +294,7 @@ export default function RelacionesModal({
 
       setIsEstacionFormOpen(false);
       setSelectedEstacion(null);
+      await estacionService.getAll();
       await fetchRelaciones();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Ocurrió un error inesperado.';
@@ -291,10 +340,10 @@ export default function RelacionesModal({
     return l.nombre_linea.toLowerCase().includes(f) || String(l.codigo_linea).includes(f);
   });
 
-  const filteredEstaciones = estaciones.filter((e) => {
+  const filteredEstaciones = estacionesAgrupadas.filter((eg) => {
     if (!filterEstacion.trim()) return true;
     const f = filterEstacion.toLowerCase();
-    return e.nombre_estacion.toLowerCase().includes(f) || String(e.codigo_estacion).includes(f);
+    return eg.nombre_estacion.toLowerCase().includes(f) || String(eg.latest.codigo_estacion).includes(f);
   });
 
   const getLineaNameById = (codigo_linea: number): string => {
@@ -555,7 +604,7 @@ function LineaForm({
         <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
           Cancelar
         </Button>
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" variant={getButtonVariant(Boolean(selectedLinea))} disabled={isLoading}>
           {getButtonLabel(isLoading, Boolean(selectedLinea))}
         </Button>
       </DialogFooter>
@@ -564,11 +613,11 @@ function LineaForm({
 }
 
 interface EstacionesListProps {
-  filteredEstaciones: Estacion[];
+  filteredEstaciones: EstacionAgrupada[];
   filter: string;
   isLoading: boolean;
   onFilterChange: (filter: string) => void;
-  onEdit: (estacion: Estacion) => void;
+  onEdit: (estacionAgrupada: EstacionAgrupada) => void;
   onDelete: (estacion: Estacion) => Promise<void>;
   onAddNew: () => void;
   getLineaNameById: (codigo_linea: number) => string;
@@ -617,7 +666,7 @@ function EstacionesList({
                 {!isLoading && filteredEstaciones.length === 0 && <EmptyRow colSpan={5} />}
                 {!isLoading && filteredEstaciones.length > 0 && (
                   <EstacionTableRows
-                    estaciones={filteredEstaciones}
+                    estacionesAgrupadas={filteredEstaciones}
                     onEdit={onEdit}
                     onDelete={onDelete}
                     getLineaNameById={getLineaNameById}
@@ -633,31 +682,41 @@ function EstacionesList({
 }
 
 interface EstacionTableRowsProps {
-  estaciones: Estacion[];
-  onEdit: (estacion: Estacion) => void;
+  estacionesAgrupadas: EstacionAgrupada[];
+  onEdit: (estacionAgrupada: EstacionAgrupada) => void;
   onDelete: (estacion: Estacion) => Promise<void>;
   getLineaNameById: (codigo_linea: number) => string;
 }
 
 function EstacionTableRows({
-  estaciones,
+  estacionesAgrupadas,
   onEdit,
   onDelete,
   getLineaNameById,
 }: Readonly<EstacionTableRowsProps>) {
   return (
     <>
-      {estaciones.map((estacion) => (
-        <TableRow key={estacion.codigo_estacion}>
-          <TableCell className="font-medium">{estacion.nombre_estacion}</TableCell>
-          <TableCell>{getLineaNameById(estacion.codigo_linea)}</TableCell>
-          <TableCell className="text-center">{estacion.numero_puestos}</TableCell>
+      {estacionesAgrupadas.map((eg) => (
+        <TableRow key={`${eg.nombre_estacion}-${eg.codigo_linea}`}>
+          <TableCell className="font-medium">{eg.nombre_estacion}</TableCell>
+          <TableCell>{getLineaNameById(eg.codigo_linea)}</TableCell>
+          <TableCell className="text-center">
+            {eg.original ? (
+              <span className="text-sm">
+                <span className="font-semibold text-blue-600">{eg.numeroPuestosOriginal}</span>
+                <span className="text-gray-400 mx-1">→</span>
+                <span className="font-semibold text-green-600">{eg.numeroPuestosLatest}</span>
+              </span>
+            ) : (
+              <span className="font-semibold">{eg.numeroPuestosLatest}</span>
+            )}
+          </TableCell>
           <TableCell>
             <Badge
-              variant={estacion.estado === 'A' ? 'default' : 'destructive'}
-              className={estacion.estado === 'A' ? 'bg-green-600' : ''}
+              variant={eg.latest.estado === 'A' ? 'default' : 'destructive'}
+              className={eg.latest.estado === 'A' ? 'bg-green-600' : ''}
             >
-              {estacion.estado === 'A' ? 'Activo' : 'Inactivo'}
+              {eg.latest.estado === 'A' ? 'Activo' : 'Inactivo'}
             </Badge>
           </TableCell>
           <TableCell className="text-right">
@@ -669,11 +728,11 @@ function EstacionTableRows({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(estacion)}>
+                <DropdownMenuItem onClick={() => onEdit(eg)}>
                   <Edit className="mr-2 h-4 w-4" />
                   Editar
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onDelete(estacion)} className="text-red-600">
+                <DropdownMenuItem onClick={() => onDelete(eg.latest)} className="text-red-600">
                   <Trash className="mr-2 h-4 w-4" />
                   Eliminar
                 </DropdownMenuItem>
@@ -784,7 +843,7 @@ function EstacionForm({
         <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
           Cancelar
         </Button>
-        <Button type="submit" disabled={isLoading || lineas.length === 0}>
+        <Button type="submit" variant={getButtonVariant(Boolean(selectedEstacion))} disabled={isLoading || lineas.length === 0}>
           {getButtonLabel(isLoading, Boolean(selectedEstacion))}
         </Button>
       </DialogFooter>
