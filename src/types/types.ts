@@ -127,6 +127,17 @@ export interface SalesDataRow {
   marca: string;
   lineaProduccion: string; 
   ClaseAprovisionamiento?: 'E' | 'X' | 'F' | 'N/A';
+  // Campos originales del backend
+  Mes?: number;
+  CodMaterial?: string;
+  Centro?: string;
+  CentroFabricacion?: string;
+  ClaseAprovisionam?: string;
+  UnidadesProyectado?: number;
+  StockActual?: number;
+  StockSeguridad?: number;
+  Sector?: string;
+  LineaFabricacion?: string | null;
 }
 
 export interface WorkstationDefinition {

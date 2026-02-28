@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 
 interface DataImportSectionProps {
   onDataImported: (data: SalesDataRow[]) => void;
+  onFiltersChange?: (filters: { años: string[]; meses: string[]; centros: string[] }) => void;
 }
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -99,8 +100,8 @@ const MultiSelect: React.FC<{
 };
 
 
-export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported }) => {
-  const { addNotification, isLoading: isAppLoading } = useAppContext();
+export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported, onFiltersChange }) => {
+  const { addNotification, isAppLoading } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: string, label: string}[],
@@ -122,10 +123,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
 
   const [totalLoadedRecords, setTotalLoadedRecords] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number; month: string }>({ current: 0, total: 0, month: '' });
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number; month: string; currentBatch: number; totalBatches: number }>({ current: 0, total: 0, month: '', currentBatch: 0, totalBatches: 0 });
   const [reportSummary, setReportSummary] = useState<{
-    prioritySectors: { sector: string; totalUnidades: number }[];
-    otherSectors: { sector: string; totalUnidades: number }[];
+    prioritySectors: { sector: string; totalUnidades: number; detallesPorCentro: Map<string, number> }[];
+    otherSectors: { sector: string; totalUnidades: number; detallesPorCentro: Map<string, number> }[];
+    centrosUnicos: string[];
     prioritySubtotal: number;
     otherSubtotal: number;
     grandTotal: number;
@@ -133,6 +135,11 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
   
   const handleFilterChange = (name: keyof typeof filters, value: any) => {
     setFilters(prev => ({ ...prev, [name]: value }));
+    // Emitir cambios de filtros a la tabla cruda
+    if (name === 'años' || name === 'meses' || name === 'centros') {
+      const updatedFilters = { ...filters, [name]: value };
+      onFiltersChange?.({ años: updatedFilters.años, meses: updatedFilters.meses, centros: updatedFilters.centros });
+    }
   };
 
   useEffect(() => {
@@ -175,8 +182,9 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
     }
 
     let allData: SalesDataRow[] = [];
-    const sectorTotals = new Map<string, number>();
-    const ROWS_PER_PAGE = 50000;
+    const sectorTotals = new Map<string, Map<string, number>>();  // sector -> (centro -> unidades)
+    const centrosUnicos = new Set<string>();
+    const ROWS_PER_PAGE = 10000;
 
     try {
         // Determine if we should use getPresupuesto (no filters) or getPresupuestoPorMesesYAnio (with filters)
@@ -199,9 +207,15 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                     if (presupuestoItems && presupuestoItems.length > 0) {
                         presupuestoItems.forEach((item: any) => {
                             const sector = item.Sector || 'Sin Sector';
-                            const unidades = parseFloat(String(item.UnidadesProyectado)) || 0;
+                            const centro = String(item.Centro).trim();
+                            const unidades = Number.parseFloat(String(item.UnidadesProyectado)) || 0;
                             if (unidades > 0) {
-                                sectorTotals.set(sector, (sectorTotals.get(sector) || 0) + unidades);
+                                centrosUnicos.add(centro);
+                                if (!sectorTotals.has(sector)) {
+                                    sectorTotals.set(sector, new Map());
+                                }
+                                const centroMap = sectorTotals.get(sector)!;
+                                centroMap.set(centro, (centroMap.get(centro) || 0) + unidades);
                             }
                         });
                         
@@ -213,12 +227,23 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                             etiqueta: item.Etiqueta || 'Sin Etiqueta',
                             código: normalizeMaterialCode(item.CodMaterial),
                             centro: String(item.Centro).trim(), 
-                            unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
-                            dolaresProyectado: 0,
-                            descripciónMaterial: item.Material,
+                            unidadesProyectado: Number.parseFloat(String(item.UnidadesProyectado)) || 0,
+                            dolaresProyectado: Number.parseFloat(String(item.DólaresProyectado)) || 0,
+                            descripciónMaterial: item.Material || item.Descripcion,
                             familia: item.Familia, 
                             marca: item.Marca, 
                             lineaProduccion: item.LineaProduccion || '',
+                            // Campos originales del backend
+                            Mes: item.Mes,
+                            CodMaterial: item.CodMaterial,
+                            Centro: item.Centro,
+                            CentroFabricacion: item.CentroFabricacion,
+                            ClaseAprovisionam: item.ClaseAprovisionam,
+                            UnidadesProyectado: Number.parseFloat(String(item.UnidadesProyectado)) || 0,
+                            StockActual: Number.parseFloat(String(item.StockActual)) || 0,
+                            StockSeguridad: Number.parseFloat(String(item.StockSeguridad)) || 0,
+                            Sector: item.Sector,
+                            LineaFabricacion: item.LineaFabricacion,
                         }));
                         allData = [...allData, ...mappedData];
                         
@@ -237,7 +262,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 addNotification('error', 'Fallo al cargar el presupuesto completo. Continuando...');
             }
         } else {
-            // Use getPresupuestoPorMesesYAnio for filtered data - paginated
+            // Use getMaestroPorMesesYAnio for filtered data - paginated with 10000 records per batch
             // Iterar sobre cada año, mes y centro individual
             const yearsToLoad = filters.años.map(Number);
             const monthsToLoad = filters.meses.length > 0 ? filters.meses.map(m => String(Number(m))) : Array.from({length: 12}, (_, i) => String(i + 1));
@@ -248,23 +273,32 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             const totalMesesYAños = yearsToLoad.length * monthsToLoad.length * centrosToLoad.length;
             let currentProgress = 0;
             
-            addNotification('info', `Iniciando carga de datos para año(s): ${yearsToLoad.join(', ')}.`);
+            addNotification('info', `Iniciando carga de datos desde tabla unificada para año(s): ${yearsToLoad.join(', ')}.`);
             
             for (const year of yearsToLoad) {
                 for (const month of monthsToLoad) {
                     for (const centro of centrosToLoad) {
                         currentProgress++;
                         const monthName = MONTH_NAMES_ES[Number(month) - 1];
-                        setDownloadProgress({ current: currentProgress, total: totalMesesYAños, month: `${monthName} ${year} - ${centro}` });
                         
                         try {
                             addNotification('info', `Descargando ${monthName} ${year} - Centro: ${centro} (${currentProgress} de ${totalMesesYAños})...`);
                             
                             let page = 1;
                             let hasMoreData = true;
+                            let batchNumber = 0;
                             
                             while (hasMoreData) {
-                                const response = await serviciosService.getPresupuestoPorMesesYAnio(
+                                batchNumber++;
+                                setDownloadProgress({ 
+                                    current: currentProgress, 
+                                    total: totalMesesYAños, 
+                                    month: `${monthName} ${year} - ${centro}`,
+                                    currentBatch: batchNumber,
+                                    totalBatches: 1
+                                });
+                                
+                                const response = await serviciosService.getMaestroPorMesesYAnio(
                                     String(year),
                                     centro,
                                     month,
@@ -272,17 +306,32 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                     ROWS_PER_PAGE
                                 );
 
-                                const presupuestoItems = response.data || [];
-                                if (presupuestoItems && presupuestoItems.length > 0) {
-                                    presupuestoItems.forEach((item: any) => {
+                                const maestroItems = response.data || [];
+                                const totalRegistros = response.totalRegistros || 0;
+                                
+                                if (maestroItems && maestroItems.length > 0) {
+                                    // Update total batches for this month/center
+                                    const totalBatches = Math.ceil(totalRegistros / ROWS_PER_PAGE);
+                                    setDownloadProgress(prev => ({
+                                        ...prev,
+                                        totalBatches: totalBatches
+                                    }));
+                                    
+                                    maestroItems.forEach((item: any) => {
                                         const sector = item.Sector || 'Sin Sector';
-                                        const unidades = parseFloat(String(item.UnidadesProyectado)) || 0;
+                                        const centro = String(item.Centro).trim();
+                                        const unidades = Number.parseFloat(String(item.UnidadesProyectado)) || 0;
                                         if (unidades > 0) {
-                                            sectorTotals.set(sector, (sectorTotals.get(sector) || 0) + unidades);
+                                            centrosUnicos.add(centro);
+                                            if (!sectorTotals.has(sector)) {
+                                                sectorTotals.set(sector, new Map());
+                                            }
+                                            const centroMap = sectorTotals.get(sector)!;
+                                            centroMap.set(centro, (centroMap.get(centro) || 0) + unidades);
                                         }
                                     });
                                     
-                                    const mappedData: SalesDataRow[] = presupuestoItems.map((item: any, index: number) => ({
+                                    const mappedData: SalesDataRow[] = maestroItems.map((item: any, index: number) => ({
                                         id: `row-${item.Año}-${item.Mes}-${item.Centro}-${page}-${index}`,
                                         año: item.Año, 
                                         mes: item.Mes, 
@@ -290,17 +339,28 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                                         etiqueta: item.Etiqueta || 'Sin Etiqueta',
                                         código: normalizeMaterialCode(item.CodMaterial),
                                         centro: String(item.Centro).trim(), 
-                                        unidadesProyectado: parseFloat(String(item.UnidadesProyectado)) || 0,
-                                        dolaresProyectado: 0,
-                                        descripciónMaterial: item.Material,
+                                        unidadesProyectado: Number.parseFloat(String(item.UnidadesProyectado)) || 0,
+                                        dolaresProyectado: Number.parseFloat(String(item.DólaresProyectado)) || 0,
+                                        descripciónMaterial: item.Descripcion || item.Material || '',
                                         familia: item.Familia, 
                                         marca: item.Marca, 
-                                        lineaProduccion: item.LineaProduccion || '',
+                                        lineaProduccion: item.SeFabricaEn || item.LineaProduccion || '',
+                                        // Campos originales del backend
+                                        Mes: item.Mes,
+                                        CodMaterial: item.CodMaterial,
+                                        Centro: item.Centro,
+                                        CentroFabricacion: item.CentroFabricacion,
+                                        ClaseAprovisionam: item.ClaseAprovisionam,
+                                        UnidadesProyectado: Number.parseFloat(String(item.UnidadesProyectado)) || 0,
+                                        StockActual: Number.parseFloat(String(item.StockActual)) || 0,
+                                        StockSeguridad: Number.parseFloat(String(item.StockSeguridad)) || 0,
+                                        Sector: item.Sector,
+                                        LineaFabricacion: item.LineaFabricacion,
                                     }));
                                     allData = [...allData, ...mappedData];
                                     
                                     // Si recibimos menos registros que el límite, significa que es la última página
-                                    if (presupuestoItems.length < ROWS_PER_PAGE) {
+                                    if (maestroItems.length < ROWS_PER_PAGE) {
                                         hasMoreData = false;
                                     } else {
                                         page++;
@@ -320,17 +380,20 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         
         if (allData.length > 0) {
             const prioritySectorsList = ['01 COLCHONES', '02 BASES-CABECERO-CAMA', '03 MUEBLES FABRICACIÓN'];
-            const prioritySectors: { sector: string; totalUnidades: number }[] = [];
-            const otherSectors: { sector: string; totalUnidades: number }[] = [];
+            const prioritySectors: { sector: string; totalUnidades: number; detallesPorCentro: Map<string, number> }[] = [];
+            const otherSectors: { sector: string; totalUnidades: number; detallesPorCentro: Map<string, number> }[] = [];
             let prioritySubtotal = 0;
             let otherSubtotal = 0;
 
-            for (const [sector, totalUnidades] of sectorTotals.entries()) {
+            for (const [sector, centroMap] of sectorTotals.entries()) {
+                const totalUnidades = Array.from(centroMap.values()).reduce((sum, val) => sum + val, 0);
+                const sectorData = { sector, totalUnidades, detallesPorCentro: centroMap };
+                
                 if (prioritySectorsList.includes(sector)) {
-                    prioritySectors.push({ sector, totalUnidades });
+                    prioritySectors.push(sectorData);
                     prioritySubtotal += totalUnidades;
                 } else {
-                    otherSectors.push({ sector, totalUnidades });
+                    otherSectors.push(sectorData);
                     otherSubtotal += totalUnidades;
                 }
             }
@@ -343,6 +406,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
             setReportSummary({
                 prioritySectors,
                 otherSectors,
+                centrosUnicos: Array.from(centrosUnicos).sort((a, b) => a.localeCompare(b)),
                 prioritySubtotal,
                 otherSubtotal,
                 grandTotal,
@@ -360,7 +424,7 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
         addNotification('error', `Error durante la carga de datos: ${(error as Error).message}`);
     } finally {
         setIsProcessing(false);
-        setDownloadProgress({ current: 0, total: 0, month: '' });
+        setDownloadProgress({ current: 0, total: 0, month: '', currentBatch: 0, totalBatches: 0 });
     }
   };
   
@@ -427,7 +491,10 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
               ></div>
             </div>
           </div>
-          <p className="text-sm text-blue-700">Mes actual: <span className="font-semibold">{downloadProgress.month}</span></p>
+          <p className="text-sm text-blue-700">Mes/Centro actual: <span className="font-semibold">{downloadProgress.month}</span></p>
+          {downloadProgress.totalBatches > 1 && (
+            <p className="text-sm text-blue-700 mt-1">Batch: <span className="font-semibold">{downloadProgress.currentBatch} de {downloadProgress.totalBatches}</span></p>
+          )}
         </div>
       )}
 
@@ -440,40 +507,78 @@ export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImpo
                 Se han cargado <span className="font-bold">{totalLoadedRecords.toLocaleString()}</span> registros de ventas en la memoria de la aplicación.
             </p>
             
-            <div className="mt-4 max-w-md mx-auto text-left">
-                <h4 className="text-md font-semibold text-gray-700 mb-2 text-center">Resumen de Unidades Presupuestadas</h4>
-                <div className="border bg-white rounded-md shadow-sm">
+            <div className="mt-4 mx-auto text-left">
+                <h4 className="text-md font-semibold text-gray-700 mb-2 text-center">Resumen de Unidades Presupuestadas por Sector y Centro</h4>
+                <div className="border bg-white rounded-md shadow-sm overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-100">
+                        <thead className="bg-gray-100 sticky top-0">
                             <tr>
-                                <th className="p-2 text-left font-semibold text-gray-600">Sector</th>
-                                <th className="p-2 text-right font-semibold text-gray-600">Total Unidades</th>
+                                <th className="p-2 text-left font-semibold text-gray-600 border-r">Sector</th>
+                                <th className="p-2 text-right font-semibold text-gray-600 border-r">Total Unidades</th>
+                                {reportSummary.centrosUnicos.map(centro => (
+                                    <th key={centro} className="p-2 text-right font-semibold text-gray-600 border-r">Centro {centro}</th>
+                                ))}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                             {reportSummary.prioritySectors.map(item => (
                                 <tr key={item.sector}>
-                                    <td className="p-2">{item.sector}</td>
-                                    <td className="p-2 text-right font-mono">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                                    <td className="p-2 border-r">{item.sector}</td>
+                                    <td className="p-2 text-right font-mono border-r font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                                    {reportSummary.centrosUnicos.map(centro => (
+                                        <td key={`${item.sector}-${centro}`} className="p-2 text-right font-mono border-r">
+                                            {Math.round(item.detallesPorCentro.get(centro) || 0).toLocaleString()}
+                                        </td>
+                                    ))}
                                 </tr>
                             ))}
                             <tr className="bg-gray-200 font-bold">
-                                <td className="p-2">Subtotal Fabricación</td>
-                                <td className="p-2 text-right font-mono">{Math.round(reportSummary.prioritySubtotal).toLocaleString()}</td>
+                                <td className="p-2 border-r">Subtotal Fabricación</td>
+                                <td className="p-2 text-right font-mono border-r">{Math.round(reportSummary.prioritySubtotal).toLocaleString()}</td>
+                                {reportSummary.centrosUnicos.map(centro => {
+                                    const subtotal = reportSummary.prioritySectors.reduce((sum, item) => sum + (item.detallesPorCentro.get(centro) || 0), 0);
+                                    return (
+                                        <td key={`subtotal-priority-${centro}`} className="p-2 text-right font-mono border-r font-bold">
+                                            {Math.round(subtotal).toLocaleString()}
+                                        </td>
+                                    );
+                                })}
                             </tr>
                             {reportSummary.otherSectors.map(item => (
                                 <tr key={item.sector}>
-                                    <td className="p-2">{item.sector}</td>
-                                    <td className="p-2 text-right font-mono">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                                    <td className="p-2 border-r">{item.sector}</td>
+                                    <td className="p-2 text-right font-mono border-r font-semibold">{Math.round(item.totalUnidades).toLocaleString()}</td>
+                                    {reportSummary.centrosUnicos.map(centro => (
+                                        <td key={`${item.sector}-${centro}`} className="p-2 text-right font-mono border-r">
+                                            {Math.round(item.detallesPorCentro.get(centro) || 0).toLocaleString()}
+                                        </td>
+                                    ))}
                                 </tr>
                             ))}
-                             <tr className="bg-gray-200 font-bold">
-                                <td className="p-2">Subtotal Otros Sectores</td>
-                                <td className="p-2 text-right font-mono">{Math.round(reportSummary.otherSubtotal).toLocaleString()}</td>
+                            <tr className="bg-gray-200 font-bold">
+                                <td className="p-2 border-r">Subtotal Otros Sectores</td>
+                                <td className="p-2 text-right font-mono border-r">{Math.round(reportSummary.otherSubtotal).toLocaleString()}</td>
+                                {reportSummary.centrosUnicos.map(centro => {
+                                    const subtotal = reportSummary.otherSectors.reduce((sum, item) => sum + (item.detallesPorCentro.get(centro) || 0), 0);
+                                    return (
+                                        <td key={`subtotal-other-${centro}`} className="p-2 text-right font-mono border-r font-bold">
+                                            {Math.round(subtotal).toLocaleString()}
+                                        </td>
+                                    );
+                                })}
                             </tr>
                             <tr className="bg-gray-800 text-white font-bold">
-                                <td className="p-2">TOTAL GENERAL</td>
-                                <td className="p-2 text-right font-mono">{Math.round(reportSummary.grandTotal).toLocaleString()}</td>
+                                <td className="p-2 border-r">TOTAL GENERAL</td>
+                                <td className="p-2 text-right font-mono border-r">{Math.round(reportSummary.grandTotal).toLocaleString()}</td>
+                                {reportSummary.centrosUnicos.map(centro => {
+                                    const total = reportSummary.prioritySectors.reduce((sum, item) => sum + (item.detallesPorCentro.get(centro) || 0), 0) + 
+                                                  reportSummary.otherSectors.reduce((sum, item) => sum + (item.detallesPorCentro.get(centro) || 0), 0);
+                                    return (
+                                        <td key={`total-${centro}`} className="p-2 text-right font-mono border-r font-bold">
+                                            {Math.round(total).toLocaleString()}
+                                        </td>
+                                    );
+                                })}
                             </tr>
                         </tbody>
                     </table>

@@ -28,6 +28,7 @@ export const APP_TITLE = "Optimizador de Producción";
 export enum ActiveView {
   DASHBOARD = 'DASHBOARD',
   DATA_IMPORT = 'DATA_IMPORT',
+  DATA_IMPORT_V2 = 'DATA_IMPORT_V2',
   CONSTRAINTS = 'CONSTRAINTS',
   NEEDS_CALCULATION_C2000 = 'NEEDS_CALCULATION_C2000',
   INVENTORY_NEEDS = 'INVENTORY_NEEDS',
@@ -105,6 +106,7 @@ export const APP_VERSION = '1.0.0-next';
 const NAVIGATION_ITEMS = [
   { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon />, href: '/dashboard' },
   { id: ActiveView.DATA_IMPORT, label: 'Importar Ventas', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventas' },
+  { id: ActiveView.DATA_IMPORT_V2, label: 'Importar Ventas 2', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV2' },
   { id: ActiveView.CONSTRAINTS, label: 'Definir Restricciones', icon: <ConstraintsIcon />, href: '/dashboard/opciones/definir-restricciones' },
   { id: ActiveView.NEEDS_CALCULATION_C2000, label: 'Cálculo Necesidades C2000', icon: <NeedsCalculationIcon />, href: '/dashboard/opciones/calculo-necesidades-c2000' },
   { id: ActiveView.INVENTORY_NEEDS, label: 'Necesidades de Inventario', icon: <InventoryNeedsIcon />, href: '/dashboard/opciones/necesidades-inventario' },
@@ -138,6 +140,7 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.MAINTENANCE,
   ActiveView.ABSENTEEISM,
   ActiveView.PRODUCTION_PLAN,
+  ActiveView.DATA_IMPORT_V2,
   ActiveView.TACTICAL_SCHEDULING,
   ActiveView.TACTICAL_SCHEDULING_MUEBLES,
   ActiveView.WORK_SHIFT_PLANNING,

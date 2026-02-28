@@ -153,7 +153,7 @@ export const serviciosService = {
 
 
 
-    async getPresupuestoPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
+  async getPresupuestoPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/presupuestoPorMesesYAnio", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -167,4 +167,38 @@ export const serviciosService = {
     }
     return response.json();
   },
+
+
+  //////Consultas a la tabla unificada
+    async getMaestroPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/MaestroPorMesesYAnio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anio: anio, centro: centro, meses:meses, page: page, rowsPerPage: rows }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+
+  async getMaestroPorCentroYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/MaestroPorCentroYAnio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anio: anio, centro: centro, page: page, rowsPerPage: rows }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
 };
