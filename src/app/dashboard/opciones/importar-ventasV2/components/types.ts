@@ -1,0 +1,112 @@
+// Tipos e interfaces utilizadas en los componentes de importar-ventasV2
+
+export interface WorkDaysCalculation {
+  diasLaborables: number;
+  diasSabados: number;
+  diasFeriados: string[];
+}
+
+export interface TiempoCanonResult {
+  mes: string;
+  mesNumero: number;
+  diasLaborables: number;
+  diasSabados: number;
+  diasFeriados: string[];
+  data: any;
+  error: string | null;
+}
+
+export interface FilterOptions {
+  años: { value: string; label: string }[];
+  meses: { value: string; label: string }[];
+  centros: { value: string; label: string }[];
+}
+
+export interface SelectedFilters {
+  año: string;
+  meses: string[];
+  centros: string[];
+}
+
+export interface TransferNeed {
+  CodMaterial: string;
+  necesidadTraslado: number;
+}
+
+export interface RawBackendDataTableProps {
+  año: string;
+  meses: string[];
+  centros: string[];
+  onDataLoaded?: (data: any[]) => void;
+}
+
+export interface RawBackendDataTableHandle {
+  loadData: () => Promise<void>;
+}
+
+export interface TimesCanonSectionProps {
+  results: TiempoCanonResult[];
+  isLoading: boolean;
+}
+
+export interface BottleneckSummaryTableProps {
+  datosEnriquecidosE: any[];
+  datosEnriquecidosX: any[];
+  tiemposCanon: TiempoCanonResult[];
+  numMaximoSabados: number;
+  maxExtrasHoras: number;
+  horasTrabajo: number;
+  horasExtrasFin: number;
+}
+
+export interface BottleneckClassTableProps {
+  datos: any[];
+  datosCompletos: any[];
+  titulo: string;
+  tiemposCanon: TiempoCanonResult[];
+  tiempoConsumidoAnterior?: { [mesLinea: string]: number };
+  onTransferNeedsCalculated?: (transferNeeds: TransferNeed[]) => void;
+}
+
+export interface BottleneckAnalysisSectionProps {
+  data: any[];
+  tiemposCanon: TiempoCanonResult[];
+  numMaximoSabados: number;
+  maxExtrasHoras: number;
+  horasTrabajo: number;
+  horasExtrasFin: number;
+  onTransferNeedsConsolidatedChanged?: (needs: TransferNeed[]) => void;
+}
+
+export interface Centro1000SummaryTableProps {
+  datosEnriquecidos: any[];
+  tiemposCanon: TiempoCanonResult[];
+  numMaximoSabados: number;
+  maxExtrasHoras: number;
+  horasTrabajo: number;
+  horasExtrasFin: number;
+}
+
+export interface Centro1000DetailTableProps {
+  datos: any[];
+  tiemposCanon: TiempoCanonResult[];
+  trasladosDesdeCentro2000: TransferNeed[];
+}
+
+export interface BottleneckAnalysisSectionCentro1000Props {
+  data: any[];
+  tiemposCanon: TiempoCanonResult[];
+  numMaximoSabados: number;
+  maxExtrasHoras: number;
+  horasTrabajo: number;
+  horasExtrasFin: number;
+  trasladosDesdeCentro2000: TransferNeed[];
+}
+
+export interface MultiSelectDropdownProps {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  disabled?: boolean;
+}

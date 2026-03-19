@@ -1,6 +1,7 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
+import { Line } from "recharts";
 
 const API_URL = `${environment.apiURL}/api/servicios`;
 
@@ -194,6 +195,56 @@ export const serviciosService = {
     });
     if (!response.ok) {
       const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+
+
+  /////////Metodos para el Plan de Mediano Plazo
+  
+  async getTiempoMaximoDeFabricacionMaterial(CodigoMaterial : string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number ): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ CodigoMaterial : CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
+    });
+    if (!response.ok) {
+      const errorBody = await response  
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+  async getTiemposCanonPorPuestoDeTrabajo(dias_laborales : string, dias_sabados: string): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/TiemposCanonTrabajoPorEstacion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dias_laborales : dias_laborales, dias_sabados: dias_sabados}),
+    });
+    if (!response.ok) {
+      const errorBody = await response  
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+
+  async getTiempoCanonicoEnFuncionDelCuelloCanonico(CodigoMaterial : string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number ): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ CodigoMaterial : CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
+    });
+    if (!response.ok) {
+      const errorBody = await response  
         .json()
         .catch(() => ({ message: "Error desconocido" }));
       throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
