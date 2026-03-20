@@ -16,6 +16,7 @@ interface CollapsibleSectionProps {
   onToggle: () => void;
   pathname: string;
   isLoading: boolean;
+  isCollapsed?: boolean;
 }
 
 function CollapsibleSection({ 
@@ -25,7 +26,8 @@ function CollapsibleSection({
   isOpen, 
   onToggle, 
   pathname, 
-  isLoading 
+  isLoading,
+  isCollapsed = false
 }: Readonly<CollapsibleSectionProps>) {
   const hasActiveChild = items.some(viewId => {
     const config = viewConfig[viewId];
@@ -38,15 +40,21 @@ function CollapsibleSection({
         onClick={onToggle}
         className={cn(
           'w-full flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
-          hasActiveChild && 'bg-white/15'
+          hasActiveChild && 'bg-white/15',
+          isCollapsed && 'justify-center px-2'
         )}
+        title={isCollapsed ? title : undefined}
       >
         {icon}
-        <span className="flex-1 text-left">{title}</span>
-        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        {!isCollapsed && (
+          <>
+            <span className="flex-1 text-left">{title}</span>
+            {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </>
+        )}
       </button>
       
-      {isOpen && (
+      {isOpen && !isCollapsed && (
         <div className="ml-4 pl-2 border-l border-white/20 space-y-1">
           {items.map(viewId => {
             const config = viewConfig[viewId];
@@ -82,7 +90,7 @@ function CollapsibleSection({
   );
 }
 
-export function MainNav({ className, ...props }: Readonly<React.HTMLAttributes<HTMLElement>>) {
+export function MainNav({ className, isCollapsed = false, ...props }: Readonly<React.HTMLAttributes<HTMLElement> & { isCollapsed?: boolean }>) {
   const { isLoading } = useAppContext();
   const pathname = usePathname();
   
@@ -101,15 +109,17 @@ export function MainNav({ className, ...props }: Readonly<React.HTMLAttributes<H
         className={cn(
           'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
           isDashboardActive && 'bg-white/25',
-          isLoading ? 'cursor-not-allowed opacity-50' : ''
+          isLoading ? 'cursor-not-allowed opacity-50' : '',
+          isCollapsed && 'justify-center px-2'
         )}
         aria-disabled={isLoading}
+        title={isCollapsed ? 'Dashboard' : undefined}
         onClick={(e) => {
           if (isLoading) e.preventDefault();
         }}
       >
         <LayoutDashboard className="h-5 w-5" />
-        <span className="flex-1">Dashboard</span>
+        {!isCollapsed && <span className="flex-1">Dashboard</span>}
       </Link>
 
       {/* Opciones - sección contraíble */}
@@ -121,6 +131,7 @@ export function MainNav({ className, ...props }: Readonly<React.HTMLAttributes<H
         onToggle={() => setOpcionesOpen(!opcionesOpen)}
         pathname={pathname}
         isLoading={isLoading}
+        isCollapsed={isCollapsed}
       />
 
       {/* Parámetros - sección contraíble */}
@@ -132,6 +143,7 @@ export function MainNav({ className, ...props }: Readonly<React.HTMLAttributes<H
         onToggle={() => setParametrosOpen(!parametrosOpen)}
         pathname={pathname}
         isLoading={isLoading}
+        isCollapsed={isCollapsed}
       />
 
       {/* Configuraciones - sección contraíble */}
@@ -143,6 +155,7 @@ export function MainNav({ className, ...props }: Readonly<React.HTMLAttributes<H
         onToggle={() => setConfiguracionesOpen(!configuracionesOpen)}
         pathname={pathname}
         isLoading={isLoading}
+        isCollapsed={isCollapsed}
       />
     </nav>
   );

@@ -238,18 +238,36 @@ export function enriquecerDatosClase(
     const sumaNecLinea = mapa[key] ?? necesidad;
     const participacionIndividual = sumaNecLinea > 0 ? (necesidad / sumaNecLinea) * 100 : 0;
     const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
-    const tiempoTotalNecesidad = necesidad * tiempoPorUnidad;
+    const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
+    const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
+    // T. Total necesidad inicial = (Tiempo Unitarío / Puestos) * Necesidades
+    const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
     const tiempoDisp = obtenerTiempoDisp(mes, linea, row.PuestoCuellodeBottella);
 
     let necesidadMaximaAFabricar = 0;
     let horasExtrasUsadas = 0;
+    let tiempoParaMaterial = 0;
 
     if (tiempoDisp && tiempoPorUnidad > 0) {
       const techoAbsoluto = tiempoDisp.minutos_con_extras + tiempoDisp.minutos_fin_semana;
       const consumidoPrev = tiempoConsumidoAnterior?.[key] ?? 0;
       const tiempoMaxDisp = Math.max(0, techoAbsoluto - consumidoPrev);
-      const tiempoParaMaterial = (participacionIndividual / 100) * tiempoMaxDisp;
-      necesidadMaximaAFabricar = Math.min(necesidad, Math.floor(tiempoParaMaterial / tiempoPorUnidad));
+      
+      // Calcular tiempo disponible para este material según su participación
+      tiempoParaMaterial = (participacionIndividual / 100) * tiempoMaxDisp;
+      
+      // Nueva lógica: si tiempoRequerido <= tiempoDisponible => Producir todo
+      const tiempoRequerido = necesidad * tiempoPorUnidad;
+      
+      if (tiempoRequerido <= tiempoMaxDisp) {
+        // Producir todo lo que se necesita
+        necesidadMaximaAFabricar = necesidad;
+      } else {
+        // Aplicar prorrateo: utilizar el tiempo disponible prorratreado
+        const tiempoUnitario = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
+        const tiempoParaMaterialEnUnidades = tiempoUnitario > 0 ? tiempoParaMaterial / tiempoUnitario : 0;
+        necesidadMaximaAFabricar = Math.floor(tiempoParaMaterialEnUnidades);
+      }
 
       const tiempoNormalRest = Math.max(0, tiempoDisp.minutos_horario_normal - consumidoPrev);
       const tiempoNormalParaMaterial = (participacionIndividual / 100) * tiempoNormalRest;
@@ -263,6 +281,7 @@ export function enriquecerDatosClase(
       ...row,
       participacionIndividual: participacionIndividual.toFixed(2),
       tiempoTotalNecesidad,
+      tiempoParaMaterial,
       necesidadMaximaAFabricar,
       horasExtrasUsadas: horasExtrasUsadas.toFixed(2),
       mesRef: mes,

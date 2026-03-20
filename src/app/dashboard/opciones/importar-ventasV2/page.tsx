@@ -13,6 +13,7 @@ import {
   TimesCanonSection,
   RawBackendDataTable,
   BottleneckAnalysisSection,
+  BottleneckIdentificationSection,
   BottleneckAnalysisSectionCentro1000,
   BottleneckMaterialAnalysisSection,
   TiempoCanonResult,
@@ -187,9 +188,10 @@ export default function ImportarVentasPage() {
   const tabs = [
     { id: 1, label: 'Tiempos Canónicos', color: 'blue' },
     { id: 2, label: 'Datos Backend', color: 'blue' },
-    { id: 3, label: 'Análisis Centro 2000', color: 'blue' },
-    { id: 4, label: 'Análisis Centro 1000', color: 'teal' },
-    { id: 5, label: 'Bottleneck por Material', color: 'indigo' }
+    { id: 3, label: 'Identificación de Cuellos de Botella', color: 'red' },
+    { id: 4, label: 'Análisis Centro 2000', color: 'blue' },
+    { id: 5, label: 'Análisis Centro 1000', color: 'teal' },
+    { id: 6, label: 'Bottleneck por Material', color: 'indigo' }
   ];
 
   return (
@@ -292,6 +294,13 @@ export default function ImportarVentasPage() {
         </div>
 
         <div style={{ display: activeTab === 3 ? 'block' : 'none' }}>
+          <BottleneckIdentificationSection 
+            data={bottleneckData} 
+            tiemposCanon={tiemposCanonResults}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 4 ? 'block' : 'none' }}>
           <BottleneckAnalysisSection 
             data={bottleneckData} 
             tiemposCanon={tiemposCanonResults}
@@ -303,7 +312,7 @@ export default function ImportarVentasPage() {
           />
         </div>
 
-        <div style={{ display: activeTab === 4 ? 'block' : 'none' }}>
+        <div style={{ display: activeTab === 5 ? 'block' : 'none' }}>
           <BottleneckAnalysisSectionCentro1000 
             data={bottleneckData} 
             tiemposCanon={tiemposCanonResults}
@@ -315,7 +324,7 @@ export default function ImportarVentasPage() {
           />
         </div>
 
-        <div style={{ display: activeTab === 5 ? 'block' : 'none' }}>
+        <div style={{ display: activeTab === 6 ? 'block' : 'none' }}>
           <BottleneckMaterialAnalysisSection 
             data={bottleneckData}
             isLoading={isLoadingTimesCanon}

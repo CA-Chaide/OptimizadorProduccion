@@ -440,8 +440,8 @@ export const InventoryNeedsSection: React.FC = () => {
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Necesidad Stock (C=B-A)</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">Ventas Mes 1</th>
                             <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Unit. (d)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req. Stock (c*d)</th>
-                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total Req Ventas</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total necesidad inicial Req. Stock (c*d)</th>
+                            <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 uppercase tracking-wider">T. Total necesidad inicial Req Ventas</th>
                         </tr>
                          <tr>
                             <th className="p-1 w-32"><MultiSelectFilter placeholder="Centro" options={filterOptions.CentroStock || []} selected={(filters.CentroStock as string[] | undefined) || []} onChange={(value) => handleMultiSelectFilterChange('CentroStock', value)} /></th>

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { MONTH_NAMES } from './constants';
-import { safeNumber, exportToXLSX, seleccionarPuestoConMayorConsumo } from './utils';
+import { safeNumber, exportToXLSX } from './utils';
 import { TiempoCanonResult } from './types';
 
 interface Centro1000SummaryTableProps {
@@ -25,6 +25,52 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
   const [selectedLinea, setSelectedLinea] = useState<string>('');
   const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string>('');
 
+  // Calcular cuellos de botella DIRECTAMENTE de los datos (igual que Centro 2000)
+  const cuellosDeBottellaCalculados = React.useMemo(() => {
+    const tablaTiempos = new Map<string, number>();
+    const mapa = new Map<string, string>(); // Mes|Línea -> Puesto cuello de botella
+    
+    // Paso 1: Agrupar por Mes|Línea|Puesto y sumar tiempos
+    datosEnriquecidos.forEach(row => {
+      const necesidad = safeNumber(row.necesidadTotal ?? 0);
+      if (necesidad === 0) return;
+      
+      const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
+      const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
+      const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
+      const tiempoTotalMaterial = tiempoUnitarioPorPuesto * necesidad;
+      
+      const mes = String(row.mesRef || row.Mes || 'Sin mes');
+      const linea = String(row.lineaRef || row.LineaFabricacion || 'Sin línea');
+      const puesto = String(row.PuestoCuellodeBottella || row.PuestoTrabajo || row.puestoBotella || '');
+      
+      if (!puesto) return;
+      
+      const key = `${mes}|${linea}|${puesto}`;
+      const tiempoActual = tablaTiempos.get(key) || 0;
+      tablaTiempos.set(key, tiempoActual + tiempoTotalMaterial);
+    });
+    
+    // Paso 2: Identificar cuello de botella por Mes|Línea (puesto con mayor tiempo)
+    tablaTiempos.forEach((tiempo, key) => {
+      const [mes, linea, puesto] = key.split('|');
+      const lineaKey = `${mes}|${linea}`;
+      
+      const actualPuesto = mapa.get(lineaKey);
+      let actualTiempo = 0;
+      if (actualPuesto) {
+        const actualKey = `${mes}|${linea}|${actualPuesto}`;
+        actualTiempo = tablaTiempos.get(actualKey) || 0;
+      }
+      
+      if (tiempo > actualTiempo) {
+        mapa.set(lineaKey, puesto);
+      }
+    });
+    
+    return mapa;
+  }, [datosEnriquecidos]);
+
   const buscarTiempoCanonPorMesSummary = (mesRaw: string) => {
     let found = tiemposCanon.find(t => t.mes === mesRaw);
     if (found) return found;
@@ -39,30 +85,7 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
     return null;
   };
 
-  // Paso 1: Calcular consumo por puesto (para voto mayoría)
-  const consumoPorPuestoLinea: { [key: string]: { [nombreEstacion: string]: number } } = {};
-  
-  datosEnriquecidos.forEach(row => {
-    const mes = String(row.mesRef || row.Mes || 'Sin mes');
-    const linea = String(row.lineaRef || row.LineaFabricacion || 'Sin línea');
-    const puestoTrabajo = String(row.PuestoCuellodeBottella || 'Sin puesto');
-    const keyLinea = `${mes}|${linea}`;
-    
-    if (!consumoPorPuestoLinea[keyLinea]) {
-      consumoPorPuestoLinea[keyLinea] = {};
-    }
-    
-    const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
-    const necesidadMax = safeNumber(row.necesidadMaximaAFabricar ?? 0);
-    const consumo = tiempoPorUnidad * necesidadMax;
-    
-    if (!consumoPorPuestoLinea[keyLinea][puestoTrabajo]) {
-      consumoPorPuestoLinea[keyLinea][puestoTrabajo] = 0;
-    }
-    consumoPorPuestoLinea[keyLinea][puestoTrabajo] += consumo;
-  });
-
-  // Paso 2: Construir resumen usando voto mayoría
+  // Construir resumen por línea usando cuello de botella calculado
   const resumenPorLinea: { [key: string]: {
     linea: string;
     mes: string;
@@ -103,30 +126,46 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
       let minutosConExtras = 0;
       let minutosFinSemana = 0;
       let puestoSeleccionado = 'Sin puesto';
+      
+      // Obtener el cuello de botella identificado (calculado directamente)
+      const puestoBotella = cuellosDeBottellaCalculados.get(`${mes}|${linea}`);
+      
       if (tiempoCanonMes?.data && Array.isArray(tiempoCanonMes.data)) {
-        // Buscar registros de esta línea
-        const lineaNorm = String(linea).toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
-        const registrosLinea = tiempoCanonMes.data.filter((item: any) => {
-          const nombreLinea = String(item?.nombre_linea ?? '').toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
-          return nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea) || nombreLinea === lineaNorm;
-        });
+        let datoPuesto = null;
         
-        if (registrosLinea.length > 0) {
-          // Usar voto mayoría: seleccionar el puesto con mayor consumo
-          const puestoMayorConsumo = seleccionarPuestoConMayorConsumo(registrosLinea, consumoPorPuestoLinea[key] || {});
-          if (puestoMayorConsumo) {
-            tiempoCanonicoInicial = safeNumber(puestoMayorConsumo?.minutos_horario_normal_TOTAL ?? 0);
-            minutosConExtras = safeNumber(puestoMayorConsumo?.minutos_extras_TOTAL ?? 0);
-            minutosFinSemana = safeNumber(puestoMayorConsumo?.minutos_sabado_TOTAL ?? 0);
-            puestoSeleccionado = String(puestoMayorConsumo?.nombre_estacion ?? 'Sin puesto');
+        // Si tenemos cuello de botella identificado, buscarlo en tiemposCanon
+        if (puestoBotella) {
+          const puestoNorm = String(puestoBotella).toLowerCase().trim();
+          datoPuesto = tiempoCanonMes.data.find((item: any) => {
+            const nombreEstacion = String(item?.nombre_estacion ?? '').toLowerCase().trim();
+            return nombreEstacion === puestoNorm || nombreEstacion.includes(puestoNorm) || puestoNorm.includes(nombreEstacion);
+          });
+        }
+        
+        // Si no encontramos el puesto específico, buscar en la línea
+        if (!datoPuesto) {
+          const lineaNorm = String(linea).toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
+          const registrosLinea = tiempoCanonMes.data.filter((item: any) => {
+            const nombreLinea = String(item?.nombre_linea ?? '').toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
+            return nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea) || nombreLinea === lineaNorm;
+          });
+          
+          if (registrosLinea.length > 0) {
+            datoPuesto = registrosLinea[0];
+          } else if (tiempoCanonMes.data.length > 0) {
+            datoPuesto = tiempoCanonMes.data[0];
           }
-        } else {
-          // Fallback: tomar el primer dato si no encuentra la línea
-          const primerDato = tiempoCanonMes.data[0];
-          tiempoCanonicoInicial = safeNumber(primerDato?.minutos_horario_normal_TOTAL ?? 0);
-          minutosConExtras = safeNumber(primerDato?.minutos_extras_TOTAL ?? 0);
-          minutosFinSemana = safeNumber(primerDato?.minutos_sabado_TOTAL ?? 0);
-          puestoSeleccionado = String(primerDato?.nombre_estacion ?? 'Sin puesto');
+        }
+        
+        if (datoPuesto) {
+          tiempoCanonicoInicial = safeNumber(datoPuesto?.minutos_horario_normal_TOTAL ?? 0);
+          minutosConExtras = safeNumber(datoPuesto?.minutos_extras_TOTAL ?? 0);
+          minutosFinSemana = safeNumber(datoPuesto?.minutos_sabado_TOTAL ?? 0);
+          // USAR EL CUELLO DE BOTELLA CALCULADO, no el de tiemposCanon
+          puestoSeleccionado = puestoBotella || String(datoPuesto?.nombre_estacion ?? 'Sin puesto');
+        } else if (puestoBotella) {
+          // Si no encontramos datoPuesto pero tenemos cuello de botella, usarlo
+          puestoSeleccionado = puestoBotella;
         }
       }
       
@@ -157,12 +196,12 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
       };
     }
 
-    const tMaxProm = safeNumber(row.tMaxProm ?? 0);  // (T/U÷Puestos) * (Nec. Máx)
+    const tMaxProm = safeNumber(row.tMaxProm ?? 0);  // (Tiempo Unitarío / Puestos) * (Necesidad Requerida)
     const necesidadMax = safeNumber(row.necesidadMaximaAFabricar ?? 0);
     const necesidadTotal = safeNumber(row.necesidadTotal ?? 0);  // necesidadPropia + trasladoDesde2000
-    resumenPorLinea[key].tiempoTotal += tMaxProm;  // Suma de T.Max Prom
+    resumenPorLinea[key].tiempoTotal += tMaxProm;  // Suma de Tiempo Requerido
     resumenPorLinea[key].necesidadTotal += necesidadTotal;  // Suma de Nec. Total
-    resumenPorLinea[key].necesidadAFabricarTotal += necesidadMax;  // Suma de Nec. Máx
+    resumenPorLinea[key].necesidadAFabricarTotal += necesidadMax;  // Suma de Necesidad Requerida
   });
 
   Object.values(resumenPorLinea).forEach(resumen => {
@@ -217,6 +256,7 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
       Mes: r.mes,
       Responsable: r.respCtrlProd,
       Linea: r.linea,
+      PuestoCuellodeBottella: r.puestoSeleccionado,
       DiasLaborables: r.diasLaborables,
       NecesidadTotal: r.necesidadTotal,
       NecesidadPromedioDiaria: Number(r.necesidadPromedioDiaria.toFixed(1)),
@@ -224,8 +264,8 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
       NecesidadAFabricarPromedioDiaria: Number(r.necesidadAFabricarPromedioDiaria.toFixed(1)),
       TiempoRequeridoMinutos: Number(r.tiempoTotal.toFixed(0)),
       TiempoRequeridoHoras: Number((r.tiempoTotal / 60).toFixed(2)),
-      TiempoDisponibleMinutos: Number(r.tiempoCanonicoInicial.toFixed(0)),
-      TiempoDisponibleHoras: Number((r.tiempoCanonicoInicial / 60).toFixed(2)),
+      DisponibleCuelloBotellaMinutos: Number(r.tiempoCanonicoInicial.toFixed(0)),
+      DisponibleCuelloBotellaHoras: Number((r.tiempoCanonicoInicial / 60).toFixed(2)),
       HorasExtrasMinutos: Number(r.minutosExtrasTotal.toFixed(0)),
       HorasExtrasHoras: Number(r.horasExtrasTotal.toFixed(2)),
       TiempoLibreMinutos: Number(r.minutosRestantes.toFixed(0)),
@@ -286,16 +326,17 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[500px] overflow-y-auto relative">
         <table className="w-full">
-          <thead className="sticky top-0 z-10 bg-gray-50">
+          <thead className="sticky top-0 z-20 bg-gray-50 shadow-sm">
             <tr className="bg-gray-50">
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Responsable</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">Puesto Botella</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Días Lab.</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-teal-600 uppercase tracking-wider" colSpan={2}>Necesidad</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-rose-600 uppercase tracking-wider" colSpan={2}>Necesidad a Fabricar</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-600 uppercase tracking-wider" colSpan={2}>Necesidad</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-purple-600 uppercase tracking-wider" colSpan={2}>Necesidad a Fabricar</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Tiempo Requerido</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Disponible</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Horas Extras</th>
@@ -303,15 +344,15 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">h/día</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th colSpan={4}></th>
-              <th className="px-2 py-2 text-center text-xs text-teal-500">Total</th>
-              <th className="px-2 py-2 text-center text-xs text-teal-500">Prom/día</th>
-              <th className="px-2 py-2 text-center text-xs text-rose-500">Total</th>
-              <th className="px-2 py-2 text-center text-xs text-rose-500">Prom/día</th>
+              <th colSpan={5}></th>
+              <th className="px-2 py-2 text-center text-xs text-indigo-500">Total</th>
+              <th className="px-2 py-2 text-center text-xs text-indigo-500">Prom/día</th>
+              <th className="px-2 py-2 text-center text-xs text-purple-500">Total</th>
+              <th className="px-2 py-2 text-center text-xs text-purple-500">Prom/día</th>
               <th className="px-2 py-2 text-center text-xs text-gray-500">min</th>
               <th className="px-2 py-2 text-center text-xs text-gray-500">h</th>
-              <th className="px-2 py-2 text-center text-xs text-gray-500">min</th>
-              <th className="px-2 py-2 text-center text-xs text-gray-500">h</th>
+              <th className="px-2 py-2 text-center text-xs text-red-500 font-semibold">min</th>
+              <th className="px-2 py-2 text-center text-xs text-red-500 font-semibold">h</th>
               <th className="px-2 py-2 text-center text-xs text-gray-500">min</th>
               <th className="px-2 py-2 text-center text-xs text-gray-500">h</th>
               <th className="px-2 py-2 text-center text-xs text-gray-500">min</th>
@@ -330,17 +371,22 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">{resumen.respCtrlProd}</td>
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">{resumen.linea}</td>
-                <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-teal-700 font-semibold">
-                  {Math.round(resumen.necesidadTotal).toLocaleString()}
+                <td className="px-4 py-3 text-sm">
+                  <span className="inline-block bg-red-100 text-red-800 px-2.5 py-1 rounded font-semibold text-xs">
+                    {resumen.puestoSeleccionado}
+                  </span>
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-teal-600">
+                <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
+                <td className="px-4 py-3 text-sm text-right font-mono text-indigo-700 font-semibold">
+                  {Math.floor(resumen.necesidadTotal).toLocaleString()}
+                </td>
+                <td className="px-4 py-3 text-sm text-right font-mono text-indigo-600">
                   {Number(resumen.necesidadPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-rose-700 font-semibold">
-                  {Math.round(resumen.necesidadAFabricarTotal).toLocaleString()}
+                <td className="px-4 py-3 text-sm text-right font-mono text-purple-700 font-semibold">
+                  {Math.floor(resumen.necesidadAFabricarTotal).toLocaleString()}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-rose-600">
+                <td className="px-4 py-3 text-sm text-right font-mono text-purple-600">
                   {Number(resumen.necesidadAFabricarPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </td>
                 <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
@@ -349,11 +395,11 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
                 <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
                   {(Number(resumen.tiempoTotal ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-blue-700">
-                  {Number(resumen.tiempoCanonicoCompleto ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
+                  {Number(resumen.tiempoCanonicoInicial ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-blue-700">
-                  {(Number(resumen.tiempoCanonicoCompleto ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
+                  {(Number(resumen.tiempoCanonicoInicial ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </td>
                 <td className="px-4 py-3 text-sm text-right font-mono text-amber-600">
                   {Number(resumen.minutosExtrasTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}

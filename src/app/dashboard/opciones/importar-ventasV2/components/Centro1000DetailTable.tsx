@@ -79,17 +79,29 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
     return String(linea).toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
   };
 
-  const obtenerTiempoDisponible = (mes: string, linea: string, puestoTrabajo: string | null) => {
+  const obtenerTiempoDisponible = (mes: string, linea: string, puestoTrabajo: string | null, centro: string = '') => {
     const tiempoCanon = buscarTiempoCanonPorMes(mes);
     if (!tiempoCanon || !tiempoCanon.data || !Array.isArray(tiempoCanon.data)) return null;
     
     const lineaNorm = normalizarLinea(linea);
+    const centroCodigo = String(centro).trim();
     
-    // Primero filtrar por línea
-    const registrosLinea = tiempoCanon.data.filter((item: any) => {
+    // Primero filtrar por línea Y centro
+    let registrosLinea = tiempoCanon.data.filter((item: any) => {
       const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
-      return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+      const itemCentro = String(item?.centro ?? item?.Centro ?? '');
+      const lineaMatches = nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+      const centroMatches = centroCodigo === '' || itemCentro === centroCodigo;
+      return lineaMatches && centroMatches;
     });
+    
+    // Si no encontramos registros CON centro específico, intentar sin el filtro de centro
+    if (registrosLinea.length === 0 && centroCodigo !== '') {
+      registrosLinea = tiempoCanon.data.filter((item: any) => {
+        const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
+        return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+      });
+    }
 
     // Si no encontramos registros de la línea, intentar buscar por puesto en todos los datos
     if (registrosLinea.length === 0) {
@@ -101,9 +113,9 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
         });
         if (dp) {
           return {
-            minutos_horario_normal: safeNumber(dp?.minutos_horario_normal_CON_PUESTOS ?? dp?.minutos_horario_normal_TOTAL ?? 0),
-            minutos_con_extras: safeNumber(dp?.minutos_extras_CON_PUESTOS ?? dp?.minutos_extras_TOTAL ?? 0),
-            minutos_fin_semana: safeNumber(dp?.minutos_sabado_CON_PUESTOS ?? dp?.minutos_sabado_TOTAL ?? 0),
+            minutos_horario_normal: safeNumber(dp?.minutos_horario_normal_TOTAL ?? 0),
+            minutos_con_extras: safeNumber(dp?.minutos_extras_TOTAL ?? 0),
+            minutos_fin_semana: safeNumber(dp?.minutos_sabado_TOTAL ?? 0),
             minutos_horario_normal_total: safeNumber(dp?.minutos_horario_normal_TOTAL ?? 0),
             diasLaborables: tiempoCanon.diasLaborables,
             diasSabados: tiempoCanon.diasSabados
@@ -114,16 +126,51 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
     }
 
     // Sumar todos los tiempos de las estaciones de esa línea
-    let minutos_horario_normal = 0;
-    let minutos_con_extras = 0;
-    let minutos_fin_semana = 0;
-    let minutos_horario_normal_total = 0;
+    // NOTA: Esta lógica ha sido CORREGIDA (antes sumaba todos)
+    // Ahora: Identificar el puesto de botella (el que MÁS se repite) y usar SOLO su tiempo
     
+    // Contar frecuencia de estaciones en los registros de la línea
+    const estacionesMap = new Map<string, any>();
     registrosLinea.forEach((dato: any) => {
-      minutos_horario_normal += safeNumber(dato?.minutos_horario_normal_CON_PUESTOS ?? dato?.minutos_horario_normal_TOTAL ?? 0);
-      minutos_con_extras += safeNumber(dato?.minutos_extras_CON_PUESTOS ?? dato?.minutos_extras_TOTAL ?? 0);
-      minutos_fin_semana += safeNumber(dato?.minutos_sabado_CON_PUESTOS ?? dato?.minutos_sabado_TOTAL ?? 0);
-      minutos_horario_normal_total += safeNumber(dato?.minutos_horario_normal_TOTAL ?? 0);
+      const nombreEstacion = String(dato?.nombre_estacion ?? '-');
+      if (!estacionesMap.has(nombreEstacion)) {
+        estacionesMap.set(nombreEstacion, {
+          count: 0,
+          dato: dato
+        });
+      }
+      const current = estacionesMap.get(nombreEstacion)!;
+      current.count += 1;
+    });
+
+    // Encontrar estación con mayor frecuencia (cuello de botella)
+    let maxFrequencia = 0;
+    let puestoBotellaDato: any = null;
+    estacionesMap.forEach(({ count, dato }) => {
+      if (count > maxFrequencia) {
+        maxFrequencia = count;
+        puestoBotellaDato = dato;
+      }
+    });
+
+    // Si no encontramos puesto de botella, retornar null
+    if (!puestoBotellaDato) {
+      console.warn(`[obtenerTiempoDisponible] No se encontró puesto de botella para Línea: ${linea}, Mes: ${mes}`);
+      return null;
+    }
+
+    // Usar SOLO el tiempo del puesto de botella con minutos_horario_normal_TOTAL (consistente con Centro 2000)
+    const minutos_horario_normal = safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0);
+    const minutos_con_extras = safeNumber(puestoBotellaDato?.minutos_extras_TOTAL ?? 0);
+    const minutos_fin_semana = safeNumber(puestoBotellaDato?.minutos_sabado_TOTAL ?? 0);
+    const minutos_horario_normal_total = safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0);
+
+    console.log(`[obtenerTiempoDisponible-CORREGIDO] Mes: ${mes}, Centro: ${centro}, Línea: ${linea}, Puesto Botella: ${puestoBotellaDato?.nombre_estacion}`, {
+      minutos_horario_normal,
+      minutos_con_extras,
+      minutos_fin_semana,
+      frecuencia: maxFrequencia,
+      totalEstacionesEnLinea: estacionesMap.size
     });
 
     return {
@@ -135,6 +182,31 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
       diasSabados: tiempoCanon.diasSabados
     };
   };
+
+  // Paso previo: calcular suma de T. Total Necesidad Inicial por (mes, línea)
+  // y obtener el T. Disponible global (minutos_horario_normal_TOTAL) por (mes, línea)
+  const sumaTiempoNecPorLinea: { [k: string]: number } = {};
+  const tiempoDispGlobalPorLinea: { [k: string]: number } = {};
+
+  datos.forEach(row => {
+    const mes = String(row.Mes ?? 'Sin mes');
+    const linea = String(row.LineaFabricacion ?? 'Sin línea');
+    const key = `${mes}|${linea}`;
+    const codMaterial = String(row.CodMaterial ?? '');
+    const traslado = trasladosMap.get(codMaterial) || 0;
+    const necesidadTotal = computeNecesidadesLocal(row) + traslado;
+    const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
+    const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
+    const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
+    const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidadTotal;
+
+    sumaTiempoNecPorLinea[key] = (sumaTiempoNecPorLinea[key] || 0) + tiempoTotalNecesidad;
+
+    if (tiempoDispGlobalPorLinea[key] === undefined) {
+      const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella, row.Centro);
+      tiempoDispGlobalPorLinea[key] = tiempoDisp?.minutos_horario_normal ?? 0;
+    }
+  });
 
   const enriquecerFila = (row: any) => {
     const mes = String(row.Mes ?? 'Sin mes');
@@ -156,22 +228,37 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
     const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
     const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
     
-    const tiempoTotalNecesidad = necesidadTotal * tiempoPorUnidad;
+    // T. Total necesidad inicial = (Tiempo Unitarío / Puestos) * Necesidades
+    const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidadTotal;
     
-    const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella);
+    const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella, row.Centro);
     
     let necesidadMaximaAFabricar = 0;
     let horasExtrasUsadas = 0;
     let tMaxProm = 0;
+    let tiempoParaMaterial = 0;
     
     if (tiempoDisp && tiempoPorUnidad > 0) {
-      const techoAbsolutoLinea = tiempoDisp.minutos_con_extras + tiempoDisp.minutos_fin_semana;
-      const tiempoMaxDisponible = techoAbsolutoLinea;
-      const tiempoParaEsteMaterial = (participacionIndividual / 100) * tiempoMaxDisponible;
+      const tiempoDisponibleBase = tiempoDisp.minutos_horario_normal;
       
-      necesidadMaximaAFabricar = Math.min(necesidadTotal, Math.floor(tiempoParaEsteMaterial / tiempoPorUnidad));
+      // Calcular tiempo disponible para este material según su participación con base en horario normal
+      tiempoParaMaterial = (participacionIndividual / 100) * tiempoDisponibleBase;
       
-      // Calcular T.MAX PROM: (T/U÷Puestos) * (Nec. Máx)
+      // Decisión GLOBAL: comparar suma de T. Total Necesidad Inicial de TODA la línea vs T. Disponible global
+      const sumaTiempoNecLinea = sumaTiempoNecPorLinea[key] || 0;
+      const tiempoDispGlobal = tiempoDispGlobalPorLinea[key] || 0;
+      
+      if (sumaTiempoNecLinea <= tiempoDispGlobal) {
+        // Si el tiempo total de toda la línea cabe en el disponible => fabricar todo
+        necesidadMaximaAFabricar = necesidadTotal;
+      } else {
+        // Si no alcanza: Necesidad Requerida = T. Disponible (por material) / (Tiempo Unitario / Puestos)
+        necesidadMaximaAFabricar = tiempoUnitarioPorPuesto > 0 
+          ? Math.floor(tiempoParaMaterial / tiempoUnitarioPorPuesto) 
+          : 0;
+      }
+      
+      // Calcular Tiempo Requerido: (Tiempo Unitarío / Puestos) * (Necesidad Requerida)
       tMaxProm = tiempoUnitarioPorPuesto * necesidadMaximaAFabricar;
       
       const tiempoNormalRestante = tiempoDisp.minutos_horario_normal;
@@ -188,9 +275,10 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
       trasladoDesde2000: traslado,
       necesidadPropia,
       necesidadTotal,
-      participacionIndividual: participacionIndividual.toFixed(2),
+      participacionIndividual,  // Mantener como número
       tiempoTotalNecesidad,
       tiempoUnitarioPorPuesto,
+      tiempoParaMaterial,
       tMaxProm,
       necesidadMaximaAFabricar,
       horasExtrasUsadas: horasExtrasUsadas.toFixed(2),
@@ -311,9 +399,9 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 z-10 bg-gray-50">
+          <thead className="sticky top-0 z-20 bg-gray-50">
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">CodMaterial</th>
               <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
@@ -326,13 +414,14 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
               <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Nec. Propia</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-amber-700 uppercase tracking-wider">Traslado 2000</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-teal-700 uppercase tracking-wider">Nec. Total</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">T/Unidad</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-indigo-600 uppercase tracking-wider">T/U÷Puestos</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Total</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Partic. %</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Nec. Máx</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Máx.</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-orange-600 uppercase tracking-wider">T.Max Prom</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-indigo-600 uppercase tracking-wider">Tiempo Unitarío / Puestos</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Total necesidad inicial</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Participación%</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-pink-600 uppercase tracking-wider">T. Disponible</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-cyan-600 uppercase tracking-wider">T. Consumido</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-lime-600 uppercase tracking-wider">T. Libre</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Necesidad Requerida</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-orange-600 uppercase tracking-wider">Tiempo Requerido</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">H. Extras</th>
             </tr>
           </thead>
@@ -340,7 +429,7 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
             {lineasOrdenadas.map((linea) => (
               <React.Fragment key={linea}>
                 <tr className="bg-teal-50">
-                  <td colSpan={17} className="px-4 py-2 font-semibold text-teal-800 text-sm">
+                  <td colSpan={20} className="px-4 py-2 font-semibold text-teal-800 text-sm">
                     <span className="inline-flex items-center">
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -359,20 +448,15 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
                     <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-600">{row.NumeroPuestos ?? row.numero_puestos ?? '-'}</td>
                     <td className="px-3 py-2.5 text-sm text-gray-600">{row.Sector ?? '-'}</td>
                     <td className="px-3 py-2.5 text-sm text-gray-600">{row.NombRespControlProd ?? row.RespCtrlProd ?? '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-700">{Math.round(row.necesidadPropia).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-700">{Math.floor(row.necesidadPropia).toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-sm text-right font-mono">
                       {row.trasladoDesde2000 > 0 ? (
-                        <span className="text-amber-600 font-medium">{Math.round(row.trasladoDesde2000).toLocaleString()}</span>
+                        <span className="text-amber-600 font-medium">{Math.floor(row.trasladoDesde2000).toLocaleString()}</span>
                       ) : (
                         <span className="text-gray-400">0</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-sm text-right font-mono text-teal-700 font-semibold">{Math.round(row.necesidadTotal).toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-600">
-                      {row.TiempoPorUnidad != null
-                        ? Number(row.TiempoPorUnidad).toLocaleString(undefined, { maximumFractionDigits: 3 })
-                        : '-'}
-                    </td>
+                    <td className="px-3 py-2.5 text-sm text-right font-mono text-teal-700 font-semibold">{Math.floor(row.necesidadTotal).toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-sm text-right font-mono text-indigo-600 font-semibold">
                       {row.tiempoUnitarioPorPuesto != null
                         ? Number(row.tiempoUnitarioPorPuesto).toLocaleString(undefined, { maximumFractionDigits: 3 })
@@ -384,10 +468,18 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
                         : '-'}
                     </td>
                     <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-600">{row.participacionIndividual}%</td>
-                    <td className="px-3 py-2.5 text-sm text-right font-mono text-emerald-600 font-medium">{row.necesidadMaximaAFabricar.toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-sm text-right font-mono text-blue-600">
-                      {(safeNumber(row.TiempoPorUnidad ?? 0) * safeNumber(row.necesidadMaximaAFabricar ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    <td className="px-3 py-2.5 text-sm text-right font-mono text-pink-600 font-medium">
+                      {Number(row.tiempoParaMaterial || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} min
                     </td>
+                    <td className="px-3 py-2.5 text-sm text-right font-mono text-cyan-600 font-medium">
+                      {row.tMaxProm != null
+                        ? Number(row.tMaxProm).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                        : '-'} min
+                    </td>
+                    <td className="px-3 py-2.5 text-sm text-right font-mono text-lime-600 font-medium">
+                      {(Number(row.tiempoParaMaterial || 0) - Number(row.tMaxProm || 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })} min
+                    </td>
+                    <td className="px-3 py-2.5 text-sm text-right font-mono text-emerald-600 font-medium">{row.necesidadMaximaAFabricar.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-sm text-right font-mono text-orange-600 font-semibold">
                       {row.tMaxProm != null
                         ? Number(row.tMaxProm).toLocaleString(undefined, { maximumFractionDigits: 2 })
@@ -401,27 +493,34 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
                   const totalNecPropia = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadPropia ?? 0), 0);
                   const totalTraslados = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.trasladoDesde2000 ?? 0), 0);
                   const totalNecTotal = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadTotal ?? 0), 0);
-                  const totalTiempoPorUnidad = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.TiempoPorUnidad ?? 0), 0);
                   const totalTiempoUnitarioPorPuesto = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoUnitarioPorPuesto ?? 0), 0);
-                  const totalTiempoNecesidad = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidad ?? 0), 0);
+                  const totalTiempoNecesidad = filasLinea.reduce((sum: number, row: any) => {
+                    const tiempoUnitario = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
+                    const nec = safeNumber(row.necesidadTotal ?? 0);
+                    return sum + (tiempoUnitario * nec);
+                  }, 0);
                   const totalParticipacion = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.participacionIndividual ?? 0), 0);
+                  const totalTiempoParaMaterial = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoParaMaterial ?? 0), 0);
                   const totalNecesidadMax = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
                   const totalTiempoNecMax = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.TiempoPorUnidad ?? 0) * safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
                   const totalTMaxProm = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.tMaxProm ?? 0), 0);
                   const totalHorasExtras = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.horasExtrasUsadas ?? 0), 0);
                   
+                  const totalTLibre = totalTiempoParaMaterial - totalTMaxProm;
+                  
                   return (
                     <tr className="bg-gray-100">
                       <td colSpan={8} className="px-3 py-2.5 text-sm font-semibold text-gray-700">Subtotal {linea}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{Math.round(totalNecPropia).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-amber-700">{Math.round(totalTraslados).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-teal-700">{Math.round(totalNecTotal).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{totalTiempoPorUnidad.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{Math.floor(totalNecPropia).toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-amber-700">{Math.floor(totalTraslados).toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-teal-700">{Math.floor(totalNecTotal).toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-indigo-700">{totalTiempoUnitarioPorPuesto.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{totalParticipacion.toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-pink-700">{totalTiempoParaMaterial.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-cyan-700">{totalTMaxProm.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-lime-700">{totalTLibre.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-emerald-700">{totalNecesidadMax.toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-blue-700">{totalTiempoNecMax.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-orange-700">{totalTMaxProm.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-purple-700">{totalHorasExtras.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                     </tr>
@@ -430,32 +529,38 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
               </React.Fragment>
             ))}
           </tbody>
-          <tfoot>
+          <tfoot className="sticky bottom-0 z-20">
             {(() => {
               const totalNecPropia = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadPropia ?? 0), 0);
               const totalTraslados = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.trasladoDesde2000 ?? 0), 0);
               const totalNecTotal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadTotal ?? 0), 0);
-              const totalTiempoPorUnidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.TiempoPorUnidad ?? 0), 0);
               const totalTiempoUnitarioPorPuesto = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoUnitarioPorPuesto ?? 0), 0);
-              const totalTiempoNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidad ?? 0), 0);
+              const totalTiempoNecesidad = datosFiltrados.reduce((sum: number, row: any) => {
+                const tiempoUnitario = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
+                const nec = safeNumber(row.necesidadTotal ?? 0);
+                return sum + (tiempoUnitario * nec);
+              }, 0);
               const totalParticipacion = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.participacionIndividual ?? 0), 0);
+              const totalTiempoParaMaterial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoParaMaterial ?? 0), 0);
               const totalNecesidadMax = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
               const totalTiempoNecMax = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.TiempoPorUnidad ?? 0) * safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
               const totalTMaxProm = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tMaxProm ?? 0), 0);
               const totalHorasExtras = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.horasExtrasUsadas ?? 0), 0);
+              const totalTLibre = totalTiempoParaMaterial - totalTMaxProm;
               
               return (
                 <tr className="bg-gray-800 text-white">
-                  <td colSpan={6} className="px-3 py-3 text-sm font-bold">TOTAL GENERAL</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold">{Math.round(totalNecPropia).toLocaleString()}</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-amber-300">{Math.round(totalTraslados).toLocaleString()}</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-teal-300">{Math.round(totalNecTotal).toLocaleString()}</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold">{totalTiempoPorUnidad.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                  <td colSpan={8} className="px-3 py-3 text-sm font-bold">TOTAL GENERAL</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold">{Math.floor(totalNecPropia).toLocaleString()}</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-amber-300">{Math.floor(totalTraslados).toLocaleString()}</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-teal-300">{Math.floor(totalNecTotal).toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-indigo-300">{totalTiempoUnitarioPorPuesto.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold">{totalParticipacion.toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-pink-300">{totalTiempoParaMaterial.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-cyan-300">{totalTMaxProm.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-lime-300">{totalTLibre.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-emerald-300">{totalNecesidadMax.toLocaleString()}</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-blue-300">{totalTiempoNecMax.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-orange-300">{totalTMaxProm.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-purple-300">{totalHorasExtras.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                 </tr>

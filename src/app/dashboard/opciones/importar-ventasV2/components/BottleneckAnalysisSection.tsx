@@ -39,59 +39,82 @@ function enriquecerDatosClase(
     return null;
   };
 
-  // Función para normalizar nombres de líneas para comparación
   const normalizarLinea = (linea: string): string => {
     return String(linea).toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
   };
 
-  const obtenerTiempoDisp = (mes: string, linea: string, puesto: string | null) => {
+  // PASO 1: Construir tabla de agrupación (Centro|Línea|PuestoTrabajo → Suma Tiempo_Total)
+  const tablaTiempos = new Map<string, number>();
+  
+  datos.forEach(row => {
+    const necesidad = computeNec(row);
+    if (necesidad === 0) return;
+    
+    const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
+    const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
+    const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
+    
+    const tiempoTotalMaterial = tiempoUnitarioPorPuesto * necesidad;
+    
+    const centro = String(row.Centro ?? '');
+    const linea = String(row.LineaFabricacion ?? '');
+    const puesto = String(row.PuestoTrabajo ?? '');
+    const key = `${centro}|${linea}|${puesto}`;
+    
+    const tiempoActual = tablaTiempos.get(key) || 0;
+    tablaTiempos.set(key, tiempoActual + tiempoTotalMaterial);
+  });
+
+  // PASO 2: Identificar cuello de botella por (Centro, Línea) - el puesto con mayor suma
+  const cuellosDeBottella = new Map<string, string>();
+  
+  tablaTiempos.forEach((tiempo, key) => {
+    const [centro, linea, puesto] = key.split('|');
+    const lineaKey = `${centro}|${linea}`;
+    
+    const actualPuesto = cuellosDeBottella.get(lineaKey);
+    let actualTiempo = 0;
+    if (actualPuesto) {
+      const actualKey = `${centro}|${linea}|${actualPuesto}`;
+      actualTiempo = tablaTiempos.get(actualKey) || 0;
+    }
+    
+    if (tiempo > actualTiempo) {
+      cuellosDeBottella.set(lineaKey, puesto);
+      console.log(`[CUELLO BOTELLA IDENTIFICADO] Centro: ${centro}, Línea: ${linea}, Puesto: ${puesto}, Tiempo: ${tiempo.toFixed(2)}`);
+    }
+  });
+
+  // PASO 3: Función para obtener minutos_horario_normal_TOTAL del cuello de botella
+  const obtenerTiempoDisp = (mes: string, centro: string, linea: string, puestoTrabajo: string) => {
     const tc = buscarTiempoCanon(mes);
     if (!tc || !tc.data || !Array.isArray(tc.data)) return null;
 
     const lineaNorm = normalizarLinea(linea);
+    const puestoNorm = String(puestoTrabajo).toLowerCase().trim();
+    const centroCodigo = String(centro).trim();
     
-    // Primero filtrar por línea
-    const registrosLinea = tc.data.filter((item: any) => {
+    // Filtrar por centro, línea Y puesto específico
+    const registro = tc.data.find((item: any) => {
       const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
-      return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+      const itemCentro = String(item?.centro ?? item?.Centro ?? '');
+      const nombreEstacion = String(item?.nombre_estacion ?? '').toLowerCase().trim();
+      
+      const lineaMatches = nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+      const centroMatches = centroCodigo === '' || itemCentro === centroCodigo;
+      const puestoMatches = nombreEstacion === puestoNorm || nombreEstacion.includes(puestoNorm) || puestoNorm.includes(nombreEstacion);
+      
+      return lineaMatches && centroMatches && puestoMatches;
     });
 
-    // Si no encontramos registros de la línea, intentar buscar por puesto en todos los datos
-    if (registrosLinea.length === 0) {
-      if (puesto && puesto !== '-' && puesto !== '') {
-        const pn = String(puesto).toLowerCase().trim();
-        const dp = tc.data.find((item: any) => {
-          const nombreEstacion = String(item?.nombre_estacion ?? '').toLowerCase().trim();
-          return nombreEstacion.includes(pn) || pn.includes(nombreEstacion);
-        });
-        if (dp) {
-          return {
-            minutos_horario_normal: safeNumber(dp?.minutos_horario_normal_CON_PUESTOS ?? dp?.minutos_horario_normal_TOTAL ?? 0),
-            minutos_con_extras: safeNumber(dp?.minutos_extras_CON_PUESTOS ?? dp?.minutos_extras_TOTAL ?? 0),
-            minutos_fin_semana: safeNumber(dp?.minutos_sabado_CON_PUESTOS ?? dp?.minutos_sabado_TOTAL ?? 0),
-            diasLaborables: tc.diasLaborables,
-            diasSabados: tc.diasSabados
-          };
-        }
-      }
+    if (!registro) {
+      console.warn(`[obtenerTiempoDisp] No encontrado: Centro=${centro}, Línea=${linea}, Puesto=${puestoTrabajo}`);
       return null;
     }
 
-    // Sumar todos los tiempos de las estaciones de esa línea
-    let minutos_horario_normal = 0;
-    let minutos_con_extras = 0;
-    let minutos_fin_semana = 0;
-    
-    registrosLinea.forEach((dato: any) => {
-      minutos_horario_normal += safeNumber(dato?.minutos_horario_normal_CON_PUESTOS ?? dato?.minutos_horario_normal_TOTAL ?? 0);
-      minutos_con_extras += safeNumber(dato?.minutos_extras_CON_PUESTOS ?? dato?.minutos_extras_TOTAL ?? 0);
-      minutos_fin_semana += safeNumber(dato?.minutos_sabado_CON_PUESTOS ?? dato?.minutos_sabado_TOTAL ?? 0);
-    });
-
+    // USAR SOLO minutos_horario_normal_TOTAL
     return {
-      minutos_horario_normal,
-      minutos_con_extras,
-      minutos_fin_semana,
+      minutos_horario_normal: safeNumber(registro?.minutos_horario_normal_TOTAL ?? 0),
       diasLaborables: tc.diasLaborables,
       diasSabados: tc.diasSabados
     };
@@ -104,44 +127,108 @@ function enriquecerDatosClase(
     mapa[k] = (mapa[k] || 0) + computeNec(row);
   });
 
+  // Paso previo: calcular suma de T. Total Necesidad Inicial por (mes, línea)
+  // y obtener el T. Disponible global (minutos_horario_normal_TOTAL) por (mes, línea)
+  const sumaTiempoNecPorLinea: { [k: string]: number } = {};
+  const tiempoDispGlobalPorLinea: { [k: string]: number } = {};
+
+  datos.forEach(row => {
+    const mes = String(row.Mes ?? 'Sin mes');
+    const linea = String(row.LineaFabricacion ?? 'Sin línea');
+    const centro = String(row.Centro ?? '');
+    const key = `${mes}|${linea}`;
+    const necesidad = computeNec(row);
+    const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
+    const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
+    const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
+    const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
+
+    sumaTiempoNecPorLinea[key] = (sumaTiempoNecPorLinea[key] || 0) + tiempoTotalNecesidad;
+
+    if (tiempoDispGlobalPorLinea[key] === undefined) {
+      const lineaKey = `${centro}|${linea}`;
+      const puestoBotella = cuellosDeBottella.get(lineaKey) || 'DESCONOCIDO';
+      const tiempoDisp = obtenerTiempoDisp(mes, centro, linea, puestoBotella);
+      const tiempoConsumidoPrevio = tiempoConsumidoAnterior[key] || 0;
+      const base = tiempoDisp?.minutos_horario_normal ?? 0;
+      tiempoDispGlobalPorLinea[key] = Math.max(0, base - tiempoConsumidoPrevio);
+    }
+  });
+
+  // PASO 4: Procesar cada registro con el cuello de botella identificado
   return datos.map(row => {
     const mes = String(row.Mes ?? 'Sin mes');
     const linea = String(row.LineaFabricacion ?? 'Sin línea');
+    const centro = String(row.Centro ?? '');
     const key = `${mes}|${linea}`;
+    
     const necesidad = computeNec(row);
     const sumaNecLinea = mapa[key] ?? necesidad;
     const participacionIndividual = sumaNecLinea > 0 ? (necesidad / sumaNecLinea) * 100 : 0;
+    
     const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
-    const tiempoTotalNecesidad = necesidad * tiempoPorUnidad;
-    const tiempoDisp = obtenerTiempoDisp(mes, linea, row.PuestoCuellodeBottella);
+    const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
+    const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
+    const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
+    
+    // Obtener cuello de botella identificado para esta (Centro, Línea)
+    const lineaKey = `${centro}|${linea}`;
+    const puestoBotella = cuellosDeBottella.get(lineaKey) || 'DESCONOCIDO';
+    
+    // Obtener tiempo disponible SOLO del cuello de botella usando minutos_horario_normal_TOTAL
+    const tiempoDisp = obtenerTiempoDisp(mes, centro, linea, puestoBotella);
 
     let necesidadMaximaAFabricar = 0;
     let horasExtrasUsadas = 0;
+    let tiempoParaMaterial = 0;
 
     if (tiempoDisp && tiempoPorUnidad > 0) {
-      const techoAbsoluto = tiempoDisp.minutos_con_extras + tiempoDisp.minutos_fin_semana;
-      const consumidoPrev = tiempoConsumidoAnterior?.[key] ?? 0;
-      const tiempoMaxDisp = Math.max(0, techoAbsoluto - consumidoPrev);
-      const tiempoParaMaterial = (participacionIndividual / 100) * tiempoMaxDisp;
-      // Nunca fabricar más de lo que se necesita
-      necesidadMaximaAFabricar = Math.min(necesidad, Math.floor(tiempoParaMaterial / tiempoPorUnidad));
+      // Obtener tiempo ya consumido por clases anteriores (ej: E consume antes que X)
+      const tiempoConsumidoPrevio = tiempoConsumidoAnterior[key] || 0;
+      
+      // T. DISPONIBLE = (minutos_horario_normal_TOTAL - tiempo_consumido_anterior) × (participación / 100)
+      const tiempoDisponibleBase = tiempoDisp.minutos_horario_normal;
+      const tiempoDisponibleReal = Math.max(0, tiempoDisponibleBase - tiempoConsumidoPrevio);
+      tiempoParaMaterial = (participacionIndividual / 100) * tiempoDisponibleReal;
+      
+      // Decisión GLOBAL: comparar suma de T. Total Necesidad Inicial de TODA la línea vs T. Disponible global
+      const sumaTiempoNecLinea = sumaTiempoNecPorLinea[key] || 0;
+      const tiempoDispGlobal = tiempoDispGlobalPorLinea[key] || 0;
+      
+      if (sumaTiempoNecLinea <= tiempoDispGlobal) {
+        // Si el tiempo total de toda la línea cabe en el disponible => fabricar todo
+        necesidadMaximaAFabricar = necesidad;
+      } else {
+        // Si no alcanza: Necesidad Requerida = T. Disponible (por material) / (Tiempo Unitario / Puestos)
+        necesidadMaximaAFabricar = tiempoUnitarioPorPuesto > 0 
+          ? Math.floor(tiempoParaMaterial / tiempoUnitarioPorPuesto) 
+          : 0;
+      }
 
-      const tiempoNormalRest = Math.max(0, tiempoDisp.minutos_horario_normal - consumidoPrev);
-      const tiempoNormalParaMaterial = (participacionIndividual / 100) * tiempoNormalRest;
+      // Usar el tiempo disponible REAL (descontando consumo anterior) para calcular extras
+      const tiempoNormalParaMaterial = (participacionIndividual / 100) * tiempoDisponibleReal;
+      console.log(`[HORAS EXTRAS] Material: ${row.CodMaterial}`, {
+        tiempoDisponibleReal,
+        tiempoNormalParaMaterial: tiempoNormalParaMaterial.toFixed(2),
+        tiempoRealUsado: (Math.min(necesidad, necesidadMaximaAFabricar) * tiempoPorUnidad).toFixed(2)
+      });
       const tiempoRealUsado = Math.min(necesidad, necesidadMaximaAFabricar) * tiempoPorUnidad;
       if (tiempoRealUsado > tiempoNormalParaMaterial) {
         horasExtrasUsadas = (tiempoRealUsado - tiempoNormalParaMaterial) / 60;
+        console.log(`[EXTRAS CALCULADAS] Material: ${row.CodMaterial}: ${horasExtrasUsadas.toFixed(2)} horas`);
       }
     }
 
     return {
       ...row,
-      participacionIndividual: participacionIndividual.toFixed(2),
+      participacionIndividual,  // Mantener como número
       tiempoTotalNecesidad,
+      tiempoParaMaterial,
       necesidadMaximaAFabricar,
       horasExtrasUsadas: horasExtrasUsadas.toFixed(2),
       mesRef: mes,
-      lineaRef: linea
+      lineaRef: linea,
+      puestoBotella
     };
   });
 }

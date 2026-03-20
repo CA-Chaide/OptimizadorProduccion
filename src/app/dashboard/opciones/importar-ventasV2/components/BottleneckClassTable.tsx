@@ -79,19 +79,31 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     return String(linea).toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
   };
 
-  const obtenerTiempoDisponible = (mes: string, linea: string, puestoTrabajo: string | null) => {
+  const obtenerTiempoDisponible = (mes: string, linea: string, puestoTrabajo: string | null, centro: string = '') => {
     const tiempoCanon = buscarTiempoCanonPorMes(mes);
     if (!tiempoCanon || !tiempoCanon.data || !Array.isArray(tiempoCanon.data)) {
       return null;
     }
     
     const lineaNorm = normalizarLinea(linea);
+    const centroCodigo = String(centro).trim();
     
-    // Primero filtrar por línea
-    const registrosLinea = tiempoCanon.data.filter((item: any) => {
+    // Primero filtrar por línea Y centro
+    let registrosLinea = tiempoCanon.data.filter((item: any) => {
       const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
-      return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+      const itemCentro = String(item?.centro ?? item?.Centro ?? '');
+      const lineaMatches = nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+      const centroMatches = centroCodigo === '' || itemCentro === centroCodigo;
+      return lineaMatches && centroMatches;
     });
+    
+    // Si no encontramos registros CON centro específico, intentar sin el filtro de centro
+    if (registrosLinea.length === 0 && centroCodigo !== '') {
+      registrosLinea = tiempoCanon.data.filter((item: any) => {
+        const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
+        return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+      });
+    }
 
     // Si no encontramos registros de la línea, intentar buscar por puesto en todos los datos
     if (registrosLinea.length === 0) {
@@ -103,9 +115,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         });
         if (dp) {
           return {
-            minutos_horario_normal: safeNumber(dp?.minutos_horario_normal_CON_PUESTOS ?? dp?.minutos_horario_normal_TOTAL ?? 0),
-            minutos_con_extras: safeNumber(dp?.minutos_extras_CON_PUESTOS ?? dp?.minutos_extras_TOTAL ?? 0),
-            minutos_fin_semana: safeNumber(dp?.minutos_sabado_CON_PUESTOS ?? dp?.minutos_sabado_TOTAL ?? 0),
+            minutos_horario_normal: safeNumber(dp?.minutos_horario_normal_TOTAL ?? 0),
+            minutos_con_extras: safeNumber(dp?.minutos_extras_TOTAL ?? 0),
+            minutos_fin_semana: safeNumber(dp?.minutos_sabado_TOTAL ?? 0),
             minutos_horario_normal_total: safeNumber(dp?.minutos_horario_normal_TOTAL ?? 0),
             diasLaborables: tiempoCanon.diasLaborables,
             diasSabados: tiempoCanon.diasSabados
@@ -116,16 +128,51 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     }
 
     // Sumar todos los tiempos de las estaciones de esa línea
-    let minutos_horario_normal = 0;
-    let minutos_con_extras = 0;
-    let minutos_fin_semana = 0;
-    let minutos_horario_normal_total = 0;
+    // NOTA: Esta lógica ha sido CORREGIDA (antes sumaba todos)
+    // Ahora: Identificar el puesto de botella (el que MÁS se repite) y usar SOLO su tiempo
     
+    // Contar frecuencia de estaciones en los registros de la línea
+    const estacionesMap = new Map<string, any>();
     registrosLinea.forEach((dato: any) => {
-      minutos_horario_normal += safeNumber(dato?.minutos_horario_normal_CON_PUESTOS ?? dato?.minutos_horario_normal_TOTAL ?? 0);
-      minutos_con_extras += safeNumber(dato?.minutos_extras_CON_PUESTOS ?? dato?.minutos_extras_TOTAL ?? 0);
-      minutos_fin_semana += safeNumber(dato?.minutos_sabado_CON_PUESTOS ?? dato?.minutos_sabado_TOTAL ?? 0);
-      minutos_horario_normal_total += safeNumber(dato?.minutos_horario_normal_TOTAL ?? 0);
+      const nombreEstacion = String(dato?.nombre_estacion ?? '-');
+      if (!estacionesMap.has(nombreEstacion)) {
+        estacionesMap.set(nombreEstacion, {
+          count: 0,
+          dato: dato
+        });
+      }
+      const current = estacionesMap.get(nombreEstacion)!;
+      current.count += 1;
+    });
+
+    // Encontrar estación con mayor frecuencia (cuello de botella)
+    let maxFrequencia = 0;
+    let puestoBotellaDato: any = null;
+    estacionesMap.forEach(({ count, dato }) => {
+      if (count > maxFrequencia) {
+        maxFrequencia = count;
+        puestoBotellaDato = dato;
+      }
+    });
+
+    // Si no encontramos puesto de botella, retornar null
+    if (!puestoBotellaDato) {
+      console.warn(`[obtenerTiempoDisponible] No se encontró puesto de botella para Línea: ${linea}, Mes: ${mes}`);
+      return null;
+    }
+
+    // Usar SOLO el tiempo del puesto de botella con minutos_horario_normal_TOTAL (mismo que BottleneckSummaryTable)
+    const minutos_horario_normal = safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0);
+    const minutos_con_extras = safeNumber(puestoBotellaDato?.minutos_extras_TOTAL ?? 0);
+    const minutos_fin_semana = safeNumber(puestoBotellaDato?.minutos_sabado_TOTAL ?? 0);
+    const minutos_horario_normal_total = safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0);
+
+    console.log(`[obtenerTiempoDisponible-CORREGIDO] Mes: ${mes}, Centro: ${centro}, Línea: ${linea}, Puesto Botella: ${puestoBotellaDato?.nombre_estacion}`, {
+      minutos_horario_normal,
+      minutos_con_extras,
+      minutos_fin_semana,
+      frecuencia: maxFrequencia,
+      totalEstacionesEnLinea: estacionesMap.size
     });
 
     return {
@@ -137,6 +184,37 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       diasSabados: tiempoCanon.diasSabados
     };
   };
+
+  // Paso previo: calcular suma de T. Total Necesidad Inicial por (mes, línea)
+  // y obtener el T. Disponible global (minutos_horario_normal_TOTAL - consumo anterior) por (mes, línea)
+  const sumaTiempoNecPorLinea: { [k: string]: number } = {};
+  const tiempoDispGlobalPorLinea: { [k: string]: number } = {};
+
+  datos.forEach(row => {
+    const mes = String(row.Mes ?? 'Sin mes');
+    const linea = String(row.LineaFabricacion ?? 'Sin línea');
+    const key = `${mes}|${linea}`;
+    const necesidad = computeNecesidadesLocal(row);
+    const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
+    const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
+    const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
+    const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
+
+    sumaTiempoNecPorLinea[key] = (sumaTiempoNecPorLinea[key] || 0) + tiempoTotalNecesidad;
+
+    if (tiempoDispGlobalPorLinea[key] === undefined) {
+      const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella, row.Centro);
+      let tiempoConsumidoPrevio = tiempoConsumidoAnterior[key] || 0;
+      if (tiempoConsumidoPrevio === 0 && Object.keys(tiempoConsumidoAnterior).length > 0) {
+        const mesNum = parseInt(mes);
+        const mesNombre = !isNaN(mesNum) && MONTH_NAMES[mesNum] ? MONTH_NAMES[mesNum] : mes;
+        tiempoConsumidoPrevio = tiempoConsumidoAnterior[`${mesNombre}|${linea}`] || 
+                                tiempoConsumidoAnterior[`${mesNum}|${linea}`] || 0;
+      }
+      const base = tiempoDisp?.minutos_horario_normal ?? 0;
+      tiempoDispGlobalPorLinea[key] = Math.max(0, base - tiempoConsumidoPrevio);
+    }
+  });
 
   const enriquecerFila = (row: any) => {
     const mes = String(row.Mes ?? 'Sin mes');
@@ -155,13 +233,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
     const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
     
-    const tiempoTotalNecesidad = necesidad * tiempoPorUnidad;
+    // T. Total necesidad inicial = (Tiempo Unitarío / Puestos) * Necesidades
+    const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
     
-    const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella);
+    const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella, row.Centro);
     
     let necesidadMaximaAFabricar = 0;
     let horasExtrasUsadas = 0;
     let tMaxProm = 0;
+    let tiempoParaMaterial = 0;
     
     // Si forzarTrasladoTotal = true (ej. clase F), NO se fabrica nada: todo se traslada
     if (forzarTrasladoTotal) {
@@ -169,18 +249,53 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       tMaxProm = 0;
       horasExtrasUsadas = 0;
     } else if (tiempoDisp && tiempoPorUnidad > 0) {
-      const techoAbsolutoLinea = tiempoDisp.minutos_con_extras + tiempoDisp.minutos_fin_semana;
-      const tiempoConsumidoPreviamente = tiempoConsumidoAnterior?.[key] ?? 0;
-      const tiempoMaxDisponible = Math.max(0, techoAbsolutoLinea - tiempoConsumidoPreviamente);
-      const tiempoParaEsteMaterial = (participacionIndividual / 100) * tiempoMaxDisponible;
+      // Obtener tiempo ya consumido por clases anteriores (ej: E consume antes que X)
+      // Intentar con múltiples formatos de key para matches
+      let tiempoConsumidoPrevio = tiempoConsumidoAnterior[key] || 0;
       
-      necesidadMaximaAFabricar = Math.min(necesidad, Math.floor(tiempoParaEsteMaterial / tiempoPorUnidad));
+      // Si no encontramos con la key directa, buscar con el mes como número o nombre
+      if (tiempoConsumidoPrevio === 0 && Object.keys(tiempoConsumidoAnterior).length > 0) {
+        const mesNum = parseInt(mes);
+        const mesNombre = !isNaN(mesNum) && MONTH_NAMES[mesNum] ? MONTH_NAMES[mesNum] : mes;
+        const keyAlternativa1 = `${mesNombre}|${linea}`;
+        const keyAlternativa2 = `${mesNum}|${linea}`;
+        
+        tiempoConsumidoPrevio = tiempoConsumidoAnterior[keyAlternativa1] || 
+                                tiempoConsumidoAnterior[keyAlternativa2] || 0;
+        
+        console.log(`[BottleneckClassTable] Buscando tiempoConsumido:`, {
+          keyOriginal: key,
+          keyAlternativa1,
+          keyAlternativa2,
+          keysDisponibles: Object.keys(tiempoConsumidoAnterior),
+          tiempoConsumidoPrevio
+        });
+      }
       
-      // Calcular T.MAX PROM: (T/U÷Puestos) * (Nec. Máx)
+      // T. DISPONIBLE = (minutos_horario_normal - tiempo_consumido_anterior) × (participación / 100)
+      const tiempoMaxDisponibleBase = tiempoDisp.minutos_horario_normal;
+      const tiempoMaxDisponibleReal = Math.max(0, tiempoMaxDisponibleBase - tiempoConsumidoPrevio);
+      tiempoParaMaterial = (participacionIndividual / 100) * tiempoMaxDisponibleReal;
+      
+      // Decisión GLOBAL: comparar suma de T. Total Necesidad Inicial de TODA la línea vs T. Disponible global
+      const sumaTiempoNecLinea = sumaTiempoNecPorLinea[key] || 0;
+      const tiempoDispGlobal = tiempoDispGlobalPorLinea[key] || 0;
+      
+      if (sumaTiempoNecLinea <= tiempoDispGlobal) {
+        // Si el tiempo total de toda la línea cabe en el disponible => fabricar todo
+        necesidadMaximaAFabricar = necesidad;
+      } else {
+        // Si no alcanza: Necesidad Requerida = T. Disponible (por material) / (Tiempo Unitario / Puestos)
+        necesidadMaximaAFabricar = tiempoUnitarioPorPuesto > 0 
+          ? Math.floor(tiempoParaMaterial / tiempoUnitarioPorPuesto) 
+          : 0;
+      }
+      
+      // Calcular Tiempo Requerido: (Tiempo Unitarío / Puestos) * (Necesidad Requerida)
       tMaxProm = tiempoUnitarioPorPuesto * necesidadMaximaAFabricar;
       
-      const tiempoNormalRestante = Math.max(0, tiempoDisp.minutos_horario_normal - tiempoConsumidoPreviamente);
-      const tiempoNormalParaEsteMaterial = (participacionIndividual / 100) * tiempoNormalRestante;
+      // Usar el tiempo disponible REAL (descontando consumo anterior) para calcular extras
+      const tiempoNormalParaEsteMaterial = (participacionIndividual / 100) * tiempoMaxDisponibleReal;
       const tiempoRealUsado = Math.min(necesidad, necesidadMaximaAFabricar) * tiempoPorUnidad;
       
       if (tiempoRealUsado > tiempoNormalParaEsteMaterial) {
@@ -190,9 +305,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     
     return {
       ...row,
-      participacionIndividual: participacionIndividual.toFixed(2),
+      participacionIndividual,  // Mantener como número
       tiempoTotalNecesidad,
       tiempoUnitarioPorPuesto,
+      tiempoParaMaterial,
       tMaxProm,
       necesidadMaximaAFabricar,
       horasExtrasUsadas: horasExtrasUsadas.toFixed(2),
@@ -337,9 +453,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 z-10 bg-gray-50">
+          <thead className="sticky top-0 z-20 bg-gray-50 shadow-sm">
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">CodMaterial</th>
               <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Descripción</th>
@@ -350,14 +466,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Sector</th>
               <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Responsable</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Necesidades</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">T/Unidad</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-indigo-600 uppercase tracking-wider">T/U÷Puestos</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Total</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Partic. %</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Nec. Máx</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-indigo-600 uppercase tracking-wider">Tiempo Unitarío / Puestos</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Total necesidad inicial</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Participación%</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-pink-600 uppercase tracking-wider">T. Disponible</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-cyan-600 uppercase tracking-wider">T. Consumido</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-emerald-600 uppercase tracking-wider">T. Libre</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Necesidad Requerida</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Traslado</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Máx.</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-orange-600 uppercase tracking-wider">T.Max Prom</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-orange-600 uppercase tracking-wider">Tiempo Requerido</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">H. Extras</th>
             </tr>
           </thead>
@@ -365,7 +482,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
             {lineasOrdenadas.map((linea) => (
               <React.Fragment key={linea}>
                 <tr className="bg-blue-50">
-                  <td colSpan={18} className="px-4 py-2 font-semibold text-blue-800 text-sm">
+                  <td colSpan={19} className="px-4 py-2 font-semibold text-blue-800 text-sm">
                     <span className="inline-flex items-center">
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -376,7 +493,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                 </tr>
                 {datosAgrupados[linea].map((row: any, idx: number) => {
                   const necesidades = computeNecesidadesLocal(row);
-                  const necesidadTraslado = Math.max(0, Math.round(necesidades) - row.necesidadMaximaAFabricar);
+                  const necesidadTraslado = Math.max(0, Math.floor(necesidades) - row.necesidadMaximaAFabricar);
                   return (
                     <tr key={`${linea}-${idx}`} className="hover:bg-gray-50 transition-colors">
                       <td className="px-3 py-2.5 text-sm font-medium text-gray-900">{row.CodMaterial ?? '-'}</td>
@@ -387,12 +504,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                       <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-600">{row.NumeroPuestos ?? row.numero_puestos ?? '-'}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600">{row.Sector ?? '-'}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600">{row.NombRespControlProd ?? row.RespCtrlProd ?? '-'}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-700">{Math.round(necesidades).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-600">
-                        {row.TiempoPorUnidad != null
-                          ? Number(row.TiempoPorUnidad).toLocaleString(undefined, { maximumFractionDigits: 3 })
-                          : '-'}
-                      </td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-700">{Math.floor(necesidades).toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono text-indigo-600 font-semibold">
                         {row.tiempoUnitarioPorPuesto != null
                           ? Number(row.tiempoUnitarioPorPuesto).toLocaleString(undefined, { maximumFractionDigits: 3 })
@@ -404,16 +516,24 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                           : '-'}
                       </td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-600">{row.participacionIndividual}%</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono text-emerald-600 font-medium">{row.necesidadMaximaAFabricar.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono text-pink-600 font-medium">
+                        {Number(row.tiempoParaMaterial || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} min
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono text-cyan-600 font-medium">
+                        {row.tMaxProm != null
+                          ? Number(row.tMaxProm).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                          : '-'} min
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono text-emerald-600 font-medium">
+                        {((Number(row.tiempoParaMaterial || 0) - Number(row.tMaxProm || 0))).toLocaleString(undefined, { maximumFractionDigits: 2 })} min
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono text-blue-600 font-medium">{row.necesidadMaximaAFabricar.toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono">
                         {necesidadTraslado > 0 ? (
                           <span className="text-amber-600 font-medium">{necesidadTraslado.toLocaleString()}</span>
                         ) : (
                           <span className="text-gray-400">0</span>
                         )}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono text-blue-600">
-                        {(safeNumber(row.TiempoPorUnidad ?? 0) * safeNumber(row.necesidadMaximaAFabricar ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono text-orange-600 font-semibold">
                         {row.tMaxProm != null
@@ -427,10 +547,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                 {(() => {
                   const filasLinea = datosAgrupados[linea];
                   const totalNecesidades = filasLinea.reduce((sum: number, row: any) => sum + computeNecesidadesLocal(row), 0);
-                  const totalTiempoPorUnidad = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.TiempoPorUnidad ?? 0), 0);
                   const totalTiempoUnitarioPorPuesto = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoUnitarioPorPuesto ?? 0), 0);
                   const totalTiempoNecesidad = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidad ?? 0), 0);
                   const totalParticipacion = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.participacionIndividual ?? 0), 0);
+                  const totalTiempoParaMaterial = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoParaMaterial ?? 0), 0);
                   const totalNecesidadMax = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
                   const totalTiempoNecMax = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.TiempoPorUnidad ?? 0) * safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
                   const totalTMaxProm = filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.tMaxProm ?? 0), 0);
@@ -440,14 +560,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                   return (
                     <tr className="bg-gray-100">
                       <td colSpan={8} className="px-3 py-2.5 text-sm font-semibold text-gray-700">Subtotal {linea}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{Math.round(totalNecesidades).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{totalTiempoPorUnidad.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{Math.floor(totalNecesidades).toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-indigo-700">{totalTiempoUnitarioPorPuesto.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-gray-700">{totalParticipacion.toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-emerald-700">{totalNecesidadMax.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-pink-700">{totalTiempoParaMaterial.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-cyan-700">{totalTMaxProm.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-emerald-700">{(totalTiempoParaMaterial - totalTMaxProm).toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-blue-700">{totalNecesidadMax.toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-amber-700">{totalNecesidadTraslado.toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-blue-700">{totalTiempoNecMax.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-orange-700">{totalTMaxProm.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2.5 text-sm text-right font-mono font-semibold text-purple-700">{totalHorasExtras.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                     </tr>
@@ -456,26 +577,32 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               </React.Fragment>
             ))}
           </tbody>
-          <tfoot>
+          <tfoot className="sticky bottom-0 z-20">
             {(() => {
               const totalNecesidadesGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + computeNecesidadesLocal(row), 0);
               const totalTiempoNecesidadGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidad ?? 0), 0);
               const totalParticipacionGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.participacionIndividual ?? 0), 0);
+              const totalTiempoParaMaterialGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoParaMaterial ?? 0), 0);
               const totalNecesidadMaxGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
               const totalTiempoNecMaxGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.TiempoPorUnidad ?? 0) * safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
+              const totalTMaxPromGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tMaxProm ?? 0), 0);
               const totalHorasExtrasGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.horasExtrasUsadas ?? 0), 0);
               const totalNecesidadTrasladoGlobal = Math.max(0, totalNecesidadesGlobal - totalNecesidadMaxGlobal);
+              const totalTiempoUnitarioPorPuestoGlobal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoUnitarioPorPuesto ?? 0), 0);
               
               return (
                 <tr className="bg-gray-800 text-white">
-                  <td colSpan={6} className="px-3 py-3 text-sm font-bold">TOTAL GENERAL</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold">{Math.round(totalNecesidadesGlobal).toLocaleString()}</td>
-                  <td className="px-3 py-3"></td>
+                  <td colSpan={8} className="px-3 py-3 text-sm font-bold">TOTAL GENERAL</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold">{Math.floor(totalNecesidadesGlobal).toLocaleString()}</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold">{totalTiempoUnitarioPorPuestoGlobal.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold">{totalTiempoNecesidadGlobal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold">{totalParticipacionGlobal.toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-emerald-300">{totalNecesidadMaxGlobal.toLocaleString()}</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-pink-300">{totalTiempoParaMaterialGlobal.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-cyan-300">{totalTMaxPromGlobal.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-emerald-300">{(totalTiempoParaMaterialGlobal - totalTMaxPromGlobal).toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-blue-300">{totalNecesidadMaxGlobal.toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-amber-300">{totalNecesidadTrasladoGlobal.toLocaleString()}</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-blue-300">{totalTiempoNecMaxGlobal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold text-orange-300">{totalTMaxPromGlobal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-purple-300">{totalHorasExtrasGlobal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                 </tr>
               );
