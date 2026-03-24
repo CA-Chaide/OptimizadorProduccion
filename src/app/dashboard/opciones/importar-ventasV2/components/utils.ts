@@ -45,6 +45,21 @@ export function exportToXLSX(data: any[], filename: string, columns?: { key: str
   XLSX.writeFile(workbook, `${filename}_${dateStr}.xlsx`);
 }
 
+// Función para exportar múltiples hojas en un único archivo XLSX
+export function exportToXLSXMultiSheet(sheets: { sheetName: string; data: any[] }[], filename: string) {
+  const workbook = XLSX.utils.book_new();
+  sheets.forEach(({ sheetName, data }) => {
+    if (!data || data.length === 0) return;
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const columnWidths = Object.keys(data[0] || {}).map(col => ({ wch: Math.min(col.length + 5, 40) }));
+    worksheet['!cols'] = columnWidths;
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.substring(0, 31));
+  });
+  if (workbook.SheetNames.length === 0) { alert('No hay datos para exportar'); return; }
+  const dateStr = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(workbook, `${filename}_${dateStr}.xlsx`);
+}
+
 // Función para convertir mes a número (acepta nombre o número)
 export function getMesNumero(mesInput: string): number | null {
   const asNumber = parseInt(mesInput);

@@ -1,8 +1,8 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { MONTH_NAMES } from './constants';
-import { safeNumber, generarFilasHorasExtras, guardarHorasExtrasEnStorage, obtenerHorasExtrasDeStorage, consumirHorasExtras } from './utils';
+import { safeNumber, generarFilasHorasExtras, guardarHorasExtrasEnStorage, obtenerHorasExtrasDeStorage, consumirHorasExtras, exportToXLSXMultiSheet } from './utils';
 import { TiempoCanonResult, TransferNeed, HorasExtrasPorMesCentro } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
@@ -18,13 +18,16 @@ function enriquecerDatosClase(
   datos: any[],
   tiemposCanon: any[],
   tiempoConsumidoAnterior: { [mesLinea: string]: number } = {},
-  minutosExtrasPorLinea: { [mesLinea: string]: number } = {}
+  minutosExtrasPorLinea: { [mesLinea: string]: number } = {},
+  trasladosMap: Map<string, number> = new Map()
 ) {
   const computeNec = (row: any) => {
     const up = safeNumber(row.UnidadesProyectado ?? 0);
     const ss = safeNumber(row.StockSeguridad ?? 0);
     const sa = safeNumber(row.StockActual ?? 0);
-    return Math.max(0, up - sa + ss);
+    const necesidadPropia = Math.max(0, up - sa + ss);
+    const traslado = trasladosMap.get(String(row.CodMaterial ?? '')) || 0;
+    return necesidadPropia + traslado;
   };
 
   const buscarTiempoCanon = (mesRaw: string) => {
@@ -247,6 +250,32 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   const [transferNeedsE, setTransferNeedsE] = useState<TransferNeed[]>([]);
   const [transferNeedsX, setTransferNeedsX] = useState<TransferNeed[]>([]);
   const [transferNeedsF, setTransferNeedsF] = useState<TransferNeed[]>([]);
+  // Export sheets capturados desde BottleneckClassTable (tienen todos los cálculos correctos)
+  const [exportSheetEData, setExportSheetEData] = useState<any[]>([]);
+  const [exportSheetXData, setExportSheetXData] = useState<any[]>([]);
+
+  // Filtros tabla F
+  const [fSearchTerm, setFSearchTerm] = useState<string>('');
+  const [fSelectedLinea, setFSelectedLinea] = useState<string>('');
+  const [fSelectedResp, setFSelectedResp] = useState<string[]>([]);
+  const [fRespDropdownOpen, setFRespDropdownOpen] = useState<boolean>(false);
+  const fRespDropdownRef = useRef<HTMLDivElement>(null);
+  const [fSelectedSector, setFSelectedSector] = useState<string[]>([]);
+  const [fSectorDropdownOpen, setFSectorDropdownOpen] = useState<boolean>(false);
+  const fSectorDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (fRespDropdownRef.current && !fRespDropdownRef.current.contains(e.target as Node)) {
+        setFRespDropdownOpen(false);
+      }
+      if (fSectorDropdownRef.current && !fSectorDropdownRef.current.contains(e.target as Node)) {
+        setFSectorDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Minutos extras consumidos del pool de horas extras, indexado por "mes|linea"
   // Se calcula en useEffect y se usa en el enriquecimiento final
@@ -433,47 +462,96 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   // Consolidar traslados
   const transferNeedsConsolidated = useMemo(() => {
     const consolidated = new Map<string, number>();
+    const porClase = { E: 0, X: 0, F: 0, totalE: 0, totalX: 0, totalF: 0 };
     
     transferNeedsE.forEach(item => {
       consolidated.set(item.CodMaterial, (consolidated.get(item.CodMaterial) || 0) + item.necesidadTraslado);
+      porClase.totalE += item.necesidadTraslado;
     });
+    porClase.E = transferNeedsE.length;
     
     transferNeedsX.forEach(item => {
       consolidated.set(item.CodMaterial, (consolidated.get(item.CodMaterial) || 0) + item.necesidadTraslado);
+      porClase.totalX += item.necesidadTraslado;
     });
+    porClase.X = transferNeedsX.length;
 
     transferNeedsF.forEach(item => {
       consolidated.set(item.CodMaterial, (consolidated.get(item.CodMaterial) || 0) + item.necesidadTraslado);
+      porClase.totalF += item.necesidadTraslado;
     });
-    
-    return Array.from(consolidated.entries())
+    porClase.F = transferNeedsF.length;
+
+    const result = Array.from(consolidated.entries())
       .map(([CodMaterial, necesidadTraslado]) => ({ CodMaterial, necesidadTraslado }))
       .sort((a, b) => a.CodMaterial.localeCompare(b.CodMaterial));
+
+    // === LOG DIAGNÓSTICO CONSOLIDADO ===
+    const totalConsolidado = result.reduce((s, r) => s + r.necesidadTraslado, 0);
+    console.log('%c\n========================================', 'color: #e74c3c; font-weight: bold;');
+    console.log('%c  TRASLADOS CONSOLIDADOS (C2000 → C1000)', 'color: #e74c3c; font-weight: bold; font-size: 14px;');
+    console.log('%c========================================', 'color: #e74c3c; font-weight: bold;');
+    console.log(`Clase E: ${porClase.E} materiales, ${porClase.totalE} unidades`);
+    console.log(`Clase X: ${porClase.X} materiales, ${porClase.totalX} unidades`);
+    console.log(`Clase F: ${porClase.F} materiales, ${porClase.totalF} unidades`);
+    console.log(`%cTOTAL CONSOLIDADO: ${result.length} materiales \u00fanicos, ${totalConsolidado} unidades`, 'font-weight: bold;');
+    console.log('Lista completa de traslados enviados al Centro 1000:');
+    console.table(result);
+    console.log('%c========================================\n', 'color: #e74c3c; font-weight: bold;');
+
+    return result;
   }, [transferNeedsE, transferNeedsX, transferNeedsF]);
 
-  // Notificar cambios
+  // Notificar cambios — con guard para evitar loops de re-render
+  const lastConsolidatedJsonRef = useRef<string>('');
   useEffect(() => {
     if (onTransferNeedsConsolidatedChanged && transferNeedsConsolidated.length > 0) {
+      const json = JSON.stringify(transferNeedsConsolidated);
+      if (json === lastConsolidatedJsonRef.current) return;
+      lastConsolidatedJsonRef.current = json;
       onTransferNeedsConsolidatedChanged(transferNeedsConsolidated);
     }
   }, [transferNeedsConsolidated, onTransferNeedsConsolidatedChanged]);
 
   // Calcular transferencias F (sin lógica de asignación, directo a Quito)
+  // FIX: usar misma lógica que E/X — per (material, mes) tomar max para duplicados,
+  // luego SUMAR todos los meses por CodMaterial.
   useEffect(() => {
     if (dataF.length > 0) {
-      const transferMap = new Map<string, number>();
+      // Paso 1: agrupar por (CodMaterial, Mes) — max para duplicados dentro del mismo mes
+      const transferMapByMes = new Map<string, number>();
       dataF.forEach(row => {
         const codMaterial = String(row.CodMaterial ?? '');
+        const mes = String(row.Mes ?? '');
+        const key = `${codMaterial}|${mes}`;
         const necesidad = computeNecesidad(row);
-        const current = transferMap.get(codMaterial) || 0;
-        transferMap.set(codMaterial, Math.max(current, necesidad));
+        if (!transferMapByMes.has(key) || transferMapByMes.get(key)! < necesidad) {
+          transferMapByMes.set(key, necesidad);
+        }
+      });
+
+      // Paso 2: colapsar por CodMaterial sumando todos los meses
+      const transferMap = new Map<string, number>();
+      transferMapByMes.forEach((value, key) => {
+        const codMaterial = key.split('|')[0];
+        transferMap.set(codMaterial, (transferMap.get(codMaterial) || 0) + value);
       });
 
       const transferNeedsF_array = Array.from(transferMap.entries())
         .map(([CodMaterial, necesidadTraslado]) => ({ CodMaterial, necesidadTraslado }))
         .sort((a, b) => a.CodMaterial.localeCompare(b.CodMaterial));
       
-      console.log('[BottleneckAnalysis] Transfer Needs F (enviando a Quito):', transferNeedsF_array.length, 'materiales');
+      const totalF = transferNeedsF_array.reduce((s, r) => s + r.necesidadTraslado, 0);
+      console.log(`%c=== [TRASLADOS Clase F] ===`, 'color: #9b59b6; font-weight: bold;');
+      console.log(`Materiales F: ${transferNeedsF_array.length} | Total unidades: ${totalF}`);
+      console.log('Detalle por (CodMaterial, Mes):');
+      console.table(Array.from(transferMapByMes.entries()).map(([k, v]) => {
+        const [cod, mes] = k.split('|');
+        return { CodMaterial: cod, Mes: mes, Necesidad: v };
+      }));
+      console.log('Colapsado por material:');
+      console.table(transferNeedsF_array.slice(0, 50));
+
       setTransferNeedsF(transferNeedsF_array);
     } else {
       setTransferNeedsF([]);
@@ -486,8 +564,9 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
       console.log('=== [BottleneckAnalysis DEBUG] ===');
       console.log('Total registros:', data.length, '| Centro 2000:', filteredDataCentro2000.length);
       console.log('Clase E:', dataE.length, '| X:', dataX.length, '| F:', dataF.length);
+      console.log('Enriquecidos E:', datosEnriquecidosE.length, '| X:', datosEnriquecidosX.length);
     }
-  }, [data, filteredDataCentro2000, dataE, dataX, dataF]);
+  }, [data, filteredDataCentro2000, dataE, dataX, dataF, datosEnriquecidosE, datosEnriquecidosX]);
 
   // =====================================================
   // === DESPUÉS DE HOOKS: EARLY RETURN SI NO HAY DATA ===
@@ -497,8 +576,80 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
     return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend - Necesidades"</div>;
   }
 
+  // Proyectar las columnas limpias (las 12 clave) desde los datos completos de BottleneckClassTable
+  // Los campos '[JN] MAX.PRODUCIR' etc. son calculados por BottleneckClassTable → siempre correctos
+  const projectCleanColumns = (rows: any[], clase: string) =>
+    rows
+      .filter((r: any) => !String(r['CodMaterial'] || '').startsWith('**'))
+      .map((r: any) => ({
+        'Clase':             clase,
+        'CodMaterial':       r['CodMaterial'] ?? '',
+        'Descripcion':       r['Descripcion'] ?? '',
+        'Linea':             r['Linea'] ?? '',
+        'Sector':            r['Sector'] ?? '',
+        'Responsable':       r['Responsable'] ?? '',
+        'Necesidad':         r['[JN] NECESIDAD'] ?? 0,
+        'Prod.Viable JN':    r['[JN] MAX.PRODUCIR'] ?? 0,
+        'Prod.Viable HE':    r['[HE] MAX.PRODUCIR'] ?? 0,
+        'Prod.Viable Sab':   r['[SAB] MAX.PRODUCIR'] ?? 0,
+        'Prod.Viable TOTAL': r['[RES] Prod.Viable'] ?? 0,
+        'Deficit General':   r['[RES] Deficit General'] ?? 0,
+      }));
+
+  // Hoja resumen: E + X + F (solo filas de datos, sin subtotales)
+  const buildResumenSheet = () => {
+    const rowsF = dataF.map((row: any) => {
+      const necesidad = Math.floor(computeNecesidad(row));
+      return {
+        'Clase': 'F',
+        'CodMaterial': row.CodMaterial ?? '',
+        'Descripcion': row.Descripcion || row.NombreMaterial || '',
+        'Linea': row.LineaFabricacion || '',
+        'Sector': row.Sector || '',
+        'Responsable': row.NombRespControlProd || row.RespCtrlProd || (row as any).RespControlProd || '',
+        'Necesidad': necesidad,
+        'Prod.Viable JN': 0, 'Prod.Viable HE': 0, 'Prod.Viable Sab': 0,
+        'Prod.Viable TOTAL': 0, 'Deficit General': necesidad,
+      };
+    });
+    return [
+      ...projectCleanColumns(exportSheetEData, 'E'),
+      ...projectCleanColumns(exportSheetXData, 'X'),
+      ...rowsF,
+    ];
+  };
+
+  const handleExportTodo = () => {
+    exportToXLSXMultiSheet([
+      { sheetName: 'Resumen E+X+F', data: buildResumenSheet() },
+      // Sheets de detalle completo — todos los campos calculados por BottleneckClassTable
+      { sheetName: 'Clase E', data: exportSheetEData },
+      { sheetName: 'Clase X', data: exportSheetXData },
+      { sheetName: 'Clase F', data: dataF.map((row: any) => ({
+          'Clase': 'F',
+          'CodMaterial':  row.CodMaterial ?? '',
+          'Descripcion':  row.Descripcion || row.NombreMaterial || '',
+          'Linea':        row.LineaFabricacion || '',
+          'Sector':       row.Sector || '',
+          'Responsable':  row.NombRespControlProd || row.RespCtrlProd || (row as any).RespControlProd || '',
+          'Necesidad (Traslado total)': Math.floor(computeNecesidad(row)),
+        })) },
+    ], 'Analisis_Centro2000');
+  };
+
   return (
     <div>
+      <div className="flex justify-end px-2 pb-2">
+        <button
+          onClick={handleExportTodo}
+          className="inline-flex items-center px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Descargar Excel (Clases E + X + F)
+        </button>
+      </div>
       <BottleneckSummaryTable 
         datosEnriquecidosE={datosEnriquecidosE}
         datosEnriquecidosX={datosEnriquecidosX}
@@ -516,6 +667,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
         tiemposCanon={tiemposCanon}
         tiempoConsumidoAnterior={{}}
         onTransferNeedsCalculated={setTransferNeedsE}
+        onExportSheetReady={setExportSheetEData}
         maxExtrasHoras={maxExtrasHoras}
         horasExtrasFin={horasExtrasFin}
       />
@@ -526,11 +678,30 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
         tiemposCanon={tiemposCanon}
         tiempoConsumidoAnterior={tiempoConsumidoPorE}
         onTransferNeedsCalculated={setTransferNeedsX}
+        onExportSheetReady={setExportSheetXData}
         maxExtrasHoras={maxExtrasHoras}
         horasExtrasFin={horasExtrasFin}
       />
       
-      {dataF.length > 0 && (
+      {dataF.length > 0 && (() => {
+        const fLineasUnicas = Array.from(new Set(dataF.map((r: any) => String(r.LineaFabricacion || '')))).filter(Boolean).sort();
+        const fRespUnicos = Array.from(new Set(dataF.map((r: any) => String(r.NombRespControlProd || r.RespCtrlProd || r.RespControlProd || '').trim()))).filter(Boolean).sort();
+        const fSectoresUnicos = Array.from(new Set(dataF.map((r: any) => String(r.Sector || '').trim()))).filter(Boolean).sort();
+        const fFiltrados = dataF.filter((row: any) => {
+          const term = fSearchTerm.toLowerCase();
+          const matchSearch = !term ||
+            String(row.CodMaterial || '').toLowerCase().includes(term) ||
+            String(row.Descripcion || row.NombreMaterial || '').toLowerCase().includes(term);
+          const matchLinea = !fSelectedLinea || String(row.LineaFabricacion || '') === fSelectedLinea;
+          const matchResp = fSelectedResp.length === 0 || fSelectedResp.includes(String(row.NombRespControlProd || row.RespCtrlProd || row.RespControlProd || '').trim());
+          const sectorRow = String(row.Sector || '').trim();
+          const matchSector = fSelectedSector.length === 0 ||
+            fSelectedSector.includes(sectorRow) ||
+            (fSelectedSector.includes('(Sin sector)') && sectorRow === '');
+          return matchSearch && matchLinea && matchResp && matchSector;
+        });
+        const totalFiltrado = fFiltrados.reduce((sum: number, row: any) => sum + computeNecesidad(row), 0);
+        return (
         <div className="mt-8 p-6 bg-amber-50 border border-amber-200 rounded-lg">
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0">
@@ -543,39 +714,144 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
               <p className="text-sm text-amber-800 mt-2">
                 Los siguientes {dataF.length} material{dataF.length !== 1 ? 'es' : ''} con clase F se trasladan completos a plantas de Quito sin asignación de fabricación en Centro 2000.
               </p>
-              
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full divide-y divide-amber-200 bg-white rounded">
-                  <thead className="bg-amber-100">
+
+              {/* Filtros */}
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                {/* Línea */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-amber-800">Línea:</label>
+                  <select
+                    value={fSelectedLinea}
+                    onChange={e => setFSelectedLinea(e.target.value)}
+                    className="border border-amber-300 px-2 py-1 rounded text-xs bg-white focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="">Todas</option>
+                    {fLineasUnicas.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+                {/* Responsable multi-select */}
+                <div className="flex items-center gap-2 relative" ref={fRespDropdownRef}>
+                  <label className="text-xs font-medium text-amber-800">Responsable:</label>
+                  <button
+                    type="button"
+                    onClick={() => setFRespDropdownOpen(o => !o)}
+                    className="border border-amber-300 px-2 py-1 rounded text-xs bg-white min-w-[160px] text-left flex items-center justify-between gap-1 focus:ring-2 focus:ring-amber-400"
+                  >
+                    <span className="truncate">
+                      {fSelectedResp.length === 0 ? 'Todos' : fSelectedResp.length === 1 ? fSelectedResp[0] : `${fSelectedResp.length} seleccionados`}
+                    </span>
+                    <svg className={`w-3 h-3 text-amber-500 flex-shrink-0 transition-transform ${fRespDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {fRespDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-amber-200 rounded-lg shadow-lg z-50 min-w-[200px] max-h-56 overflow-y-auto">
+                      <div className="p-2 border-b border-amber-100 flex gap-2">
+                        <button type="button" onClick={() => setFSelectedResp([])} className="text-xs text-amber-700 hover:underline">Todos</button>
+                        <span className="text-amber-200">|</span>
+                        <button type="button" onClick={() => setFSelectedResp([...fRespUnicos])} className="text-xs text-amber-700 hover:underline">Seleccionar todos</button>
+                      </div>
+                      {fRespUnicos.map(r => (
+                        <label key={r} className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={fSelectedResp.includes(r)}
+                            onChange={e => setFSelectedResp(prev => e.target.checked ? [...prev, r] : prev.filter(x => x !== r))}
+                            className="rounded border-amber-300 text-amber-600"
+                          />
+                          <span className="truncate">{r}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Sector multi-select */}
+                <div className="flex items-center gap-2 relative" ref={fSectorDropdownRef}>
+                  <label className="text-xs font-medium text-amber-800">Sector:</label>
+                  <button
+                    type="button"
+                    onClick={() => setFSectorDropdownOpen(o => !o)}
+                    className="border border-amber-300 px-2 py-1 rounded text-xs bg-white min-w-[140px] text-left flex items-center justify-between gap-1 focus:ring-2 focus:ring-amber-400"
+                  >
+                    <span className="truncate">
+                      {fSelectedSector.length === 0 ? 'Todos' : fSelectedSector.length === 1 ? fSelectedSector[0] : `${fSelectedSector.length} seleccionados`}
+                    </span>
+                    <svg className={`w-3 h-3 text-amber-500 flex-shrink-0 transition-transform ${fSectorDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {fSectorDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-amber-200 rounded-lg shadow-lg z-50 min-w-[180px] max-h-56 overflow-y-auto">
+                      <div className="p-2 border-b border-amber-100 flex gap-2">
+                        <button type="button" onClick={() => setFSelectedSector([])} className="text-xs text-amber-700 hover:underline">Todos</button>
+                        <span className="text-amber-200">|</span>
+                        <button type="button" onClick={() => setFSelectedSector([...fSectoresUnicos])} className="text-xs text-amber-700 hover:underline">Seleccionar todos</button>
+                      </div>
+                      {fSectoresUnicos.map(s => (
+                        <label key={s} className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={fSelectedSector.includes(s)}
+                            onChange={e => setFSelectedSector(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))}
+                            className="rounded border-amber-300 text-amber-600"
+                          />
+                          <span className="truncate">{s}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Búsqueda */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="search"
+                    placeholder="Buscar código o descripción..."
+                    value={fSearchTerm}
+                    onChange={e => setFSearchTerm(e.target.value)}
+                    className="border border-amber-300 px-2 py-1 rounded text-xs bg-white w-52 focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                {/* Contador */}
+                <span className="text-xs text-amber-700">{fFiltrados.length} de {dataF.length} registros</span>
+              </div>
+
+              <div className="mt-3 overflow-x-auto max-h-[500px] overflow-y-auto rounded border border-amber-200">
+                <table className="min-w-full divide-y divide-amber-200 bg-white text-xs">
+                  <thead className="bg-amber-100 sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-amber-900">Código Material</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-amber-900">Línea</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-amber-900">Sector</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-amber-900">Necesidad (Traslado a Quito)</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-900">Código Material</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-900">Descripción</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-900">Línea</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-900">Sector</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-900">Responsable</th>
+                      <th className="px-3 py-2 text-right font-semibold text-amber-900">Necesidad (Traslado a Quito)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-amber-100">
-                    {dataF.map((row: any, idx: number) => (
+                    {fFiltrados.map((row: any, idx: number) => (
                       <tr key={idx} className="hover:bg-amber-50">
-                        <td className="px-4 py-2 text-sm text-gray-800 font-mono">{row.CodMaterial || '-'}</td>
-                        <td className="px-4 py-2 text-sm text-gray-700">{row.LineaFabricacion || '-'}</td>
-                        <td className="px-4 py-2 text-sm text-gray-700">{row.Sector || '-'}</td>
-                        <td className="px-4 py-2 text-sm text-right font-semibold text-amber-900">
-                          {computeNecesidad(row).toLocaleString()}
-                        </td>
+                        <td className="px-3 py-2 text-gray-800 font-mono">{row.CodMaterial || '-'}</td>
+                        <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={row.Descripcion || row.NombreMaterial || ''}>{row.Descripcion || row.NombreMaterial || '-'}</td>
+                        <td className="px-3 py-2 text-gray-700">{row.LineaFabricacion || '-'}</td>
+                        <td className="px-3 py-2 text-gray-700">{row.Sector || '-'}</td>
+                        <td className="px-3 py-2 text-gray-700">{row.NombRespControlProd || row.RespCtrlProd || (row as any).RespControlProd || '-'}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-amber-900">{computeNecesidad(row).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot className="bg-amber-100 sticky bottom-0">
+                    <tr>
+                      <td colSpan={5} className="px-3 py-2 font-bold text-amber-900 text-xs">Total{fFiltrados.length < dataF.length ? ` (filtrado)` : ''}</td>
+                      <td className="px-3 py-2 text-right font-bold text-amber-900">{totalFiltrado.toLocaleString()}</td>
+                    </tr>
+                  </tfoot>
                 </table>
-              </div>
-              
-              <div className="mt-3 text-xs text-amber-700">
-                <strong>Total unidades a trasladar:</strong> {dataF.reduce((sum, row) => sum + computeNecesidad(row), 0).toLocaleString()}
               </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

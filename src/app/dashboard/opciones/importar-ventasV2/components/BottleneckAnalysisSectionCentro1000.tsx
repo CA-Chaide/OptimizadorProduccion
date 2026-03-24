@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useRef, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MONTH_NAMES } from './constants';
-import { safeNumber } from './utils';
+import { safeNumber, exportToXLSX } from './utils';
 import { TiempoCanonResult, TransferNeed } from './types';
-import { Centro1000SummaryTable } from './Centro1000SummaryTable';
-import { Centro1000DetailTable, Centro1000DetailTableHandle } from './Centro1000DetailTable';
+import { BottleneckSummaryTable } from './BottleneckSummaryTable';
+import { BottleneckClassTable } from './BottleneckClassTable';
 
 interface BottleneckAnalysisSectionCentro1000Props {
   data: any[];
@@ -26,23 +26,55 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
   horasExtrasFin, 
   trasladosDesdeCentro2000 
 }) => {
-  const detailTableRef = useRef<Centro1000DetailTableHandle>(null);
-  const filteredDataCentro1000 = data.filter(row => 
-    String(row.CentroFabricacion || row.Centro || '') === '1000'
-  );
+  // === HOOKS (antes de cualquier early return) ===
+  const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
 
-  if (data.length === 0) {
-    return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend - Necesidades"</div>;
-  }
+  // Mapa de traslados: déficit general de E/X + necesidad completa de F (desde Centro 2000)
+  const trasladosMap = useMemo(() => {
+    const map = new Map<string, number>();
+    trasladosDesdeCentro2000.forEach(item => {
+      map.set(item.CodMaterial, (map.get(item.CodMaterial) || 0) + item.necesidadTraslado);
+    });
 
-  if (filteredDataCentro1000.length === 0) {
-    return <div className="p-4 text-center text-gray-600">No hay datos para el Centro 1000</div>;
-  }
+    // === LOG DIAGNÓSTICO: lo que RECIBE Centro 1000 ===
+    const totalRecibido = Array.from(map.values()).reduce((s, v) => s + v, 0);
+    console.log('%c\n========================================', 'color: #2ecc71; font-weight: bold;');
+    console.log('%c  CENTRO 1000: TRASLADOS RECIBIDOS', 'color: #2ecc71; font-weight: bold; font-size: 14px;');
+    console.log('%c========================================', 'color: #2ecc71; font-weight: bold;');
+    console.log(`Materiales recibidos: ${map.size} | Total unidades: ${totalRecibido}`);
+    console.table(Array.from(map.entries()).map(([k, v]) => ({ CodMaterial: k, Traslado: v })));
 
-  const trasladosMap = new Map<string, number>();
-  trasladosDesdeCentro2000.forEach(item => {
-    trasladosMap.set(item.CodMaterial, item.necesidadTraslado);
-  });
+    return map;
+  }, [trasladosDesdeCentro2000]);
+
+  // Filtrar Centro 1000 (todos los materiales juntos, sin separación por clase)
+  // IMPORTANTE: Los tiemposCanon son los mismos del centro 2000, por lo que
+  // limpiamos el campo Centro para que la búsqueda en tiemposCanon no filtre por centro
+  // y simplemente busque por nombre de línea.
+  // AGREGACIÓN: Un material puede aparecer en múltiples meses. Se agrupan por CodMaterial
+  // sumando UnidadesProyectado y usando StockActual/StockSeguridad del primer registro
+  // (son valores por material, no por mes). Así se obtiene una fila por material.
+  const filteredDataCentro1000 = useMemo(() => {
+    const rawRows = data
+      .filter(row => String(row.CentroFabricacion || row.Centro || '') === '1000')
+      .map(row => ({ ...row, Centro: '' })); // tiemposCanon aplican igual para C1000
+
+    // Agrupar por CodMaterial
+    const porMaterial = new Map<string, any>();
+    rawRows.forEach(row => {
+      const cod = String(row.CodMaterial ?? '');
+      if (!porMaterial.has(cod)) {
+        // Primera aparición: guardar fila base con UP=0, la sumamos abajo
+        porMaterial.set(cod, { ...row, UnidadesProyectado: 0 });
+      }
+      const agg = porMaterial.get(cod)!;
+      // Sumar la demanda de cada mes
+      agg.UnidadesProyectado = safeNumber(agg.UnidadesProyectado) + safeNumber(row.UnidadesProyectado ?? 0);
+      // StockActual y StockSeguridad son por material (no por mes): conservar del primer registro
+    });
+
+    return Array.from(porMaterial.values());
+  }, [data]);
 
   const computeNec = (row: any) => {
     const up = safeNumber(row.UnidadesProyectado ?? 0);
@@ -166,6 +198,8 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
     };
   };
 
+  // === ENRIQUECIMIENTO PARA TABLA RESUMEN (useMemo) ===
+  const datosEnriquecidos = useMemo(() => {
   const mapa: { [k: string]: number } = {};
   filteredDataCentro1000.forEach(row => {
     const k = `${String(row.Mes ?? 'Sin mes')}|${String(row.LineaFabricacion ?? 'Sin línea')}`;
@@ -201,7 +235,7 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
     }
   });
 
-  const datosEnriquecidos = filteredDataCentro1000.map(row => {
+  return filteredDataCentro1000.map(row => {
     const mes = String(row.Mes ?? 'Sin mes');
     const linea = String(row.LineaFabricacion ?? 'Sin línea');
     const key = `${mes}|${linea}`;
@@ -268,9 +302,172 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       lineaRef: linea
     };
   });
+  }, [filteredDataCentro1000, trasladosMap, tiemposCanon]);
+
+  // === LOG DIAGNÓSTICO: Asignación final en Centro 1000 ===
+  useMemo(() => {
+    if (datosEnriquecidos.length === 0 || trasladosMap.size === 0) return;
+    const materialesC1000 = new Set(datosEnriquecidos.map((r: any) => String(r.CodMaterial ?? '')));
+    const materialesTraslado = new Set(trasladosMap.keys());
+
+    // Materiales que se recibieron como traslado pero NO existen en Centro 1000
+    const huerfanos: { CodMaterial: string; Traslado: number }[] = [];
+    const asignados: { CodMaterial: string; NecPropia: number; Traslado: number; NecTotal: number }[] = [];
+    let totalTrasladoAsignado = 0;
+    let totalTrasladoHuerfano = 0;
+
+    materialesTraslado.forEach(cod => {
+      const traslado = trasladosMap.get(cod) || 0;
+      if (!materialesC1000.has(cod)) {
+        huerfanos.push({ CodMaterial: cod, Traslado: traslado });
+        totalTrasladoHuerfano += traslado;
+      } else {
+        const row = datosEnriquecidos.find((r: any) => String(r.CodMaterial) === cod);
+        asignados.push({
+          CodMaterial: cod,
+          NecPropia: row?.necesidadPropia ?? 0,
+          Traslado: traslado,
+          NecTotal: row?.necesidadTotal ?? 0,
+        });
+        totalTrasladoAsignado += traslado;
+      }
+    });
+
+    console.log('%c\n========================================', 'color: #3498db; font-weight: bold;');
+    console.log('%c  CENTRO 1000: RESULTADO ASIGNACI\u00d3N', 'color: #3498db; font-weight: bold; font-size: 14px;');
+    console.log('%c========================================', 'color: #3498db; font-weight: bold;');
+    console.log(`Materiales en C1000: ${materialesC1000.size}`);
+    console.log(`Traslados recibidos: ${materialesTraslado.size} materiales`);
+    console.log(`%c\u2714 Asignados correctamente: ${asignados.length} materiales, ${totalTrasladoAsignado} unidades`, 'color: #2ecc71;');
+    if (asignados.length > 0) console.table(asignados.slice(0, 30));
+    if (huerfanos.length > 0) {
+      console.log(`%c\u2718 HU\u00c9RFANOS (traslado recibido pero material NO existe en C1000): ${huerfanos.length} materiales, ${totalTrasladoHuerfano} unidades`, 'color: #e74c3c; font-weight: bold;');
+      console.table(huerfanos);
+    } else {
+      console.log('%c\u2714 Sin materiales hu\u00e9rfanos \u2014 todos los traslados tienen destino en C1000', 'color: #2ecc71;');
+    }
+
+    // Resumen por sector
+    const porSector: { [sector: string]: { necPropia: number; traslado: number; necTotal: number; materiales: number } } = {};
+    datosEnriquecidos.forEach((row: any) => {
+      const sector = String(row.Sector || 'Sin sector').trim();
+      if (!porSector[sector]) porSector[sector] = { necPropia: 0, traslado: 0, necTotal: 0, materiales: 0 };
+      porSector[sector].necPropia += row.necesidadPropia ?? 0;
+      porSector[sector].traslado += row.trasladoDesde2000 ?? 0;
+      porSector[sector].necTotal += row.necesidadTotal ?? 0;
+      porSector[sector].materiales++;
+    });
+    console.log('\nResumen por SECTOR en Centro 1000:');
+    console.table(porSector);
+
+    const totalNecPropia = datosEnriquecidos.reduce((s: number, r: any) => s + (r.necesidadPropia ?? 0), 0);
+    const totalTraslado = datosEnriquecidos.reduce((s: number, r: any) => s + (r.trasladoDesde2000 ?? 0), 0);
+    const totalNecTotal = datosEnriquecidos.reduce((s: number, r: any) => s + (r.necesidadTotal ?? 0), 0);
+    console.log(`%cTOTALES C1000: NecPropia=${totalNecPropia} | Traslado=${totalTraslado} | NecTotal=${totalNecTotal}`, 'font-weight: bold;');
+    console.log(`%cTraslado recibido=${Array.from(trasladosMap.values()).reduce((s, v) => s + v, 0)} | Asignado=${totalTrasladoAsignado} | Hu\u00e9rfano=${totalTrasladoHuerfano}`, 'font-weight: bold;');
+    console.log('%c========================================\n', 'color: #3498db; font-weight: bold;');
+  }, [datosEnriquecidos, trasladosMap]);
+
+  // Estructura de Excel: lee datosEnriquecidos COMPLETO (sin filtros).
+  // A diferencia del botón dentro de BottleneckClassTable, este exporta todo.
+  const exportSheetC1000 = useMemo(() => {
+    const result: any[] = [];
+    const sum = (arr: any[], field: string) => arr.reduce((s: number, r: any) => s + safeNumber(r[field] ?? 0), 0);
+
+    // Agrupar por lineaRef (igual que la tabla)
+    const grouped: { [k: string]: any[] } = {};
+    datosEnriquecidos.forEach((row: any) => {
+      const linea = String(row.lineaRef || 'Sin línea');
+      if (!grouped[linea]) grouped[linea] = [];
+      grouped[linea].push(row);
+    });
+    const lineasOrd = Object.keys(grouped).sort();
+
+    lineasOrd.forEach(linea => {
+      const fl = grouped[linea];
+      fl.forEach((row: any) => {
+        const numeroPuestos = Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
+        const tupp = safeNumber(row.TiempoPorUnidad ?? 0) / numeroPuestos;
+        const deficit = Math.max(0, safeNumber(row.necesidadTotal ?? 0) - safeNumber(row.necesidadMaximaAFabricar ?? 0));
+        result.push({
+          'CodMaterial': row.CodMaterial ?? '',
+          'Descripcion': row.Descripcion || row.NombreMaterial || row.CodMaterial || '',
+          'Linea': row.lineaRef || row.LineaFabricacion || '',
+          'Puesto': row.PuestoCuellodeBottella || '',
+          'N.Puestos': safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 0),
+          'Sector': row.Sector || '',
+          'Responsable': row.NombRespControlProd || row.RespCtrlProd || (row as any).RespControlProd || '',
+          'T.Unit/Puestos': tupp,
+          'Traslado C.2000': safeNumber(row.trasladoDesde2000 ?? 0),
+          'Nec. Propia': safeNumber(row.necesidadPropia ?? 0),
+          'Necesidad Total': safeNumber(row.necesidadTotal ?? 0),
+          'T.Total Nec': safeNumber(row.tiempoTotalNecesidad ?? 0),
+          'Partic.%': safeNumber(row.participacionIndividual ?? 0),
+          'T.Disponible': safeNumber(row.tiempoParaMaterial ?? 0),
+          'Máx.Producir': safeNumber(row.necesidadMaximaAFabricar ?? 0),
+          'Déficit General': deficit,
+        });
+      });
+      // Subtotal por línea
+      const totalNec = sum(fl, 'necesidadTotal');
+      const totalMaxProd = sum(fl, 'necesidadMaximaAFabricar');
+      result.push({
+        'CodMaterial': `** Subtotal ${linea} **`,
+        'Descripcion': '', 'Linea': linea, 'Puesto': '', 'N.Puestos': '', 'Sector': '', 'Responsable': '', 'T.Unit/Puestos': '',
+        'Traslado C.2000': sum(fl, 'trasladoDesde2000'),
+        'Nec. Propia': sum(fl, 'necesidadPropia'),
+        'Necesidad Total': totalNec,
+        'T.Total Nec': sum(fl, 'tiempoTotalNecesidad'),
+        'Partic.%': '-',
+        'T.Disponible': sum(fl, 'tiempoParaMaterial'),
+        'Máx.Producir': totalMaxProd,
+        'Déficit General': Math.max(0, totalNec - totalMaxProd),
+      });
+    });
+
+    // TOTAL GENERAL
+    const totalNecGlobal = sum(datosEnriquecidos, 'necesidadTotal');
+    const totalMaxProdGlobal = sum(datosEnriquecidos, 'necesidadMaximaAFabricar');
+    result.push({
+      'CodMaterial': `*** TOTAL GENERAL (${datosEnriquecidos.length} registros) ***`,
+      'Descripcion': '', 'Linea': '', 'Puesto': '', 'N.Puestos': '', 'Sector': '', 'Responsable': '', 'T.Unit/Puestos': '',
+      'Traslado C.2000': sum(datosEnriquecidos, 'trasladoDesde2000'),
+      'Nec. Propia': sum(datosEnriquecidos, 'necesidadPropia'),
+      'Necesidad Total': totalNecGlobal,
+      'T.Total Nec': sum(datosEnriquecidos, 'tiempoTotalNecesidad'),
+      'Partic.%': '-',
+      'T.Disponible': sum(datosEnriquecidos, 'tiempoParaMaterial'),
+      'Máx.Producir': totalMaxProdGlobal,
+      'Déficit General': Math.max(0, totalNecGlobal - totalMaxProdGlobal),
+    });
+
+    return result;
+  }, [datosEnriquecidos]);
+
+  // === EARLY RETURNS ===
+  if (data.length === 0) {
+    return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend - Necesidades"</div>;
+  }
+
+  if (filteredDataCentro1000.length === 0) {
+    return <div className="p-4 text-center text-gray-600">No hay datos para el Centro 1000</div>;
+  }
 
   return (
     <div>
+      {/* Botón descarga global: exporta todo datosEnriquecidos, sin filtros */}
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={() => exportToXLSX(exportSheetC1000, 'Analisis_Centro1000')}
+          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-600 border border-teal-700 rounded-lg hover:bg-teal-700 transition-colors"
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Descargar Excel (Todo Centro 1000)
+        </button>
+      </div>
+
       <div className="mb-6 p-4 bg-teal-50 border border-teal-200 rounded-lg">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0">
@@ -296,21 +493,29 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
         </div>
       </div>
 
-      <Centro1000SummaryTable 
-        datosEnriquecidos={datosEnriquecidos}
+      {/* Tabla resumen por línea */}
+      <BottleneckSummaryTable 
+        datosEnriquecidosE={datosEnriquecidos}
+        datosEnriquecidosX={[]}
         tiemposCanon={tiemposCanon}
         numMaximoSabados={numMaximoSabados}
         maxExtrasHoras={maxExtrasHoras}
         horasTrabajo={horasTrabajo}
         horasExtrasFin={horasExtrasFin}
+        centroLabel="Centro 1000"
       />
       
-      <Centro1000DetailTable 
+      {/* Tabla detalle única (todos los materiales, sin separación por clase) */}
+      <BottleneckClassTable 
         datos={filteredDataCentro1000}
+        datosCompletos={filteredDataCentro1000}
+        titulo="Centro 1000 - Análisis de Cuello de Botella"
         tiemposCanon={tiemposCanon}
-        trasladosDesdeCentro2000={trasladosDesdeCentro2000}
+        tiempoConsumidoAnterior={{}}
+        onTransferNeedsCalculated={setTransferNeeds}
         maxExtrasHoras={maxExtrasHoras}
         horasExtrasFin={horasExtrasFin}
+        trasladosDesdeCentro2000={trasladosDesdeCentro2000}
       />
     </div>
   );

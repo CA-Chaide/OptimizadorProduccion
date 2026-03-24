@@ -13,6 +13,7 @@ interface BottleneckSummaryTableProps {
   maxExtrasHoras: number;
   horasTrabajo: number;
   horasExtrasFin: number;
+  centroLabel?: string;
 }
 
 export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({ 
@@ -22,7 +23,8 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
   numMaximoSabados, 
   maxExtrasHoras, 
   horasTrabajo, 
-  horasExtrasFin 
+  horasExtrasFin,
+  centroLabel = 'Centro 2000' 
 }) => {
   const [selectedLinea, setSelectedLinea] = useState<string>('');
   const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string>('');
@@ -316,7 +318,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       HorasPorDia: Number(r.horasPromedioPorDia.toFixed(2))
     }));
     
-    exportToXLSX(dataToExport, 'Resumen_Centro2000_PorLinea');
+    exportToXLSX(dataToExport, `Resumen_${centroLabel.replace(/\s+/g, '')}_PorLinea`);
   };
 
   return (
@@ -324,7 +326,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold text-gray-800">Resumen por Línea de Fabricación</h3>
-          <p className="text-sm text-gray-500 mt-1">Resumen de tiempos de fabricación por línea - Centro 2000</p>
+          <p className="text-sm text-gray-500 mt-1">Resumen de tiempos de fabricación por línea - {centroLabel}</p>
         </div>
         <button
           onClick={handleExportCSV}
