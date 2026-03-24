@@ -47,6 +47,10 @@ export interface RawBackendDataTableHandle {
 export interface TimesCanonSectionProps {
   results: TiempoCanonResult[];
   isLoading: boolean;
+  numMaximoSabados?: number;
+  maxExtrasHoras?: number;
+  horasTrabajo?: number;
+  horasExtrasFin?: number;
 }
 
 export interface BottleneckSummaryTableProps {
@@ -110,3 +114,22 @@ export interface MultiSelectDropdownProps {
   onChange: (selected: string[]) => void;
   disabled?: boolean;
 }
+
+// Tipos para manejo de horas extras por línea
+export interface FilaHorasExtras {
+  id: string;               // Identificador único (semana_1, extras_lv, sabado_1, etc.)
+  tipo: 'semana' | 'extras-lv' | 'sabado';
+  descripcion: string;      // Descripción legible
+  diasLV: number;           // Días L-V en esta fila
+  totalHoras: number;       // Horas totales disponibles en esta fila
+  horasConsumidas: number;  // Horas ya consumidas
+  consumido: boolean;       // Si la fila está completamente consumida
+}
+
+export interface HorasExtrasPorMesCentro {
+  mes: string;
+  centro: string;
+  lineas: { [linea: string]: FilaHorasExtras[] };
+}
+
+export type HorasExtrasPorLinea = FilaHorasExtras[];

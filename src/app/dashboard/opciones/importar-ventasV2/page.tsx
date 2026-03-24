@@ -280,6 +280,10 @@ export default function ImportarVentasPage() {
           <TimesCanonSection
             results={tiemposCanonResults}
             isLoading={isLoadingTimesCanon}
+            numMaximoSabados={numMaximoSabados}
+            maxExtrasHoras={maxExtrasHoras}
+            horasTrabajo={horasTrabajo}
+            horasExtrasFin={horasExtrasFin}
           />
         </div>
 

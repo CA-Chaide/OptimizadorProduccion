@@ -96,6 +96,7 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
     horasConsumidosSabados: number;
     diasSabados: number;
     diasLaborables: number;
+    numeroSemanas: number;
     horasPromedioPorDia: number;
     mesNumero: number;
     tiempoCanonicoInicial: number;
@@ -179,6 +180,7 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
         horasConsumidosSabados: 0,
         diasSabados,
         diasLaborables,
+        numeroSemanas: Math.ceil((diasLaborables + diasSabados) / 7),
         horasPromedioPorDia: 0,
         mesNumero: tiempoCanonMes?.mesNumero ?? 0,
         tiempoCanonicoInicial,
@@ -205,30 +207,24 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
   });
 
   Object.values(resumenPorLinea).forEach(resumen => {
-    if (resumen.tiempoCanonicoInicial > 0 && resumen.tiempoTotal > resumen.tiempoCanonicoInicial) {
-      const minutosExtras = resumen.tiempoTotal - resumen.tiempoCanonicoInicial;
-      resumen.minutosExtrasTotal = minutosExtras;
-      resumen.horasExtrasTotal = minutosExtras / 60;
-    }
-    
-    const tiempoMaximoLunesViernes = (horasTrabajo + maxExtrasHoras) * resumen.diasLaborables * 60;
-    let tiempoEnSabados = Math.max(0, resumen.tiempoTotal - tiempoMaximoLunesViernes);
-    const tiempoMaximoSabados = horasExtrasFin * numMaximoSabados * 60;
-    resumen.minutosConsumidosSabados = Math.min(tiempoEnSabados, tiempoMaximoSabados);
-    resumen.horasConsumidosSabados = resumen.minutosConsumidosSabados / 60;
-    
+    // Horas extras y consumo en sábados deshabilitado por ahora
+    resumen.minutosExtrasTotal = 0;
+    resumen.horasExtrasTotal = 0;
+    resumen.minutosConsumidosSabados = 0;
+    resumen.horasConsumidosSabados = 0;
+
     const techo = (resumen.minutosConExtras ?? 0) + (resumen.minutosFinSemana ?? 0);
     resumen.minutosRestantes = techo - (resumen.tiempoTotal ?? 0);
     resumen.horasRestantes = (resumen.minutosRestantes ?? 0) / 60;
     resumen.horasPromedioPorDia = resumen.diasLaborables > 0 
       ? (resumen.tiempoTotal / 60) / resumen.diasLaborables 
       : 0;
-    
+
     // Calcular promedio diario de necesidades
     resumen.necesidadPromedioDiaria = resumen.diasLaborables > 0
       ? resumen.necesidadTotal / resumen.diasLaborables
       : 0;
-    
+
     // Calcular promedio diario de necesidad a fabricar
     resumen.necesidadAFabricarPromedioDiaria = resumen.diasLaborables > 0
       ? resumen.necesidadAFabricarTotal / resumen.diasLaborables
@@ -255,6 +251,7 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
     const dataToExport = resumenFiltered.map(r => ({
       Mes: r.mes,
       Responsable: r.respCtrlProd,
+    SemanasDelMes: r.numeroSemanas,
       Linea: r.linea,
       PuestoCuellodeBottella: r.puestoSeleccionado,
       DiasLaborables: r.diasLaborables,
@@ -335,6 +332,7 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">Puesto Botella</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Días Lab.</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Semanas</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-600 uppercase tracking-wider" colSpan={2}>Necesidad</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-purple-600 uppercase tracking-wider" colSpan={2}>Necesidad a Fabricar</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Tiempo Requerido</th>
@@ -377,6 +375,7 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
+                <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.numeroSemanas}</td>
                 <td className="px-4 py-3 text-sm text-right font-mono text-indigo-700 font-semibold">
                   {Math.floor(resumen.necesidadTotal).toLocaleString()}
                 </td>

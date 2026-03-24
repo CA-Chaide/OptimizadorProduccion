@@ -114,33 +114,31 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       return null;
     }
 
-    // Sumar todos los tiempos de las estaciones de esa línea
-    // NOTA: Esta lógica ha sido CORREGIDA (antes sumaba todos)
-    // Ahora: Identificar el puesto de botella (el que MÁS se repite) y usar SOLO su tiempo
-    
-    // Contar frecuencia de estaciones en los registros de la línea
-    const estacionesMap = new Map<string, any>();
-    registrosLinea.forEach((dato: any) => {
-      const nombreEstacion = String(dato?.nombre_estacion ?? '-');
-      if (!estacionesMap.has(nombreEstacion)) {
-        estacionesMap.set(nombreEstacion, {
-          count: 0,
-          dato: dato
-        });
-      }
-      const current = estacionesMap.get(nombreEstacion)!;
-      current.count += 1;
-    });
-
-    // Encontrar estación con mayor frecuencia (cuello de botella)
-    let maxFrequencia = 0;
+    // Buscar primero el registro que coincida exactamente con el puesto de cuello de botella
     let puestoBotellaDato: any = null;
-    estacionesMap.forEach(({ count, dato }) => {
-      if (count > maxFrequencia) {
-        maxFrequencia = count;
-        puestoBotellaDato = dato;
-      }
-    });
+    if (puesto && puesto !== '-' && puesto !== '') {
+      const pn = String(puesto).toLowerCase().trim();
+      puestoBotellaDato = registrosLinea.find((dato: any) => {
+        const nombreEstacion = String(dato?.nombre_estacion ?? '').toLowerCase().trim();
+        return nombreEstacion === pn || nombreEstacion.includes(pn) || pn.includes(nombreEstacion);
+      }) ?? null;
+    }
+
+    // Si no se encontró por nombre directo, usar frecuencia como fallback
+    if (!puestoBotellaDato) {
+      const estacionesMap = new Map<string, any>();
+      registrosLinea.forEach((dato: any) => {
+        const nombreEstacion = String(dato?.nombre_estacion ?? '-');
+        if (!estacionesMap.has(nombreEstacion)) {
+          estacionesMap.set(nombreEstacion, { count: 0, dato });
+        }
+        estacionesMap.get(nombreEstacion)!.count += 1;
+      });
+      let maxFrequencia = 0;
+      estacionesMap.forEach(({ count, dato }) => {
+        if (count > maxFrequencia) { maxFrequencia = count; puestoBotellaDato = dato; }
+      });
+    }
 
     // Si no encontramos puesto de botella, retornar null
     if (!puestoBotellaDato) {
@@ -157,8 +155,6 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       minutos_horario_normal,
       minutos_con_extras,
       minutos_fin_semana,
-      frecuencia: maxFrequencia,
-      totalEstacionesEnLinea: estacionesMap.size
     });
 
     return {
@@ -252,10 +248,9 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
 
       const tiempoNormalRest = tiempoDisp.minutos_horario_normal;
       const tiempoNormalParaMaterial = (participacionIndividual / 100) * tiempoNormalRest;
+      // Horas extras temporalmente deshabilitadas (se mantiene valor 0)
       const tiempoRealUsado = Math.min(necesidadTotal, necesidadMaximaAFabricar) * tiempoPorUnidad;
-      if (tiempoRealUsado > tiempoNormalParaMaterial) {
-        horasExtrasUsadas = (tiempoRealUsado - tiempoNormalParaMaterial) / 60;
-      }
+      horasExtrasUsadas = 0;
     }
 
     return {
@@ -314,6 +309,8 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
         datos={filteredDataCentro1000}
         tiemposCanon={tiemposCanon}
         trasladosDesdeCentro2000={trasladosDesdeCentro2000}
+        maxExtrasHoras={maxExtrasHoras}
+        horasExtrasFin={horasExtrasFin}
       />
     </div>
   );

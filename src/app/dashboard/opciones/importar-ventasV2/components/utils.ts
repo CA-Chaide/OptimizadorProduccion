@@ -2,7 +2,7 @@
 
 import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
 import { MONTH_NUMBERS, MONTH_NAMES } from './constants';
-import type { WorkDaysCalculation, TiempoCanonResult } from './types';
+import type { WorkDaysCalculation, TiempoCanonResult, FilaHorasExtras, HorasExtrasPorMesCentro } from './types';
 import * as XLSX from 'xlsx';
 
 // Función para exportar datos a XLSX
@@ -271,9 +271,10 @@ export function enriquecerDatosClase(
 
       const tiempoNormalRest = Math.max(0, tiempoDisp.minutos_horario_normal - consumidoPrev);
       const tiempoNormalParaMaterial = (participacionIndividual / 100) * tiempoNormalRest;
+      // Horas extras temporalmente deshabilitadas (se mantiene valor 0)
       const tiempoRealUsado = Math.min(necesidad, necesidadMaximaAFabricar) * tiempoPorUnidad;
       if (tiempoRealUsado > tiempoNormalParaMaterial) {
-        horasExtrasUsadas = (tiempoRealUsado - tiempoNormalParaMaterial) / 60;
+        horasExtrasUsadas = 0;
       }
     }
 
@@ -406,4 +407,310 @@ export function getMaterialesCuelloBotellaPorLinea(
   });
   
   return resultados;
+}
+
+// ==================== HORAS EXTRAS - LOCALSTORAGE ====================
+
+const HORAS_EXTRAS_STORAGE_PREFIX = 'horasExtras_';
+
+/**
+ * Genera la key de localStorage para un mes y centro específico
+ */
+export function getHorasExtrasStorageKey(mes: string, centro: string): string {
+  return `${HORAS_EXTRAS_STORAGE_PREFIX}${mes}_Centro${centro}`;
+}
+
+/**
+ * Genera la estructura de filas de horas extras para una línea basada en los parámetros del mes
+ */
+export function generarFilasHorasExtras(
+  diasLaborables: number,
+  diasSabados: number,
+  maxExtrasHoras: number,
+  horasExtrasFin: number
+): FilaHorasExtras[] {
+  const filas: FilaHorasExtras[] = [];
+  
+  // Calcular semanas normales (5 días L-V por semana)
+  const semanasNormales = Math.floor(diasLaborables / 5);
+  const diasLaborablesExtra = diasLaborables % 5;
+  
+  // Filas de semanas normales (L-V)
+  for (let i = 0; i < semanasNormales; i++) {
+    const horasExtrasLV = 5 * maxExtrasHoras;
+    filas.push({
+      id: `semana_${i + 1}`,
+      tipo: 'semana',
+      descripcion: `Semana ${i + 1}`,
+      diasLV: 5,
+      totalHoras: horasExtrasLV,
+      horasConsumidas: 0,
+      consumido: false
+    });
+  }
+  
+  // Fila de días L-V extra (si hay)
+  if (diasLaborablesExtra > 0) {
+    const horasExtrasLV = diasLaborablesExtra * maxExtrasHoras;
+    filas.push({
+      id: 'extras_lv',
+      tipo: 'extras-lv',
+      descripcion: 'Días L-V Extra',
+      diasLV: diasLaborablesExtra,
+      totalHoras: horasExtrasLV,
+      horasConsumidas: 0,
+      consumido: false
+    });
+  }
+  
+  // Filas de sábados
+  for (let i = 0; i < diasSabados; i++) {
+    filas.push({
+      id: `sabado_${i + 1}`,
+      tipo: 'sabado',
+      descripcion: `Sábado ${i + 1}`,
+      diasLV: 0,
+      totalHoras: horasExtrasFin,
+      horasConsumidas: 0,
+      consumido: false
+    });
+  }
+  
+  return filas;
+}
+
+/**
+ * Guarda la estructura de horas extras en localStorage
+ */
+export function guardarHorasExtrasEnStorage(data: HorasExtrasPorMesCentro): void {
+  const key = getHorasExtrasStorageKey(data.mes, data.centro);
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+    console.log(`[HorasExtras] Guardado en localStorage: ${key}`, data);
+  } catch (error) {
+    console.error(`[HorasExtras] Error guardando en localStorage: ${key}`, error);
+  }
+}
+
+/**
+ * Recupera la estructura de horas extras desde localStorage
+ */
+export function obtenerHorasExtrasDeStorage(mes: string, centro: string): HorasExtrasPorMesCentro | null {
+  const key = getHorasExtrasStorageKey(mes, centro);
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      console.log(`[HorasExtras] Recuperado de localStorage: ${key}`, parsed);
+      return parsed;
+    }
+  } catch (error) {
+    console.error(`[HorasExtras] Error leyendo de localStorage: ${key}`, error);
+  }
+  return null;
+}
+
+/**
+ * Resetea las horas consumidas de una línea específica
+ */
+export function resetearHorasExtrasLinea(mes: string, centro: string, linea: string): void {
+  const data = obtenerHorasExtrasDeStorage(mes, centro);
+  if (data && data.lineas[linea]) {
+    data.lineas[linea] = data.lineas[linea].map(fila => ({
+      ...fila,
+      horasConsumidas: 0,
+      consumido: false
+    }));
+    guardarHorasExtrasEnStorage(data);
+  }
+}
+
+/**
+ * Resetea todas las horas consumidas de un mes/centro
+ */
+export function resetearTodasHorasExtras(mes: string, centro: string): void {
+  const data = obtenerHorasExtrasDeStorage(mes, centro);
+  if (data) {
+    Object.keys(data.lineas).forEach(linea => {
+      data.lineas[linea] = data.lineas[linea].map(fila => ({
+        ...fila,
+        horasConsumidas: 0,
+        consumido: false
+      }));
+    });
+    guardarHorasExtrasEnStorage(data);
+  }
+}
+
+/**
+ * Resultado de consumir horas extras
+ */
+export interface ResultadoConsumoHorasExtras {
+  horasConsumidas: number;           // Total de horas extras consumidas
+  minutosAdicionales: number;        // Minutos adicionales ganados (horasConsumidas * 60)
+  filasActualizadas: FilaHorasExtras[]; // Estado actualizado de las filas
+  detalleConsumo: string[];          // Detalle de consumo por fila (ej: "S1: 4h, S2: 2h")
+  necesidadCubierta: boolean;        // Si se logró cubrir la necesidad
+}
+
+/**
+ * Intenta consumir horas extras para cubrir un déficit de tiempo.
+ * Consume de 2 en 2 horas (o el incremento configurado) hasta cubrir o agotar.
+ * 
+ * @param mes - Mes de operación
+ * @param centro - Centro de producción
+ * @param linea - Línea de producción
+ * @param minutosDeficit - Minutos que faltan para cubrir la necesidad
+ * @param maxExtrasHoras - Incremento de horas extras por iteración (típicamente 2h)
+ * @param guardarEnStorage - Si se debe actualizar el localStorage
+ * @returns Resultado del consumo
+ */
+export function consumirHorasExtras(
+  mes: string,
+  centro: string,
+  linea: string,
+  minutosDeficit: number,
+  maxExtrasHoras: number = 2,
+  guardarEnStorage: boolean = true
+): ResultadoConsumoHorasExtras {
+  const resultado: ResultadoConsumoHorasExtras = {
+    horasConsumidas: 0,
+    minutosAdicionales: 0,
+    filasActualizadas: [],
+    detalleConsumo: [],
+    necesidadCubierta: false
+  };
+  
+  if (minutosDeficit <= 0) {
+    resultado.necesidadCubierta = true;
+    return resultado;
+  }
+  
+  const data = obtenerHorasExtrasDeStorage(mes, centro);
+  if (!data || !data.lineas[linea]) {
+    console.warn(`[HorasExtras] No hay datos para ${mes}/${centro}/${linea}`);
+    return resultado;
+  }
+  
+  const filas = [...data.lineas[linea]];
+  let minutosRestantes = minutosDeficit;
+  const consumoPorFila: { [id: string]: number } = {};
+  
+  // Iterar por cada fila en orden (semanas, días extra, sábados)
+  for (let i = 0; i < filas.length && minutosRestantes > 0; i++) {
+    const fila = filas[i];
+    
+    // Si la fila ya está completamente consumida, saltar
+    if (fila.consumido) continue;
+    
+    const horasDisponibles = fila.totalHoras - fila.horasConsumidas;
+    
+    // Consumir de 2 en 2 horas (o según maxExtrasHoras)
+    while (minutosRestantes > 0 && fila.horasConsumidas < fila.totalHoras) {
+      // Calcular cuántas horas podemos consumir en esta iteración
+      const horasAConsumir = Math.min(
+        maxExtrasHoras,                           // Máximo por iteración
+        fila.totalHoras - fila.horasConsumidas,   // Lo que queda disponible en la fila
+        Math.ceil(minutosRestantes / 60)          // Lo que necesitamos (redondeado hacia arriba)
+      );
+      
+      if (horasAConsumir <= 0) break;
+      
+      // Actualizar fila
+      fila.horasConsumidas += horasAConsumir;
+      const minutosGanados = horasAConsumir * 60;
+      minutosRestantes -= minutosGanados;
+      
+      resultado.horasConsumidas += horasAConsumir;
+      resultado.minutosAdicionales += minutosGanados;
+      
+      // Registrar consumo por fila
+      consumoPorFila[fila.id] = (consumoPorFila[fila.id] || 0) + horasAConsumir;
+      
+      // Verificar si la fila está agotada
+      if (fila.horasConsumidas >= fila.totalHoras) {
+        fila.consumido = true;
+        break;
+      }
+      
+      // Verificar si ya cubrimos la necesidad
+      if (minutosRestantes <= 0) {
+        resultado.necesidadCubierta = true;
+        break;
+      }
+    }
+    
+    filas[i] = fila;
+  }
+  
+  // Generar detalle de consumo
+  Object.entries(consumoPorFila).forEach(([id, horas]) => {
+    const fila = filas.find(f => f.id === id);
+    if (fila) {
+      const abrev = fila.tipo === 'semana' ? `S${id.split('_')[1]}` : 
+                    fila.tipo === 'extras-lv' ? 'ExLV' : 
+                    `Sáb${id.split('_')[1]}`;
+      resultado.detalleConsumo.push(`${abrev}: ${horas}h`);
+    }
+  });
+  
+  resultado.filasActualizadas = filas;
+  resultado.necesidadCubierta = minutosRestantes <= 0;
+  
+  // Guardar en localStorage si se solicita
+  if (guardarEnStorage) {
+    data.lineas[linea] = filas;
+    guardarHorasExtrasEnStorage(data);
+  }
+  
+  return resultado;
+}
+
+/**
+ * Calcula el total de minutos extras disponibles para una línea (no consumidos)
+ */
+export function calcularMinutosExtrasDisponibles(mes: string, centro: string, linea: string): number {
+  const data = obtenerHorasExtrasDeStorage(mes, centro);
+  if (!data || !data.lineas[linea]) return 0;
+  
+  return data.lineas[linea].reduce((total, fila) => {
+    const horasDisponibles = fila.totalHoras - fila.horasConsumidas;
+    return total + (horasDisponibles * 60);
+  }, 0);
+}
+
+/**
+ * Obtiene un resumen de las horas extras por línea para mostrar en la UI
+ */
+export function obtenerResumenHorasExtrasLinea(mes: string, centro: string, linea: string): {
+  totalHoras: number;
+  horasConsumidas: number;
+  horasDisponibles: number;
+  detalle: string;
+} {
+  const data = obtenerHorasExtrasDeStorage(mes, centro);
+  if (!data || !data.lineas[linea]) {
+    return { totalHoras: 0, horasConsumidas: 0, horasDisponibles: 0, detalle: '-' };
+  }
+  
+  const filas = data.lineas[linea];
+  const totalHoras = filas.reduce((sum, f) => sum + f.totalHoras, 0);
+  const horasConsumidas = filas.reduce((sum, f) => sum + f.horasConsumidas, 0);
+  
+  const detalles: string[] = [];
+  filas.forEach(fila => {
+    if (fila.horasConsumidas > 0) {
+      const abrev = fila.tipo === 'semana' ? `S${fila.id.split('_')[1]}` : 
+                    fila.tipo === 'extras-lv' ? 'ExLV' : 
+                    `Sáb${fila.id.split('_')[1]}`;
+      detalles.push(`${abrev}: ${fila.horasConsumidas}h`);
+    }
+  });
+  
+  return {
+    totalHoras,
+    horasConsumidas,
+    horasDisponibles: totalHoras - horasConsumidas,
+    detalle: detalles.length > 0 ? detalles.join(', ') : '-'
+  };
 }

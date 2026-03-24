@@ -5,6 +5,31 @@ import { MONTH_NAMES } from './constants';
 import { safeNumber, computeNecesidades, exportToXLSX } from './utils';
 import { TiempoCanonResult, TransferNeed } from './types';
 
+// Helpers para computar extras en memoria (sin localStorage)
+function computarDetalleConsumoInMemoria(tc: TiempoCanonResult, minutosConsumir: number, maxExtrasHoras: number, horasExtrasFin: number): string {
+  const semanasNorm = Math.floor((tc.diasLaborables ?? 0) / 5);
+  const diasExtra = (tc.diasLaborables ?? 0) % 5;
+  const diasSabados = tc.diasSabados ?? 0;
+  let restantes = minutosConsumir;
+  const partes: string[] = [];
+  for (let i = 0; i < semanasNorm && restantes > 0; i++) {
+    const minmax = 5 * maxExtrasHoras * 60;
+    const minc = Math.min(minmax, restantes);
+    if (minc > 0) { partes.push(`S${i+1}: ${(minc/60 % 1 === 0 ? minc/60 : (minc/60).toFixed(1))}h`); restantes -= minc; }
+  }
+  if (diasExtra > 0 && restantes > 0) {
+    const minmax = diasExtra * maxExtrasHoras * 60;
+    const minc = Math.min(minmax, restantes);
+    if (minc > 0) { partes.push(`ExLV: ${(minc/60 % 1 === 0 ? minc/60 : (minc/60).toFixed(1))}h`); restantes -= minc; }
+  }
+  for (let i = 0; i < diasSabados && restantes > 0; i++) {
+    const minmax = horasExtrasFin * 60;
+    const minc = Math.min(minmax, restantes);
+    if (minc > 0) { partes.push(`Sáb${i+1}: ${(minc/60 % 1 === 0 ? minc/60 : (minc/60).toFixed(1))}h`); restantes -= minc; }
+  }
+  return partes.join(', ') || '-';
+}
+
 interface BottleneckClassTableProps {
   datos: any[];
   datosCompletos: any[];
@@ -13,6 +38,8 @@ interface BottleneckClassTableProps {
   tiempoConsumidoAnterior?: { [mesLinea: string]: number };
   onTransferNeedsCalculated?: (transferNeeds: TransferNeed[]) => void;
   forzarTrasladoTotal?: boolean;
+  maxExtrasHoras?: number;
+  horasExtrasFin?: number;
 }
 
 export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({ 
@@ -22,7 +49,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
   tiemposCanon, 
   tiempoConsumidoAnterior = {}, 
   onTransferNeedsCalculated,
-  forzarTrasladoTotal = false
+  forzarTrasladoTotal = false,
+  maxExtrasHoras = 2,
+  horasExtrasFin = 2
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedLinea, setSelectedLinea] = useState<string>('');
@@ -52,7 +81,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     return null;
   };
 
-  const crearMapaAgrupamiento = () => {
+  // Mapa de agrupamiento calculado con useMemo
+  const mapaAgrupamiento = useMemo(() => {
     const mapa: { [mesLinea: string]: { necesidades: number; count: number; mes: string; linea: string } } = {};
     
     datos.forEach(row => {
@@ -70,9 +100,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     });
     
     return mapa;
-  };
-
-  const mapaAgrupamiento = crearMapaAgrupamiento();
+  }, [datos]);
 
   // Función para normalizar nombres de líneas para comparación
   const normalizarLinea = (linea: string): string => {
@@ -298,8 +326,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const tiempoNormalParaEsteMaterial = (participacionIndividual / 100) * tiempoMaxDisponibleReal;
       const tiempoRealUsado = Math.min(necesidad, necesidadMaximaAFabricar) * tiempoPorUnidad;
       
+      // Horas extras temporalmente deshabilitadas (se mantiene valor 0)
       if (tiempoRealUsado > tiempoNormalParaEsteMaterial) {
-        horasExtrasUsadas = (tiempoRealUsado - tiempoNormalParaEsteMaterial) / 60;
+        horasExtrasUsadas = 0;
       }
     }
     
@@ -311,13 +340,105 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       tiempoParaMaterial,
       tMaxProm,
       necesidadMaximaAFabricar,
-      horasExtrasUsadas: horasExtrasUsadas.toFixed(2),
+      horasExtrasUsadas: '0.00',
+      horasExtrasDetalle: '-',
       mesRef: mes,
       lineaRef: linea
     };
   };
 
-  const datosEnriquecidos = useMemo(() => datos.map(enriquecerFila), [datos]);
+  // Primera pasada: enriquecer datos con tiempo normal
+  const datosEnriquecidosBase = useMemo(() => datos.map(enriquecerFila), [datos]);
+
+  // Segunda pasada: aplicar horas extras por línea si hay déficit — COMPUTACIÓN EN MEMORIA (sin localStorage)
+  const datosEnriquecidos = useMemo(() => {
+    if (forzarTrasladoTotal) {
+      return datosEnriquecidosBase; // Clase F no usa extras
+    }
+
+    // PASO 1: Construir pool disponible per mes|linea desde tiemposCanon
+    const poolMinutos: { [key: string]: number } = {};
+    const tcPorKey: { [key: string]: TiempoCanonResult } = {};
+    datosEnriquecidosBase.forEach(row => {
+      const key = `${row.mesRef}|${row.lineaRef}`;
+      if (poolMinutos[key] === undefined) {
+        const tc = buscarTiempoCanonPorMes(row.mesRef);
+        if (tc && maxExtrasHoras > 0) {
+          poolMinutos[key] = ((tc.diasLaborables ?? 0) * maxExtrasHoras + (tc.diasSabados ?? 0) * horasExtrasFin) * 60;
+          tcPorKey[key] = tc;
+        } else {
+          poolMinutos[key] = 0;
+        }
+      }
+    });
+
+    // PASO 2: Déficit por mes|linea (minutos que faltan para cubrir necesidad)
+    const deficitPorLinea: { [key: string]: number } = {};
+    datosEnriquecidosBase.forEach(row => {
+      const key = `${row.mesRef}|${row.lineaRef}`;
+      const nec = computeNecesidadesLocal(row);
+      const fab = safeNumber(row.necesidadMaximaAFabricar ?? 0);
+      if (nec > fab) {
+        const tupp = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
+        deficitPorLinea[key] = (deficitPorLinea[key] || 0) + (nec - fab) * tupp;
+      }
+    });
+
+    // PASO 3: Consumir del pool en incrementos de maxExtrasHoras*60 min hasta cubrir déficit o agotar pool
+    const extrasParaLinea: { [key: string]: { minutosAdicionales: number; horasConsumidas: number; detalle: string } } = {};
+    Object.entries(deficitPorLinea).forEach(([key, deficit]) => {
+      const disponible = poolMinutos[key] || 0;
+      if (disponible <= 0 || deficit <= 0) return;
+
+      // Consumir en incrementos de maxExtrasHoras horas (2h, 4h, 6h…)
+      const incrementoMin = maxExtrasHoras * 60;
+      let consumido = 0;
+      while (consumido < deficit && consumido < disponible) {
+        consumido = Math.min(consumido + incrementoMin, disponible);
+      }
+
+      if (consumido <= 0) return;
+
+      const tc = tcPorKey[key];
+      const detalle = tc ? computarDetalleConsumoInMemoria(tc, consumido, maxExtrasHoras, horasExtrasFin) : `${(consumido/60).toFixed(1)}h`;
+
+      extrasParaLinea[key] = { minutosAdicionales: consumido, horasConsumidas: consumido / 60, detalle };
+      console.log(`[HorasExtras] ${key}: déficit ${deficit.toFixed(0)}min → +${consumido}min (${detalle})`);
+    });
+
+    // PASO 4: Recalcular materiales con tiempo adicional
+    return datosEnriquecidosBase.map(row => {
+      const key = `${row.mesRef}|${row.lineaRef}`;
+      const extras = extrasParaLinea[key];
+
+      if (!extras || extras.minutosAdicionales === 0) return row;
+
+      const necesidad = computeNecesidadesLocal(row);
+      const fabricadoActual = safeNumber(row.necesidadMaximaAFabricar ?? 0);
+      const participacion = safeNumber(row.participacionIndividual ?? 0);
+      const tupp = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
+
+      if (necesidad <= fabricadoActual) {
+        // Ya fabricaba todo — solo anotar que la línea consumió extras
+        return { ...row, horasExtrasDetalle: extras.detalle, horasExtrasTotalLinea: (extras.horasConsumidas).toFixed(1) };
+      }
+
+      // Tiempo adicional proporcional a la participación del material en la línea
+      const minutosAdicionalesMaterial = (participacion / 100) * extras.minutosAdicionales;
+      const unidadesAdicionales = tupp > 0 ? Math.floor(minutosAdicionalesMaterial / tupp) : 0;
+      const nuevaNecesidadMax = Math.min(necesidad, fabricadoActual + unidadesAdicionales);
+      const horasExtrasUsadas = (participacion / 100) * extras.horasConsumidas;
+
+      return {
+        ...row,
+        necesidadMaximaAFabricar: nuevaNecesidadMax,
+        tMaxProm: tupp * nuevaNecesidadMax,
+        horasExtrasUsadas: horasExtrasUsadas.toFixed(2),
+        horasExtrasDetalle: extras.detalle,
+        horasExtrasTotalLinea: extras.horasConsumidas.toFixed(1)
+      };
+    });
+  }, [datosEnriquecidosBase, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, tiemposCanon]);
 
   const lastDataLengthRef = useRef<number>(0);
 
@@ -540,7 +661,21 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                           ? Number(row.tMaxProm).toLocaleString(undefined, { maximumFractionDigits: 2 })
                           : '-'}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-right font-mono text-purple-600">{Number(row.horasExtrasUsadas).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                      <td className="px-3 py-2.5 text-sm text-right font-mono text-purple-600"
+                        title={row.horasExtrasDetalle && row.horasExtrasDetalle !== '-'
+                          ? `Línea consumió ${row.horasExtrasTotalLinea}h en total: ${row.horasExtrasDetalle}`
+                          : 'Sin horas extras'}>
+                        {Number(row.horasExtrasUsadas) > 0 ? (
+                          <span>
+                            {Number(row.horasExtrasUsadas).toLocaleString(undefined, { maximumFractionDigits: 2 })}h
+                            {row.horasExtrasTotalLinea && (
+                              <span className="ml-1 text-xs text-purple-400">(línea: {row.horasExtrasTotalLinea}h)</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

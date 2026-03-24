@@ -131,6 +131,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     horasConsumidosSabados: number;
     diasSabados: number;
     diasLaborables: number;
+    numeroSemanas: number;
     horasPromedioPorDia: number;
     mesNumero: number;
     tiempoCanonicoInicial: number;
@@ -145,6 +146,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     necesidadAFabricarTotal: number;
     necesidadAFabricarPromedioDiaria: number;
     puestoSeleccionado: string;
+    detalleExtras: string;
   }} = {};
 
   todosLosDatos.forEach(row => {
@@ -214,6 +216,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
         horasConsumidosSabados: 0,
         diasSabados,
         diasLaborables,
+        numeroSemanas: Math.ceil((diasLaborables + diasSabados) / 7),
         horasPromedioPorDia: 0,
         mesNumero: tiempoCanonMes?.mesNumero ?? 0,
         tiempoCanonicoInicial,
@@ -227,7 +230,8 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
         necesidadPromedioDiaria: 0,
         necesidadAFabricarTotal: 0,
         necesidadAFabricarPromedioDiaria: 0,
-        puestoSeleccionado
+        puestoSeleccionado,
+        detalleExtras: ''
       };
     }
 
@@ -238,36 +242,33 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     const tiempoTotalRequerido = necesidad * tiempoPorUnidad;  // Necesidad × T/U
     const necesidadMax = safeNumber(row.necesidadMaximaAFabricar ?? 0);
     
-    resumenPorLinea[key].tiempoTotal += tiempoTotalRequerido;  // Suma de (Necesidad × T/U)
-    resumenPorLinea[key].necesidadTotal += necesidad;  // Suma de Necesidades Centro 2000
-    resumenPorLinea[key].necesidadAFabricarTotal += necesidadMax;  // Suma de Necesidad Requerida
+    resumenPorLinea[key].tiempoTotal += tiempoTotalRequerido;
+    resumenPorLinea[key].necesidadTotal += necesidad;
+    resumenPorLinea[key].necesidadAFabricarTotal += necesidadMax;
+    // Acumular horas extras ya calculadas en BottleneckClassTable
+    resumenPorLinea[key].horasExtrasTotal += safeNumber(row.horasExtrasUsadas ?? 0);
+    // Capturar el desglose del pool (igual para todos los materiales de la línea)
+    if (!resumenPorLinea[key].detalleExtras && row.horasExtrasDetalle && row.horasExtrasDetalle !== '-') {
+      resumenPorLinea[key].detalleExtras = row.horasExtrasDetalle;
+    }
   });
 
   Object.values(resumenPorLinea).forEach(resumen => {
-    if (resumen.tiempoCanonicoInicial > 0 && resumen.tiempoTotal > resumen.tiempoCanonicoInicial) {
-      const minutosExtras = resumen.tiempoTotal - resumen.tiempoCanonicoInicial;
-      resumen.minutosExtrasTotal = minutosExtras;
-      resumen.horasExtrasTotal = minutosExtras / 60;
-    }
-    
-    const tiempoMaximoLunesViernes = (horasTrabajo + maxExtrasHoras) * resumen.diasLaborables * 60;
-    let tiempoEnSabados = Math.max(0, resumen.tiempoTotal - tiempoMaximoLunesViernes);
-    const tiempoMaximoSabados = horasExtrasFin * numMaximoSabados * 60;
-    resumen.minutosConsumidosSabados = Math.min(tiempoEnSabados, tiempoMaximoSabados);
-    resumen.horasConsumidosSabados = resumen.minutosConsumidosSabados / 60;
-    
+    // minutosExtrasTotal = horasExtrasTotal acumuladas × 60
+    resumen.minutosExtrasTotal = resumen.horasExtrasTotal * 60;
+
     const techo = (resumen.minutosConExtras ?? 0) + (resumen.minutosFinSemana ?? 0);
     resumen.minutosRestantes = techo - (resumen.tiempoTotal ?? 0);
     resumen.horasRestantes = (resumen.minutosRestantes ?? 0) / 60;
     resumen.horasPromedioPorDia = resumen.diasLaborables > 0 
       ? (resumen.tiempoTotal / 60) / resumen.diasLaborables 
       : 0;
-    
+
     // Calcular promedio diario de necesidades
     resumen.necesidadPromedioDiaria = resumen.diasLaborables > 0
       ? resumen.necesidadTotal / resumen.diasLaborables
       : 0;
-    
+
     // Calcular promedio diario de necesidad a fabricar
     resumen.necesidadAFabricarPromedioDiaria = resumen.diasLaborables > 0
       ? resumen.necesidadAFabricarTotal / resumen.diasLaborables
@@ -294,6 +295,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     const dataToExport = resumenFiltered.map(r => ({
       Mes: r.mes,
       Responsable: r.respCtrlProd,
+      SemanasDelMes: r.numeroSemanas,
       Linea: r.linea,
       PuestoCuellodeBottella: r.puestoSeleccionado,
       DiasLaborables: r.diasLaborables,
@@ -376,6 +378,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">Puesto Botella</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Días Lab.</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Semanas</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-600 uppercase tracking-wider" colSpan={2}>Necesidad</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-purple-600 uppercase tracking-wider" colSpan={2}>Necesidad a Fabricar</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Tiempo Requerido</th>
@@ -418,6 +421,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
+                <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.numeroSemanas}</td>
                 <td className="px-4 py-3 text-sm text-right font-mono text-indigo-700 font-semibold">
                   {Math.floor(resumen.necesidadTotal).toLocaleString()}
                 </td>
@@ -442,11 +446,24 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
                 <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
                   {(Number(resumen.tiempoCanonicoInicial ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-amber-600">
-                  {Number(resumen.minutosExtrasTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                <td className="px-4 py-3 text-sm text-right font-mono text-amber-600"
+                  title={resumen.detalleExtras ? `Desglose pool línea: ${resumen.detalleExtras}` : 'Sin horas extras'}>
+                  {resumen.minutosExtrasTotal > 0
+                    ? Number(resumen.minutosExtrasTotal).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                    : <span className="text-gray-400">—</span>}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-amber-600">
-                  {Number(resumen.horasExtrasTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                <td className="px-4 py-3 text-sm text-right font-mono text-amber-600"
+                  title={resumen.detalleExtras ? `Desglose pool línea: ${resumen.detalleExtras}` : 'Sin horas extras'}>
+                  {resumen.horasExtrasTotal > 0 ? (
+                    <span>
+                      {Number(resumen.horasExtrasTotal).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      {resumen.detalleExtras && (
+                        <span className="ml-1 text-xs text-amber-400">({resumen.detalleExtras})</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-sm text-right font-mono text-emerald-600">
                   {Number(resumen.minutosRestantes ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}

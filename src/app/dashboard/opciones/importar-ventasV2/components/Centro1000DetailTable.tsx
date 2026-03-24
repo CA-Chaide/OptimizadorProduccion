@@ -5,10 +5,34 @@ import { MONTH_NAMES } from './constants';
 import { safeNumber, exportToXLSX } from './utils';
 import { TiempoCanonResult, TransferNeed } from './types';
 
+// Helper en-memoria para detalle de consumo de horas extras
+function computarDetalleC1000(tc: TiempoCanonResult, minutosConsumir: number, maxExtrasHoras: number, horasExtrasFin: number): string {
+  const semanasNorm = Math.floor((tc.diasLaborables ?? 0) / 5);
+  const diasExtra = (tc.diasLaborables ?? 0) % 5;
+  const diasSabados = tc.diasSabados ?? 0;
+  let restantes = minutosConsumir;
+  const partes: string[] = [];
+  for (let i = 0; i < semanasNorm && restantes > 0; i++) {
+    const minc = Math.min(5 * maxExtrasHoras * 60, restantes);
+    if (minc > 0) { partes.push(`S${i+1}: ${minc/60 % 1 === 0 ? minc/60 : (minc/60).toFixed(1)}h`); restantes -= minc; }
+  }
+  if (diasExtra > 0 && restantes > 0) {
+    const minc = Math.min(diasExtra * maxExtrasHoras * 60, restantes);
+    if (minc > 0) { partes.push(`ExLV: ${minc/60 % 1 === 0 ? minc/60 : (minc/60).toFixed(1)}h`); restantes -= minc; }
+  }
+  for (let i = 0; i < diasSabados && restantes > 0; i++) {
+    const minc = Math.min(horasExtrasFin * 60, restantes);
+    if (minc > 0) { partes.push(`Sáb${i+1}: ${minc/60 % 1 === 0 ? minc/60 : (minc/60).toFixed(1)}h`); restantes -= minc; }
+  }
+  return partes.join(', ') || '-';
+}
+
 interface Centro1000DetailTableProps {
   datos: any[];
   tiemposCanon: TiempoCanonResult[];
   trasladosDesdeCentro2000: TransferNeed[];
+  maxExtrasHoras?: number;
+  horasExtrasFin?: number;
 }
 
 export interface Centro1000DetailTableHandle {
@@ -16,7 +40,7 @@ export interface Centro1000DetailTableHandle {
 }
 
 export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Centro1000DetailTableProps>(
-  ({ datos, tiemposCanon, trasladosDesdeCentro2000 }, ref) => {
+  ({ datos, tiemposCanon, trasladosDesdeCentro2000, maxExtrasHoras = 0, horasExtrasFin = 0 }, ref) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedLinea, setSelectedLinea] = useState<string>('');
   const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string>('');
@@ -125,33 +149,31 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
       return null;
     }
 
-    // Sumar todos los tiempos de las estaciones de esa línea
-    // NOTA: Esta lógica ha sido CORREGIDA (antes sumaba todos)
-    // Ahora: Identificar el puesto de botella (el que MÁS se repite) y usar SOLO su tiempo
-    
-    // Contar frecuencia de estaciones en los registros de la línea
-    const estacionesMap = new Map<string, any>();
-    registrosLinea.forEach((dato: any) => {
-      const nombreEstacion = String(dato?.nombre_estacion ?? '-');
-      if (!estacionesMap.has(nombreEstacion)) {
-        estacionesMap.set(nombreEstacion, {
-          count: 0,
-          dato: dato
-        });
-      }
-      const current = estacionesMap.get(nombreEstacion)!;
-      current.count += 1;
-    });
-
-    // Encontrar estación con mayor frecuencia (cuello de botella)
-    let maxFrequencia = 0;
+    // Buscar primero el registro que coincida exactamente con puestoCuellodeBottella
     let puestoBotellaDato: any = null;
-    estacionesMap.forEach(({ count, dato }) => {
-      if (count > maxFrequencia) {
-        maxFrequencia = count;
-        puestoBotellaDato = dato;
-      }
-    });
+    if (puestoTrabajo && puestoTrabajo !== '-' && puestoTrabajo !== '') {
+      const pn = String(puestoTrabajo).toLowerCase().trim();
+      puestoBotellaDato = registrosLinea.find((dato: any) => {
+        const nombreEstacion = String(dato?.nombre_estacion ?? '').toLowerCase().trim();
+        return nombreEstacion === pn || nombreEstacion.includes(pn) || pn.includes(nombreEstacion);
+      }) ?? null;
+    }
+
+    // Si no se encontró por nombre directo, usar frecuencia como fallback
+    if (!puestoBotellaDato) {
+      const estacionesMap = new Map<string, any>();
+      registrosLinea.forEach((dato: any) => {
+        const nombreEstacion = String(dato?.nombre_estacion ?? '-');
+        if (!estacionesMap.has(nombreEstacion)) {
+          estacionesMap.set(nombreEstacion, { count: 0, dato });
+        }
+        estacionesMap.get(nombreEstacion)!.count += 1;
+      });
+      let maxFrequencia = 0;
+      estacionesMap.forEach(({ count, dato }) => {
+        if (count > maxFrequencia) { maxFrequencia = count; puestoBotellaDato = dato; }
+      });
+    }
 
     // Si no encontramos puesto de botella, retornar null
     if (!puestoBotellaDato) {
@@ -169,8 +191,6 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
       minutos_horario_normal,
       minutos_con_extras,
       minutos_fin_semana,
-      frecuencia: maxFrequencia,
-      totalEstacionesEnLinea: estacionesMap.size
     });
 
     return {
@@ -208,7 +228,7 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
     }
   });
 
-  const enriquecerFila = (row: any) => {
+  const enriquecerFila = (row: any, extrasOverride?: { [key: string]: number }, detalleOverride?: { [key: string]: string }) => {
     const mes = String(row.Mes ?? 'Sin mes');
     const linea = String(row.LineaFabricacion ?? 'Sin línea');
     const key = `${mes}|${linea}`;
@@ -237,6 +257,7 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
     let horasExtrasUsadas = 0;
     let tMaxProm = 0;
     let tiempoParaMaterial = 0;
+    const extrasMap = extrasOverride ?? {};
     
     if (tiempoDisp && tiempoPorUnidad > 0) {
       const tiempoDisponibleBase = tiempoDisp.minutos_horario_normal;
@@ -265,8 +286,25 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
       const tiempoNormalParaEsteMaterial = (participacionIndividual / 100) * tiempoNormalRestante;
       const tiempoRealUsado = Math.min(necesidadTotal, necesidadMaximaAFabricar) * tiempoPorUnidad;
       
-      if (tiempoRealUsado > tiempoNormalParaEsteMaterial) {
-        horasExtrasUsadas = (tiempoRealUsado - tiempoNormalParaEsteMaterial) / 60;
+      // Horas extras = parte proporcional de los minutos extras del pool para esta línea
+      const minutosExtrasLinea = extrasMap[key] || 0;
+      const minutosExtrasMaterial = (participacionIndividual / 100) * minutosExtrasLinea;
+      horasExtrasUsadas = minutosExtrasMaterial / 60;
+
+      // Si hay extras, ampliar tiempoParaMaterial y recalcular necesidadMaximaAFabricar
+      if (minutosExtrasLinea > 0) {
+        const tiempoTotalConExtras = tiempoDispGlobal + minutosExtrasLinea;
+        const tiempoParaMaterialConExtras = (participacionIndividual / 100) * tiempoTotalConExtras;
+        tiempoParaMaterial = tiempoParaMaterialConExtras;
+
+        if (sumaTiempoNecLinea <= tiempoTotalConExtras) {
+          necesidadMaximaAFabricar = necesidadTotal;
+        } else {
+          necesidadMaximaAFabricar = tiempoUnitarioPorPuesto > 0
+            ? Math.floor(tiempoParaMaterialConExtras / tiempoUnitarioPorPuesto)
+            : 0;
+        }
+        tMaxProm = tiempoUnitarioPorPuesto * necesidadMaximaAFabricar;
       }
     }
     
@@ -275,19 +313,76 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
       trasladoDesde2000: traslado,
       necesidadPropia,
       necesidadTotal,
-      participacionIndividual,  // Mantener como número
+      participacionIndividual,
       tiempoTotalNecesidad,
       tiempoUnitarioPorPuesto,
       tiempoParaMaterial,
       tMaxProm,
       necesidadMaximaAFabricar,
       horasExtrasUsadas: horasExtrasUsadas.toFixed(2),
+      horasExtrasDetalle: detalleOverride?.[key] ?? '-',
+      horasExtrasTotalLinea: extrasMap[key] ? (extrasMap[key] / 60).toFixed(1) : '0',
       mesRef: mes,
       lineaRef: linea
     };
   };
 
-  const datosEnriquecidos = useMemo(() => datos.map(enriquecerFila), [datos, trasladosDesdeCentro2000]);
+  const datosEnriquecidos = useMemo(() => {
+    // PASO 1: pase base sin extras
+    const base = datos.map(row => enriquecerFila(row, {}, {}));
+    if (maxExtrasHoras === 0 || tiemposCanon.length === 0) return base;
+
+    // PASO 2: pool en memoria por mes|linea desde tiemposCanon
+    const pool: { [key: string]: number } = {};
+    const tcMap: { [key: string]: TiempoCanonResult } = {};
+    base.forEach(row => {
+      const key = `${row.mesRef}|${row.lineaRef}`;
+      if (pool[key] === undefined) {
+        const tc = buscarTiempoCanonPorMes(row.mesRef);
+        if (tc) {
+          pool[key] = ((tc.diasLaborables ?? 0) * maxExtrasHoras + (tc.diasSabados ?? 0) * horasExtrasFin) * 60;
+          tcMap[key] = tc;
+        } else {
+          pool[key] = 0;
+        }
+      }
+    });
+
+    // PASO 3: déficit por mes|linea
+    const deficit: { [key: string]: number } = {};
+    base.forEach(row => {
+      const key = `${row.mesRef}|${row.lineaRef}`;
+      const nec = safeNumber(row.necesidadTotal ?? 0);
+      const fab = safeNumber(row.necesidadMaximaAFabricar ?? 0);
+      if (nec > fab) {
+        deficit[key] = (deficit[key] || 0) + (nec - fab) * safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
+      }
+    });
+
+    // PASO 4: consumir del pool en incrementos de maxExtrasHoras*60 min
+    const extrasMap: { [key: string]: number } = {};
+    const detalleMap: { [key: string]: string } = {};
+    Object.entries(deficit).forEach(([key, def]) => {
+      const disp = pool[key] || 0;
+      if (disp <= 0 || def <= 0) return;
+      const inc = maxExtrasHoras * 60;
+      let consumido = 0;
+      while (consumido < def && consumido < disp) {
+        consumido = Math.min(consumido + inc, disp);
+      }
+      if (consumido <= 0) return;
+      extrasMap[key] = consumido;
+      const tc = tcMap[key];
+      detalleMap[key] = tc ? computarDetalleC1000(tc, consumido, maxExtrasHoras, horasExtrasFin) : `${(consumido/60).toFixed(1)}h`;
+      console.log(`[HorasExtras C1000] ${key}: déficit ${def.toFixed(0)}min → +${consumido}min (${detalleMap[key]})`);
+    });
+
+    // PASO 5: pase final con extras
+    return datos.map(row => enriquecerFila(row, extrasMap, detalleMap));
+  },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [datos, trasladosDesdeCentro2000, tiemposCanon, maxExtrasHoras, horasExtrasFin]
+  );
 
   useImperativeHandle(ref, () => ({
     getDatosEnriquecidos: () => datosEnriquecidos
@@ -467,7 +562,7 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
                         ? Number(row.tiempoTotalNecesidad).toLocaleString(undefined, { maximumFractionDigits: 2 })
                         : '-'}
                     </td>
-                    <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-600">{row.participacionIndividual}%</td>
+                    <td className="px-3 py-2.5 text-sm text-right font-mono text-gray-600">{Number(row.participacionIndividual || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
                     <td className="px-3 py-2.5 text-sm text-right font-mono text-pink-600 font-medium">
                       {Number(row.tiempoParaMaterial || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} min
                     </td>
@@ -485,7 +580,21 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
                         ? Number(row.tMaxProm).toLocaleString(undefined, { maximumFractionDigits: 2 })
                         : '-'}
                     </td>
-                    <td className="px-3 py-2.5 text-sm text-right font-mono text-purple-600">{Number(row.horasExtrasUsadas).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2.5 text-sm text-right font-mono text-purple-600"
+                      title={row.horasExtrasDetalle && row.horasExtrasDetalle !== '-'
+                        ? `Línea consumió ${row.horasExtrasTotalLinea}h en total: ${row.horasExtrasDetalle}`
+                        : 'Sin horas extras'}>
+                      {Number(row.horasExtrasUsadas) > 0 ? (
+                        <span>
+                          {Number(row.horasExtrasUsadas).toLocaleString(undefined, { maximumFractionDigits: 2 })}h
+                          {row.horasExtrasTotalLinea && Number(row.horasExtrasTotalLinea) > 0 && (
+                            <span className="ml-1 text-xs text-purple-400">(línea: {row.horasExtrasTotalLinea}h)</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {(() => {
@@ -540,7 +649,6 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
                 const nec = safeNumber(row.necesidadTotal ?? 0);
                 return sum + (tiempoUnitario * nec);
               }, 0);
-              const totalParticipacion = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.participacionIndividual ?? 0), 0);
               const totalTiempoParaMaterial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoParaMaterial ?? 0), 0);
               const totalNecesidadMax = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
               const totalTiempoNecMax = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.TiempoPorUnidad ?? 0) * safeNumber(row.necesidadMaximaAFabricar ?? 0), 0);
@@ -548,15 +656,25 @@ export const Centro1000DetailTable = forwardRef<Centro1000DetailTableHandle, Cen
               const totalHorasExtras = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.horasExtrasUsadas ?? 0), 0);
               const totalTLibre = totalTiempoParaMaterial - totalTMaxProm;
               
+              // Calcular promedio de participación por línea (cada línea debería sumar ~100%)
+              const lineas = Object.keys(datosAgrupados);
+              const participacionPorLinea = lineas.map(linea => {
+                const filasLinea = datosAgrupados[linea];
+                return filasLinea.reduce((sum: number, row: any) => sum + safeNumber(row.participacionIndividual ?? 0), 0);
+              });
+              const promedioParticipacion = participacionPorLinea.length > 0 
+                ? participacionPorLinea.reduce((a, b) => a + b, 0) / participacionPorLinea.length 
+                : 0;
+              
               return (
                 <tr className="bg-gray-800 text-white">
-                  <td colSpan={8} className="px-3 py-3 text-sm font-bold">TOTAL GENERAL</td>
+                  <td colSpan={8} className="px-3 py-3 text-sm font-bold">TOTAL GENERAL ({lineas.length} líneas)</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold">{Math.floor(totalNecPropia).toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-amber-300">{Math.floor(totalTraslados).toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-teal-300">{Math.floor(totalNecTotal).toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-indigo-300">{totalTiempoUnitarioPorPuesto.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                  <td className="px-3 py-3 text-sm text-right font-mono font-bold">{totalParticipacion.toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
+                  <td className="px-3 py-3 text-sm text-right font-mono font-bold" title="Promedio de participación por línea (cada línea suma ~100%)">~{promedioParticipacion.toLocaleString(undefined, { maximumFractionDigits: 1 })}%</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-pink-300">{totalTiempoParaMaterial.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-cyan-300">{totalTMaxProm.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
                   <td className="px-3 py-3 text-sm text-right font-mono font-bold text-lime-300">{totalTLibre.toLocaleString(undefined, { maximumFractionDigits: 2 })} min</td>
