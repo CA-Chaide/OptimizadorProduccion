@@ -28,6 +28,7 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
 }) => {
   // === HOOKS (antes de cualquier early return) ===
   const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
+  const [computedDataC1000, setComputedDataC1000] = useState<any[]>([]);
 
   // Mapa de traslados: déficit general de E/X + necesidad completa de F (desde Centro 2000)
   const trasladosMap = useMemo(() => {
@@ -405,6 +406,18 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
           'Partic.%': safeNumber(row.participacionIndividual ?? 0),
           'T.Disponible': safeNumber(row.tiempoParaMaterial ?? 0),
           'Máx.Producir': safeNumber(row.necesidadMaximaAFabricar ?? 0),
+          'Fracción C.2000': (() => {
+            const nec = safeNumber(row.necesidadTotal ?? 0);
+            const traslado = safeNumber(row.trasladoDesde2000 ?? 0);
+            const prodViable = safeNumber(row.necesidadMaximaAFabricar ?? 0);
+            return nec > 0 ? Math.round(prodViable * (traslado / nec)) : 0;
+          })(),
+          'Fracción C.1000': (() => {
+            const nec = safeNumber(row.necesidadTotal ?? 0);
+            const necPropia = safeNumber(row.necesidadPropia ?? 0);
+            const prodViable = safeNumber(row.necesidadMaximaAFabricar ?? 0);
+            return nec > 0 ? Math.round(prodViable * (necPropia / nec)) : 0;
+          })(),
           'Déficit General': deficit,
         });
       });
@@ -421,6 +434,14 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
         'Partic.%': '-',
         'T.Disponible': sum(fl, 'tiempoParaMaterial'),
         'Máx.Producir': totalMaxProd,
+        'Fracción C.2000': (() => {
+          const totalTraslado = sum(fl, 'trasladoDesde2000');
+          return totalNec > 0 ? Math.round(totalMaxProd * (totalTraslado / totalNec)) : 0;
+        })(),
+        'Fracción C.1000': (() => {
+          const totalNecPropia = sum(fl, 'necesidadPropia');
+          return totalNec > 0 ? Math.round(totalMaxProd * (totalNecPropia / totalNec)) : 0;
+        })(),
         'Déficit General': Math.max(0, totalNec - totalMaxProd),
       });
     });
@@ -438,6 +459,14 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       'Partic.%': '-',
       'T.Disponible': sum(datosEnriquecidos, 'tiempoParaMaterial'),
       'Máx.Producir': totalMaxProdGlobal,
+      'Fracción C.2000': (() => {
+        const totalTraslado = sum(datosEnriquecidos, 'trasladoDesde2000');
+        return totalNecGlobal > 0 ? Math.round(totalMaxProdGlobal * (totalTraslado / totalNecGlobal)) : 0;
+      })(),
+      'Fracción C.1000': (() => {
+        const totalNecPropia = sum(datosEnriquecidos, 'necesidadPropia');
+        return totalNecGlobal > 0 ? Math.round(totalMaxProdGlobal * (totalNecPropia / totalNecGlobal)) : 0;
+      })(),
       'Déficit General': Math.max(0, totalNecGlobal - totalMaxProdGlobal),
     });
 
@@ -497,12 +526,14 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       <BottleneckSummaryTable 
         datosEnriquecidosE={datosEnriquecidos}
         datosEnriquecidosX={[]}
+        datosCalculados={computedDataC1000}
         tiemposCanon={tiemposCanon}
         numMaximoSabados={numMaximoSabados}
         maxExtrasHoras={maxExtrasHoras}
         horasTrabajo={horasTrabajo}
         horasExtrasFin={horasExtrasFin}
         centroLabel="Centro 1000"
+        isCentro1000={true}
       />
       
       {/* Tabla detalle única (todos los materiales, sin separación por clase) */}
@@ -513,9 +544,11 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
         tiemposCanon={tiemposCanon}
         tiempoConsumidoAnterior={{}}
         onTransferNeedsCalculated={setTransferNeeds}
+        onComputedDataReady={setComputedDataC1000}
         maxExtrasHoras={maxExtrasHoras}
         horasExtrasFin={horasExtrasFin}
         trasladosDesdeCentro2000={trasladosDesdeCentro2000}
+        isCentro1000={true}
       />
     </div>
   );

@@ -2,29 +2,33 @@
 
 import React, { useState, useMemo } from 'react';
 import { MONTH_NAMES } from './constants';
-import { safeNumber, exportToXLSX, seleccionarPuestoConMayorConsumo } from './utils';
+import { safeNumber, exportToXLSX } from './utils';
 import { TiempoCanonResult } from './types';
 
 interface BottleneckSummaryTableProps {
   datosEnriquecidosE: any[];
   datosEnriquecidosX: any[];
+  datosCalculados?: any[];  // filasCalculadas emitidas por BottleneckClassTable (fuente real)
   tiemposCanon: TiempoCanonResult[];
   numMaximoSabados: number;
   maxExtrasHoras: number;
   horasTrabajo: number;
   horasExtrasFin: number;
   centroLabel?: string;
+  isCentro1000?: boolean;
 }
 
 export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({ 
   datosEnriquecidosE, 
-  datosEnriquecidosX, 
+  datosEnriquecidosX,
+  datosCalculados,
   tiemposCanon, 
   numMaximoSabados, 
   maxExtrasHoras, 
   horasTrabajo, 
   horasExtrasFin,
-  centroLabel = 'Centro 2000' 
+  centroLabel = 'Centro 2000',
+  isCentro1000 = false
 }) => {
   const [selectedLinea, setSelectedLinea] = useState<string>('');
   const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string>('');
@@ -43,29 +47,23 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     return null;
   };
 
-  const todosLosDatos = [...datosEnriquecidosE, ...datosEnriquecidosX];
+  // Fuente de datos: preferir datosCalculados (valores reales multi-pass) sobre legacy
+  const filas = useMemo(() => {
+    if (datosCalculados && datosCalculados.length > 0) return datosCalculados;
+    return [...datosEnriquecidosE, ...datosEnriquecidosX];
+  }, [datosCalculados, datosEnriquecidosE, datosEnriquecidosX]);
 
-  // Calcular cuellos de botella DIRECTAMENTE de los datos (no usando localStorage)
+  const usaDatosCalc = !!(datosCalculados && datosCalculados.length > 0);
+
+  // Calcular cuellos de botella DIRECTAMENTE de los datos
   const cuellosDeBottellaCalculados = useMemo(() => {
     const tablaTiempos = new Map<string, number>();
     const mapa = new Map<string, string>(); // Mes|Línea -> Puesto cuello de botella
     
-    const computeNecLocal = (row: any) => {
-      const up = safeNumber(row.UnidadesProyectado ?? 0);
-      const ss = safeNumber(row.StockSeguridad ?? 0);
-      const sa = safeNumber(row.StockActual ?? 0);
-      return Math.max(0, up - sa + ss);
-    };
-    
     // Paso 1: Agrupar por Mes|Línea|Puesto y sumar tiempos
-    todosLosDatos.forEach(row => {
-      const necesidad = computeNecLocal(row);
-      if (necesidad === 0) return;
-      
-      const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
-      const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
-      const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
-      const tiempoTotalMaterial = tiempoUnitarioPorPuesto * necesidad;
+    filas.forEach(row => {
+      const tiempoTotal = safeNumber(row.tiempoTotalNecesidad ?? 0);
+      if (tiempoTotal === 0) return;
       
       const mes = String(row.mesRef || row.Mes || 'Sin mes');
       const linea = String(row.lineaRef || row.LineaFabricacion || 'Sin línea');
@@ -75,7 +73,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       
       const key = `${mes}|${linea}|${puesto}`;
       const tiempoActual = tablaTiempos.get(key) || 0;
-      tablaTiempos.set(key, tiempoActual + tiempoTotalMaterial);
+      tablaTiempos.set(key, tiempoActual + tiempoTotal);
     });
     
     // Paso 2: Identificar cuello de botella por Mes|Línea (puesto con mayor tiempo)
@@ -97,61 +95,41 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     });
     
     return mapa;
-  }, [todosLosDatos]);
+  }, [filas]);
 
-  // Paso 1: Calcular consumo por puesto (para la búsqueda del registro en tiemposCanon)
-  const consumoPorPuestoLinea: { [key: string]: { [nombreEstacion: string]: number } } = {};
-  
-  todosLosDatos.forEach(row => {
-    const mes = String(row.mesRef || row.Mes || 'Sin mes');
-    const linea = String(row.lineaRef || row.LineaFabricacion || 'Sin línea');
-    const puestoTrabajo = String(row.PuestoCuellodeBottella || 'Sin puesto');
-    const keyLinea = `${mes}|${linea}`;
-    
-    if (!consumoPorPuestoLinea[keyLinea]) {
-      consumoPorPuestoLinea[keyLinea] = {};
-    }
-    
-    const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
-    const necesidadMax = safeNumber(row.necesidadMaximaAFabricar ?? 0);
-    const consumo = tiempoPorUnidad * necesidadMax;
-    
-    if (!consumoPorPuestoLinea[keyLinea][puestoTrabajo]) {
-      consumoPorPuestoLinea[keyLinea][puestoTrabajo] = 0;
-    }
-    consumoPorPuestoLinea[keyLinea][puestoTrabajo] += consumo;
-  });
-
-  // Paso 2: Construir resumen usando voto mayoría
+  // Construir resumen por Mes|Línea
   const resumenPorLinea: { [key: string]: {
     linea: string;
     mes: string;
-    tiempoTotal: number;
-    horasExtrasTotal: number;
-    minutosExtrasTotal: number;
-    minutosConsumidosSabados: number;
-    horasConsumidosSabados: number;
     diasSabados: number;
     diasLaborables: number;
     numeroSemanas: number;
     horasPromedioPorDia: number;
     mesNumero: number;
-    tiempoCanonicoInicial: number;
-    minutosConExtras: number;
-    minutosFinSemana: number;
-    tiempoCanonicoCompleto: number;
-    minutosRestantes: number;
-    horasRestantes: number;
+    // Disponibles por sección (de tiemposCanon)
+    dispJN: number;   // minutos_horario_normal_TOTAL
+    dispHE: number;   // minutos_extras_TOTAL − minutos_horario_normal_TOTAL
+    dispSAB: number;  // minutos_sabado_TOTAL
+    // Consumidos por sección (sum de maxProducir × T.Unit/Puestos)
+    consumidoJN: number;
+    consumidoHE: number;
+    consumidoSAB: number;
+    // Libre = Disponible − Consumido (derived)
+    libreJN: number;
+    libreHE: number;
+    libreSAB: number;
     respCtrlProd: string;
     necesidadTotal: number;
     necesidadPromedioDiaria: number;
     necesidadAFabricarTotal: number;
     necesidadAFabricarPromedioDiaria: number;
+    envioC2000Total: number;
+    quedaC1000Total: number;
     puestoSeleccionado: string;
     detalleExtras: string;
   }} = {};
 
-  todosLosDatos.forEach(row => {
+  filas.forEach(row => {
     const mes = String(row.mesRef || row.Mes || 'Sin mes');
     const linea = String(row.lineaRef || row.LineaFabricacion || 'Sin línea');
     const key = `${mes}|${linea}`;
@@ -166,115 +144,109 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       let minutosFinSemana = 0;
       let puestoSeleccionado = 'Sin puesto';
       
-      // Obtener el cuello de botella identificado (calculado directamente)
       const puestoBotella = cuellosDeBottellaCalculados.get(`${mes}|${linea}`);
       
       if (tiempoCanonMes?.data && Array.isArray(tiempoCanonMes.data)) {
-        let datoPuesto = null;
-        
-        // Si tenemos cuello de botella identificado, buscarlo en tiemposCanon
+        let datoPuesto: any = null;
         if (puestoBotella) {
           const puestoNorm = String(puestoBotella).toLowerCase().trim();
           datoPuesto = tiempoCanonMes.data.find((item: any) => {
-            const nombreEstacion = String(item?.nombre_estacion ?? '').toLowerCase().trim();
-            return nombreEstacion === puestoNorm || nombreEstacion.includes(puestoNorm) || puestoNorm.includes(nombreEstacion);
+            const ne = String(item?.nombre_estacion ?? '').toLowerCase().trim();
+            return ne === puestoNorm || ne.includes(puestoNorm) || puestoNorm.includes(ne);
           });
         }
-        
-        // Si no encontramos el puesto específico, buscar en la línea
         if (!datoPuesto) {
           const lineaNorm = String(linea).toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
           const registrosLinea = tiempoCanonMes.data.filter((item: any) => {
-            const nombreLinea = String(item?.nombre_linea ?? '').toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
-            return nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea) || nombreLinea === lineaNorm;
+            const nl = String(item?.nombre_linea ?? '').toLowerCase().replace(/\s+/g, '').replace('linea', '').replace('línea', '');
+            return nl.includes(lineaNorm) || lineaNorm.includes(nl) || nl === lineaNorm;
           });
-          
-          if (registrosLinea.length > 0) {
-            datoPuesto = registrosLinea[0];
-          } else if (tiempoCanonMes.data.length > 0) {
-            datoPuesto = tiempoCanonMes.data[0];
-          }
+          if (registrosLinea.length > 0) datoPuesto = registrosLinea[0];
+          else if (tiempoCanonMes.data.length > 0) datoPuesto = tiempoCanonMes.data[0];
         }
-        
         if (datoPuesto) {
           tiempoCanonicoInicial = safeNumber(datoPuesto?.minutos_horario_normal_TOTAL ?? 0);
           minutosConExtras = safeNumber(datoPuesto?.minutos_extras_TOTAL ?? 0);
           minutosFinSemana = safeNumber(datoPuesto?.minutos_sabado_TOTAL ?? 0);
-          // USAR EL CUELLO DE BOTELLA CALCULADO, no el de tiemposCanon
           puestoSeleccionado = puestoBotella || String(datoPuesto?.nombre_estacion ?? 'Sin puesto');
         } else if (puestoBotella) {
-          // Si no encontramos datoPuesto pero tenemos cuello de botella, usarlo
           puestoSeleccionado = puestoBotella;
         }
       }
       
+      // Pool HE = (JN+HE combinado) − JN puro
+      const poolHE = Math.max(0, minutosConExtras - tiempoCanonicoInicial);
+
       resumenPorLinea[key] = {
-        linea,
-        mes,
-        tiempoTotal: 0,
-        horasExtrasTotal: 0,
-        minutosExtrasTotal: 0,
-        minutosConsumidosSabados: 0,
-        horasConsumidosSabados: 0,
-        diasSabados,
-        diasLaborables,
+        linea, mes,
+        diasSabados, diasLaborables,
         numeroSemanas: Math.ceil((diasLaborables + diasSabados) / 7),
         horasPromedioPorDia: 0,
         mesNumero: tiempoCanonMes?.mesNumero ?? 0,
-        tiempoCanonicoInicial,
-        minutosConExtras,
-        minutosFinSemana,
-        tiempoCanonicoCompleto: minutosConExtras + minutosFinSemana,
-        minutosRestantes: 0,
-        horasRestantes: 0,
+        dispJN: tiempoCanonicoInicial,
+        dispHE: poolHE,
+        dispSAB: minutosFinSemana,
+        consumidoJN: 0, consumidoHE: 0, consumidoSAB: 0,
+        libreJN: 0, libreHE: 0, libreSAB: 0,
         respCtrlProd: String(row.NombRespControlProd || row.RespCtrlProd || 'Sin responsable'),
-        necesidadTotal: 0,
-        necesidadPromedioDiaria: 0,
-        necesidadAFabricarTotal: 0,
-        necesidadAFabricarPromedioDiaria: 0,
-        puestoSeleccionado,
-        detalleExtras: ''
+        necesidadTotal: 0, necesidadPromedioDiaria: 0,
+        necesidadAFabricarTotal: 0, necesidadAFabricarPromedioDiaria: 0,
+        envioC2000Total: 0, quedaC1000Total: 0,
+        puestoSeleccionado, detalleExtras: ''
       };
     }
 
-    // Usar los valores enriquecidos correctamente
-    // Para el resumen, necesitamos el tiempo total real que se consume: Necesidad × T/U
-    const necesidad = safeNumber(row.necesidadTotal ?? safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
-    const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
-    const tiempoTotalRequerido = necesidad * tiempoPorUnidad;  // Necesidad × T/U
-    const necesidadMax = safeNumber(row.necesidadMaximaAFabricar ?? 0);
-    
-    resumenPorLinea[key].tiempoTotal += tiempoTotalRequerido;
-    resumenPorLinea[key].necesidadTotal += necesidad;
-    resumenPorLinea[key].necesidadAFabricarTotal += necesidadMax;
-    // Acumular horas extras ya calculadas en BottleneckClassTable
-    resumenPorLinea[key].horasExtrasTotal += safeNumber(row.horasExtrasUsadas ?? 0);
-    // Capturar el desglose del pool (igual para todos los materiales de la línea)
-    if (!resumenPorLinea[key].detalleExtras && row.horasExtrasDetalle && row.horasExtrasDetalle !== '-') {
-      resumenPorLinea[key].detalleExtras = row.horasExtrasDetalle;
+    const r = resumenPorLinea[key];
+
+    if (usaDatosCalc) {
+      // ===== RUTA PRINCIPAL: leer de filasCalculadas (multi-pass real) =====
+      const tupp = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
+      r.necesidadTotal += safeNumber(row._necesidad ?? 0);
+      r.necesidadAFabricarTotal += safeNumber(row._prodViable ?? 0);
+      r.envioC2000Total += safeNumber(row._envioC2000 ?? 0);
+      r.quedaC1000Total += safeNumber(row._quedaC1000 ?? 0);
+      // Consumido por sección = unidades producidas en esa sección × T.Unit/Puestos
+      r.consumidoJN  += safeNumber(row.necesidadMaximaProducirJornadaNormal ?? 0) * tupp;
+      r.consumidoHE  += safeNumber(row.necesidadMaximaProducirHorasExtras ?? 0) * tupp;
+      r.consumidoSAB += safeNumber(row.necesidadMaximaProducirSabados ?? 0) * tupp;
+    } else {
+      // ===== FALLBACK: ruta legacy con datos del padre =====
+      const necesidad = safeNumber(row.necesidadTotal ??
+        (safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0)));
+      const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
+      const numeroPuestos = Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
+      const tiempoUnitarioPorPuesto = tiempoPorUnidad / numeroPuestos;
+      r.necesidadTotal += necesidad;
+      r.necesidadAFabricarTotal += safeNumber(row.necesidadMaximaAFabricar ?? 0);
+      r.consumidoJN += tiempoUnitarioPorPuesto * necesidad; // legacy: all goes to JN
+      if (isCentro1000) {
+        const traslado = safeNumber(row.trasladoDesde2000 ?? 0);
+        const necPropia = safeNumber(row.necesidadPropia ?? 0);
+        const necTotalMat = traslado + necPropia;
+        if (necTotalMat > 0) {
+          const nMax = safeNumber(row.necesidadMaximaAFabricar ?? 0);
+          r.envioC2000Total += Math.round(nMax * (traslado / necTotalMat));
+          r.quedaC1000Total += Math.round(nMax * (necPropia / necTotalMat));
+        }
+      }
+    }
+    if (!r.detalleExtras && row.horasExtrasDetalle && row.horasExtrasDetalle !== '-') {
+      r.detalleExtras = row.horasExtrasDetalle;
     }
   });
 
+  // Post-proceso: derivar campos libre por sección
   Object.values(resumenPorLinea).forEach(resumen => {
-    // minutosExtrasTotal = horasExtrasTotal acumuladas × 60
-    resumen.minutosExtrasTotal = resumen.horasExtrasTotal * 60;
-
-    const techo = (resumen.minutosConExtras ?? 0) + (resumen.minutosFinSemana ?? 0);
-    resumen.minutosRestantes = techo - (resumen.tiempoTotal ?? 0);
-    resumen.horasRestantes = (resumen.minutosRestantes ?? 0) / 60;
-    resumen.horasPromedioPorDia = resumen.diasLaborables > 0 
-      ? (resumen.tiempoTotal / 60) / resumen.diasLaborables 
-      : 0;
-
-    // Calcular promedio diario de necesidades
+    resumen.libreJN  = resumen.dispJN  - resumen.consumidoJN;
+    resumen.libreHE  = resumen.dispHE  - resumen.consumidoHE;
+    resumen.libreSAB = resumen.dispSAB - resumen.consumidoSAB;
+    const totalConsumed = resumen.consumidoJN + resumen.consumidoHE + resumen.consumidoSAB;
+    resumen.horasPromedioPorDia = resumen.diasLaborables > 0
+      ? (totalConsumed / 60) / resumen.diasLaborables : 0;
     resumen.necesidadPromedioDiaria = resumen.diasLaborables > 0
-      ? resumen.necesidadTotal / resumen.diasLaborables
-      : 0;
-
-    // Calcular promedio diario de necesidad a fabricar
+      ? resumen.necesidadTotal / resumen.diasLaborables : 0;
     resumen.necesidadAFabricarPromedioDiaria = resumen.diasLaborables > 0
-      ? resumen.necesidadAFabricarTotal / resumen.diasLaborables
-      : 0;
+      ? resumen.necesidadAFabricarTotal / resumen.diasLaborables : 0;
   });
 
   const resumenArray = Object.values(resumenPorLinea).sort((a, b) => {
@@ -305,16 +277,19 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       NecesidadPromedioDiaria: Number(r.necesidadPromedioDiaria.toFixed(1)),
       NecesidadAFabricarTotal: r.necesidadAFabricarTotal,
       NecesidadAFabricarPromedioDiaria: Number(r.necesidadAFabricarPromedioDiaria.toFixed(1)),
-      TiempoRequeridoMinutos: Number(r.tiempoTotal.toFixed(0)),
-      TiempoRequeridoHoras: Number((r.tiempoTotal / 60).toFixed(2)),
-      DisponibleCuelloBotellaMinutos: Number(r.tiempoCanonicoInicial.toFixed(0)),
-      DisponibleCuelloBotellaHoras: Number((r.tiempoCanonicoInicial / 60).toFixed(2)),
-      DisponibleTotalMinutos: Number(r.tiempoCanonicoCompleto.toFixed(0)),
-      DisponibleTotalHoras: Number((r.tiempoCanonicoCompleto / 60).toFixed(2)),
-      HorasExtrasMinutos: Number(r.minutosExtrasTotal.toFixed(0)),
-      HorasExtrasHoras: Number(r.horasExtrasTotal.toFixed(2)),
-      TiempoLibreMinutos: Number(r.minutosRestantes.toFixed(0)),
-      TiempoLibreHoras: Number(r.horasRestantes.toFixed(2)),
+      ...(isCentro1000 ? { 'EnvioC2000': r.envioC2000Total, 'QuedaC1000': r.quedaC1000Total } : {}),
+      'JN_ConsumidoMin': Number(r.consumidoJN.toFixed(0)),
+      'JN_ConsumidoH': Number((r.consumidoJN / 60).toFixed(2)),
+      'JN_LibreMin': Number(r.libreJN.toFixed(0)),
+      'JN_LibreH': Number((r.libreJN / 60).toFixed(2)),
+      'HE_ConsumidoMin': Number(r.consumidoHE.toFixed(0)),
+      'HE_ConsumidoH': Number((r.consumidoHE / 60).toFixed(2)),
+      'HE_LibreMin': Number(r.libreHE.toFixed(0)),
+      'HE_LibreH': Number((r.libreHE / 60).toFixed(2)),
+      'SAB_ConsumidoMin': Number(r.consumidoSAB.toFixed(0)),
+      'SAB_ConsumidoH': Number((r.consumidoSAB / 60).toFixed(2)),
+      'SAB_LibreMin': Number(r.libreSAB.toFixed(0)),
+      'SAB_LibreH': Number((r.libreSAB / 60).toFixed(2)),
       HorasPorDia: Number(r.horasPromedioPorDia.toFixed(2))
     }));
     
@@ -374,106 +349,150 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       <div className="overflow-x-auto max-h-[500px] overflow-y-auto relative">
         <table className="w-full">
           <thead className="sticky top-0 z-20 bg-gray-50 shadow-sm">
+            {/* Fila 1: grupos madre */}
             <tr className="bg-gray-50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Responsable</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">Puesto Botella</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Días Lab.</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Semanas</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-600 uppercase tracking-wider" colSpan={2}>Necesidad</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-purple-600 uppercase tracking-wider" colSpan={2}>Necesidad a Fabricar</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Tiempo Requerido</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Disponible</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Horas Extras</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider" colSpan={2}>Tiempo Libre</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">h/día</th>
+              <th rowSpan={3} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200">Mes</th>
+              <th rowSpan={3} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200">Responsable</th>
+              <th rowSpan={3} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200">Línea</th>
+              <th rowSpan={3} className="px-3 py-2 text-left text-xs font-semibold text-red-700 uppercase tracking-wider border-r border-gray-200">Puesto Botella</th>
+              <th rowSpan={3} className="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200">Días Lab.</th>
+              <th rowSpan={3} className="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200">Sem.</th>
+              <th colSpan={2} className="px-2 py-2 text-center text-xs font-semibold text-indigo-600 uppercase tracking-wider border-r border-gray-200">Necesidad</th>
+              <th colSpan={2} className="px-2 py-2 text-center text-xs font-semibold text-purple-600 uppercase tracking-wider border-r border-gray-200">Nec. Fabricar</th>
+              {isCentro1000 && <th rowSpan={3} className="px-2 py-2 text-center text-xs font-semibold text-teal-600 uppercase tracking-wider border-r border-gray-200">Envío<br/>C.2000</th>}
+              {isCentro1000 && <th rowSpan={3} className="px-2 py-2 text-center text-xs font-semibold text-cyan-600 uppercase tracking-wider border-r border-gray-200">Queda<br/>C.1000</th>}
+              <th colSpan={4} className="px-2 py-2 text-center text-xs font-bold text-blue-800 uppercase tracking-wider bg-blue-50 border-r border-gray-200">Jornada Normal</th>
+              <th colSpan={4} className="px-2 py-2 text-center text-xs font-bold text-amber-800 uppercase tracking-wider bg-amber-50 border-r border-gray-200">Horas Extras L-V</th>
+              <th colSpan={4} className="px-2 py-2 text-center text-xs font-bold text-violet-800 uppercase tracking-wider bg-violet-50 border-r border-gray-200">Sábados</th>
+              <th rowSpan={3} className="px-2 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">h/día</th>
             </tr>
+            {/* Fila 2: sub-secciones Consumido / Libre */}
+            <tr className="bg-gray-50">
+              <th rowSpan={2} className="px-2 py-1 text-center text-[10px] text-indigo-500 border-r border-gray-100">Total</th>
+              <th rowSpan={2} className="px-2 py-1 text-center text-[10px] text-indigo-500 border-r border-gray-200">Prom/día</th>
+              <th rowSpan={2} className="px-2 py-1 text-center text-[10px] text-purple-500 border-r border-gray-100">Total</th>
+              <th rowSpan={2} className="px-2 py-1 text-center text-[10px] text-purple-500 border-r border-gray-200">Prom/día</th>
+              {/* JN */}
+              <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-blue-700 bg-blue-50 border-b border-blue-200">Consumido</th>
+              <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-emerald-700 bg-blue-50 border-r border-gray-200 border-b border-blue-200">Libre</th>
+              {/* HE */}
+              <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-amber-700 bg-amber-50 border-b border-amber-200">Consumido</th>
+              <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-emerald-700 bg-amber-50 border-r border-gray-200 border-b border-amber-200">Libre</th>
+              {/* SAB */}
+              <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-violet-700 bg-violet-50 border-b border-violet-200">Consumido</th>
+              <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-emerald-700 bg-violet-50 border-r border-gray-200 border-b border-violet-200">Libre</th>
+            </tr>
+            {/* Fila 3: unidades min / h */}
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th colSpan={5}></th>
-              <th className="px-2 py-2 text-center text-xs text-indigo-500">Total</th>
-              <th className="px-2 py-2 text-center text-xs text-indigo-500">Prom/día</th>
-              <th className="px-2 py-2 text-center text-xs text-purple-500">Total</th>
-              <th className="px-2 py-2 text-center text-xs text-purple-500">Prom/día</th>
-              <th className="px-2 py-2 text-center text-xs text-gray-500">min</th>
-              <th className="px-2 py-2 text-center text-xs text-gray-500">h</th>
-              <th className="px-2 py-2 text-center text-xs text-red-500 font-semibold">min</th>
-              <th className="px-2 py-2 text-center text-xs text-red-500 font-semibold">h</th>
-              <th className="px-2 py-2 text-center text-xs text-gray-500">min</th>
-              <th className="px-2 py-2 text-center text-xs text-gray-500">h</th>
-              <th className="px-2 py-2 text-center text-xs text-gray-500">min</th>
-              <th className="px-2 py-2 text-center text-xs text-gray-500">h</th>
-              <th className="px-2 py-2"></th>
+              {/* JN consumed */}
+              <th className="px-1 py-1 text-center text-[10px] text-blue-500 bg-blue-50">min</th>
+              <th className="px-1 py-1 text-center text-[10px] text-blue-500 bg-blue-50">h</th>
+              <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-blue-50">min</th>
+              <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-blue-50 border-r border-gray-200">h</th>
+              {/* HE consumed */}
+              <th className="px-1 py-1 text-center text-[10px] text-amber-500 bg-amber-50">min</th>
+              <th className="px-1 py-1 text-center text-[10px] text-amber-500 bg-amber-50">h</th>
+              <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-amber-50">min</th>
+              <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-amber-50 border-r border-gray-200">h</th>
+              {/* SAB consumed */}
+              <th className="px-1 py-1 text-center text-[10px] text-violet-500 bg-violet-50">min</th>
+              <th className="px-1 py-1 text-center text-[10px] text-violet-500 bg-violet-50">h</th>
+              <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-violet-50">min</th>
+              <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-violet-50 border-r border-gray-200">h</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {resumenFiltered.map((resumen, idx) => (
               <tr key={`${resumen.mes}-${resumen.linea}-${idx}`} className="hover:bg-blue-50/50 transition-colors">
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                <td className="px-3 py-2 text-sm font-medium text-gray-900">
                   {(() => {
                     const mesNum = parseInt(resumen.mes);
                     return !isNaN(mesNum) && MONTH_NAMES[mesNum] ? MONTH_NAMES[mesNum] : resumen.mes;
                   })()}
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{resumen.respCtrlProd}</td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{resumen.linea}</td>
-                <td className="px-4 py-3 text-sm">
-                  <span className="inline-block bg-red-100 text-red-800 px-2.5 py-1 rounded font-semibold text-xs">
+                <td className="px-3 py-2 text-sm text-gray-600">{resumen.respCtrlProd}</td>
+                <td className="px-3 py-2 text-sm font-medium text-gray-900">{resumen.linea}</td>
+                <td className="px-3 py-2 text-sm">
+                  <span className="inline-block bg-red-100 text-red-800 px-2 py-0.5 rounded font-semibold text-xs">
                     {resumen.puestoSeleccionado}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
-                <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.numeroSemanas}</td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-indigo-700 font-semibold">
+                <td className="px-3 py-2 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
+                <td className="px-3 py-2 text-sm text-center font-mono text-gray-600">{resumen.numeroSemanas}</td>
+                {/* Necesidad */}
+                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-700 font-semibold">
                   {Math.floor(resumen.necesidadTotal).toLocaleString()}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-indigo-600">
+                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-600">
                   {Number(resumen.necesidadPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-purple-700 font-semibold">
+                {/* Nec. Fabricar */}
+                <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">
                   {Math.floor(resumen.necesidadAFabricarTotal).toLocaleString()}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-purple-600">
+                <td className="px-2 py-2 text-sm text-right font-mono text-purple-600">
                   {Number(resumen.necesidadAFabricarPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
-                  {Number(resumen.tiempoTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {/* Envío / Queda */}
+                {isCentro1000 && (
+                  <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">
+                    {resumen.envioC2000Total.toLocaleString()}
+                  </td>
+                )}
+                {isCentro1000 && (
+                  <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">
+                    {resumen.quedaC1000Total.toLocaleString()}
+                  </td>
+                )}
+                {/* ═══ JORNADA NORMAL ═══ */}
+                <td className="px-2 py-2 text-sm text-right font-mono text-blue-700 bg-blue-50/30" title={`Disp: ${resumen.dispJN.toLocaleString()} min`}>
+                  {Number(resumen.consumidoJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
-                  {(Number(resumen.tiempoTotal ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                <td className="px-2 py-2 text-sm text-right font-mono text-blue-600 bg-blue-50/30">
+                  {(resumen.consumidoJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
-                  {Number(resumen.tiempoCanonicoInicial ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {Number(resumen.libreJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
-                  {(Number(resumen.tiempoCanonicoInicial ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {(resumen.libreJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-amber-600"
-                  title={resumen.detalleExtras ? `Desglose pool línea: ${resumen.detalleExtras}` : 'Sin horas extras'}>
-                  {resumen.minutosExtrasTotal > 0
-                    ? Number(resumen.minutosExtrasTotal).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                {/* ═══ HORAS EXTRAS L-V ═══ */}
+                <td className="px-2 py-2 text-sm text-right font-mono text-amber-700 bg-amber-50/30" title={`Disp: ${resumen.dispHE.toLocaleString()} min`}>
+                  {resumen.consumidoHE > 0
+                    ? Number(resumen.consumidoHE).toLocaleString(undefined, { maximumFractionDigits: 0 })
                     : <span className="text-gray-400">—</span>}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-amber-600"
-                  title={resumen.detalleExtras ? `Desglose pool línea: ${resumen.detalleExtras}` : 'Sin horas extras'}>
-                  {resumen.horasExtrasTotal > 0 ? (
-                    <span>
-                      {Number(resumen.horasExtrasTotal).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      {resumen.detalleExtras && (
-                        <span className="ml-1 text-xs text-amber-400">({resumen.detalleExtras})</span>
-                      )}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">—</span>
-                  )}
+                <td className="px-2 py-2 text-sm text-right font-mono text-amber-600 bg-amber-50/30">
+                  {resumen.consumidoHE > 0
+                    ? (resumen.consumidoHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                    : <span className="text-gray-400">—</span>}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-emerald-600">
-                  {Number(resumen.minutosRestantes ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {Number(resumen.libreHE).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-emerald-600">
-                  {Number(resumen.horasRestantes ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {(resumen.libreHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
+                {/* ═══ SÁBADOS ═══ */}
+                <td className="px-2 py-2 text-sm text-right font-mono text-violet-700 bg-violet-50/30" title={`Disp: ${resumen.dispSAB.toLocaleString()} min`}>
+                  {resumen.consumidoSAB > 0
+                    ? Number(resumen.consumidoSAB).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                    : <span className="text-gray-400">—</span>}
+                </td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-violet-600 bg-violet-50/30">
+                  {resumen.consumidoSAB > 0
+                    ? (resumen.consumidoSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                    : <span className="text-gray-400">—</span>}
+                </td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {Number(resumen.libreSAB).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {(resumen.libreSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </td>
+                {/* h/día */}
+                <td className="px-2 py-2 text-sm text-right font-mono text-gray-700">
                   {Number(resumen.horasPromedioPorDia ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </td>
               </tr>
