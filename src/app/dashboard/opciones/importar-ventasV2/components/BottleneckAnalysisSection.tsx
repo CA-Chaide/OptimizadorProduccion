@@ -78,10 +78,10 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
     return Math.max(0, up - sa + ss);
   };
 
-  // Filtrar centro 2000
+  // Filtrar centro 2000 aplicando TRIM para evitar fallos por espacios
   const filteredDataCentro2000 = useMemo(() => {
     return data.filter(row => 
-      String(row.Centro) === '2000'
+      String(row.Centro || '').trim() === '2000'
     );
   }, [data]);
 
@@ -105,8 +105,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   }, [filteredDataCentro2000]);
 
   // === COMBINACIÓN E+X: Comparten las mismas líneas de producción ===
-  // La clase de aprovisionamiento solo indica la política de abastecimiento del material,
-  // NO define líneas independientes. E y X compiten por la misma capacidad.
   const dataEX = useMemo(() => [...dataE, ...dataX], [dataE, dataX]);
 
   // Consolidar traslados (E+X combinados + F)
@@ -129,18 +127,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
       .map(([CodMaterial, necesidadTraslado]) => ({ CodMaterial, necesidadTraslado }))
       .sort((a, b) => a.CodMaterial.localeCompare(b.CodMaterial));
 
-    // === LOG DIAGNÓSTICO CONSOLIDADO ===
-    const totalConsolidado = result.reduce((s, r) => s + r.necesidadTraslado, 0);
-    console.log('%c\n========================================', 'color: #e74c3c; font-weight: bold;');
-    console.log('%c  TRASLADOS CONSOLIDADOS (C2000 → C1000)', 'color: #e74c3c; font-weight: bold; font-size: 14px;');
-    console.log('%c========================================', 'color: #e74c3c; font-weight: bold;');
-    console.log(`Clase E+X: ${transferNeedsEX.length} materiales, ${totalEX} unidades`);
-    console.log(`Clase F: ${transferNeedsF.length} materiales, ${totalF} unidades`);
-    console.log(`%cTOTAL CONSOLIDADO: ${result.length} materiales únicos, ${totalConsolidado} unidades`, 'font-weight: bold;');
-    console.log('Lista completa de traslados enviados al Centro 1000:');
-    console.table(result);
-    console.log('%c========================================\n', 'color: #e74c3c; font-weight: bold;');
-
     return result;
   }, [transferNeedsEX, transferNeedsF]);
 
@@ -155,12 +141,9 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
     }
   }, [transferNeedsConsolidated, onTransferNeedsConsolidatedChanged]);
 
-  // Calcular transferencias F (sin lógica de asignación, directo a Quito)
-  // FIX: usar misma lógica que E/X — per (material, mes) tomar max para duplicados,
-  // luego SUMAR todos los meses por CodMaterial.
+  // Calcular transferencias F
   useEffect(() => {
     if (dataF.length > 0) {
-      // Paso 1: agrupar por (CodMaterial, Mes) — max para duplicados dentro del mismo mes
       const transferMapByMes = new Map<string, number>();
       dataF.forEach(row => {
         const codMaterial = String(row.CodMaterial ?? '');
@@ -172,7 +155,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
         }
       });
 
-      // Paso 2: colapsar por CodMaterial sumando todos los meses
       const transferMap = new Map<string, number>();
       transferMapByMes.forEach((value, key) => {
         const codMaterial = key.split('|')[0];
@@ -183,42 +165,17 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
         .map(([CodMaterial, necesidadTraslado]) => ({ CodMaterial, necesidadTraslado }))
         .sort((a, b) => a.CodMaterial.localeCompare(b.CodMaterial));
       
-      const totalF = transferNeedsF_array.reduce((s, r) => s + r.necesidadTraslado, 0);
-      console.log(`%c=== [TRASLADOS Clase F] ===`, 'color: #9b59b6; font-weight: bold;');
-      console.log(`Materiales F: ${transferNeedsF_array.length} | Total unidades: ${totalF}`);
-      console.log('Detalle por (CodMaterial, Mes):');
-      console.table(Array.from(transferMapByMes.entries()).map(([k, v]) => {
-        const [cod, mes] = k.split('|');
-        return { CodMaterial: cod, Mes: mes, Necesidad: v };
-      }));
-      console.log('Colapsado por material:');
-      console.table(transferNeedsF_array.slice(0, 50));
-
       setTransferNeedsF(transferNeedsF_array);
     } else {
       setTransferNeedsF([]);
     }
   }, [dataF]);
 
-  // Debug
-  useEffect(() => {
-    if (typeof window !== 'undefined' && data.length > 0) {
-      console.log('=== [BottleneckAnalysis DEBUG] ===');
-      console.log('Total registros:', data.length, '| Centro 2000:', filteredDataCentro2000.length);
-      console.log('Clase E:', dataE.length, '| X:', dataX.length, '| E+X combinados:', dataEX.length, '| F:', dataF.length);
-    }
-  }, [data, filteredDataCentro2000, dataE, dataX, dataEX, dataF]);
-
-  // =====================================================
-  // === DESPUÉS DE HOOKS: EARLY RETURN SI NO HAY DATA ===
-  // =====================================================
-  
   if (data.length === 0) {
     return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend - Necesidades"</div>;
   }
 
   // Proyectar las columnas limpias desde los datos completos de BottleneckClassTable
-  // Los campos '[JN] MAX.PRODUCIR' etc. son calculados por BottleneckClassTable → siempre correctos
   const projectCleanColumns = (rows: any[]) =>
     rows
       .filter((r: any) => !String(r['CodMaterial'] || '').startsWith('**'))
@@ -237,7 +194,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
         'Deficit General':   r['[RES] Deficit General'] ?? 0,
       }));
 
-  // Hoja resumen: E + X + F (solo filas de datos, sin subtotales)
   const buildResumenSheet = () => {
     const rowsF = dataF.map((row: any) => {
       const necesidad = Math.floor(computeNecesidad(row));
@@ -262,7 +218,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   const handleExportTodo = () => {
     exportToXLSXMultiSheet([
       { sheetName: 'Resumen E+X+F', data: buildResumenSheet() },
-      // Sheet de detalle completo — todos los campos calculados por BottleneckClassTable (E+X combinados)
       { sheetName: 'Clase E+X', data: exportSheetEXData },
       { sheetName: 'Clase F', data: dataF.map((row: any) => ({
           'Clase': 'F',
@@ -289,6 +244,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
           Descargar Excel (Clases E + X + F)
         </button>
       </div>
+      
       <BottleneckSummaryTable 
         datosEnriquecidosE={[]}
         datosEnriquecidosX={[]}
@@ -300,7 +256,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
         horasExtrasFin={horasExtrasFin}
       />
       
-      {/* TABLA ÚNICA E+X: Clases E y X comparten líneas de producción, se calculan juntas */}
       <BottleneckClassTable 
         datos={dataEX}
         datosCompletos={filteredDataCentro2000}
@@ -346,9 +301,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
                 Los siguientes {dataF.length} material{dataF.length !== 1 ? 'es' : ''} con clase F se trasladan completos a plantas de Quito sin asignación de fabricación en Centro 2000.
               </p>
 
-              {/* Filtros */}
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                {/* Línea multi-select */}
                 <div className="flex items-center gap-2 relative" ref={fLineaDropdownRef}>
                   <label className="text-xs font-medium text-amber-800">Línea:</label>
                   <button
@@ -384,7 +337,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
                     </div>
                   )}
                 </div>
-                {/* Responsable multi-select */}
                 <div className="flex items-center gap-2 relative" ref={fRespDropdownRef}>
                   <label className="text-xs font-medium text-amber-800">Responsable:</label>
                   <button
@@ -420,7 +372,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
                     </div>
                   )}
                 </div>
-                {/* Sector multi-select */}
                 <div className="flex items-center gap-2 relative" ref={fSectorDropdownRef}>
                   <label className="text-xs font-medium text-amber-800">Sector:</label>
                   <button
@@ -456,7 +407,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
                     </div>
                   )}
                 </div>
-                {/* Búsqueda */}
                 <div className="flex items-center gap-2">
                   <input
                     type="search"
@@ -466,7 +416,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
                     className="border border-amber-300 px-2 py-1 rounded text-xs bg-white w-52 focus:ring-2 focus:ring-amber-400"
                   />
                 </div>
-                {/* Contador */}
                 <span className="text-xs text-amber-700">{fFiltrados.length} de {dataF.length} registros</span>
               </div>
 
