@@ -135,13 +135,19 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         mapa[key] = { necesidades: 0, count: 0, mes, linea };
       }
       
-      const necesidad = computeNecesidadesLocal(row);
-      mapa[key].necesidades += necesidad;
+      // Lógica de corrección: Sólo sumar necesidades si el material se produce en este centro
+      const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      const seProduceAqui = isCentro1000 || !esClaseF;
+
+      if (seProduceAqui) {
+        const necesidad = computeNecesidadesLocal(row);
+        mapa[key].necesidades += necesidad;
+      }
       mapa[key].count += 1;
     });
     
     return mapa;
-  }, [datos, trasladosMap]);
+  }, [datos, trasladosMap, isCentro1000]);
 
   // Función para normalizar nombres de líneas para comparación
   const normalizarLinea = (linea: string): string => {
@@ -170,7 +176,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     if (registrosLinea.length === 0 && centroCodigo !== '') {
       registrosLinea = tiempoCanon.data.filter((item: any) => {
         const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
-        return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
+        return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || nombreLinea.includes(nombreLinea);
       });
     }
 
@@ -247,7 +253,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
     const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
 
-    sumaTiempoNecPorLinea[key] = (sumaTiempoNecPorLinea[key] || 0) + tiempoTotalNecesidad;
+    // Lógica de corrección: Sólo sumar tiempo de necesidad para materiales producidos aquí
+    const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+    const seProduceAqui = isCentro1000 || !esClaseF;
+
+    if (seProduceAqui) {
+      sumaTiempoNecPorLinea[key] = (sumaTiempoNecPorLinea[key] || 0) + tiempoTotalNecesidad;
+    }
 
     if (tiempoDispGlobalPorLinea[key] === undefined) {
       const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella, row.Centro);
@@ -274,18 +286,25 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const key = `${mes}|${linea}`;
     const necesidad = computeNecesidadesLocal(row);
     
-    const mapaLinea = mapaAgrupamiento[key];
-    const sumaNecesidadesEnLinea = mapaLinea?.necesidades ?? necesidad;
-    
-    const participacionIndividual = sumaNecesidadesEnLinea > 0 
-      ? (necesidad / sumaNecesidadesEnLinea) * 100 
-      : 0;
+    // Lógica para determinar si el material se produce localmente
+    const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+    const seProduceAqui = isCentro1000 || !esClaseF;
+
+    let participacionIndividual = 0;
+    if (seProduceAqui) {
+      const mapaLinea = mapaAgrupamiento[key];
+      const sumaNecesidadesEnLinea = mapaLinea?.necesidades ?? necesidad;
+      participacionIndividual = sumaNecesidadesEnLinea > 0 
+        ? (necesidad / sumaNecesidadesEnLinea) * 100 
+        : 0;
+    }
     
     const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
     const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
     const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
     
-    const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
+    // Si no se produce aquí, no tiene tiempo total de necesidad para el pool de la línea
+    const tiempoTotalNecesidad = seProduceAqui ? tiempoUnitarioPorPuesto * necesidad : 0;
     const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella, row.Centro);
     
     let necesidadMaximaAFabricar = 0;
@@ -295,11 +314,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     let minutosDisponiblesJornadaNormal = 0;
     let necesidadMaximaProducirJornadaNormal = 0;
     
-    // Lógica para determinar si el material se produce localmente
-    const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
-    const noProduceAqui = esClaseF && !isCentro1000;
-
-    if (forzarTrasladoTotal || noProduceAqui) {
+    // Si no produce aquí (Clase F en C2000), forzamos a 0
+    if (forzarTrasladoTotal || !seProduceAqui) {
       necesidadMaximaAFabricar = 0;
       tMaxProm = 0;
       horasExtrasUsadas = 0;
@@ -338,7 +354,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     }
     
     const deficitJornadaNormal = Math.max(0, necesidad - necesidadMaximaProducirJornadaNormal);
-    const tiempoTotalNecesidadDeficitJN = deficitJornadaNormal * tiempoUnitarioPorPuesto;
+    const tiempoTotalNecesidadDeficitJN = seProduceAqui ? (deficitJornadaNormal * tiempoUnitarioPorPuesto) : 0;
     
     return {
       ...row,
@@ -367,16 +383,25 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const sumaTiempoNecDeficitJNPorLinea: { [k: string]: number } = {};
     enriquecidos.forEach(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
-      sumaDeficitJNPorLinea[key] = (sumaDeficitJNPorLinea[key] || 0) + (row.deficitJornadaNormal ?? 0);
-      sumaTiempoNecDeficitJNPorLinea[key] = (sumaTiempoNecDeficitJNPorLinea[key] || 0) + (row.tiempoTotalNecesidadDeficitJN ?? 0);
+      // Sólo sumar si se produce aquí para no alterar los cálculos de participación de E/X
+      const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      const seProduceAqui = isCentro1000 || !esClaseF;
+
+      if (seProduceAqui) {
+        sumaDeficitJNPorLinea[key] = (sumaDeficitJNPorLinea[key] || 0) + (row.deficitJornadaNormal ?? 0);
+        sumaTiempoNecDeficitJNPorLinea[key] = (sumaTiempoNecDeficitJNPorLinea[key] || 0) + (row.tiempoTotalNecesidadDeficitJN ?? 0);
+      }
     });
     
     const conSeccion2 = enriquecidos.map(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
+      const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      const seProduceAqui = isCentro1000 || !esClaseF;
+
       const sumaDeficitJNLinea = sumaDeficitJNPorLinea[key] || 0;
       const poolHE = poolMinutosHEPorLinea[key] || 0;
       
-      const participacionDeficitJN = sumaDeficitJNLinea > 0
+      const participacionDeficitJN = (seProduceAqui && sumaDeficitJNLinea > 0)
         ? (row.deficitJornadaNormal / sumaDeficitJNLinea) * 100
         : 0;
       
@@ -385,16 +410,18 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       let necesidadMaximaProducirHorasExtras = 0;
       const sumaTiempoNecDeficitJNLinea = sumaTiempoNecDeficitJNPorLinea[key] || 0;
 
-      if (sumaTiempoNecDeficitJNLinea <= poolHE && sumaTiempoNecDeficitJNLinea > 0) {
-        necesidadMaximaProducirHorasExtras = row.deficitJornadaNormal;
-      } else if (sumaTiempoNecDeficitJNLinea > poolHE) {
-        necesidadMaximaProducirHorasExtras = Math.min(row.deficitJornadaNormal, row.tiempoUnitarioPorPuesto > 0
-          ? Math.floor(minutosDisponiblesHorasExtras / row.tiempoUnitarioPorPuesto)
-          : 0);
+      if (seProduceAqui) {
+        if (sumaTiempoNecDeficitJNLinea <= poolHE && sumaTiempoNecDeficitJNLinea > 0) {
+          necesidadMaximaProducirHorasExtras = row.deficitJornadaNormal;
+        } else if (sumaTiempoNecDeficitJNLinea > poolHE) {
+          necesidadMaximaProducirHorasExtras = Math.min(row.deficitJornadaNormal, row.tiempoUnitarioPorPuesto > 0
+            ? Math.floor(minutosDisponiblesHorasExtras / row.tiempoUnitarioPorPuesto)
+            : 0);
+        }
       }
       
       const deficitHorasExtras = Math.max(0, row.deficitJornadaNormal - necesidadMaximaProducirHorasExtras);
-      const tiempoTotalNecesidadDeficitHE = deficitHorasExtras * (row.tiempoUnitarioPorPuesto ?? 0);
+      const tiempoTotalNecesidadDeficitHE = seProduceAqui ? (deficitHorasExtras * (row.tiempoUnitarioPorPuesto ?? 0)) : 0;
       
       return {
         ...row,
@@ -410,16 +437,24 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const sumaTiempoNecDeficitHEPorLinea: { [k: string]: number } = {};
     conSeccion2.forEach(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
-      sumaDeficitHEPorLinea[key] = (sumaDeficitHEPorLinea[key] || 0) + (row.deficitHorasExtras ?? 0);
-      sumaTiempoNecDeficitHEPorLinea[key] = (sumaTiempoNecDeficitHEPorLinea[key] || 0) + (row.tiempoTotalNecesidadDeficitHE ?? 0);
+      const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      const seProduceAqui = isCentro1000 || !esClaseF;
+
+      if (seProduceAqui) {
+        sumaDeficitHEPorLinea[key] = (sumaDeficitHEPorLinea[key] || 0) + (row.deficitHorasExtras ?? 0);
+        sumaTiempoNecDeficitHEPorLinea[key] = (sumaTiempoNecDeficitHEPorLinea[key] || 0) + (row.tiempoTotalNecesidadDeficitHE ?? 0);
+      }
     });
     
     return conSeccion2.map(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
+      const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      const seProduceAqui = isCentro1000 || !esClaseF;
+
       const sumaDeficitHELinea = sumaDeficitHEPorLinea[key] || 0;
       const poolSab = poolMinutosSabadosPorLinea[key] || 0;
       
-      const participacionDeficitHE = sumaDeficitHELinea > 0
+      const participacionDeficitHE = (seProduceAqui && sumaDeficitHELinea > 0)
         ? (row.deficitHorasExtras / sumaDeficitHELinea) * 100
         : 0;
       
@@ -428,12 +463,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       let necesidadMaximaProducirSabados = 0;
       const sumaTiempoNecDeficitHELinea = sumaTiempoNecDeficitHEPorLinea[key] || 0;
 
-      if (sumaTiempoNecDeficitHELinea <= poolSab && sumaTiempoNecDeficitHELinea > 0) {
-        necesidadMaximaProducirSabados = row.deficitHorasExtras;
-      } else if (sumaTiempoNecDeficitHELinea > poolSab) {
-        necesidadMaximaProducirSabados = Math.min(row.deficitHorasExtras, row.tiempoUnitarioPorPuesto > 0
-          ? Math.floor(minutosDisponiblesSabados / row.tiempoUnitarioPorPuesto)
-          : 0);
+      if (seProduceAqui) {
+        if (sumaTiempoNecDeficitHELinea <= poolSab && sumaTiempoNecDeficitHELinea > 0) {
+          necesidadMaximaProducirSabados = row.deficitHorasExtras;
+        } else if (sumaTiempoNecDeficitHELinea > poolSab) {
+          necesidadMaximaProducirSabados = Math.min(row.deficitHorasExtras, row.tiempoUnitarioPorPuesto > 0
+            ? Math.floor(minutosDisponiblesSabados / row.tiempoUnitarioPorPuesto)
+            : 0);
+        }
       }
       
       const totalFabricable = (row.necesidadMaximaProducirJornadaNormal ?? 0) + 
@@ -448,7 +485,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         necesidadMaximaAFabricar: totalFabricable,
       };
     });
-  }, [datos, trasladosMap]);
+  }, [datos, trasladosMap, isCentro1000]);
 
   const datosEnriquecidos = useMemo(() => {
     if (forzarTrasladoTotal) return datosEnriquecidosBase;
@@ -471,11 +508,16 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const deficitPorLinea: { [key: string]: number } = {};
     datosEnriquecidosBase.forEach(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
-      const nec = computeNecesidadesLocal(row);
-      const fab = safeNumber(row.necesidadMaximaAFabricar ?? 0);
-      if (nec > fab) {
-        const tupp = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
-        deficitPorLinea[key] = (deficitPorLinea[key] || 0) + (nec - fab) * tupp;
+      const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      const seProduceAqui = isCentro1000 || !esClaseF;
+
+      if (seProduceAqui) {
+        const nec = computeNecesidadesLocal(row);
+        const fab = safeNumber(row.necesidadMaximaAFabricar ?? 0);
+        if (nec > fab) {
+          const tupp = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
+          deficitPorLinea[key] = (deficitPorLinea[key] || 0) + (nec - fab) * tupp;
+        }
       }
     });
 
@@ -502,6 +544,11 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const extras = extrasParaLinea[key];
       if (!extras || extras.minutosAdicionales === 0) return row;
 
+      const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      const seProduceAqui = isCentro1000 || !esClaseF;
+
+      if (!seProduceAqui) return row;
+
       const necesidad = computeNecesidadesLocal(row);
       const fabricadoActual = safeNumber(row.necesidadMaximaAFabricar ?? 0);
       const participacion = safeNumber(row.participacionIndividual ?? 0);
@@ -525,7 +572,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         horasExtrasTotalLinea: extras.horasConsumidas.toFixed(1)
       };
     });
-  }, [datosEnriquecidosBase, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, tiemposCanon]);
+  }, [datosEnriquecidosBase, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, tiemposCanon, isCentro1000]);
 
   const filasCalculadas = useMemo(() =>
     datosEnriquecidos.map((row: any) => {
