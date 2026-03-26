@@ -191,8 +191,8 @@ export default function ImportarVentasPage() {
     { id: 2, label: 'Datos Backend', color: 'blue' },
     { id: 3, label: 'Identificación de Cuellos de Botella', color: 'red' },
     { id: 4, label: 'Análisis Centro 2000', color: 'blue' },
-    { id: 7, label: 'Resumen MensualC2000', color: 'indigo' },
     { id: 5, label: 'Análisis Centro 1000', color: 'teal' },
+    { id: 7, label: 'Resumen MensualC2000', color: 'indigo' },
     { id: 6, label: 'Bottleneck por Material', color: 'indigo' }
   ];
 
