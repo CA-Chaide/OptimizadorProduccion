@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { MONTH_NAMES } from './constants';
 import { safeNumber, computeNecesidades, exportToXLSX } from './utils';
-import { TiempoCanonResult, TransferNeed } from './types';
+import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
 
 // Helpers para computar extras en memoria (sin localStorage)
 function computarDetalleConsumoInMemoria(tc: TiempoCanonResult, minutosConsumir: number, maxExtrasHoras: number, horasExtrasFin: number): string {
@@ -30,25 +30,10 @@ function computarDetalleConsumoInMemoria(tc: TiempoCanonResult, minutosConsumir:
   return partes.join(', ') || '-';
 }
 
-// Defaults estables: evitan que cada render cree nuevas referencias → rompe ciclos de re-render
+// Defaults estables
 const EMPTY_TRANSFERS: TransferNeed[] = [];
+const EMPTY_VIABLE_TRANSFERS: ViableTransfer[] = [];
 const EMPTY_CONSUMED: { [mesLinea: string]: number } = {};
-
-interface BottleneckClassTableProps {
-  datos: any[];
-  datosCompletos: any[];
-  titulo: string;
-  tiemposCanon: TiempoCanonResult[];
-  tiempoConsumidoAnterior?: { [mesLinea: string]: number };
-  onTransferNeedsCalculated?: (transferNeeds: TransferNeed[]) => void;
-  onExportSheetReady?: (rows: any[]) => void;
-  onComputedDataReady?: (rows: any[]) => void;
-  forzarTrasladoTotal?: boolean;
-  maxExtrasHoras?: number;
-  horasExtrasFin?: number;
-  trasladosDesdeCentro2000?: TransferNeed[];
-  isCentro1000?: boolean;
-}
 
 export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({ 
   datos, 
@@ -63,7 +48,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
   maxExtrasHoras = 2,
   horasExtrasFin = 2,
   trasladosDesdeCentro2000 = EMPTY_TRANSFERS,
-  isCentro1000 = false
+  isCentro1000 = false,
+  trasladosViables = EMPTY_VIABLE_TRANSFERS
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedLinea, setSelectedLinea] = useState<string>('');
@@ -102,6 +88,16 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     });
     return map;
   }, [trasladosDesdeCentro2000]);
+
+  // Mapa de traslados viables recibidos (desde Quito para el Resumen C2000)
+  const viableTransfersMap = useMemo(() => {
+    const map = new Map<string, number>();
+    trasladosViables.forEach(item => {
+      const key = `${item.CodMaterial}|${item.mes}`;
+      map.set(key, (map.get(key) || 0) + item.cantidad);
+    });
+    return map;
+  }, [trasladosViables]);
 
   const computeNecesidadesLocal = (row: any) => {
     const unidadesProy = safeNumber(row.UnidadesProyectado ?? 0);
@@ -170,7 +166,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const lineaNorm = normalizarLinea(linea);
     const centroCodigo = String(centro).trim();
     
-    // Primero filtrar por línea Y centro
     let registrosLinea = tiempoCanon.data.filter((item: any) => {
       const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
       const itemCentro = String(item?.centro ?? item?.Centro ?? '');
@@ -179,7 +174,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       return lineaMatches && centroMatches;
     });
     
-    // Si no encontramos registros CON centro específico, intentar sin el filtro de centro
     if (registrosLinea.length === 0 && centroCodigo !== '') {
       registrosLinea = tiempoCanon.data.filter((item: any) => {
         const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
@@ -187,7 +181,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       });
     }
 
-    // Si no encontramos registros de la línea, intentar buscar por puesto en todos los datos
     if (registrosLinea.length === 0) {
       if (puestoTrabajo && puestoTrabajo !== '-' && puestoTrabajo !== '') {
         const pn = String(puestoTrabajo).toLowerCase().trim();
@@ -209,7 +202,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       return null;
     }
 
-    // Contar frecuencia de estaciones en los registros de la línea
     const estacionesMap = new Map<string, any>();
     registrosLinea.forEach((dato: any) => {
       const nombreEstacion = String(dato?.nombre_estacion ?? '-');
@@ -223,7 +215,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       current.count += 1;
     });
 
-    // Encontrar estación con mayor frecuencia (cuello de botella)
     let maxFrequencia = 0;
     let puestoBotellaDato: any = null;
     estacionesMap.forEach(({ count, dato }) => {
@@ -260,7 +251,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
     const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
 
-    // Lógica de corrección: Sólo sumar tiempo de necesidad para materiales producidos aquí
     const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
     const seProduceAqui = isCentro1000 || !esClaseF;
 
@@ -293,7 +283,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const key = `${mes}|${linea}`;
     const necesidad = computeNecesidadesLocal(row);
     
-    // Lógica para determinar si el material se produce localmente
     const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
     const seProduceAqui = isCentro1000 || !esClaseF;
 
@@ -310,7 +299,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
     const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
     
-    // Si no se produce aquí, no tiene tiempo total de necesidad para el pool de la línea
     const tiempoTotalNecesidad = seProduceAqui ? tiempoUnitarioPorPuesto * necesidad : 0;
     const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella, row.Centro);
     
@@ -321,7 +309,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     let minutosDisponiblesJornadaNormal = 0;
     let necesidadMaximaProducirJornadaNormal = 0;
     
-    // Si no produce aquí (Clase F en C2000), forzamos a 0
     if (forzarTrasladoTotal || !seProduceAqui) {
       necesidadMaximaAFabricar = 0;
       tMaxProm = 0;
@@ -363,6 +350,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const deficitJornadaNormal = Math.max(0, necesidad - necesidadMaximaProducirJornadaNormal);
     const tiempoTotalNecesidadDeficitJN = seProduceAqui ? (deficitJornadaNormal * tiempoUnitarioPorPuesto) : 0;
     
+    // Buscar traslados viables (si aplica)
+    const _trasladosViablesARecibir = !isCentro1000 ? (viableTransfersMap.get(`${row.CodMaterial}|${mes}`) || 0) : 0;
+
     return {
       ...row,
       _necesidad: necesidad,
@@ -376,6 +366,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       tiempoParaMaterial,
       tMaxProm,
       necesidadMaximaAFabricar,
+      _trasladosViablesARecibir,
       horasExtrasUsadas: '0.00',
       horasExtrasDetalle: '-',
       mesRef: mes,
@@ -390,7 +381,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const sumaTiempoNecDeficitJNPorLinea: { [k: string]: number } = {};
     enriquecidos.forEach(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
-      // Sólo sumar si se produce aquí para no alterar los cálculos de participación de E/X
       const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
       const seProduceAqui = isCentro1000 || !esClaseF;
 
@@ -492,7 +482,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         necesidadMaximaAFabricar: totalFabricable,
       };
     });
-  }, [datos, trasladosMap, isCentro1000]);
+  }, [datos, trasladosMap, isCentro1000, viableTransfersMap]);
 
   const datosEnriquecidos = useMemo(() => {
     if (forzarTrasladoTotal) return datosEnriquecidosBase;
@@ -520,10 +510,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
 
       if (seProduceAqui) {
         const nec = computeNecesidadesLocal(row);
-        const fab = safeNumber(row.necesidadMaximaAFabricar ?? 0);
-        if (nec > fab) {
+        const fabricadoActual = safeNumber(row.necesidadMaximaAFabricar ?? 0);
+        if (nec > fabricadoActual) {
           const tupp = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
-          deficitPorLinea[key] = (deficitPorLinea[key] || 0) + (nec - fab) * tupp;
+          deficitPorLinea[key] = (deficitPorLinea[key] || 0) + (nec - fabricadoActual) * tupp;
         }
       }
     });
@@ -742,7 +732,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       '[SAB] MIN.DISP': safeNumber(row.minutosDisponiblesSabados ?? 0),
       '[SAB] MAX.PRODUCIR': safeNumber(row.necesidadMaximaProducirSabados ?? 0),
       '[RES] Prod.Viable': row._prodViable,
-      ...(isCentro1000 ? { '[RES] Fracción C.2000': row._envioC2000, '[RES] Fracción C.1000': row._quedaC1000 } : {}),
+      ...(isCentro1000 ? { '[RES] Fracción C.2000': row._envioC2000, '[RES] Fracción C.1000': row._quedaC1000 } : { 'Traslados viables a recibir': row._trasladosViablesARecibir }),
       '[RES] Deficit General': row._deficitGeneral,
     });
 
@@ -774,7 +764,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         '[SAB] MIN.DISP': sum(filasLinea, 'minutosDisponiblesSabados'),
         '[SAB] MAX.PRODUCIR': sum(filasLinea, 'necesidadMaximaProducirSabados'),
         '[RES] Prod.Viable': prodViableSub,
-        ...(isCentro1000 ? { '[RES] Fracción C.2000': sum(filasLinea, '_envioC2000'), '[RES] Fracción C.1000': sum(filasLinea, '_quedaC1000') } : {}),
+        ...(isCentro1000 ? { '[RES] Fracción C.2000': sum(filasLinea, '_envioC2000'), '[RES] Fracción C.1000': sum(filasLinea, '_quedaC1000') } : { 'Traslados viables a recibir': sum(filasLinea, '_trasladosViablesARecibir') }),
         '[RES] Deficit General': Math.max(0, totalNec - prodViableSub),
       });
     });
@@ -804,7 +794,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       '[SAB] MIN.DISP': sum(datosFiltrados, 'minutosDisponiblesSabados'),
       '[SAB] MAX.PRODUCIR': sum(datosFiltrados, 'necesidadMaximaProducirSabados'),
       '[RES] Prod.Viable': prodViableGlobal,
-      ...(isCentro1000 ? { '[RES] Fracción C.2000': sum(datosFiltrados, '_envioC2000'), '[RES] Fracción C.1000': sum(datosFiltrados, '_quedaC1000') } : {}),
+      ...(isCentro1000 ? { '[RES] Fracción C.2000': sum(datosFiltrados, '_envioC2000'), '[RES] Fracción C.1000': sum(datosFiltrados, '_quedaC1000') } : { 'Traslados viables a recibir': sum(datosFiltrados, '_trasladosViablesARecibir') }),
       '[RES] Deficit General': Math.max(0, totalNecGlobal - prodViableGlobal),
     });
 
@@ -1032,7 +1022,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th colSpan={5} className="px-3 py-2 text-center text-xs font-bold text-blue-700 uppercase bg-blue-50 border-r-2 border-blue-300">Sección Jornada Normal</th>
               <th colSpan={5} className="px-3 py-2 text-center text-xs font-bold text-green-700 uppercase bg-green-50 border-r-2 border-green-300">Sección Horas Extras (L-V)</th>
               <th colSpan={5} className="px-3 py-2 text-center text-xs font-bold text-orange-700 uppercase bg-orange-50 border-r-2 border-orange-300">Sección Sábados</th>
-              <th colSpan={isCentro1000 ? 4 : 2} className="px-3 py-2 text-center text-xs font-bold text-purple-700 uppercase bg-purple-50">Resultados Consolidados</th>
+              <th colSpan={isCentro1000 ? 4 : 3} className="px-3 py-2 text-center text-xs font-bold text-purple-700 uppercase bg-purple-50">Resultados Consolidados</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Clase</th>
@@ -1063,8 +1053,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th className="px-2 py-2 text-right text-xs font-semibold text-orange-600 uppercase">Min.Disp. Sáb</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-orange-700 uppercase border-r-2 border-orange-300">Máx.Producir Sáb</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-purple-600 uppercase">Prod.Viable (S1+S2+S3)</th>
-              {isCentro1000 && <th className="px-2 py-2 text-right text-xs font-semibold text-teal-600 uppercase">Fracción C.2000</th>}
-              {isCentro1000 && <th className="px-2 py-2 text-right text-xs font-semibold text-cyan-600 uppercase">Fracción C.1000</th>}
+              {isCentro1000 ? (
+                <>
+                  <th className="px-2 py-2 text-right text-xs font-semibold text-teal-600 uppercase">Fracción C.2000</th>
+                  <th className="px-2 py-2 text-right text-xs font-semibold text-cyan-600 uppercase">Fracción C.1000</th>
+                </>
+              ) : (
+                <th className="px-2 py-2 text-right text-xs font-semibold text-teal-600 uppercase">Traslados viables a recibir</th>
+              )}
               <th className="px-2 py-2 text-right text-xs font-semibold text-purple-600 uppercase">Déficit General</th>
             </tr>
           </thead>
@@ -1072,7 +1068,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
             {lineasOrdenadas.map((linea) => (
               <React.Fragment key={linea}>
                 <tr className="bg-blue-50">
-                  <td colSpan={isCentro1000 ? 31 : 29} className="px-4 py-2 font-semibold text-blue-800 text-sm">
+                  <td colSpan={isCentro1000 ? 31 : 30} className="px-4 py-2 font-semibold text-blue-800 text-sm">
                     <span className="inline-flex items-center">
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -1148,14 +1144,18 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                       <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">
                         {row._prodViable.toLocaleString()}
                       </td>
-                      {isCentro1000 && (
+                      {isCentro1000 ? (
+                        <>
+                          <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">
+                            {row._envioC2000.toLocaleString()}
+                          </td>
+                          <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">
+                            {row._quedaC1000.toLocaleString()}
+                          </td>
+                        </>
+                      ) : (
                         <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">
-                          {row._envioC2000.toLocaleString()}
-                        </td>
-                      )}
-                      {isCentro1000 && (
-                        <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">
-                          {row._quedaC1000.toLocaleString()}
+                          {row._trasladosViablesARecibir.toLocaleString()}
                         </td>
                       )}
                       <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${row._deficitGeneral > 0 ? 'text-red-700' : 'text-green-700'}`}>
@@ -1194,12 +1194,19 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                         const prodViableSub = f('necesidadMaximaProducirJornadaNormal') + f('necesidadMaximaProducirHorasExtras') + f('necesidadMaximaProducirSabados');
                         const envioC2000Sub = f('_envioC2000');
                         const quedaC1000Sub = f('_quedaC1000');
+                        const trasladosRecibidosSub = f('_trasladosViablesARecibir');
                         const deficitGralSub = Math.max(0, totalNecesidades - prodViableSub);
                         return (
                           <>
                             <td className="px-2 py-2 text-sm text-right font-mono text-purple-800 font-semibold">{prodViableSub.toLocaleString()}</td>
-                            {isCentro1000 && <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{envioC2000Sub.toLocaleString()}</td>}
-                            {isCentro1000 && <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">{quedaC1000Sub.toLocaleString()}</td>}
+                            {isCentro1000 ? (
+                              <>
+                                <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{envioC2000Sub.toLocaleString()}</td>
+                                <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">{quedaC1000Sub.toLocaleString()}</td>
+                              </>
+                            ) : (
+                              <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{trasladosRecibidosSub.toLocaleString()}</td>
+                            )}
                             <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${deficitGralSub > 0 ? 'text-red-700' : 'text-green-700'}`}>{deficitGralSub.toLocaleString()}</td>
                           </>
                         );
@@ -1240,12 +1247,19 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                     const prodViableTotal = g('necesidadMaximaProducirJornadaNormal') + g('necesidadMaximaProducirHorasExtras') + g('necesidadMaximaProducirSabados');
                     const envioC2000Total = g('_envioC2000');
                     const quedaC1000Total = g('_quedaC1000');
+                    const trasladosViablesTotal = g('_trasladosViablesARecibir');
                     const deficitGralTotal = Math.max(0, totalNecesidadesGlobal - prodViableTotal);
                     return (
                       <>
                         <td className="px-2 py-3 text-sm text-right font-mono font-bold text-purple-300">{prodViableTotal.toLocaleString()}</td>
-                        {isCentro1000 && <td className="px-2 py-3 text-sm text-right font-mono font-bold text-teal-300">{envioC2000Total.toLocaleString()}</td>}
-                        {isCentro1000 && <td className="px-2 py-3 text-sm text-right font-mono font-bold text-cyan-300">{quedaC1000Total.toLocaleString()}</td>}
+                        {isCentro1000 ? (
+                          <>
+                            <td className="px-2 py-3 text-sm text-right font-mono font-bold text-teal-300">{envioC2000Total.toLocaleString()}</td>
+                            <td className="px-2 py-3 text-sm text-right font-mono font-bold text-cyan-300">{quedaC1000Total.toLocaleString()}</td>
+                          </>
+                        ) : (
+                          <td className="px-2 py-3 text-sm text-right font-mono font-bold text-teal-300">{trasladosViablesTotal.toLocaleString()}</td>
+                        )}
                         <td className={`px-2 py-3 text-sm text-right font-mono font-bold ${deficitGralTotal > 0 ? 'text-red-300' : 'text-green-300'}`}>{deficitGralTotal.toLocaleString()}</td>
                       </>
                     );

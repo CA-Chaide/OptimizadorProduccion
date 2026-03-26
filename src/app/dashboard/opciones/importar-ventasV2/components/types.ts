@@ -33,6 +33,12 @@ export interface TransferNeed {
   necesidadTraslado: number;
 }
 
+export interface ViableTransfer {
+  CodMaterial: string;
+  mes: string;
+  cantidad: number;
+}
+
 export interface RawBackendDataTableProps {
   año: string;
   meses: string[];
@@ -56,11 +62,14 @@ export interface TimesCanonSectionProps {
 export interface BottleneckSummaryTableProps {
   datosEnriquecidosE: any[];
   datosEnriquecidosX: any[];
+  datosCalculados?: any[];
   tiemposCanon: TiempoCanonResult[];
   numMaximoSabados: number;
   maxExtrasHoras: number;
   horasTrabajo: number;
   horasExtrasFin: number;
+  centroLabel?: string;
+  isCentro1000?: boolean;
 }
 
 export interface BottleneckClassTableProps {
@@ -70,6 +79,14 @@ export interface BottleneckClassTableProps {
   tiemposCanon: TiempoCanonResult[];
   tiempoConsumidoAnterior?: { [mesLinea: string]: number };
   onTransferNeedsCalculated?: (transferNeeds: TransferNeed[]) => void;
+  onExportSheetReady?: (rows: any[]) => void;
+  onComputedDataReady?: (rows: any[]) => void;
+  forzarTrasladoTotal?: boolean;
+  maxExtrasHoras?: number;
+  horasExtrasFin?: number;
+  trasladosDesdeCentro2000?: TransferNeed[];
+  isCentro1000?: boolean;
+  trasladosViables?: ViableTransfer[];
 }
 
 export interface BottleneckAnalysisSectionProps {
@@ -105,6 +122,7 @@ export interface BottleneckAnalysisSectionCentro1000Props {
   horasTrabajo: number;
   horasExtrasFin: number;
   trasladosDesdeCentro2000: TransferNeed[];
+  onComputedDataReady?: (data: any[]) => void;
 }
 
 export interface MultiSelectDropdownProps {

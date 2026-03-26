@@ -1,21 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MONTH_NAMES } from './constants';
 import { safeNumber, exportToXLSX } from './utils';
-import { TiempoCanonResult, TransferNeed } from './types';
+import { TiempoCanonResult, TransferNeed, BottleneckAnalysisSectionCentro1000Props } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
-
-interface BottleneckAnalysisSectionCentro1000Props {
-  data: any[];
-  tiemposCanon: TiempoCanonResult[];
-  numMaximoSabados: number;
-  maxExtrasHoras: number;
-  horasTrabajo: number;
-  horasExtrasFin: number;
-  trasladosDesdeCentro2000: TransferNeed[];
-}
 
 export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSectionCentro1000Props> = ({ 
   data, 
@@ -24,11 +14,19 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
   maxExtrasHoras, 
   horasTrabajo, 
   horasExtrasFin, 
-  trasladosDesdeCentro2000 
+  trasladosDesdeCentro2000,
+  onComputedDataReady
 }) => {
   // === HOOKS (antes de cualquier early return) ===
   const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
   const [computedDataC1000, setComputedDataC1000] = useState<any[]>([]);
+
+  // Notificar al padre cuando cambian los datos calculados (incluyendo Fracción C.2000)
+  useEffect(() => {
+    if (onComputedDataReady && computedDataC1000.length > 0) {
+      onComputedDataReady(computedDataC1000);
+    }
+  }, [computedDataC1000, onComputedDataReady]);
 
   // Mapa de traslados: déficit general de E/X + necesidad completa de F (desde Centro 2000)
   const trasladosMap = useMemo(() => {
