@@ -141,7 +141,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     });
     
     return mapa;
-  }, [datos]);
+  }, [datos, trasladosMap]);
 
   // Función para normalizar nombres de líneas para comparación
   const normalizarLinea = (linea: string): string => {
@@ -196,10 +196,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       return null;
     }
 
-    // Sumar todos los tiempos de las estaciones de esa línea
-    // NOTA: Esta lógica ha sido CORREGIDA (antes sumaba todos)
-    // Ahora: Identificar el puesto de botella (el que MÁS se repite) y usar SOLO su tiempo
-    
     // Contar frecuencia de estaciones en los registros de la línea
     const estacionesMap = new Map<string, any>();
     registrosLinea.forEach((dato: any) => {
@@ -224,39 +220,18 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       }
     });
 
-    // Si no encontramos puesto de botella, retornar null
-    if (!puestoBotellaDato) {
-      console.warn(`[obtenerTiempoDisponible] No se encontró puesto de botella para Línea: ${linea}, Mes: ${mes}`);
-      return null;
-    }
-
-    // Usar SOLO el tiempo del puesto de botella con minutos_horario_normal_TOTAL (mismo que BottleneckSummaryTable)
-    const minutos_horario_normal = safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0);
-    const minutos_con_extras = safeNumber(puestoBotellaDato?.minutos_extras_TOTAL ?? 0);
-    const minutos_fin_semana = safeNumber(puestoBotellaDato?.minutos_sabado_TOTAL ?? 0);
-    const minutos_horario_normal_total = safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0);
-
-    console.log(`[obtenerTiempoDisponible-CORREGIDO] Mes: ${mes}, Centro: ${centro}, Línea: ${linea}, Puesto Botella: ${puestoBotellaDato?.nombre_estacion}`, {
-      minutos_horario_normal,
-      minutos_con_extras,
-      minutos_fin_semana,
-      frecuencia: maxFrequencia,
-      totalEstacionesEnLinea: estacionesMap.size
-    });
+    if (!puestoBotellaDato) return null;
 
     return {
-      minutos_horario_normal,
-      minutos_con_extras,
-      minutos_fin_semana,
-      minutos_horario_normal_total,
+      minutos_horario_normal: safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0),
+      minutos_con_extras: safeNumber(puestoBotellaDato?.minutos_extras_TOTAL ?? 0),
+      minutos_fin_semana: safeNumber(puestoBotellaDato?.minutos_sabado_TOTAL ?? 0),
+      minutos_horario_normal_total: safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0),
       diasLaborables: tiempoCanon.diasLaborables,
       diasSabados: tiempoCanon.diasSabados
     };
   };
 
-  // Paso previo: calcular suma de T. Total Necesidad Inicial por (mes, línea)
-  // y obtener el T. Disponible global (minutos_horario_normal_TOTAL - consumo anterior) por (mes, línea)
-  // También inicializar suma de Deficit Jornada Normal por línea
   const sumaTiempoNecPorLinea: { [k: string]: number } = {};
   const tiempoDispGlobalPorLinea: { [k: string]: number } = {};
   const poolMinutosHEPorLinea: { [k: string]: number } = {};
@@ -286,7 +261,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const base = tiempoDisp?.minutos_horario_normal ?? 0;
       tiempoDispGlobalPorLinea[key] = Math.max(0, base - tiempoConsumidoPrevio);
 
-      // Pools de minutos para horas extras (L-V) y sábados
       const diasLab = tiempoDisp?.diasLaborables ?? 0;
       const diasSab = tiempoDisp?.diasSabados ?? 0;
       poolMinutosHEPorLinea[key] = diasLab * maxExtrasHoras * 60;
@@ -311,9 +285,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const numeroPuestos = safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
     const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
     
-    // T. Total necesidad inicial = (Tiempo Unitarío / Puestos) * Necesidades
     const tiempoTotalNecesidad = tiempoUnitarioPorPuesto * necesidad;
-    
     const tiempoDisp = obtenerTiempoDisponible(mes, linea, row.PuestoCuellodeBottella, row.Centro);
     
     let necesidadMaximaAFabricar = 0;
@@ -323,91 +295,54 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     let minutosDisponiblesJornadaNormal = 0;
     let necesidadMaximaProducirJornadaNormal = 0;
     
-    // Si forzarTrasladoTotal = true (ej. clase F), NO se fabrica nada: todo se traslada
-    if (forzarTrasladoTotal) {
+    // Lógica para determinar si el material se produce localmente
+    const esClaseF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+    const noProduceAqui = esClaseF && !isCentro1000;
+
+    if (forzarTrasladoTotal || noProduceAqui) {
       necesidadMaximaAFabricar = 0;
       tMaxProm = 0;
       horasExtrasUsadas = 0;
+      minutosDisponiblesJornadaNormal = 0;
+      necesidadMaximaProducirJornadaNormal = 0;
     } else if (tiempoDisp && tiempoPorUnidad > 0) {
-      // Obtener tiempo ya consumido por clases anteriores (ej: E consume antes que X)
-      // Intentar con múltiples formatos de key para matches
       let tiempoConsumidoPrevio = tiempoConsumidoAnterior[key] || 0;
       
-      // Si no encontramos con la key directa, buscar con el mes como número o nombre
       if (tiempoConsumidoPrevio === 0 && Object.keys(tiempoConsumidoAnterior).length > 0) {
         const mesNum = parseInt(mes);
         const mesNombre = !isNaN(mesNum) && MONTH_NAMES[mesNum] ? MONTH_NAMES[mesNum] : mes;
         const keyAlternativa1 = `${mesNombre}|${linea}`;
         const keyAlternativa2 = `${mesNum}|${linea}`;
-        
         tiempoConsumidoPrevio = tiempoConsumidoAnterior[keyAlternativa1] || 
                                 tiempoConsumidoAnterior[keyAlternativa2] || 0;
-        
-        console.log(`[BottleneckClassTable] Buscando tiempoConsumido:`, {
-          keyOriginal: key,
-          keyAlternativa1,
-          keyAlternativa2,
-          keysDisponibles: Object.keys(tiempoConsumidoAnterior),
-          tiempoConsumidoPrevio
-        });
       }
       
-      // T. DISPONIBLE = (minutos_horario_normal - tiempo_consumido_anterior) × (participación / 100)
       const tiempoMaxDisponibleBase = tiempoDisp.minutos_horario_normal;
       const tiempoMaxDisponibleReal = Math.max(0, tiempoMaxDisponibleBase - tiempoConsumidoPrevio);
       tiempoParaMaterial = (participacionIndividual / 100) * tiempoMaxDisponibleReal;
-      
-      // MINUTOS DISPONIBLES EN JORNADA NORMAL = participacion × minutos_horario_normal_TOTAL
       minutosDisponiblesJornadaNormal = (participacionIndividual / 100) * tiempoMaxDisponibleBase;
       
-      // REGLA GLOBAL (SIEMPRE SE APLICA): Comparar suma de T. Total Necesidad Inicial de TODA la línea vs T. Disponible base
       const sumaTiempoNecLinea = sumaTiempoNecPorLinea[key] || 0;
       
       if (sumaTiempoNecLinea <= tiempoMaxDisponibleBase) {
-        // Si el tiempo total de toda la línea cabe en el disponible => fabricar todo
         necesidadMaximaAFabricar = necesidad;
+        necesidadMaximaProducirJornadaNormal = necesidad;
       } else {
-        // Si no alcanza: fabrico proporcional a mi participación en la jornada normal
-        // TOPE: nunca producir más allá de la necesidad
         necesidadMaximaAFabricar = Math.min(necesidad, tiempoUnitarioPorPuesto > 0 
           ? Math.floor(minutosDisponiblesJornadaNormal / tiempoUnitarioPorPuesto) 
           : 0);
+        necesidadMaximaProducirJornadaNormal = necesidadMaximaAFabricar;
       }
       
-      // Reutilizar sumaTiempoNecLinea y tiempoMaxDisponibleBase para la segunda regla
-      if (sumaTiempoNecLinea <= tiempoMaxDisponibleBase) {
-        // Si hay suficiente tiempo: fabrico mi necesidad completa
-        necesidadMaximaProducirJornadaNormal = necesidad;
-      } else {
-        // Si NO hay suficiente: fabrico proporcional a mi participación
-        // TOPE: nunca producir más allá de la necesidad
-        necesidadMaximaProducirJornadaNormal = Math.min(necesidad, tiempoUnitarioPorPuesto > 0 
-          ? Math.floor(minutosDisponiblesJornadaNormal / tiempoUnitarioPorPuesto)
-          : 0);
-      }
-      
-      // Calcular Tiempo Requerido: (Tiempo Unitarío / Puestos) * (Necesidad Requerida)
       tMaxProm = tiempoUnitarioPorPuesto * necesidadMaximaAFabricar;
-      
-      // Usar el tiempo disponible REAL (descontando consumo anterior) para calcular extras
-      const tiempoNormalParaEsteMaterial = (participacionIndividual / 100) * tiempoMaxDisponibleReal;
-      const tiempoRealUsado = Math.min(necesidad, necesidadMaximaAFabricar) * tiempoPorUnidad;
-      
-      // Horas extras temporalmente deshabilitadas (se mantiene valor 0)
-      if (tiempoRealUsado > tiempoNormalParaEsteMaterial) {
-        horasExtrasUsadas = 0;
-      }
     }
     
-    // DEFICIT JORNADA NORMAL = Necesidades - Necesidad Máxima a Producir Jornada Normal
     const deficitJornadaNormal = Math.max(0, necesidad - necesidadMaximaProducirJornadaNormal);
-    
-    // T. TOTAL NECESIDAD DEL DEFICIT JN = deficit × tiempoUnitarioPorPuesto
     const tiempoTotalNecesidadDeficitJN = deficitJornadaNormal * tiempoUnitarioPorPuesto;
     
     return {
       ...row,
-      _necesidad: necesidad,          // almacenado una sola vez; evita recálculo en export
+      _necesidad: necesidad,
       participacionIndividual,
       tiempoTotalNecesidad,
       tiempoUnitarioPorPuesto,
@@ -425,12 +360,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     };
   };
 
-  // Sistema de 5 pasadas para calcular las 3 secciones
   const datosEnriquecidosBase = useMemo(() => {
-    // ===== PASADA 1: Sección 1 (Jornada Normal) =====
     const enriquecidos = datos.map(enriquecerFila);
     
-    // ===== PASADA 2: Sumar déficits JN y tiempos por línea =====
     const sumaDeficitJNPorLinea: { [k: string]: number } = {};
     const sumaTiempoNecDeficitJNPorLinea: { [k: string]: number } = {};
     enriquecidos.forEach(row => {
@@ -439,24 +371,20 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       sumaTiempoNecDeficitJNPorLinea[key] = (sumaTiempoNecDeficitJNPorLinea[key] || 0) + (row.tiempoTotalNecesidadDeficitJN ?? 0);
     });
     
-    // ===== PASADA 3: Sección 2 (Horas Extras L-V) =====
     const conSeccion2 = enriquecidos.map(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
       const sumaDeficitJNLinea = sumaDeficitJNPorLinea[key] || 0;
-      const sumaTiempoNecDeficitJNLinea = sumaTiempoNecDeficitJNPorLinea[key] || 0;
       const poolHE = poolMinutosHEPorLinea[key] || 0;
       
-      // Participación del déficit JN en la línea
       const participacionDeficitJN = sumaDeficitJNLinea > 0
         ? (row.deficitJornadaNormal / sumaDeficitJNLinea) * 100
         : 0;
       
-      // Minutos disponibles HE proporcionales a participación del déficit
       const minutosDisponiblesHorasExtras = (participacionDeficitJN / 100) * poolHE;
       
-      // Regla condicional: si el tiempo total de déficit cabe en el pool HE
-      // TOPE: nunca producir más allá del déficit de jornada normal
       let necesidadMaximaProducirHorasExtras = 0;
+      const sumaTiempoNecDeficitJNLinea = sumaTiempoNecDeficitJNPorLinea[key] || 0;
+
       if (sumaTiempoNecDeficitJNLinea <= poolHE && sumaTiempoNecDeficitJNLinea > 0) {
         necesidadMaximaProducirHorasExtras = row.deficitJornadaNormal;
       } else if (sumaTiempoNecDeficitJNLinea > poolHE) {
@@ -478,7 +406,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       };
     });
     
-    // ===== PASADA 4: Sumar déficits HE y tiempos por línea =====
     const sumaDeficitHEPorLinea: { [k: string]: number } = {};
     const sumaTiempoNecDeficitHEPorLinea: { [k: string]: number } = {};
     conSeccion2.forEach(row => {
@@ -487,24 +414,20 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       sumaTiempoNecDeficitHEPorLinea[key] = (sumaTiempoNecDeficitHEPorLinea[key] || 0) + (row.tiempoTotalNecesidadDeficitHE ?? 0);
     });
     
-    // ===== PASADA 5: Sección 3 (Sábados) =====
     return conSeccion2.map(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
       const sumaDeficitHELinea = sumaDeficitHEPorLinea[key] || 0;
-      const sumaTiempoNecDeficitHELinea = sumaTiempoNecDeficitHEPorLinea[key] || 0;
       const poolSab = poolMinutosSabadosPorLinea[key] || 0;
       
-      // Participación del déficit HE en la línea
       const participacionDeficitHE = sumaDeficitHELinea > 0
         ? (row.deficitHorasExtras / sumaDeficitHELinea) * 100
         : 0;
       
-      // Minutos disponibles sábados proporcionales a participación del déficit HE
       const minutosDisponiblesSabados = (participacionDeficitHE / 100) * poolSab;
       
-      // Regla condicional: si el tiempo total de déficit HE cabe en el pool de sábados
-      // TOPE: nunca producir más allá del déficit de horas extras
       let necesidadMaximaProducirSabados = 0;
+      const sumaTiempoNecDeficitHELinea = sumaTiempoNecDeficitHEPorLinea[key] || 0;
+
       if (sumaTiempoNecDeficitHELinea <= poolSab && sumaTiempoNecDeficitHELinea > 0) {
         necesidadMaximaProducirSabados = row.deficitHorasExtras;
       } else if (sumaTiempoNecDeficitHELinea > poolSab) {
@@ -513,7 +436,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
           : 0);
       }
       
-      // Actualizar necesidadMaximaAFabricar = JN + HE + Sábados (para traslados)
       const totalFabricable = (row.necesidadMaximaProducirJornadaNormal ?? 0) + 
                                (row.necesidadMaximaProducirHorasExtras ?? 0) + 
                                necesidadMaximaProducirSabados;
@@ -526,15 +448,11 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         necesidadMaximaAFabricar: totalFabricable,
       };
     });
-  }, [datos]);
+  }, [datos, trasladosMap]);
 
-  // Segunda pasada: aplicar horas extras por línea si hay déficit — COMPUTACIÓN EN MEMORIA (sin localStorage)
   const datosEnriquecidos = useMemo(() => {
-    if (forzarTrasladoTotal) {
-      return datosEnriquecidosBase; // Clase F no usa extras
-    }
+    if (forzarTrasladoTotal) return datosEnriquecidosBase;
 
-    // PASO 1: Construir pool disponible per mes|linea desde tiemposCanon
     const poolMinutos: { [key: string]: number } = {};
     const tcPorKey: { [key: string]: TiempoCanonResult } = {};
     datosEnriquecidosBase.forEach(row => {
@@ -550,7 +468,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       }
     });
 
-    // PASO 2: Déficit por mes|linea (minutos que faltan para cubrir necesidad)
     const deficitPorLinea: { [key: string]: number } = {};
     datosEnriquecidosBase.forEach(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
@@ -562,13 +479,11 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       }
     });
 
-    // PASO 3: Consumir del pool en incrementos de maxExtrasHoras*60 min hasta cubrir déficit o agotar pool
     const extrasParaLinea: { [key: string]: { minutosAdicionales: number; horasConsumidas: number; detalle: string } } = {};
     Object.entries(deficitPorLinea).forEach(([key, deficit]) => {
       const disponible = poolMinutos[key] || 0;
       if (disponible <= 0 || deficit <= 0) return;
 
-      // Consumir en incrementos de maxExtrasHoras horas (2h, 4h, 6h…)
       const incrementoMin = maxExtrasHoras * 60;
       let consumido = 0;
       while (consumido < deficit && consumido < disponible) {
@@ -579,16 +494,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
 
       const tc = tcPorKey[key];
       const detalle = tc ? computarDetalleConsumoInMemoria(tc, consumido, maxExtrasHoras, horasExtrasFin) : `${(consumido/60).toFixed(1)}h`;
-
       extrasParaLinea[key] = { minutosAdicionales: consumido, horasConsumidas: consumido / 60, detalle };
-      console.log(`[HorasExtras] ${key}: déficit ${deficit.toFixed(0)}min → +${consumido}min (${detalle})`);
     });
 
-    // PASO 4: Recalcular materiales con tiempo adicional
     return datosEnriquecidosBase.map(row => {
       const key = `${row.mesRef}|${row.lineaRef}`;
       const extras = extrasParaLinea[key];
-
       if (!extras || extras.minutosAdicionales === 0) return row;
 
       const necesidad = computeNecesidadesLocal(row);
@@ -597,11 +508,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const tupp = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
 
       if (necesidad <= fabricadoActual) {
-        // Ya fabricaba todo — solo anotar que la línea consumió extras
         return { ...row, horasExtrasDetalle: extras.detalle, horasExtrasTotalLinea: (extras.horasConsumidas).toFixed(1) };
       }
 
-      // Tiempo adicional proporcional a la participación del material en la línea
       const minutosAdicionalesMaterial = (participacion / 100) * extras.minutosAdicionales;
       const unidadesAdicionales = tupp > 0 ? Math.floor(minutosAdicionalesMaterial / tupp) : 0;
       const nuevaNecesidadMax = Math.min(necesidad, fabricadoActual + unidadesAdicionales);
@@ -618,8 +527,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     });
   }, [datosEnriquecidosBase, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, tiemposCanon]);
 
-  // Pasada final: estampa en cada fila los 5 valores derivados que tabla y export comparten.
-  // Calculados UNA sola vez; ni la tabla ni el export vuelven a recalcularlos.
   const filasCalculadas = useMemo(() =>
     datosEnriquecidos.map((row: any) => {
       const _traslado  = trasladosMap.get(String(row.CodMaterial ?? '')) || 0;
@@ -629,7 +536,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                         + safeNumber(row.necesidadMaximaProducirHorasExtras??0)
                         + safeNumber(row.necesidadMaximaProducirSabados??0);
       const _deficitGeneral = Math.max(0, _necesidad - _prodViable);
-      // Distribución proporcional de producción viable (solo aplica en Centro 1000)
       const _ratioTraslado = _necesidad > 0 ? _traslado / _necesidad : 0;
       const _ratioPropia   = _necesidad > 0 ? _necPropia / _necesidad : 0;
       const _envioC2000    = Math.round(_prodViable * _ratioTraslado);
@@ -639,7 +545,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     })
   , [datosEnriquecidos, trasladosMap]);
 
-  // Emitir filasCalculadas al padre para que el resumen use los valores reales
   const lastComputedJsonRef = useRef<string>('');
   useEffect(() => {
     if (!onComputedDataReady) return;
@@ -665,18 +570,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     onComputedDataReady(filasCalculadas);
   }, [filasCalculadas, onComputedDataReady]);
 
-  const lastDataLengthRef = useRef<number>(0);
   const lastTransferJsonRef = useRef<string>('');
-
   useEffect(() => {
     if (!onTransferNeedsCalculated) return;
-    lastDataLengthRef.current = datos.length;
-
-    // Sumar el déficit por (CodMaterial, Mes) — cada fila es un material en un mes específico.
-    // CORRECCIÓN: usar _deficitGeneral directamente (= _necesidad - _prodViable) que es
-    // exactamente lo que la tabla muestra como "Déficit General".
-    // Antes se usaba necesidadMaximaAFabricar que incluye una 2ª pasada legacy de extras
-    // que inflaba la capacidad → el traslado era menor que el déficit visible.
     const transferNeedsMapByMes = new Map<string, number>();
 
     filasCalculadas.forEach((row: any) => {
@@ -684,7 +580,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const mes = String(row.mesRef ?? row.Mes ?? '');
       const key = `${codMaterial}|${mes}`;
       const necesidadTraslado = safeNumber(row._deficitGeneral ?? 0);
-      // Tomar el máximo dentro del mismo (material, mes) para evitar duplicados
       if (necesidadTraslado > 0) {
         if (!transferNeedsMapByMes.has(key) || transferNeedsMapByMes.get(key)! < necesidadTraslado) {
           transferNeedsMapByMes.set(key, necesidadTraslado);
@@ -692,7 +587,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       }
     });
 
-    // Colapsar: sumar todos los meses por CodMaterial
     const transferNeedsMap = new Map<string, number>();
     transferNeedsMapByMes.forEach((value, key) => {
       const codMaterial = key.split('|')[0];
@@ -703,46 +597,31 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       .map(([CodMaterial, necesidadTraslado]) => ({ CodMaterial, necesidadTraslado }))
       .sort((a, b) => a.CodMaterial.localeCompare(b.CodMaterial));
 
-    // === LOG DIAGNÓSTICO: Traslados emitidos por esta clase ===
-    const totalTraslado = transferNeedsArray.reduce((s, r) => s + r.necesidadTraslado, 0);
-    console.log(`%c=== [TRASLADOS ${titulo}] ===`, 'color: #e67e22; font-weight: bold;');
-    console.log(`Materiales con d\u00e9ficit: ${transferNeedsArray.length} | Total unidades a trasladar: ${totalTraslado}`);
-    console.log('Detalle por CodMaterial|Mes (antes de colapsar):');
-    console.table(Array.from(transferNeedsMapByMes.entries()).map(([k, v]) => {
-      const [cod, mes] = k.split('|');
-      return { CodMaterial: cod, Mes: mes, TransferNeed: v };
-    }));
-    console.log('Resultado colapsado por material:');
-    console.table(transferNeedsArray.slice(0, 50));
-    if (transferNeedsArray.length > 50) console.log(`... y ${transferNeedsArray.length - 50} m\u00e1s`);
-
-    // Guard: solo notificar si realmente cambi\u00f3 (evita loops de re-render)
     const json = JSON.stringify(transferNeedsArray);
     if (json === lastTransferJsonRef.current) return;
     lastTransferJsonRef.current = json;
-
     onTransferNeedsCalculated(transferNeedsArray);
-  }, [filasCalculadas]);
+  }, [filasCalculadas, onTransferNeedsCalculated]);
 
   const lineasUnicas = useMemo(() =>
-    Array.from(new Set(datosEnriquecidos.map(r => String(r.lineaRef || r.LineaFabricacion || 'Sin línea').trim()))).sort()
-  , [datosEnriquecidos]);
+    Array.from(new Set(filasCalculadas.map(r => String(r.lineaRef || r.LineaFabricacion || 'Sin línea').trim()))).sort()
+  , [filasCalculadas]);
 
   const sectoresUnicos = useMemo(() => {
     const conNombre = Array.from(
-      new Set(datosEnriquecidos.map(r => String((r as any).Sector || '').trim()).filter(v => v !== ''))
+      new Set(filasCalculadas.map(r => String((r as any).Sector || '').trim()).filter(v => v !== ''))
     ).sort();
-    const haySinSector = datosEnriquecidos.some(r => !String((r as any).Sector || '').trim());
+    const haySinSector = filasCalculadas.some(r => !String((r as any).Sector || '').trim());
     return haySinSector ? [...conNombre, '(Sin sector)'] : conNombre;
-  }, [datosEnriquecidos]);
+  }, [filasCalculadas]);
 
   const respCtrlProdUnicos = useMemo(() => {
     const conNombre = Array.from(
-      new Set(datosEnriquecidos.map(r => String(r.NombRespControlProd || r.RespCtrlProd || '').trim()).filter(v => v !== ''))
+      new Set(filasCalculadas.map(r => String(r.NombRespControlProd || r.RespCtrlProd || '').trim()).filter(v => v !== ''))
     ).sort();
-    const haySinResponsable = datosEnriquecidos.some(r => !String(r.NombRespControlProd || r.RespCtrlProd || '').trim());
+    const haySinResponsable = filasCalculadas.some(r => !String(r.NombRespControlProd || r.RespCtrlProd || '').trim());
     return haySinResponsable ? [...conNombre, '(Sin responsable)'] : conNombre;
-  }, [datosEnriquecidos]);
+  }, [filasCalculadas]);
 
   const datosFiltrados = useMemo(() =>
     filasCalculadas.filter((row: any) => {
@@ -771,12 +650,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
 
   const lineasOrdenadas = useMemo(() => Object.keys(datosAgrupados).sort(), [datosAgrupados]);
 
-  // Estructura de Excel calculada una sola vez como useMemo.
-  // Al cambiar filtros/datos se recalcula; al pulsar "Descargar" solo se escribe el fichero.
   const exportSheet = useMemo(() => {
     const result: any[] = [];
     const sum = (arr: any[], field: string) => arr.reduce((s: number, r: any) => s + safeNumber(r[field] ?? 0), 0);
-    // Lee directamente los campos pre-calculados — cero cálculos aquí
     const rowToExcel = (row: any) => ({
       'Clase': String(row.ClaseAprovisionam || '').trim().toUpperCase(),
       'CodMaterial': row.CodMaterial ?? '',
@@ -810,13 +686,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       '[RES] Deficit General': row._deficitGeneral,
     });
 
-    // Iterar exactamente como la tabla: lineasOrdenadas → datosAgrupados[linea]
     lineasOrdenadas.forEach(linea => {
       const filasLinea: any[] = datosAgrupados[linea];
-      // Filas de datos
       filasLinea.forEach(row => result.push(rowToExcel(row)));
-      // Subtotal (igual al <tr> gris de la tabla)
-      // _necesidad y _traslado ya están en cada fila — lectura directa
       const totalNec = filasLinea.reduce((s: number, r: any) => s + safeNumber(r._necesidad ?? 0), 0);
       const totalTraslados = filasLinea.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
       const prodViableSub = sum(filasLinea, 'necesidadMaximaProducirJornadaNormal') + sum(filasLinea, 'necesidadMaximaProducirHorasExtras') + sum(filasLinea, 'necesidadMaximaProducirSabados');
@@ -847,7 +719,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       });
     });
 
-    // TOTAL GENERAL (igual al <tfoot> negro de la tabla)
     const totalNecGlobal = datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r._necesidad ?? 0), 0);
     const totalTrasladosGlobal = datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
     const prodViableGlobal = sum(datosFiltrados, 'necesidadMaximaProducirJornadaNormal') + sum(datosFiltrados, 'necesidadMaximaProducirHorasExtras') + sum(datosFiltrados, 'necesidadMaximaProducirSabados');
@@ -878,10 +749,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     });
 
     return result;
-  }, [datosAgrupados, lineasOrdenadas, datosFiltrados]);
+  }, [datosAgrupados, lineasOrdenadas, datosFiltrados, isCentro1000]);
 
   const lastExportJsonRef = useRef<string>('');
-
   useEffect(() => {
     if (!onExportSheetReady) return;
     const json = JSON.stringify(exportSheet);
@@ -1034,8 +904,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
             />
           </div>
 
-          {/* Contador + limpiar filtros */}
-          <span className="text-xs text-gray-500">{datosFiltrados.length} de {datosEnriquecidos.length} registros</span>
+          <span className="text-xs text-gray-500">{datosFiltrados.length} de {filasCalculadas.length} registros</span>
           {(searchTerm || selectedLinea || selectedRespCtrlProd.length > 0 || selectedSector.length > 0) && (
             <button
               type="button"
@@ -1054,7 +923,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
         <table className="w-full text-xs">
           <thead className="sticky top-0 z-20 bg-gray-50 shadow-sm">
-            {/* Fila 1: Encabezados de sección */}
             <tr className="border-b border-gray-300">
               <th colSpan={12} className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase bg-gray-100 border-r-2 border-gray-300">Información General</th>
               <th colSpan={5} className="px-3 py-2 text-center text-xs font-bold text-blue-700 uppercase bg-blue-50 border-r-2 border-blue-300">Sección Jornada Normal</th>
@@ -1062,9 +930,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th colSpan={5} className="px-3 py-2 text-center text-xs font-bold text-orange-700 uppercase bg-orange-50 border-r-2 border-orange-300">Sección Sábados</th>
               <th colSpan={isCentro1000 ? 4 : 2} className="px-3 py-2 text-center text-xs font-bold text-purple-700 uppercase bg-purple-50">Resultados Consolidados</th>
             </tr>
-            {/* Fila 2: Columnas individuales */}
             <tr className="bg-gray-50 border-b border-gray-200">
-              {/* === Información General (12 cols) === */}
               <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Clase</th>
               <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">CodMaterial</th>
               <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Descripción</th>
@@ -1077,25 +943,21 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th className="px-2 py-2 text-right text-xs font-semibold text-indigo-600 uppercase">T.Unit/Puestos</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-teal-600 uppercase">Traslado C.2000</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-gray-600 uppercase border-r-2 border-gray-300">Nec. Propia</th>
-              {/* === Sección 1: Jornada Normal (5 cols) === */}
               <th className="px-2 py-2 text-right text-xs font-semibold text-blue-600 uppercase">Necesidad</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-blue-600 uppercase">T.Total Nec.</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-blue-600 uppercase">Partic.%</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-blue-600 uppercase">Min.Disp. JN</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-blue-700 uppercase border-r-2 border-blue-300">Máx.Producir JN</th>
-              {/* === Sección 2: Horas Extras L-V (5 cols) === */}
               <th className="px-2 py-2 text-right text-xs font-semibold text-green-600 uppercase">Déficit JN</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-green-600 uppercase">T.Total Nec.</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-green-600 uppercase">Partic.%</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-green-600 uppercase">Min.Disp. HE</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-green-700 uppercase border-r-2 border-green-300">Máx.Producir HE</th>
-              {/* === Sección 3: Sábados (5 cols) === */}
               <th className="px-2 py-2 text-right text-xs font-semibold text-orange-600 uppercase">Déficit HE</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-orange-600 uppercase">T.Total Nec.</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-orange-600 uppercase">Partic.%</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-orange-600 uppercase">Min.Disp. Sáb</th>
               <th className="px-2 py-2 text-right text-xs font-semibold text-orange-700 uppercase border-r-2 border-orange-300">Máx.Producir Sáb</th>
-              {/* === Sección 4: Resultados Consolidados === */}
               <th className="px-2 py-2 text-right text-xs font-semibold text-purple-600 uppercase">Prod.Viable (S1+S2+S3)</th>
               {isCentro1000 && <th className="px-2 py-2 text-right text-xs font-semibold text-teal-600 uppercase">Fracción C.2000</th>}
               {isCentro1000 && <th className="px-2 py-2 text-right text-xs font-semibold text-cyan-600 uppercase">Fracción C.1000</th>}
@@ -1118,7 +980,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                 {datosAgrupados[linea].map((row: any, idx: number) => {
                   return (
                     <tr key={`${linea}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                      {/* === Info General === */}
                       <td className="px-2 py-2 text-sm font-medium text-gray-600">{String(row.ClaseAprovisionam || '-').trim().toUpperCase()}</td>
                       <td className="px-2 py-2 text-sm font-medium text-gray-900">{row.CodMaterial ?? '-'}</td>
                       <td className="px-2 py-2 text-sm text-gray-600 max-w-40 truncate" title={row.Descripcion ?? ''}>{row.Descripcion ?? '-'}</td>
@@ -1137,7 +998,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                       <td className="px-2 py-2 text-sm text-right font-mono text-gray-700 border-r-2 border-gray-200">
                         {row._necPropia.toLocaleString()}
                       </td>
-                      {/* === Sección 1: Jornada Normal === */}
                       <td className="px-2 py-2 text-sm text-right font-mono text-blue-700">{Math.floor(row._necesidad).toLocaleString()}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-blue-600">
                         {row.tiempoTotalNecesidad != null ? Number(row.tiempoTotalNecesidad).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}
@@ -1151,7 +1011,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                       <td className="px-2 py-2 text-sm text-right font-mono text-blue-800 font-semibold border-r-2 border-blue-200">
                         {row.necesidadMaximaProducirJornadaNormal != null ? Number(row.necesidadMaximaProducirJornadaNormal).toLocaleString() : '-'}
                       </td>
-                      {/* === Sección 2: Horas Extras L-V === */}
                       <td className="px-2 py-2 text-sm text-right font-mono text-green-700">
                         {row.deficitJornadaNormal != null ? Number(row.deficitJornadaNormal).toLocaleString() : '-'}
                       </td>
@@ -1167,7 +1026,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                       <td className="px-2 py-2 text-sm text-right font-mono text-green-800 font-semibold border-r-2 border-green-200">
                         {row.necesidadMaximaProducirHorasExtras != null ? Number(row.necesidadMaximaProducirHorasExtras).toLocaleString() : '-'}
                       </td>
-                      {/* === Sección 3: Sábados === */}
                       <td className="px-2 py-2 text-sm text-right font-mono text-orange-700">
                         {row.deficitHorasExtras != null ? Number(row.deficitHorasExtras).toLocaleString() : '-'}
                       </td>
@@ -1183,7 +1041,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                       <td className="px-2 py-2 text-sm text-right font-mono text-orange-800 font-semibold border-r-2 border-orange-200">
                         {row.necesidadMaximaProducirSabados != null ? Number(row.necesidadMaximaProducirSabados).toLocaleString() : '-'}
                       </td>
-                      {/* === Sección 4: Resultados Consolidados === */}
                       <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">
                         {row._prodViable.toLocaleString()}
                       </td>
@@ -1203,38 +1060,32 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                     </tr>
                   );
                 })}
-                {/* === Subtotal por línea === */}
                 {(() => {
                   const filasLinea = datosAgrupados[linea];
                   const f = (field: string) => filasLinea.reduce((s: number, r: any) => s + safeNumber(r[field] ?? 0), 0);
                   const totalNecesidades = filasLinea.reduce((s: number, r: any) => s + safeNumber(r._necesidad ?? 0), 0);
                   const totalTrasladosLinea = filasLinea.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
                   const totalNecPropiaLinea = totalNecesidades - totalTrasladosLinea;
-                  
                   return (
                     <tr className="bg-gray-100 font-semibold">
                       <td colSpan={10} className="px-2 py-2 text-sm text-gray-700">Subtotal {linea}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-teal-700">{totalTrasladosLinea.toLocaleString()}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-gray-800 border-r-2 border-gray-300">{Math.floor(totalNecPropiaLinea).toLocaleString()}</td>
-                      {/* Sección 1 */}
                       <td className="px-2 py-2 text-sm text-right font-mono text-blue-700">{Math.floor(totalNecesidades).toLocaleString()}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-blue-700">{f('tiempoTotalNecesidad').toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-blue-700">{f('participacionIndividual').toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-blue-700">{f('minutosDisponiblesJornadaNormal').toLocaleString(undefined, { maximumFractionDigits: 1 })} min</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-blue-800 border-r-2 border-blue-300">{f('necesidadMaximaProducirJornadaNormal').toLocaleString()}</td>
-                      {/* Sección 2 */}
                       <td className="px-2 py-2 text-sm text-right font-mono text-green-700">{f('deficitJornadaNormal').toLocaleString()}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-green-700">{f('tiempoTotalNecesidadDeficitJN').toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-green-700">-</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-green-700">{f('minutosDisponiblesHorasExtras').toLocaleString(undefined, { maximumFractionDigits: 1 })} min</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-green-800 border-r-2 border-green-300">{f('necesidadMaximaProducirHorasExtras').toLocaleString()}</td>
-                      {/* Sección 3 */}
                       <td className="px-2 py-2 text-sm text-right font-mono text-orange-700">{f('deficitHorasExtras').toLocaleString()}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-orange-700">{f('tiempoTotalNecesidadDeficitHE').toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-orange-700">-</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-orange-700">{f('minutosDisponiblesSabados').toLocaleString(undefined, { maximumFractionDigits: 1 })} min</td>
                       <td className="px-2 py-2 text-sm text-right font-mono text-orange-800 border-r-2 border-orange-300">{f('necesidadMaximaProducirSabados').toLocaleString()}</td>
-                      {/* Sección 4 subtotal */}
                       {(() => {
                         const prodViableSub = f('necesidadMaximaProducirJornadaNormal') + f('necesidadMaximaProducirHorasExtras') + f('necesidadMaximaProducirSabados');
                         const envioC2000Sub = f('_envioC2000');
@@ -1261,31 +1112,26 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               const totalNecesidadesGlobal = datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r._necesidad ?? 0), 0);
               const totalTrasladosGlobal = datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
               const totalNecPropiaGlobal = totalNecesidadesGlobal - totalTrasladosGlobal;
-              
               return (
                 <tr className="bg-gray-800 text-white">
                   <td colSpan={10} className="px-2 py-3 text-sm font-bold">TOTAL GENERAL ({datosFiltrados.length} registros)</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-teal-300">{totalTrasladosGlobal.toLocaleString()}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold border-r-2 border-gray-600">{Math.floor(totalNecPropiaGlobal).toLocaleString()}</td>
-                  {/* Sección 1 */}
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold">{Math.floor(totalNecesidadesGlobal).toLocaleString()}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold">{g('tiempoTotalNecesidad').toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold">{g('participacionIndividual').toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-blue-300">{g('minutosDisponiblesJornadaNormal').toLocaleString(undefined, { maximumFractionDigits: 1 })} min</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-blue-300 border-r-2 border-blue-800">{g('necesidadMaximaProducirJornadaNormal').toLocaleString()}</td>
-                  {/* Sección 2 */}
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300">{g('deficitJornadaNormal').toLocaleString()}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300">{g('tiempoTotalNecesidadDeficitJN').toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300">-</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300">{g('minutosDisponiblesHorasExtras').toLocaleString(undefined, { maximumFractionDigits: 1 })} min</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300 border-r-2 border-green-800">{g('necesidadMaximaProducirHorasExtras').toLocaleString()}</td>
-                  {/* Sección 3 */}
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-orange-300">{g('deficitHorasExtras').toLocaleString()}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-orange-300">{g('tiempoTotalNecesidadDeficitHE').toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-orange-300">-</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-orange-300">{g('minutosDisponiblesSabados').toLocaleString(undefined, { maximumFractionDigits: 1 })} min</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-orange-300 border-r-2 border-orange-800">{g('necesidadMaximaProducirSabados').toLocaleString()}</td>
-                  {/* Sección 4 TOTAL */}
                   {(() => {
                     const prodViableTotal = g('necesidadMaximaProducirJornadaNormal') + g('necesidadMaximaProducirHorasExtras') + g('necesidadMaximaProducirSabados');
                     const envioC2000Total = g('_envioC2000');

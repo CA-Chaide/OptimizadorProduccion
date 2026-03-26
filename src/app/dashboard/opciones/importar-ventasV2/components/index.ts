@@ -22,3 +22,4 @@ export { Centro1000SummaryTable } from './Centro1000SummaryTable';
 export { Centro1000DetailTable } from './Centro1000DetailTable';
 export { BottleneckAnalysisSectionCentro1000 } from './BottleneckAnalysisSectionCentro1000';
 export { RawBackendDataTable, type RawBackendDataTableHandle } from './RawBackendDataTable';
+export { BottleneckMonthlySummaryC2000Section } from './BottleneckMonthlySummaryC2000Section';
