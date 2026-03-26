@@ -42,10 +42,14 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
 
   // Filtros tabla F
   const [fSearchTerm, setFSearchTerm] = useState<string>('');
-  const [fSelectedLinea, setFSelectedLinea] = useState<string>('');
+  const [fSelectedLineas, setFSelectedLineas] = useState<string[]>([]);
+  const [fLineaDropdownOpen, setFLineaDropdownOpen] = useState<boolean>(false);
+  const fLineaDropdownRef = useRef<HTMLDivElement>(null);
+  
   const [fSelectedResp, setFSelectedResp] = useState<string[]>([]);
   const [fRespDropdownOpen, setFRespDropdownOpen] = useState<boolean>(false);
   const fRespDropdownRef = useRef<HTMLDivElement>(null);
+  
   const [fSelectedSector, setFSelectedSector] = useState<string[]>([]);
   const [fSectorDropdownOpen, setFSectorDropdownOpen] = useState<boolean>(false);
   const fSectorDropdownRef = useRef<HTMLDivElement>(null);
@@ -57,6 +61,9 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
       }
       if (fSectorDropdownRef.current && !fSectorDropdownRef.current.contains(e.target as Node)) {
         setFSectorDropdownOpen(false);
+      }
+      if (fLineaDropdownRef.current && !fLineaDropdownRef.current.contains(e.target as Node)) {
+        setFLineaDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -316,7 +323,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
           const matchSearch = !term ||
             String(row.CodMaterial || '').toLowerCase().includes(term) ||
             String(row.Descripcion || row.NombreMaterial || '').toLowerCase().includes(term);
-          const matchLinea = !fSelectedLinea || String(row.LineaFabricacion || '') === fSelectedLinea;
+          const matchLinea = fSelectedLineas.length === 0 || fSelectedLineas.includes(String(row.LineaFabricacion || ''));
           const matchResp = fSelectedResp.length === 0 || fSelectedResp.includes(String(row.NombRespControlProd || row.RespCtrlProd || row.RespControlProd || '').trim());
           const sectorRow = String(row.Sector || '').trim();
           const matchSector = fSelectedSector.length === 0 ||
@@ -341,17 +348,41 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
 
               {/* Filtros */}
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                {/* Línea */}
-                <div className="flex items-center gap-2">
+                {/* Línea multi-select */}
+                <div className="flex items-center gap-2 relative" ref={fLineaDropdownRef}>
                   <label className="text-xs font-medium text-amber-800">Línea:</label>
-                  <select
-                    value={fSelectedLinea}
-                    onChange={e => setFSelectedLinea(e.target.value)}
-                    className="border border-amber-300 px-2 py-1 rounded text-xs bg-white focus:ring-2 focus:ring-amber-400"
+                  <button
+                    type="button"
+                    onClick={() => setFLineaDropdownOpen(o => !o)}
+                    className="border border-amber-300 px-2 py-1 rounded text-xs bg-white min-w-[160px] text-left flex items-center justify-between gap-1 focus:ring-2 focus:ring-amber-400"
                   >
-                    <option value="">Todas</option>
-                    {fLineasUnicas.map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
+                    <span className="truncate">
+                      {fSelectedLineas.length === 0 ? 'Todas' : fSelectedLineas.length === 1 ? fSelectedLineas[0] : `${fSelectedLineas.length} seleccionadas`}
+                    </span>
+                    <svg className={`w-3 h-3 text-amber-500 flex-shrink-0 transition-transform ${fLineaDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {fLineaDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-amber-200 rounded-lg shadow-lg z-50 min-w-[200px] max-h-56 overflow-y-auto">
+                      <div className="p-2 border-b border-amber-100 flex gap-2">
+                        <button type="button" onClick={() => setFSelectedLineas([])} className="text-xs text-amber-700 hover:underline">Todas</button>
+                        <span className="text-amber-200">|</span>
+                        <button type="button" onClick={() => setFSelectedLineas([...fLineasUnicas])} className="text-xs text-amber-700 hover:underline">Seleccionar todas</button>
+                      </div>
+                      {fLineasUnicas.map(l => (
+                        <label key={l} className="flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={fSelectedLineas.includes(l)}
+                            onChange={e => setFSelectedLineas(prev => e.target.checked ? [...prev, l] : prev.filter(x => x !== l))}
+                            className="rounded border-amber-300 text-amber-600"
+                          />
+                          <span className="truncate">{l}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {/* Responsable multi-select */}
                 <div className="flex items-center gap-2 relative" ref={fRespDropdownRef}>
