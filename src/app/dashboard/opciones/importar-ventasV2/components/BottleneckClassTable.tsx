@@ -177,7 +177,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     if (registrosLinea.length === 0 && centroCodigo !== '') {
       registrosLinea = tiempoCanon.data.filter((item: any) => {
         const nombreLinea = normalizarLinea(item?.nombre_linea ?? '');
-        return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || nombreLinea.includes(nombreLinea);
+        return nombreLinea === lineaNorm || nombreLinea.includes(lineaNorm) || lineaNorm.includes(nombreLinea);
       });
     }
 
@@ -584,8 +584,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const _ratioPropia   = _necesidad > 0 ? _necPropia / _necesidad : 0;
       const _envioC2000    = Math.round(_prodViable * _ratioTraslado);
       const _quedaC1000    = Math.round(_prodViable * _ratioPropia);
+      const _deficitNeto2000 = Math.max(0, _deficitGeneral - row._trasladosViablesARecibir);
       return { ...row, _traslado, _necPropia, _necesidad, _prodViable,
-               _deficitGeneral, _envioC2000, _quedaC1000 };
+               _deficitGeneral, _envioC2000, _quedaC1000, _deficitNeto2000 };
     })
   , [datosEnriquecidos, trasladosMap]);
 
@@ -598,6 +599,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       _necesidad: r._necesidad, _prodViable: r._prodViable, _deficitGeneral: r._deficitGeneral,
       _traslado: r._traslado, _necPropia: r._necPropia,
       _envioC2000: r._envioC2000, _quedaC1000: r._quedaC1000,
+      _deficitNeto2000: r._deficitNeto2000,
       tiempoTotalNecesidad: r.tiempoTotalNecesidad,
       tiempoUnitarioPorPuesto: r.tiempoUnitarioPorPuesto,
       TiempoPorUnidad: r.TiempoPorUnidad,
@@ -732,7 +734,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       '[SAB] MIN.DISP': safeNumber(row.minutosDisponiblesSabados ?? 0),
       '[SAB] MAX.PRODUCIR': safeNumber(row.necesidadMaximaProducirSabados ?? 0),
       '[RES] Prod.Viable': row._prodViable,
-      ...(isCentro1000 ? { '[RES] Fracción C.2000': row._envioC2000, '[RES] Fracción C.1000': row._quedaC1000 } : { 'Traslados viables a recibir': row._trasladosViablesARecibir }),
+      ...(isCentro1000 ? { '[RES] Fracción C.2000': row._envioC2000, '[RES] Fracción C.1000': row._quedaC1000 } : { 'Traslados viables a recibir': row._trasladosViablesARecibir, 'Déficit Neto Necesidades 2000': row._deficitNeto2000 }),
       '[RES] Deficit General': row._deficitGeneral,
     });
 
@@ -740,14 +742,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const filasLinea: any[] = datosAgrupados[linea];
       filasLinea.forEach(row => result.push(rowToExcel(row)));
       const totalNec = filasLinea.reduce((s: number, r: any) => s + safeNumber(r._necesidad ?? 0), 0);
-      const totalTraslados = filasLinea.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
+      const totalTrasladosLinea = filasLinea.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
       const prodViableSub = sum(filasLinea, 'necesidadMaximaProducirJornadaNormal') + sum(filasLinea, 'necesidadMaximaProducirHorasExtras') + sum(filasLinea, 'necesidadMaximaProducirSabados');
       result.push({
         'Clase': '',
         'CodMaterial': `** Subtotal ${linea} **`,
         'Descripcion': '', 'Centro': '', 'Linea': linea, 'Puesto': '', 'N.Puestos': '', 'Sector': '', 'Responsable': '', 'T.Unit/Puestos': '',
-        'Traslado C.2000': totalTraslados,
-        'Nec. Propia': Math.floor(totalNec - totalTraslados),
+        'Traslado C.2000': totalTrasladosLinea,
+        'Nec. Propia': Math.floor(totalNec - totalTrasladosLinea),
         '[JN] NECESIDAD': Math.floor(totalNec),
         '[JN] T.Total Nec': sum(filasLinea, 'tiempoTotalNecesidad'),
         '[JN] Partic.%': '-',
@@ -764,7 +766,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         '[SAB] MIN.DISP': sum(filasLinea, 'minutosDisponiblesSabados'),
         '[SAB] MAX.PRODUCIR': sum(filasLinea, 'necesidadMaximaProducirSabados'),
         '[RES] Prod.Viable': prodViableSub,
-        ...(isCentro1000 ? { '[RES] Fracción C.2000': sum(filasLinea, '_envioC2000'), '[RES] Fracción C.1000': sum(filasLinea, '_quedaC1000') } : { 'Traslados viables a recibir': sum(filasLinea, '_trasladosViablesARecibir') }),
+        ...(isCentro1000 ? { '[RES] Fracción C.2000': sum(filasLinea, '_envioC2000'), '[RES] Fracción C.1000': sum(filasLinea, '_quedaC1000') } : { 'Traslados viables a recibir': sum(filasLinea, '_trasladosViablesARecibir'), 'Déficit Neto Necesidades 2000': sum(filasLinea, '_deficitNeto2000') }),
         '[RES] Deficit General': Math.max(0, totalNec - prodViableSub),
       });
     });
@@ -782,7 +784,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       '[JN] T.Total Nec': sum(datosFiltrados, 'tiempoTotalNecesidad'),
       '[JN] Partic.%': '-',
       '[JN] MIN.DISP': sum(datosFiltrados, 'minutosDisponiblesJornadaNormal'),
-      '[JN] MAX.PRODUCIR': sum(datosFiltrados, 'necesidadMaximaProducirJornadaNormal'),
+      '[JN] MAX.PRODUCIR': sum(datosFiltrados, 'complexityUnits'),
       '[HE] Deficit JN': sum(datosFiltrados, 'deficitJornadaNormal'),
       '[HE] T.Total Nec': sum(datosFiltrados, 'tiempoTotalNecesidadDeficitJN'),
       '[HE] Partic.%': '-',
@@ -794,7 +796,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       '[SAB] MIN.DISP': sum(datosFiltrados, 'minutosDisponiblesSabados'),
       '[SAB] MAX.PRODUCIR': sum(datosFiltrados, 'necesidadMaximaProducirSabados'),
       '[RES] Prod.Viable': prodViableGlobal,
-      ...(isCentro1000 ? { '[RES] Fracción C.2000': sum(datosFiltrados, '_envioC2000'), '[RES] Fracción C.1000': sum(datosFiltrados, '_quedaC1000') } : { 'Traslados viables a recibir': sum(datosFiltrados, '_trasladosViablesARecibir') }),
+      ...(isCentro1000 ? { '[RES] Fracción C.2000': sum(datosFiltrados, '_envioC2000'), '[RES] Fracción C.1000': sum(datosFiltrados, '_quedaC1000') } : { 'Traslados viables a recibir': sum(datosFiltrados, '_trasladosViablesARecibir'), 'Déficit Neto Necesidades 2000': sum(datosFiltrados, '_deficitNeto2000') }),
       '[RES] Deficit General': Math.max(0, totalNecGlobal - prodViableGlobal),
     });
 
@@ -1022,7 +1024,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th colSpan={5} className="px-3 py-2 text-center text-xs font-bold text-blue-700 uppercase bg-blue-50 border-r-2 border-blue-300">Sección Jornada Normal</th>
               <th colSpan={5} className="px-3 py-2 text-center text-xs font-bold text-green-700 uppercase bg-green-50 border-r-2 border-green-300">Sección Horas Extras (L-V)</th>
               <th colSpan={5} className="px-3 py-2 text-center text-xs font-bold text-orange-700 uppercase bg-orange-50 border-r-2 border-orange-300">Sección Sábados</th>
-              <th colSpan={isCentro1000 ? 4 : 3} className="px-3 py-2 text-center text-xs font-bold text-purple-700 uppercase bg-purple-50">Resultados Consolidados</th>
+              <th colSpan={isCentro1000 ? 4 : 5} className="px-3 py-2 text-center text-xs font-bold text-purple-700 uppercase bg-purple-50">Resultados Consolidados</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Clase</th>
@@ -1057,18 +1059,22 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                 <>
                   <th className="px-2 py-2 text-right text-xs font-semibold text-teal-600 uppercase">Fracción C.2000</th>
                   <th className="px-2 py-2 text-right text-xs font-semibold text-cyan-600 uppercase">Fracción C.1000</th>
+                  <th className="px-2 py-2 text-right text-xs font-semibold text-purple-600 uppercase">Déficit General</th>
                 </>
               ) : (
-                <th className="px-2 py-2 text-right text-xs font-semibold text-teal-600 uppercase">Traslados viables a recibir</th>
+                <>
+                  <th className="px-2 py-2 text-right text-xs font-semibold text-purple-600 uppercase">Déficit General</th>
+                  <th className="px-2 py-2 text-right text-xs font-semibold text-teal-600 uppercase">Traslados viables a recibir</th>
+                  <th className="px-2 py-2 text-right text-xs font-semibold text-purple-600 uppercase">Déficit Neto Necesidades 2000</th>
+                </>
               )}
-              <th className="px-2 py-2 text-right text-xs font-semibold text-purple-600 uppercase">Déficit General</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {lineasOrdenadas.map((linea) => (
               <React.Fragment key={linea}>
                 <tr className="bg-blue-50">
-                  <td colSpan={isCentro1000 ? 31 : 30} className="px-4 py-2 font-semibold text-blue-800 text-sm">
+                  <td colSpan={isCentro1000 ? 31 : 32} className="px-4 py-2 font-semibold text-blue-800 text-sm">
                     <span className="inline-flex items-center">
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -1152,15 +1158,23 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                           <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">
                             {row._quedaC1000.toLocaleString()}
                           </td>
+                          <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${row._deficitGeneral > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                            {row._deficitGeneral.toLocaleString()}
+                          </td>
                         </>
                       ) : (
-                        <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">
-                          {row._trasladosViablesARecibir.toLocaleString()}
-                        </td>
+                        <>
+                          <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${row._deficitGeneral > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                            {row._deficitGeneral.toLocaleString()}
+                          </td>
+                          <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">
+                            {row._trasladosViablesARecibir.toLocaleString()}
+                          </td>
+                          <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${row._deficitNeto2000 > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                            {row._deficitNeto2000.toLocaleString()}
+                          </td>
+                        </>
                       )}
-                      <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${row._deficitGeneral > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                        {row._deficitGeneral.toLocaleString()}
-                      </td>
                     </tr>
                   );
                 })}
@@ -1195,6 +1209,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                         const envioC2000Sub = f('_envioC2000');
                         const quedaC1000Sub = f('_quedaC1000');
                         const trasladosRecibidosSub = f('_trasladosViablesARecibir');
+                        const deficitNetoSub = f('_deficitNeto2000');
                         const deficitGralSub = Math.max(0, totalNecesidades - prodViableSub);
                         return (
                           <>
@@ -1203,11 +1218,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                               <>
                                 <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{envioC2000Sub.toLocaleString()}</td>
                                 <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">{quedaC1000Sub.toLocaleString()}</td>
+                                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${deficitGralSub > 0 ? 'text-red-700' : 'text-green-700'}`}>{deficitGralSub.toLocaleString()}</td>
                               </>
                             ) : (
-                              <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{trasladosRecibidosSub.toLocaleString()}</td>
+                              <>
+                                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${deficitGralSub > 0 ? 'text-red-700' : 'text-green-700'}`}>{deficitGralSub.toLocaleString()}</td>
+                                <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{trasladosRecibidosSub.toLocaleString()}</td>
+                                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${deficitNetoSub > 0 ? 'text-red-700' : 'text-green-700'}`}>{deficitNetoSub.toLocaleString()}</td>
+                              </>
                             )}
-                            <td className={`px-2 py-2 text-sm text-right font-mono font-semibold ${deficitGralSub > 0 ? 'text-red-700' : 'text-green-700'}`}>{deficitGralSub.toLocaleString()}</td>
                           </>
                         );
                       })()}
@@ -1248,6 +1267,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                     const envioC2000Total = g('_envioC2000');
                     const quedaC1000Total = g('_quedaC1000');
                     const trasladosViablesTotal = g('_trasladosViablesARecibir');
+                    const deficitNetoTotal = g('_deficitNeto2000');
                     const deficitGralTotal = Math.max(0, totalNecesidadesGlobal - prodViableTotal);
                     return (
                       <>
@@ -1256,11 +1276,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                           <>
                             <td className="px-2 py-3 text-sm text-right font-mono font-bold text-teal-300">{envioC2000Total.toLocaleString()}</td>
                             <td className="px-2 py-3 text-sm text-right font-mono font-bold text-cyan-300">{quedaC1000Total.toLocaleString()}</td>
+                            <td className={`px-2 py-3 text-sm text-right font-mono font-bold ${deficitGralTotal > 0 ? 'text-red-300' : 'text-green-300'}`}>{deficitGralTotal.toLocaleString()}</td>
                           </>
                         ) : (
-                          <td className="px-2 py-3 text-sm text-right font-mono font-bold text-teal-300">{trasladosViablesTotal.toLocaleString()}</td>
+                          <>
+                            <td className={`px-2 py-3 text-sm text-right font-mono font-bold ${deficitGralTotal > 0 ? 'text-red-300' : 'text-green-300'}`}>{deficitGralTotal.toLocaleString()}</td>
+                            <td className="px-2 py-3 text-sm text-right font-mono font-bold text-teal-300">{trasladosViablesTotal.toLocaleString()}</td>
+                            <td className={`px-2 py-3 text-sm text-right font-mono font-bold ${deficitNetoTotal > 0 ? 'text-red-300' : 'text-green-300'}`}>{deficitNetoTotal.toLocaleString()}</td>
+                          </>
                         )}
-                        <td className={`px-2 py-3 text-sm text-right font-mono font-bold ${deficitGralTotal > 0 ? 'text-red-300' : 'text-green-300'}`}>{deficitGralTotal.toLocaleString()}</td>
                       </>
                     );
                   })()}
