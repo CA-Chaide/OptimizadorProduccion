@@ -73,6 +73,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
   const [selectedSector, setSelectedSector] = useState<string[]>([]);
   const [sectorDropdownOpen, setSectorDropdownOpen] = useState<boolean>(false);
   const sectorDropdownRef = useRef<HTMLDivElement>(null);
+  
+  const [selectedClaseAprov, setSelectedClaseAprov] = useState<string[]>([]);
+  const [claseDropdownOpen, setClaseDropdownOpen] = useState<boolean>(false);
+  const claseDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -81,6 +85,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       }
       if (sectorDropdownRef.current && !sectorDropdownRef.current.contains(e.target as Node)) {
         setSectorDropdownOpen(false);
+      }
+      if (claseDropdownRef.current && !claseDropdownRef.current.contains(e.target as Node)) {
+        setClaseDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -669,6 +676,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     const haySinResponsable = filasCalculadas.some(r => !String(r.NombRespControlProd || r.RespCtrlProd || '').trim());
     return haySinResponsable ? [...conNombre, '(Sin responsable)'] : conNombre;
   }, [filasCalculadas]);
+  
+  const clasesUnicas = useMemo(() => 
+    Array.from(new Set(filasCalculadas.map(r => String(r.ClaseAprovisionam || '').trim().toUpperCase()))).filter(Boolean).sort()
+  , [filasCalculadas]);
 
   const datosFiltrados = useMemo(() =>
     filasCalculadas.filter((row: any) => {
@@ -682,9 +693,11 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const matchSector = selectedSector.length === 0 ||
         selectedSector.includes(sectorRow) ||
         (selectedSector.includes('(Sin sector)') && sectorRow === '');
-      return matchSearchTerm && matchLinea && matchRespCtrlProd && matchSector;
+      const claseRow = String(row.ClaseAprovisionam || '').trim().toUpperCase();
+      const matchClase = selectedClaseAprov.length === 0 || selectedClaseAprov.includes(claseRow);
+      return matchSearchTerm && matchLinea && matchRespCtrlProd && matchSector && matchClase;
     })
-  , [filasCalculadas, searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector]);
+  , [filasCalculadas, searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
 
   const datosAgrupados = useMemo(() =>
     datosFiltrados.reduce((acc: any, row: any) => {
@@ -767,7 +780,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     });
 
     const totalNecGlobal = datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r._necesidad ?? 0), 0);
-    const totalTrasladosGlobal = datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
+    const totalTrasladosGlobal = filasCalculadas.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
     const prodViableGlobal = sum(datosFiltrados, 'necesidadMaximaProducirJornadaNormal') + sum(datosFiltrados, 'necesidadMaximaProducirHorasExtras') + sum(datosFiltrados, 'necesidadMaximaProducirSabados');
     result.push({
       'Clase': '',
@@ -796,7 +809,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     });
 
     return result;
-  }, [datosAgrupados, lineasOrdenadas, datosFiltrados, isCentro1000]);
+  }, [datosAgrupados, lineasOrdenadas, datosFiltrados, isCentro1000, filasCalculadas]);
 
   const lastExportJsonRef = useRef<string>('');
   useEffect(() => {
@@ -843,6 +856,50 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                 <option key={linea} value={linea}>{linea}</option>
               ))}
             </select>
+          </div>
+
+          <div className="flex items-center gap-2 relative" ref={claseDropdownRef}>
+            <label className="text-sm font-medium text-gray-600">Clase:</label>
+            <button
+              type="button"
+              onClick={() => setClaseDropdownOpen(o => !o)}
+              className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[120px] text-left flex items-center justify-between gap-2"
+            >
+              <span className="truncate">
+                {selectedClaseAprov.length === 0
+                  ? 'Todas'
+                  : selectedClaseAprov.length === 1
+                  ? selectedClaseAprov[0]
+                  : `${selectedClaseAprov.length} sel.`}
+              </span>
+              <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${claseDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {claseDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[150px] max-h-64 overflow-y-auto">
+                <div className="p-2 border-b border-gray-100 flex gap-2">
+                  <button type="button" onClick={() => setSelectedClaseAprov([])} className="text-xs text-blue-600 hover:underline">Todas</button>
+                  <span className="text-gray-300">|</span>
+                  <button type="button" onClick={() => setSelectedClaseAprov([...clasesUnicas])} className="text-xs text-blue-600 hover:underline">Todas</button>
+                </div>
+                {clasesUnicas.map(clase => (
+                  <label key={clase} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedClaseAprov.includes(clase)}
+                      onChange={e => {
+                        setSelectedClaseAprov(prev =>
+                          e.target.checked ? [...prev, clase] : prev.filter(c => c !== clase)
+                        );
+                      }}
+                      className="rounded border-gray-300 text-blue-600"
+                    />
+                    <span className="truncate">{clase}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 relative" ref={sectorDropdownRef}>
@@ -952,13 +1009,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
           </div>
 
           <span className="text-xs text-gray-500">{datosFiltrados.length} de {filasCalculadas.length} registros</span>
-          {(searchTerm || selectedLinea || selectedRespCtrlProd.length > 0 || selectedSector.length > 0) && (
+          {(searchTerm || selectedLinea || selectedRespCtrlProd.length > 0 || selectedSector.length > 0 || selectedClaseAprov.length > 0) && (
             <button
               type="button"
-              onClick={() => { setSearchTerm(''); setSelectedLinea(''); setSelectedRespCtrlProd([]); setSelectedSector([]); }}
+              onClick={() => { setSearchTerm(''); setSelectedLinea(''); setSelectedRespCtrlProd([]); setSelectedSector([]); setSelectedClaseAprov([]); }}
               className="text-xs text-red-600 hover:text-red-800 hover:underline flex items-center gap-1"
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
               Limpiar filtros
@@ -1157,7 +1214,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
             {(() => {
               const g = (field: string) => datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r[field] ?? 0), 0);
               const totalNecesidadesGlobal = datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r._necesidad ?? 0), 0);
-              const totalTrasladosGlobal = datosFiltrados.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
+              const totalTrasladosGlobal = filasCalculadas.reduce((s: number, r: any) => s + safeNumber(r._traslado ?? 0), 0);
               const totalNecPropiaGlobal = totalNecesidadesGlobal - totalTrasladosGlobal;
               return (
                 <tr className="bg-gray-800 text-white">
@@ -1172,7 +1229,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300">{g('deficitJornadaNormal').toLocaleString()}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300">{g('tiempoTotalNecesidadDeficitJN').toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300">-</td>
-                  <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300">{g('minutosDisponiblesHorasExtras').toLocaleString(undefined, { maximumFractionDigits: 1 })} min</td>
+                  <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300 border-r-2 border-green-800">{g('minutosDisponiblesHorasExtras').toLocaleString(undefined, { maximumFractionDigits: 1 })} min</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-green-300 border-r-2 border-green-800">{g('necesidadMaximaProducirHorasExtras').toLocaleString()}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-orange-300">{g('deficitHorasExtras').toLocaleString()}</td>
                   <td className="px-2 py-3 text-sm text-right font-mono font-bold text-orange-300">{g('tiempoTotalNecesidadDeficitHE').toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
