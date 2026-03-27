@@ -72,6 +72,7 @@ export const BottleneckMonthlySummaryC2000Section: React.FC<BottleneckMonthlySum
         horasTrabajo={horasTrabajo}
         horasExtrasFin={horasExtrasFin}
         centroLabel="Centro 2000 (E+X+F)"
+        showSaldos={true}
       />
       
       <BottleneckClassTable 
@@ -85,6 +86,7 @@ export const BottleneckMonthlySummaryC2000Section: React.FC<BottleneckMonthlySum
         horasExtrasFin={horasExtrasFin}
         isCentro1000={false}
         trasladosViables={trasladosViables}
+        showSaldos={true}
       />
     </div>
   );
