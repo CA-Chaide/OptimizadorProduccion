@@ -330,7 +330,7 @@ export default function ImportarVentasPage() {
               const transfers = data.map((r: any) => ({
                 CodMaterial: r.CodMaterial,
                 mes: r.mesRef,
-                cantidad: r._envioC2000 || 0 // Envío hipotético hacia C1000
+                cantidad: r._envioC2000 || 0 
               }));
               setTrasladosViablesHaciaC1000(transfers);
             }}
@@ -371,12 +371,21 @@ export default function ImportarVentasPage() {
             horasExtrasFin={horasExtrasFin}
             trasladosDesdeCentro2000={trasladosDesdeCentro2000}
             onComputedDataReady={(data) => {
-              const transfers = data.map((r: any) => ({
+              // Actualizar traslados para C2000
+              const transfersToC2000 = data.map((r: any) => ({
                 CodMaterial: r.CodMaterial,
                 mes: r.mesRef,
                 cantidad: r._envioC2000 || 0
               }));
-              setTrasladosViablesHaciaC2000(transfers);
+              setTrasladosViablesHaciaC2000(transfersToC2000);
+              
+              // Actualizar traslados para Resumen C1000 (Mapeo literal solicitado: Envío 2000 -> TR Viable C1000)
+              const transfersInC1000 = data.map((r: any) => ({
+                CodMaterial: r.CodMaterial,
+                mes: r.mesRef,
+                cantidad: r._envioC2000 || 0
+              }));
+              setTrasladosViablesHaciaC1000(transfersInC1000);
             }}
           />
         </div>
