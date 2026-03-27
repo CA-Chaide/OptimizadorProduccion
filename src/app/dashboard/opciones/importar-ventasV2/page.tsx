@@ -90,19 +90,19 @@ export default function ImportarVentasPage() {
         ]);
 
         setFilterOptions({
-          años: (yearsRes.data || []).map((item: any) => ({
-            value: String(item.Año || item.año || item),
-            label: String(item.Año || item.año || item)
+          años: (yearsRes.data || []).map((item: any) => ({ 
+            value: String(item.Año || item.año || item), 
+            label: String(item.Año || item.año || item) 
           })).sort((a: any, b: any) => Number(b.value) - Number(a.value)),
           
-          meses: (mesesRes.data || []).map((item: any) => ({
-            value: String(item.Mes || item.mes || item),
-            label: String(item.Mes || item.mes || item)
+          meses: (mesesRes.data || []).map((item: any) => ({ 
+            value: String(item.Mes || item.mes || item), 
+            label: String(item.Mes || item.mes || item) 
           })),
           
-          centros: (centrosRes.data || []).map((item: any) => ({
-            value: String(item.Centro || item.centro || item),
-            label: String(item.Centro || item.centro || item)
+          centros: (centrosRes.data || []).map((item: any) => ({ 
+            value: String(item.Centro || item.centro || item), 
+            label: String(item.Centro || item.centro || item) 
           }))
         });
 
@@ -327,12 +327,13 @@ export default function ImportarVentasPage() {
             horasExtrasFin={horasExtrasFin}
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
             onComputedDataReady={(data) => {
-              const transfers = data.map((r: any) => ({
+              // Actualizar traslados para el resumen del Centro 1000
+              const transfersInC1000 = data.map((r: any) => ({
                 CodMaterial: r.CodMaterial,
                 mes: r.mesRef,
                 cantidad: r._envioC2000 || 0 
               }));
-              setTrasladosViablesHaciaC1000(transfers);
+              setTrasladosViablesHaciaC1000(transfersInC1000);
             }}
           />
         </div>
@@ -379,13 +380,13 @@ export default function ImportarVentasPage() {
               }));
               setTrasladosViablesHaciaC2000(transfersToC2000);
               
-              // Actualizar traslados para Resumen C1000 (Mapeo literal solicitado: Envío 2000 -> TR Viable C1000)
-              const transfersInC1000 = data.map((r: any) => ({
+              // Actualizar la trazabilidad interna de C1000
+              const transfersFromC1000 = data.map((r: any) => ({
                 CodMaterial: r.CodMaterial,
                 mes: r.mesRef,
                 cantidad: r._envioC2000 || 0
               }));
-              setTrasladosViablesHaciaC1000(transfersInC1000);
+              setTrasladosViablesHaciaC1000(transfersFromC1000);
             }}
           />
         </div>
