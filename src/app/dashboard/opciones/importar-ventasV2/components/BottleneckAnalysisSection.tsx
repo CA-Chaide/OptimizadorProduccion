@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -16,6 +15,7 @@ interface BottleneckAnalysisSectionProps {
   horasTrabajo: number;
   horasExtrasFin: number;
   onTransferNeedsConsolidatedChanged?: (needs: TransferNeed[]) => void;
+  onComputedDataReady?: (data: any[]) => void;
 }
 
 export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps> = ({ 
@@ -25,7 +25,8 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   maxExtrasHoras, 
   horasTrabajo, 
   horasExtrasFin, 
-  onTransferNeedsConsolidatedChanged 
+  onTransferNeedsConsolidatedChanged,
+  onComputedDataReady
 }) => {
   const [transferNeedsEX, setTransferNeedsEX] = useState<TransferNeed[]>([]);
   const [computedDataEX, setComputedDataEX] = useState<any[]>([]);
@@ -53,6 +54,13 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
       onTransferNeedsConsolidatedChanged?.(transferNeedsConsolidated);
     }
   }, [transferNeedsConsolidated, onTransferNeedsConsolidatedChanged]);
+
+  // Exportar datos calculados al padre si es necesario
+  useEffect(() => {
+    if (onComputedDataReady && computedDataEX.length > 0) {
+      onComputedDataReady(computedDataEX);
+    }
+  }, [computedDataEX, onComputedDataReady]);
 
   if (data.length === 0) return <div className="p-4 text-center text-gray-600">Carga datos primero para iniciar el análisis.</div>;
 

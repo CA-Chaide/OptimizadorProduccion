@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -50,6 +49,7 @@ export default function ImportarVentasPage() {
   const [horasExtrasFin, setHorasExtrasFin] = useState<number>(0);
   const [trasladosDesdeCentro2000, setTrasladosDesdeCentro2000] = useState<TransferNeed[]>([]);
   const [trasladosViablesHaciaC2000, setTrasladosViablesHaciaC2000] = useState<ViableTransfer[]>([]);
+  const [trasladosViablesHaciaC1000, setTrasladosViablesHaciaC1000] = useState<ViableTransfer[]>([]);
 
   const [tiemposCanonResults, setTiemposCanonResults] = useState<TiempoCanonResult[]>([]);
   const [isLoadingTimesCanon, setIsLoadingTimesCanon] = useState(false);
@@ -326,6 +326,14 @@ export default function ImportarVentasPage() {
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
+            onComputedDataReady={(data) => {
+              const transfers = data.map((r: any) => ({
+                CodMaterial: r.CodMaterial,
+                mes: r.mesRef,
+                cantidad: r._envioC2000 || 0 // Envío hipotético hacia C1000
+              }));
+              setTrasladosViablesHaciaC1000(transfers);
+            }}
           />
         </div>
 
@@ -337,6 +345,7 @@ export default function ImportarVentasPage() {
             maxExtrasHoras={maxExtrasHoras}
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
+            trasladosViables={trasladosViablesHaciaC1000}
           />
         </div>
 

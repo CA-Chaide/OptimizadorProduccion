@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -13,6 +12,7 @@ interface BottleneckMonthlySummaryC1000SectionProps {
   maxExtrasHoras: number;
   horasTrabajo: number;
   horasExtrasFin: number;
+  trasladosViables?: ViableTransfer[];
 }
 
 export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySummaryC1000SectionProps> = ({ 
@@ -21,7 +21,8 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
   numMaximoSabados, 
   maxExtrasHoras, 
   horasTrabajo, 
-  horasExtrasFin
+  horasExtrasFin,
+  trasladosViables = []
 }) => {
   const [computedDataEXF, setComputedDataEXF] = useState<any[]>([]);
 
@@ -89,7 +90,7 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
         horasExtrasFin={horasExtrasFin}
         isCentro1000={true}
         showSaldos={true}
-        trasladosViables={[]} // C1000 no recibe traslados
+        trasladosViables={trasladosViables}
       />
     </div>
   );
