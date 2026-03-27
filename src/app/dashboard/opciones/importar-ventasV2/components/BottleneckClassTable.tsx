@@ -125,6 +125,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
   const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string[]>([]);
   const [selectedSector, setSelectedSector] = useState<string[]>([]);
   const [selectedClaseAprov, setSelectedClaseAprov] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 50;
 
   // 1. Mapas de búsqueda rápida O(1)
   const trasladosMap = useMemo(() => {
@@ -290,7 +292,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     
     const q = searchTerm.toLowerCase();
     return filasCalculadas.filter((row: any) => {
-      if (q && !String(row.CodMaterial || '').toLowerCase().includes(q)) return false;
+      if (q && !String(row.CodMaterial || '').toLowerCase().includes(q) && !String(row.Descripcion || '').toLowerCase().includes(q)) return false;
       if (selectedLinea && row.lineaRef !== selectedLinea) return false;
       if (selectedRespCtrlProd.length > 0 && !selectedRespCtrlProd.includes(String(row.NombRespControlProd || row.RespCtrlProd || '').trim())) return false;
       if (selectedSector.length > 0 && !selectedSector.includes(String(row.Sector || '').trim())) return false;
@@ -298,6 +300,18 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       return true;
     });
   }, [filasCalculadas, searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
+
+  // Paginación
+  const totalPages = Math.ceil(datosFiltrados.length / itemsPerPage);
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return datosFiltrados.slice(start, start + itemsPerPage);
+  }, [datosFiltrados, currentPage]);
+
+  // Reset page cuando cambian filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
 
   // Sincronización optimizada
   const lastSyncRef = useRef<string>('');
@@ -341,16 +355,116 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         </button>
       </div>
 
-      <div className="px-4 py-2 bg-white border-b border-gray-100 flex gap-3 flex-wrap items-center">
-        <input type="search" placeholder="Buscar material..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="border border-gray-300 px-2 py-1.5 rounded-md text-xs w-40" />
-        <select value={selectedLinea} onChange={e => setSelectedLinea(e.target.value)} className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white">
+      <div className="px-4 py-2 bg-white border-b border-gray-100 flex gap-2 flex-wrap items-center text-xs">
+        <input 
+          type="search" 
+          placeholder="Buscar material o descripción..." 
+          value={searchTerm} 
+          onChange={e => setSearchTerm(e.target.value)} 
+          className="border border-gray-300 px-2 py-1.5 rounded-md text-xs w-48" 
+        />
+        
+        <select 
+          value={selectedLinea} 
+          onChange={e => setSelectedLinea(e.target.value)} 
+          className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
+        >
           <option value="">Línea: Todas</option>
           {options.lineas.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
-        {/* Los filtros multi-select se omiten aquí por brevedad, pero se mantienen en la lógica */}
+
+        {/* Filtro Sector */}
+        <div className="flex items-center gap-1">
+          <span className="text-gray-600">Sector:</span>
+          <select 
+            value="" 
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val && !selectedSector.includes(val)) {
+                setSelectedSector([...selectedSector, val]);
+              }
+            }} 
+            className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
+          >
+            <option value="">+ Agregar</option>
+            {options.sectores.map(s => (
+              !selectedSector.includes(s) && <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          {selectedSector.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {selectedSector.map(s => (
+                <span key={s} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  {s}
+                  <button onClick={() => setSelectedSector(selectedSector.filter(x => x !== s))} className="hover:text-blue-900 font-bold">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Filtro Responsable */}
+        <div className="flex items-center gap-1">
+          <span className="text-gray-600">Resp:</span>
+          <select 
+            value="" 
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val && !selectedRespCtrlProd.includes(val)) {
+                setSelectedRespCtrlProd([...selectedRespCtrlProd, val]);
+              }
+            }} 
+            className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
+          >
+            <option value="">+ Agregar</option>
+            {options.resps.map(r => (
+              !selectedRespCtrlProd.includes(r) && <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+          {selectedRespCtrlProd.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {selectedRespCtrlProd.map(r => (
+                <span key={r} className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  {r}
+                  <button onClick={() => setSelectedRespCtrlProd(selectedRespCtrlProd.filter(x => x !== r))} className="hover:text-amber-900 font-bold">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Filtro Clase Aprovisionamiento */}
+        <div className="flex items-center gap-1">
+          <span className="text-gray-600">Clase:</span>
+          <select 
+            value="" 
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val && !selectedClaseAprov.includes(val)) {
+                setSelectedClaseAprov([...selectedClaseAprov, val]);
+              }
+            }} 
+            className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
+          >
+            <option value="">+ Agregar</option>
+            {options.clases.map(c => (
+              !selectedClaseAprov.includes(c) && <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          {selectedClaseAprov.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {selectedClaseAprov.map(c => (
+                <span key={c} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  {c}
+                  <button onClick={() => setSelectedClaseAprov(selectedClaseAprov.filter(x => x !== c))} className="hover:text-purple-900 font-bold">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="overflow-x-auto max-h-[500px] overflow-y-auto relative">
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-100 shadow-sm text-[10px]">
             <tr className="border-b border-gray-300">
@@ -405,11 +519,106 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {datosFiltrados.map((row: any, idx: number) => (
-              <DataRow key={row.id || `${row.CodMaterial}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} />
+            {paginatedData.map((row: any, idx: number) => (
+              <DataRow key={row.id || `${row.CodMaterial}-${currentPage}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} />
             ))}
           </tbody>
+          <tfoot className="sticky bottom-0 z-20">
+            {(() => {
+              const totalNecPropia = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necPropia ?? 0), 0);
+              const totalTraslados = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._traslado ?? 0), 0);
+              const totalNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necesidad ?? 0), 0);
+              const totalTiempoNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidad ?? 0), 0);
+              const totalMinutosDisponibles = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesJornadaNormal ?? 0), 0);
+              const totalNecesidadMaxima = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirJornadaNormal ?? 0), 0);
+              const totalDeficitJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitJornadaNormal ?? 0), 0);
+              const totalProducible = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._prodViable ?? 0), 0);
+              
+              return (
+                <tr className="bg-gray-800 text-white font-bold text-[11px]">
+                  <td colSpan={8} className="px-2 py-2">TOTAL GENERAL ({datosFiltrados.length} registros filtrados)</td>
+                  <td className="px-2 py-2 text-right font-mono text-amber-300">{totalNecPropia.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-cyan-300 border-r">{totalNecesidad.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                  <td colSpan={2} className="px-2 py-2 text-right font-mono text-indigo-300">Totales</td>
+                  <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()} min</td>
+                  <td className="px-2 py-2 text-right font-mono text-blue-300 border-r">{totalNecesidadMaxima.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td>
+                  <td colSpan={3} className="px-2 py-2 text-right font-mono text-green-200">Déficit JN</td>
+                  <td colSpan={4} className="px-2 py-2 text-right font-mono text-orange-200">Horas Extras</td>
+                  <td colSpan={4} className="px-2 py-2 text-right font-mono text-purple-300">Producible: {totalProducible.toLocaleString()}</td>
+                </tr>
+              );
+            })()}
+          </tfoot>
         </table>
+      </div>
+
+      {/* Controles de Paginación */}
+      <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs">
+        <div className="text-gray-600">
+          Mostrando <span className="font-semibold">{Math.min(currentPage * itemsPerPage - itemsPerPage + 1, datosFiltrados.length)}</span> a <span className="font-semibold">{Math.min(currentPage * itemsPerPage, datosFiltrados.length)}</span> de <span className="font-semibold">{datosFiltrados.length}</span> registros
+        </div>
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
+            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ⟨⟨
+          </button>
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ⟨
+          </button>
+          
+          <div className="flex items-center gap-1">
+            <span>Página</span>
+            <input
+              type="number"
+              min="1"
+              max={totalPages}
+              value={currentPage}
+              onChange={(e) => {
+                const page = parseInt(e.target.value) || 1;
+                if (page >= 1 && page <= totalPages) setCurrentPage(page);
+              }}
+              className="w-12 border border-gray-300 rounded px-1 py-1 text-center"
+            />
+            <span>de {totalPages}</span>
+          </div>
+
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ⟩
+          </button>
+          <button
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages}
+            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ⟩⟩
+          </button>
+
+          <select
+            value={itemsPerPage}
+            onChange={(e) => {
+              // Esto es solo visual, para mantener los 50 items por página
+              // Si quieres hacer el itemsPerPage dinámico, necesitarías mover a estado
+            }}
+            className="border border-gray-300 rounded px-2 py-1"
+          >
+            <option value="50">50 por página</option>
+          </select>
+        </div>
       </div>
     </div>
   );

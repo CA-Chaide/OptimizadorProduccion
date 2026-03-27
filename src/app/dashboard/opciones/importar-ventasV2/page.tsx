@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { restriccionService } from '@/services/restriccion.service';
+import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
 
 import {
   MONTH_NUMBERS,
@@ -170,6 +171,11 @@ export default function ImportarVentasPage() {
     setTiemposCanonResults(newResults);
     setIsLoadingTimesCanon(false);
   }, [numMaximoSabados]);
+
+  // Limpiar cache del servicio cuando cambien datos críticos
+  useEffect(() => {
+    bottleneckAnalysisService.clearCache();
+  }, [bottleneckData, tiemposCanonResults]);
 
   const handleLoadData = async () => {
     if (!selectedFilters.año || selectedFilters.meses.length === 0) {

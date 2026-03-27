@@ -1,16 +1,12 @@
 
 'use client';
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { safeNumber, exportToXLSXMultiSheet } from './utils';
+import React, { useState, useEffect, useMemo } from 'react';
+import { safeNumber } from './utils';
 import { TiempoCanonResult, TransferNeed } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
-import { dataStore } from '@/services/DataStore';
-
-function normalizarClase(valor: any): string {
-  return String(valor || '').trim().toUpperCase();
-}
+import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
 
 interface BottleneckAnalysisSectionProps {
   data: any[];
@@ -31,41 +27,19 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   horasExtrasFin, 
   onTransferNeedsConsolidatedChanged 
 }) => {
-  // 1. Filtrado de datos por Centro 2000 (Operación Única)
-  const filteredDataCentro2000 = useMemo(() => {
-    return data.filter(row => String(row.Centro || '').trim() === '2000');
-  }, [data]);
-
-  // 2. Clasificación de datos
-  const { dataEX, dataF } = useMemo(() => {
-    const ex: any[] = [];
-    const f: any[] = [];
-    filteredDataCentro2000.forEach(row => {
-      const clase = normalizarClase(row.ClaseAprovisionam);
-      if (clase === 'E' || clase === 'X') ex.push(row);
-      else if (clase === 'F') f.push(row);
-    });
-    return { dataEX: ex, dataF: f };
-  }, [filteredDataCentro2000]);
-
   const [transferNeedsEX, setTransferNeedsEX] = useState<TransferNeed[]>([]);
   const [computedDataEX, setComputedDataEX] = useState<any[]>([]);
 
-  // 3. Cálculo de transferencias F (Simplificado)
-  const transferNeedsF = useMemo(() => {
-    const map = new Map<string, number>();
-    dataF.forEach(row => {
-      const cod = String(row.CodMaterial ?? '');
-      const up = safeNumber(row.UnidadesProyectado ?? 0);
-      const ss = safeNumber(row.StockSeguridad ?? 0);
-      const sa = safeNumber(row.StockActual ?? 0);
-      const nec = Math.max(0, up - sa + ss);
-      map.set(cod, (map.get(cod) || 0) + nec);
-    });
-    return Array.from(map.entries()).map(([CodMaterial, necesidadTraslado]) => ({ CodMaterial, necesidadTraslado }));
-  }, [dataF]);
+  // Usar el servicio centralizado
+  const analysis = useMemo(() => {
+    if (data.length === 0) return null;
+    return bottleneckAnalysisService.analyzeCenter2000(data, tiemposCanon);
+  }, [data, tiemposCanon]);
 
-  // 4. Consolidación y sincronización con DataStore
+  // Extraer datos del análisis
+  const { dataEX = [], dataF = [], transferNeedsF = [], filteredDataCentro2000 = [] } = analysis || {};
+
+  // Consolidar transferencias
   const transferNeedsConsolidated = useMemo(() => {
     const consolidated = new Map<string, number>();
     transferNeedsEX.forEach(item => consolidated.set(item.CodMaterial, (consolidated.get(item.CodMaterial) || 0) + item.necesidadTraslado));
@@ -76,7 +50,6 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
 
   useEffect(() => {
     if (transferNeedsConsolidated.length > 0) {
-      dataStore.setData('trasladosRequeridosC2000', transferNeedsConsolidated, 'BottleneckAnalysisSection');
       onTransferNeedsConsolidatedChanged?.(transferNeedsConsolidated);
     }
   }, [transferNeedsConsolidated, onTransferNeedsConsolidatedChanged]);

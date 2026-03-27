@@ -80,31 +80,6 @@ export const safeNumber = (v: any): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// Voto mayoría: selecciona el puesto de trabajo con MAYOR CONSUMO (tiempo * necesidad)
-export function seleccionarPuestoConMayorConsumo(
-  registrosLinea: any[],
-  consumoPorEstacion: { [nombreEstacion: string]: number } = {}
-): any | null {
-  if (!registrosLinea || registrosLinea.length === 0) return null;
-  if (registrosLinea.length === 1) return registrosLinea[0];
-
-  // Calcular consumo total para cada puesto
-  let puestoConMayorConsumo = registrosLinea[0];
-  let mayorConsumo = safeNumber(consumoPorEstacion[String(puestoConMayorConsumo?.nombre_estacion ?? '')]);
-
-  registrosLinea.forEach((registro: any) => {
-    const nombreEstacion = String(registro?.nombre_estacion ?? '');
-    const consumo = safeNumber(consumoPorEstacion[nombreEstacion]);
-    
-    if (consumo > mayorConsumo) {
-      mayorConsumo = consumo;
-      puestoConMayorConsumo = registro;
-    }
-  });
-
-  return puestoConMayorConsumo;
-}
-
 // Calcular necesidades
 export function computeNecesidades(row: any): number {
   const unidadesProy = safeNumber(row.UnidadesProyectado ?? 0);
@@ -523,38 +498,6 @@ export function obtenerHorasExtrasDeStorage(mes: string, centro: string): HorasE
     console.error(`[HorasExtras] Error leyendo de localStorage: ${key}`, error);
   }
   return null;
-}
-
-/**
- * Resetea las horas consumidas de una línea específica
- */
-export function resetearHorasExtrasLinea(mes: string, centro: string, linea: string): void {
-  const data = obtenerHorasExtrasDeStorage(mes, centro);
-  if (data && data.lineas[linea]) {
-    data.lineas[linea] = data.lineas[linea].map(fila => ({
-      ...fila,
-      horasConsumidas: 0,
-      consumido: false
-    }));
-    guardarHorasExtrasEnStorage(data);
-  }
-}
-
-/**
- * Resetea todas las horas consumidas de un mes/centro
- */
-export function resetearTodasHorasExtras(mes: string, centro: string): void {
-  const data = obtenerHorasExtrasDeStorage(mes, centro);
-  if (data) {
-    Object.keys(data.lineas).forEach(linea => {
-      data.lineas[linea] = data.lineas[linea].map(fila => ({
-        ...fila,
-        horasConsumidas: 0,
-        consumido: false
-      }));
-    });
-    guardarHorasExtrasEnStorage(data);
-  }
 }
 
 /**
