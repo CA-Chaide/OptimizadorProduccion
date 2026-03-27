@@ -95,8 +95,15 @@ const DataRow = memo(({ row, idx, linea, isCentro1000 }: { row: any, idx: number
           <td className="px-2 py-2 text-xs text-right font-mono text-teal-700 font-semibold">
             {row._trasladosViablesARecibir.toLocaleString()}
           </td>
-          <td className={`px-2 py-2 text-xs text-right font-mono font-semibold ${row._deficitNeto2000 > 0 ? 'text-red-700' : 'text-green-700'}`}>
+          <td className={`px-2 py-2 text-xs text-right font-mono font-semibold ${row._deficitNeto2000 > 0 ? 'text-red-700' : 'text-green-700'} border-r-2 border-gray-200`}>
             {row._deficitNeto2000.toLocaleString()}
+          </td>
+          {/* SECCIÓN SALDOS */}
+          <td className="px-2 py-2 text-xs text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30">
+            {row._stockInicial.toLocaleString()}
+          </td>
+          <td className="px-2 py-2 text-xs text-right font-mono text-blue-700 font-bold bg-blue-50/30">
+            {row._backlogVentas.toLocaleString()}
           </td>
         </>
       )}
@@ -104,8 +111,6 @@ const DataRow = memo(({ row, idx, linea, isCentro1000 }: { row: any, idx: number
   );
 });
 DataRow.displayName = 'DataRow';
-
-const EMPTY_MAP = new Map();
 
 export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({ 
   datos, 
@@ -150,11 +155,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     return map;
   }, [tiemposCanon]);
 
-  // 2. Lógica de cálculo pesado (solo se ejecuta si los datos de entrada cambian)
+  // 2. Lógica de cálculo pesado
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
 
-    // Pre-agrupar necesidades por Mes|Línea
     const mapaAgrupamiento = new Map<string, { necesidades: number }>();
     const sumaTiempoNecPorLinea = new Map<string, number>();
     const tiempoDispGlobalPorLinea = new Map<string, number>();
@@ -187,7 +191,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
             return nl === lineaNorm || nl.includes(lineaNorm) || lineaNorm.includes(nl);
           });
           
-          let pBotella = registrosLinea[0]; // Simplificado para velocidad
+          let pBotella = registrosLinea[0];
           const disp = safeNumber(pBotella?.minutos_horario_normal_TOTAL ?? 0);
           tiempoDispGlobalPorLinea.set(key, disp);
           poolMinutosHEPorLinea.set(key, (tc.diasLaborables ?? 0) * maxExtrasHoras * 60);
@@ -233,7 +237,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       };
     });
 
-    // Tercer pase: Horas Extras y Sábados (Consolidado)
+    // Tercer pase: Horas Extras y Sábados
     const sumDefJN = new Map();
     const sumTDefJN = new Map();
     enriquecidos.forEach(r => {
@@ -259,7 +263,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const poolSab = poolMinutosSabadosPorLinea.get(k) || 0;
       let maxSab = 0;
       if (prodAqui && deficitHE > 0) {
-        // Simplificación: Sábados usa el mismo pool distribuido por participación de déficit
         if (poolSab > 0) maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
         maxSab = Math.min(maxSab, deficitHE);
       }
@@ -269,6 +272,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const ratioTr = r._necesidad > 0 ? r._traslado / r._necesidad : 0;
       const ratioPr = r._necesidad > 0 ? r._necPropia / r._necesidad : 0;
       const trViable = !isCentro1000 ? (viableTransfersMap.get(`${r.CodMaterial}|${r.mesRef}`) || 0) : 0;
+
+      // LÓGICA DE SALDOS (Solo para Centro 2000)
+      const _stockInicial = safeNumber(r.StockActual);
+      const _disponibilidad = _stockInicial + _prodViable + trViable;
+      const _demanda = safeNumber(r.UnidadesProyectado);
+      // BackLogVentas = Math.min(Demanda, Disponibilidad) - basado en la lógica solicitada
+      const _backlogVentas = (_disponibilidad - _demanda >= 0) ? _demanda : _disponibilidad;
 
       return {
         ...r,
@@ -281,12 +291,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         _deficitNeto2000: Math.max(0, _deficitGeneral - trViable),
         participacionDeficitJN: partDefJN,
         minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
-        minutosDisponiblesSabados: (partDefJN / 100) * poolSab
+        minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
+        _stockInicial,
+        _backlogVentas
       };
     });
   }, [datos, trasladosMap, isCentro1000, viableTransfersMap, tiemposCanonMap, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin]);
 
-  // 3. Lógica de Filtrado Ligero (UI)
+  // 3. Lógica de Filtrado UI
   const datosFiltrados = useMemo(() => {
     if (!searchTerm && !selectedLinea && selectedRespCtrlProd.length === 0 && selectedSector.length === 0 && selectedClaseAprov.length === 0) return filasCalculadas;
     
@@ -308,12 +320,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     return datosFiltrados.slice(start, start + itemsPerPage);
   }, [datosFiltrados, currentPage]);
 
-  // Reset page cuando cambian filtros
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
 
-  // Sincronización optimizada
   const lastSyncRef = useRef<string>('');
   useEffect(() => {
     if (!onComputedDataReady || filasCalculadas.length === 0) return;
@@ -323,7 +333,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
     onComputedDataReady(filasCalculadas);
   }, [filasCalculadas, onComputedDataReady]);
 
-  // Opciones de filtros
   const options = useMemo(() => {
     const lineas = new Set<string>();
     const resps = new Set<string>();
@@ -373,7 +382,35 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
           {options.lineas.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
 
-        {/* Filtro Sector */}
+        <div className="flex items-center gap-1">
+          <span className="text-gray-600">Clase:</span>
+          <select 
+            value="" 
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val && !selectedClaseAprov.includes(val)) {
+                setSelectedClaseAprov([...selectedClaseAprov, val]);
+              }
+            }} 
+            className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
+          >
+            <option value="">+ Agregar</option>
+            {options.clases.map(c => (
+              !selectedClaseAprov.includes(c) && <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          {selectedClaseAprov.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {selectedClaseAprov.map(c => (
+                <span key={c} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                  {c}
+                  <button onClick={() => setSelectedClaseAprov(selectedClaseAprov.filter(x => x !== c))} className="hover:text-purple-900 font-bold">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-1">
           <span className="text-gray-600">Sector:</span>
           <select 
@@ -403,7 +440,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
           )}
         </div>
 
-        {/* Filtro Responsable */}
         <div className="flex items-center gap-1">
           <span className="text-gray-600">Resp:</span>
           <select 
@@ -432,36 +468,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
             </div>
           )}
         </div>
-
-        {/* Filtro Clase Aprovisionamiento */}
-        <div className="flex items-center gap-1">
-          <span className="text-gray-600">Clase:</span>
-          <select 
-            value="" 
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val && !selectedClaseAprov.includes(val)) {
-                setSelectedClaseAprov([...selectedClaseAprov, val]);
-              }
-            }} 
-            className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
-          >
-            <option value="">+ Agregar</option>
-            {options.clases.map(c => (
-              !selectedClaseAprov.includes(c) && <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-          {selectedClaseAprov.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {selectedClaseAprov.map(c => (
-                <span key={c} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
-                  {c}
-                  <button onClick={() => setSelectedClaseAprov(selectedClaseAprov.filter(x => x !== c))} className="hover:text-purple-900 font-bold">×</button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
@@ -472,7 +478,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r">Horas Extras</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-orange-700 uppercase bg-orange-100 border-r">Sábados</th>
-              <th colSpan={3} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100">Resultados</th>
+              <th colSpan={isCentro1000 ? 3 : 5} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r">Resultados Consolidados</th>
+              {!isCentro1000 && <th colSpan={2} className="px-2 py-1 text-center font-bold text-indigo-700 uppercase bg-indigo-100">Saldos</th>}
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left">Clase</th>
@@ -503,17 +510,19 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th className="px-2 py-1 text-right text-orange-600">Disp.Min</th>
               <th className="px-2 py-1 text-right text-orange-700 border-r">Max.Sab</th>
               <th className="px-2 py-1 text-right text-purple-600">Viable</th>
-              {!isCentro1000 ? (
-                <>
-                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
-                  <th className="px-2 py-1 text-right text-teal-600">Tr.Viable</th>
-                  <th className="px-2 py-1 text-right text-purple-600">Def.Neto</th>
-                </>
-              ) : (
+              {isCentro1000 ? (
                 <>
                   <th className="px-2 py-1 text-right text-teal-600">Envio.2000</th>
                   <th className="px-2 py-1 text-right text-cyan-600">Queda.1000</th>
                   <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
+                </>
+              ) : (
+                <>
+                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
+                  <th className="px-2 py-1 text-right text-teal-600">Tr.Viable</th>
+                  <th className="px-2 py-1 text-right text-purple-600 border-r">Def.Neto</th>
+                  <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
+                  <th className="px-2 py-1 text-right text-blue-600">BackLogVentas</th>
                 </>
               )}
             </tr>
@@ -533,22 +542,54 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               const totalNecesidadMaxima = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirJornadaNormal ?? 0), 0);
               const totalDeficitJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitJornadaNormal ?? 0), 0);
               const totalProducible = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._prodViable ?? 0), 0);
+              const totalDeficitGral = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitGeneral ?? 0), 0);
+              const totalTrViable = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._trasladosViablesARecibir ?? 0), 0);
+              const totalDeficitNeto = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitNeto2000 ?? 0), 0);
+              const totalStockInicial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._stockInicial ?? 0), 0);
+              const totalBacklog = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._backlogVentas ?? 0), 0);
               
               return (
-                <tr className="bg-gray-800 text-white font-bold text-[11px]">
-                  <td colSpan={8} className="px-2 py-2">TOTAL GENERAL ({datosFiltrados.length} registros filtrados)</td>
-                  <td className="px-2 py-2 text-right font-mono text-amber-300">{totalNecPropia.toLocaleString()}</td>
+                <tr className="bg-gray-800 text-white font-bold text-[10px]">
+                  {/* Info General Alignment */}
+                  <td colSpan={8} className="px-2 py-2">TOTAL ({datosFiltrados.length})</td>
+                  <td></td> {/* Responsable */}
+                  <td></td> {/* T.Unit */}
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-cyan-300 border-r">{totalNecesidad.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-gray-300 border-r">{totalNecPropia.toLocaleString()}</td>
+                  
+                  {/* JN Alignment */}
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                  <td colSpan={2} className="px-2 py-2 text-right font-mono text-indigo-300">Totales</td>
-                  <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()} min</td>
+                  <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                  <td></td> {/* Part% */}
+                  <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 border-r">{totalNecesidadMaxima.toLocaleString()}</td>
+                  
+                  {/* HE Alignment */}
                   <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td>
-                  <td colSpan={3} className="px-2 py-2 text-right font-mono text-green-200">Déficit JN</td>
-                  <td colSpan={4} className="px-2 py-2 text-right font-mono text-orange-200">Horas Extras</td>
-                  <td colSpan={4} className="px-2 py-2 text-right font-mono text-purple-300">Producible: {totalProducible.toLocaleString()}</td>
+                  <td colSpan={3}></td> {/* T.Def, Part%, Disp.Min */}
+                  <td className="px-2 py-2 text-right font-mono text-green-300 border-r">HE</td>
+                  
+                  {/* SAB Alignment */}
+                  <td colSpan={4}></td>
+                  <td className="px-2 py-2 text-right font-mono text-orange-300 border-r">SAB</td>
+                  
+                  {/* Resultados Alignment */}
+                  <td className="px-2 py-2 text-right font-mono text-purple-300">{totalProducible.toLocaleString()}</td>
+                  {isCentro1000 ? (
+                    <>
+                      <td colSpan={2}></td>
+                      <td className="px-2 py-2 text-right font-mono text-red-300">{totalDeficitGral.toLocaleString()}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-2 py-2 text-right font-mono text-red-300">{totalDeficitGral.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTrViable.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-purple-300 border-r">{totalDeficitNeto.toLocaleString()}</td>
+                      {/* SECCIÓN SALDOS TOTALS */}
+                      <td className="px-2 py-2 text-right font-mono text-indigo-300">{totalStockInicial.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-blue-300 bg-blue-900/50">{totalBacklog.toLocaleString()}</td>
+                    </>
+                  )}
                 </tr>
               );
             })()}
@@ -556,7 +597,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         </table>
       </div>
 
-      {/* Controles de Paginación */}
       <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs">
         <div className="text-gray-600">
           Mostrando <span className="font-semibold">{Math.min(currentPage * itemsPerPage - itemsPerPage + 1, datosFiltrados.length)}</span> a <span className="font-semibold">{Math.min(currentPage * itemsPerPage, datosFiltrados.length)}</span> de <span className="font-semibold">{datosFiltrados.length}</span> registros
@@ -607,17 +647,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
           >
             ⟩⟩
           </button>
-
-          <select
-            value={itemsPerPage}
-            onChange={(e) => {
-              // Esto es solo visual, para mantener los 50 items por página
-              // Si quieres hacer el itemsPerPage dinámico, necesitarías mover a estado
-            }}
-            className="border border-gray-300 rounded px-2 py-1"
-          >
-            <option value="50">50 por página</option>
-          </select>
         </div>
       </div>
     </div>
