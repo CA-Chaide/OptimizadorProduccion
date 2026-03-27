@@ -94,7 +94,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any,
           <td className={`px-2 py-2 text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas < 0 ? 'text-red-600' : 'text-blue-700'}`}>
             {row._backlogVentas.toLocaleString()}
           </td>
-          <td className="px-2 py-2 text-right font-mono font-bold bg-emerald-50/30 text-emerald-700 border-r-2 border-gray-300">
+          <td className={`px-2 py-2 text-right font-mono font-bold border-r-2 border-gray-300 bg-emerald-50/30 ${row._saldoFinal < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
             {row._saldoFinal.toLocaleString()}
           </td>
         </>
@@ -159,7 +159,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
   const viableTransfersMap = useMemo(() => {
     const map = new Map<string, number>();
-    trasladosViables.forEach(item => map.set(`${item.CodMaterial}|${item.mes}`, (map.get(`${item.CodMaterial}|${item.mes}`) || 0) + item.cantidad));
+    trasladosViables.forEach(item => {
+      const key = `${item.CodMaterial}|${item.mes}`;
+      map.set(key, (map.get(key) || 0) + item.cantidad);
+    });
     return map;
   }, [trasladosViables]);
 
@@ -289,13 +292,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const _deficitGeneral = Math.max(0, r._necesidad - _prodViable);
       
       // LÓGICA DE TR. VIABLE: 
-      // Si es resumen C1000, TR Viable es lo que ENVIAMOS (calculado como ratio de producción viable)
-      // Si no es C1000, TR Viable es lo que RECIBIMOS (del mapa de traslados)
+      // En resúmenes (showSaldos), usamos la data pasada desde el padre (trasladosViables).
+      // Para Quito, trasladosViables contiene lo que ENVIÓ (Envío 2000).
+      const trViableValue = (viableTransfersMap.get(`${r.CodMaterial}|${r.mesRef}`) || 0);
+      const _trasladosViablesARecibir = showSaldos ? trViableValue : (isCentro1000 ? 0 : trViableValue);
+
+      // Ratio de envío para el Tab de Análisis (donde no hay showSaldos)
       const ratioTr = r._necesidad > 0 ? r._traslado / r._necesidad : 0;
-      const _envioC2000 = Math.round(_prodViable * ratioTr);
-      const trViableReceived = (viableTransfersMap.get(`${r.CodMaterial}|${r.mesRef}`) || 0);
-      
-      const _trasladosViablesARecibir = (isCentro1000 && showSaldos) ? _envioC2000 : trViableReceived;
+      const _envioC2000 = showSaldos && isCentro1000 ? _trasladosViablesARecibir : Math.round(_prodViable * ratioTr);
 
       // LÓGICA DE SALDOS (Fórmulas refinadas)
       const _stockInicial = safeNumber(r.StockActual);
@@ -309,7 +313,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const _diffBacklog = _disponibilidad - _demanda;
       const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
 
-      // Saldo Final = Disponibilidad - Atendido (Ventas - Backlog)
+      // Saldo Final = Disponibilidad - Atendido (donde Atendido = Ventas + Backlog, ya que backlog es negativo)
       const _atendido = _demanda + _backlogVentas; 
       const _saldoFinal = _disponibilidad - _atendido;
 
@@ -622,12 +626,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                       <td className="px-2 py-2 text-right font-mono text-purple-300 border-r-2 border-gray-300 bg-purple-900/30">{totalDeficitNeto.toLocaleString()}</td>
                       <td className="px-2 py-2 text-right font-mono text-indigo-300 bg-indigo-900/20">{totalStockInicial.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-emerald-300 border-r-2 border-gray-300 bg-emerald-900/20">{totalSaldoFinal.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-emerald-900/20 ${totalSaldoFinal < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{totalSaldoFinal.toLocaleString()}</td>
                     </>
                   ) : isCentro1000 ? (
                     <>
-                      <td className="px-2 py-2 text-right font-mono text-teal-300">{totalEnvio2000.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-cyan-300">{totalQueda1000.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalEnvio2000.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-cyan-300 bg-cyan-900/20">{totalQueda1000.toLocaleString()}</td>
                       <td className="px-2 py-2 text-right font-mono text-red-300 border-r-2 border-gray-300">{totalDeficitGral.toLocaleString()}</td>
                     </>
                   ) : (
