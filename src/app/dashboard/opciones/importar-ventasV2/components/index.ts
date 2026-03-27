@@ -1,3 +1,4 @@
+
 // Constants
 export * from './constants';
 
@@ -23,3 +24,4 @@ export { Centro1000DetailTable } from './Centro1000DetailTable';
 export { BottleneckAnalysisSectionCentro1000 } from './BottleneckAnalysisSectionCentro1000';
 export { RawBackendDataTable, type RawBackendDataTableHandle } from './RawBackendDataTable';
 export { BottleneckMonthlySummaryC2000Section } from './BottleneckMonthlySummaryC2000Section';
+export { BottleneckMonthlySummaryC1000Section } from './BottleneckMonthlySummaryC1000Section';

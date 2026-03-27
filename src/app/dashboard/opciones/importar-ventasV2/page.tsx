@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -18,6 +19,7 @@ import {
   BottleneckAnalysisSectionCentro1000,
   BottleneckMaterialAnalysisSection,
   BottleneckMonthlySummaryC2000Section,
+  BottleneckMonthlySummaryC1000Section,
   TiempoCanonResult,
   TransferNeed,
   ViableTransfer,
@@ -200,6 +202,7 @@ export default function ImportarVentasPage() {
     { id: 3, label: 'Identificación de Cuellos de Botella', color: 'red' },
     { id: 4, label: 'Análisis Centro 2000', color: 'blue' },
     { id: 5, label: 'Análisis Centro 1000', color: 'teal' },
+    { id: 8, label: 'Resumen Mensual C1000', color: 'teal' },
     { id: 7, label: 'Resumen MensualC2000', color: 'indigo' },
     { id: 6, label: 'Bottleneck por Material', color: 'indigo' }
   ];
@@ -323,6 +326,17 @@ export default function ImportarVentasPage() {
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 8 ? 'block' : 'none' }}>
+          <BottleneckMonthlySummaryC1000Section 
+            data={bottleneckData} 
+            tiemposCanon={tiemposCanonResults}
+            numMaximoSabados={numMaximoSabados}
+            maxExtrasHoras={maxExtrasHoras}
+            horasTrabajo={horasTrabajo}
+            horasExtrasFin={horasExtrasFin}
           />
         </div>
 

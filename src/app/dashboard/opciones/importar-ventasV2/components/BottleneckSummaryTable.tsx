@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -16,6 +17,7 @@ interface BottleneckSummaryTableProps {
   horasExtrasFin: number;
   centroLabel?: string;
   isCentro1000?: boolean;
+  showSaldos?: boolean;
 }
 
 export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({ 
@@ -28,7 +30,8 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
   horasTrabajo, 
   horasExtrasFin,
   centroLabel = 'Centro 2000',
-  isCentro1000 = false
+  isCentro1000 = false,
+  showSaldos = false
 }) => {
   const [selectedLinea, setSelectedLinea] = useState<string>('');
   const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string>('');
@@ -90,7 +93,6 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       
       if (tiempo > actualTiempo) {
         mapa.set(lineaKey, puesto);
-        console.log(`[BottleneckSummaryTable] Cuello de botella: Mes=${mes}, Línea=${linea}, Puesto=${puesto}, Tiempo=${tiempo.toFixed(2)}`);
       }
     });
     
@@ -106,15 +108,12 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     numeroSemanas: number;
     horasPromedioPorDia: number;
     mesNumero: number;
-    // Disponibles por sección (de tiemposCanon)
-    dispJN: number;   // minutos_horario_normal_TOTAL
-    dispHE: number;   // minutos_extras_TOTAL − minutos_horario_normal_TOTAL
-    dispSAB: number;  // minutos_sabado_TOTAL
-    // Consumidos por sección (sum de maxProducir × T.Unit/Puestos)
+    dispJN: number;   
+    dispHE: number;   
+    dispSAB: number;  
     consumidoJN: number;
     consumidoHE: number;
     consumidoSAB: number;
-    // Libre = Disponible − Consumido (derived)
     libreJN: number;
     libreHE: number;
     libreSAB: number;
@@ -174,7 +173,6 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
         }
       }
       
-      // Pool HE = (JN+HE combinado) − JN puro
       const poolHE = Math.max(0, minutosConExtras - tiempoCanonicoInicial);
 
       resumenPorLinea[key] = {
@@ -199,26 +197,22 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     const r = resumenPorLinea[key];
 
     if (usaDatosCalc) {
-      // ===== RUTA PRINCIPAL: leer de filasCalculadas (multi-pass real) =====
       const tupp = safeNumber(row.tiempoUnitarioPorPuesto ?? 0);
       r.necesidadTotal += safeNumber(row._necesidad ?? 0);
       r.necesidadAFabricarTotal += safeNumber(row._prodViable ?? 0);
       r.envioC2000Total += safeNumber(row._envioC2000 ?? 0);
       r.quedaC1000Total += safeNumber(row._quedaC1000 ?? 0);
-      // Consumido por sección = unidades producidas en esa sección × T.Unit/Puestos
       r.consumidoJN  += safeNumber(row.necesidadMaximaProducirJornadaNormal ?? 0) * tupp;
       r.consumidoHE  += safeNumber(row.necesidadMaximaProducirHorasExtras ?? 0) * tupp;
       r.consumidoSAB += safeNumber(row.necesidadMaximaProducirSabados ?? 0) * tupp;
     } else {
-      // ===== FALLBACK: ruta legacy con datos del padre =====
-      const necesidad = safeNumber(row.necesidadTotal ??
-        (safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0)));
+      const necesidad = safeNumber(row.necesidadTotal ?? (safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0)));
       const tiempoPorUnidad = safeNumber(row.TiempoPorUnidad ?? 0);
       const numeroPuestos = Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
       const tiempoUnitarioPorPuesto = tiempoPorUnidad / numeroPuestos;
       r.necesidadTotal += necesidad;
       r.necesidadAFabricarTotal += safeNumber(row.necesidadMaximaAFabricar ?? 0);
-      r.consumidoJN += tiempoUnitarioPorPuesto * necesidad; // legacy: all goes to JN
+      r.consumidoJN += tiempoUnitarioPorPuesto * necesidad;
       if (isCentro1000) {
         const traslado = safeNumber(row.trasladoDesde2000 ?? 0);
         const necPropia = safeNumber(row.necesidadPropia ?? 0);
@@ -230,23 +224,16 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
         }
       }
     }
-    if (!r.detalleExtras && row.horasExtrasDetalle && row.horasExtrasDetalle !== '-') {
-      r.detalleExtras = row.horasExtrasDetalle;
-    }
   });
 
-  // Post-proceso: derivar campos libre por sección
   Object.values(resumenPorLinea).forEach(resumen => {
     resumen.libreJN  = resumen.dispJN  - resumen.consumidoJN;
     resumen.libreHE  = resumen.dispHE  - resumen.consumidoHE;
     resumen.libreSAB = resumen.dispSAB - resumen.consumidoSAB;
     const totalConsumed = resumen.consumidoJN + resumen.consumidoHE + resumen.consumidoSAB;
-    resumen.horasPromedioPorDia = resumen.diasLaborables > 0
-      ? (totalConsumed / 60) / resumen.diasLaborables : 0;
-    resumen.necesidadPromedioDiaria = resumen.diasLaborables > 0
-      ? resumen.necesidadTotal / resumen.diasLaborables : 0;
-    resumen.necesidadAFabricarPromedioDiaria = resumen.diasLaborables > 0
-      ? resumen.necesidadAFabricarTotal / resumen.diasLaborables : 0;
+    resumen.horasPromedioPorDia = resumen.diasLaborables > 0 ? (totalConsumed / 60) / resumen.diasLaborables : 0;
+    resumen.necesidadPromedioDiaria = resumen.diasLaborables > 0 ? resumen.necesidadTotal / resumen.diasLaborables : 0;
+    resumen.necesidadAFabricarPromedioDiaria = resumen.diasLaborables > 0 ? resumen.necesidadAFabricarTotal / resumen.diasLaborables : 0;
   });
 
   const resumenArray = Object.values(resumenPorLinea).sort((a, b) => {
@@ -255,9 +242,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
   });
 
   const lineasUnicas = Array.from(new Set(resumenArray.map(r => r.linea))).sort();
-  const respCtrlProdUnicos = Array.from(
-    new Set(resumenArray.map(r => r.respCtrlProd).filter(v => v !== 'Sin responsable'))
-  ).sort();
+  const respCtrlProdUnicos = Array.from(new Set(resumenArray.map(r => r.respCtrlProd).filter(v => v !== 'Sin responsable'))).sort();
 
   const resumenFiltered = resumenArray.filter(r => {
     const matchLinea = !selectedLinea || r.linea === selectedLinea;
@@ -274,25 +259,16 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       PuestoCuellodeBottella: r.puestoSeleccionado,
       DiasLaborables: r.diasLaborables,
       NecesidadTotal: r.necesidadTotal,
-      NecesidadPromedioDiaria: Number(r.necesidadPromedioDiaria.toFixed(1)),
       NecesidadAFabricarTotal: r.necesidadAFabricarTotal,
-      NecesidadAFabricarPromedioDiaria: Number(r.necesidadAFabricarPromedioDiaria.toFixed(1)),
-      ...(isCentro1000 ? { 'EnvioC2000': r.envioC2000Total, 'QuedaC1000': r.quedaC1000Total } : {}),
-      'JN_ConsumidoMin': Number(r.consumidoJN.toFixed(0)),
+      ...(isCentro1000 && !showSaldos ? { 'EnvioC2000': r.envioC2000Total, 'QuedaC1000': r.quedaC1000Total } : {}),
       'JN_ConsumidoH': Number((r.consumidoJN / 60).toFixed(2)),
-      'JN_LibreMin': Number(r.libreJN.toFixed(0)),
       'JN_LibreH': Number((r.libreJN / 60).toFixed(2)),
-      'HE_ConsumidoMin': Number(r.consumidoHE.toFixed(0)),
       'HE_ConsumidoH': Number((r.consumidoHE / 60).toFixed(2)),
-      'HE_LibreMin': Number(r.libreHE.toFixed(0)),
       'HE_LibreH': Number((r.libreHE / 60).toFixed(2)),
-      'SAB_ConsumidoMin': Number(r.consumidoSAB.toFixed(0)),
       'SAB_ConsumidoH': Number((r.consumidoSAB / 60).toFixed(2)),
-      'SAB_LibreMin': Number(r.libreSAB.toFixed(0)),
       'SAB_LibreH': Number((r.libreSAB / 60).toFixed(2)),
       HorasPorDia: Number(r.horasPromedioPorDia.toFixed(2))
     }));
-    
     exportToXLSX(dataToExport, `Resumen_${centroLabel.replace(/\s+/g, '')}_PorLinea`);
   };
 
@@ -318,29 +294,16 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
         <div className="flex gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-gray-600">Línea:</label>
-            <select 
-              value={selectedLinea} 
-              onChange={e => setSelectedLinea(e.target.value)} 
-              className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
+            <select value={selectedLinea} onChange={e => setSelectedLinea(e.target.value)} className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white">
               <option value="">Todas las líneas</option>
-              {lineasUnicas.map(linea => (
-                <option key={linea} value={linea}>{linea}</option>
-              ))}
+              {lineasUnicas.map(linea => <option key={linea} value={linea}>{linea}</option>)}
             </select>
           </div>
-
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-gray-600">Responsable:</label>
-            <select 
-              value={selectedRespCtrlProd} 
-              onChange={e => setSelectedRespCtrlProd(e.target.value)} 
-              className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
+            <select value={selectedRespCtrlProd} onChange={e => setSelectedRespCtrlProd(e.target.value)} className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white">
               <option value="">Todos</option>
-              {respCtrlProdUnicos.map(resp => (
-                <option key={resp} value={resp}>{resp}</option>
-              ))}
+              {respCtrlProdUnicos.map(resp => <option key={resp} value={resp}>{resp}</option>)}
             </select>
           </div>
         </div>
@@ -349,7 +312,6 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       <div className="overflow-x-auto max-h-[500px] overflow-y-auto relative">
         <table className="w-full">
           <thead className="sticky top-0 z-20 bg-gray-50 shadow-sm">
-            {/* Fila 1: grupos madre */}
             <tr className="bg-gray-50">
               <th rowSpan={3} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200">Mes</th>
               <th rowSpan={3} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200">Responsable</th>
@@ -359,42 +321,34 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
               <th rowSpan={3} className="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200">Sem.</th>
               <th colSpan={2} className="px-2 py-2 text-center text-xs font-semibold text-indigo-600 uppercase tracking-wider border-r border-gray-200">Necesidad</th>
               <th colSpan={2} className="px-2 py-2 text-center text-xs font-semibold text-purple-600 uppercase tracking-wider border-r border-gray-200">Nec. Fabricar</th>
-              {isCentro1000 && <th rowSpan={3} className="px-2 py-2 text-center text-xs font-semibold text-teal-600 uppercase tracking-wider border-r border-gray-200">Envío<br/>C.2000</th>}
-              {isCentro1000 && <th rowSpan={3} className="px-2 py-2 text-center text-xs font-semibold text-cyan-600 uppercase tracking-wider border-r border-gray-200">Queda<br/>C.1000</th>}
+              {isCentro1000 && !showSaldos && <th rowSpan={3} className="px-2 py-2 text-center text-xs font-semibold text-teal-600 uppercase tracking-wider border-r border-gray-200">Envío<br/>C.2000</th>}
+              {isCentro1000 && !showSaldos && <th rowSpan={3} className="px-2 py-2 text-center text-xs font-semibold text-cyan-600 uppercase tracking-wider border-r border-gray-200">Queda<br/>C.1000</th>}
               <th colSpan={4} className="px-2 py-2 text-center text-xs font-bold text-blue-800 uppercase tracking-wider bg-blue-50 border-r border-gray-200">Jornada Normal</th>
               <th colSpan={4} className="px-2 py-2 text-center text-xs font-bold text-amber-800 uppercase tracking-wider bg-amber-50 border-r border-gray-200">Horas Extras L-V</th>
               <th colSpan={4} className="px-2 py-2 text-center text-xs font-bold text-violet-800 uppercase tracking-wider bg-violet-50 border-r border-gray-200">Sábados</th>
               <th rowSpan={3} className="px-2 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">h/día</th>
             </tr>
-            {/* Fila 2: sub-secciones Consumido / Libre */}
             <tr className="bg-gray-50">
               <th rowSpan={2} className="px-2 py-1 text-center text-[10px] text-indigo-500 border-r border-gray-100">Total</th>
               <th rowSpan={2} className="px-2 py-1 text-center text-[10px] text-indigo-500 border-r border-gray-200">Prom/día</th>
               <th rowSpan={2} className="px-2 py-1 text-center text-[10px] text-purple-500 border-r border-gray-100">Total</th>
               <th rowSpan={2} className="px-2 py-1 text-center text-[10px] text-purple-500 border-r border-gray-200">Prom/día</th>
-              {/* JN */}
               <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-blue-700 bg-blue-50 border-b border-blue-200">Consumido</th>
               <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-emerald-700 bg-blue-50 border-r border-gray-200 border-b border-blue-200">Libre</th>
-              {/* HE */}
               <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-amber-700 bg-amber-50 border-b border-amber-200">Consumido</th>
               <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-emerald-700 bg-amber-50 border-r border-gray-200 border-b border-amber-200">Libre</th>
-              {/* SAB */}
               <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-violet-700 bg-violet-50 border-b border-violet-200">Consumido</th>
               <th colSpan={2} className="px-1 py-1 text-center text-[10px] font-semibold text-emerald-700 bg-violet-50 border-r border-gray-200 border-b border-violet-200">Libre</th>
             </tr>
-            {/* Fila 3: unidades min / h */}
             <tr className="bg-gray-50 border-b border-gray-200">
-              {/* JN consumed */}
               <th className="px-1 py-1 text-center text-[10px] text-blue-500 bg-blue-50">min</th>
               <th className="px-1 py-1 text-center text-[10px] text-blue-500 bg-blue-50">h</th>
               <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-blue-50">min</th>
               <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-blue-50 border-r border-gray-200">h</th>
-              {/* HE consumed */}
               <th className="px-1 py-1 text-center text-[10px] text-amber-500 bg-amber-50">min</th>
               <th className="px-1 py-1 text-center text-[10px] text-amber-500 bg-amber-50">h</th>
               <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-amber-50">min</th>
               <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-amber-50 border-r border-gray-200">h</th>
-              {/* SAB consumed */}
               <th className="px-1 py-1 text-center text-[10px] text-violet-500 bg-violet-50">min</th>
               <th className="px-1 py-1 text-center text-[10px] text-violet-500 bg-violet-50">h</th>
               <th className="px-1 py-1 text-center text-[10px] text-emerald-500 bg-violet-50">min</th>
@@ -404,106 +358,37 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
           <tbody className="divide-y divide-gray-100">
             {resumenFiltered.map((resumen, idx) => (
               <tr key={`${resumen.mes}-${resumen.linea}-${idx}`} className="hover:bg-blue-50/50 transition-colors">
-                <td className="px-3 py-2 text-sm font-medium text-gray-900">
-                  {(() => {
-                    const mesNum = parseInt(resumen.mes);
-                    return !isNaN(mesNum) && MONTH_NAMES[mesNum] ? MONTH_NAMES[mesNum] : resumen.mes;
-                  })()}
-                </td>
+                <td className="px-3 py-2 text-sm font-medium text-gray-900">{isNaN(parseInt(resumen.mes)) ? resumen.mes : MONTH_NAMES[parseInt(resumen.mes)] || resumen.mes}</td>
                 <td className="px-3 py-2 text-sm text-gray-600">{resumen.respCtrlProd}</td>
                 <td className="px-3 py-2 text-sm font-medium text-gray-900">{resumen.linea}</td>
-                <td className="px-3 py-2 text-sm">
-                  <span className="inline-block bg-red-100 text-red-800 px-2 py-0.5 rounded font-semibold text-xs">
-                    {resumen.puestoSeleccionado}
-                  </span>
-                </td>
+                <td className="px-3 py-2 text-sm"><span className="inline-block bg-red-100 text-red-800 px-2 py-0.5 rounded font-semibold text-xs">{resumen.puestoSeleccionado}</span></td>
                 <td className="px-3 py-2 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
                 <td className="px-3 py-2 text-sm text-center font-mono text-gray-600">{resumen.numeroSemanas}</td>
-                {/* Necesidad */}
-                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-700 font-semibold">
-                  {Math.floor(resumen.necesidadTotal).toLocaleString()}
-                </td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-600">
-                  {Number(resumen.necesidadPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                </td>
-                {/* Nec. Fabricar */}
-                <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">
-                  {Math.floor(resumen.necesidadAFabricarTotal).toLocaleString()}
-                </td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-purple-600">
-                  {Number(resumen.necesidadAFabricarPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                </td>
-                {/* Envío / Queda */}
-                {isCentro1000 && (
-                  <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">
-                    {resumen.envioC2000Total.toLocaleString()}
-                  </td>
-                )}
-                {isCentro1000 && (
-                  <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">
-                    {resumen.quedaC1000Total.toLocaleString()}
-                  </td>
-                )}
-                {/* ═══ JORNADA NORMAL ═══ */}
-                <td className="px-2 py-2 text-sm text-right font-mono text-blue-700 bg-blue-50/30" title={`Disp: ${resumen.dispJN.toLocaleString()} min`}>
-                  {Number(resumen.consumidoJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-blue-600 bg-blue-50/30">
-                  {(resumen.consumidoJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {Number(resumen.libreJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {(resumen.libreJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-                {/* ═══ HORAS EXTRAS L-V ═══ */}
-                <td className="px-2 py-2 text-sm text-right font-mono text-amber-700 bg-amber-50/30" title={`Disp: ${resumen.dispHE.toLocaleString()} min`}>
-                  {resumen.consumidoHE > 0
-                    ? Number(resumen.consumidoHE).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                    : <span className="text-gray-400">—</span>}
-                </td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-amber-600 bg-amber-50/30">
-                  {resumen.consumidoHE > 0
-                    ? (resumen.consumidoHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })
-                    : <span className="text-gray-400">—</span>}
-                </td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {Number(resumen.libreHE).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {(resumen.libreHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-                {/* ═══ SÁBADOS ═══ */}
-                <td className="px-2 py-2 text-sm text-right font-mono text-violet-700 bg-violet-50/30" title={`Disp: ${resumen.dispSAB.toLocaleString()} min`}>
-                  {resumen.consumidoSAB > 0
-                    ? Number(resumen.consumidoSAB).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                    : <span className="text-gray-400">—</span>}
-                </td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-violet-600 bg-violet-50/30">
-                  {resumen.consumidoSAB > 0
-                    ? (resumen.consumidoSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })
-                    : <span className="text-gray-400">—</span>}
-                </td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {Number(resumen.libreSAB).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {(resumen.libreSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-                {/* h/día */}
-                <td className="px-2 py-2 text-sm text-right font-mono text-gray-700">
-                  {Number(resumen.horasPromedioPorDia ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-700 font-semibold">{Math.floor(resumen.necesidadTotal).toLocaleString()}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-600">{Number(resumen.necesidadPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">{Math.floor(resumen.necesidadAFabricarTotal).toLocaleString()}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-purple-600">{Number(resumen.necesidadAFabricarPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{resumen.envioC2000Total.toLocaleString()}</td>}
+                {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">{resumen.quedaC1000Total.toLocaleString()}</td>}
+                <td className="px-2 py-2 text-sm text-right font-mono text-blue-700 bg-blue-50/30">{Number(resumen.consumidoJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-blue-600 bg-blue-50/30">{(resumen.consumidoJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-amber-700 bg-amber-50/30">{resumen.consumidoHE > 0 ? Number(resumen.consumidoHE).toLocaleString(undefined, { maximumFractionDigits: 0 }) : <span className="text-gray-400">—</span>}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-amber-600 bg-amber-50/30">{resumen.consumidoHE > 0 ? (resumen.consumidoHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : <span className="text-gray-400">—</span>}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreHE).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-violet-700 bg-violet-50/30">{resumen.consumidoSAB > 0 ? Number(resumen.consumidoSAB).toLocaleString(undefined, { maximumFractionDigits: 0 }) : <span className="text-gray-400">—</span>}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-violet-600 bg-violet-50/30">{resumen.consumidoSAB > 0 ? (resumen.consumidoSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : <span className="text-gray-400">—</span>}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreSAB).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-gray-700">{Number(resumen.horasPromedioPorDia ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
-        {resumenFiltered.length} registros
-      </div>
+      <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">{resumenFiltered.length} registros</div>
     </div>
   );
 };

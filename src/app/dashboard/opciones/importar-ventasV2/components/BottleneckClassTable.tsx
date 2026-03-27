@@ -8,7 +8,7 @@ import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTablePr
 import { Download } from 'lucide-react';
 
 // Componente de fila altamente optimizado
-const DataRow = memo(({ row, idx, linea, isCentro1000 }: { row: any, idx: number, linea: string, isCentro1000: boolean }) => {
+const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any, idx: number, linea: string, isCentro1000: boolean, showSaldos: boolean }) => {
   return (
     <tr key={`${linea}-${idx}`} className="hover:bg-gray-50 transition-colors">
       <td className="px-2 py-2 text-xs font-medium text-gray-600">{String(row.ClaseAprovisionam || '-').trim().toUpperCase()}</td>
@@ -75,7 +75,25 @@ const DataRow = memo(({ row, idx, linea, isCentro1000 }: { row: any, idx: number
       <td className="px-2 py-2 text-xs text-right font-mono text-purple-700 font-semibold">
         {row._prodViable.toLocaleString()}
       </td>
-      {isCentro1000 ? (
+      {showSaldos ? (
+        <>
+          <td className={`px-2 py-2 text-xs text-right font-mono font-semibold ${row._deficitGeneral > 0 ? 'text-red-700' : 'text-green-700'}`}>
+            {row._deficitGeneral.toLocaleString()}
+          </td>
+          <td className="px-2 py-2 text-xs text-right font-mono text-teal-700 font-semibold">
+            {row._trasladosViablesARecibir.toLocaleString()}
+          </td>
+          <td className={`px-2 py-2 text-xs text-right font-mono font-semibold ${row._deficitNeto2000 > 0 ? 'text-red-700' : 'text-green-700'} border-r-2 border-gray-200`}>
+            {row._deficitNeto2000.toLocaleString()}
+          </td>
+          <td className="px-2 py-2 text-xs text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30">
+            {row._stockInicial.toLocaleString()}
+          </td>
+          <td className={`px-2 py-2 text-xs text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas < 0 ? 'text-red-600' : 'text-blue-700'}`}>
+            {row._backlogVentas.toLocaleString()}
+          </td>
+        </>
+      ) : isCentro1000 ? (
         <>
           <td className="px-2 py-2 text-xs text-right font-mono text-teal-700 font-semibold">
             {row._envioC2000.toLocaleString()}
@@ -98,13 +116,6 @@ const DataRow = memo(({ row, idx, linea, isCentro1000 }: { row: any, idx: number
           <td className={`px-2 py-2 text-xs text-right font-mono font-semibold ${row._deficitNeto2000 > 0 ? 'text-red-700' : 'text-green-700'} border-r-2 border-gray-200`}>
             {row._deficitNeto2000.toLocaleString()}
           </td>
-          {/* SECCIÓN SALDOS */}
-          <td className="px-2 py-2 text-xs text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30">
-            {row._stockInicial.toLocaleString()}
-          </td>
-          <td className={`px-2 py-2 text-xs text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas < 0 ? 'text-red-600' : 'text-blue-700'}`}>
-            {row._backlogVentas.toLocaleString()}
-          </td>
         </>
       )}
     </tr>
@@ -112,7 +123,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000 }: { row: any, idx: number
 });
 DataRow.displayName = 'DataRow';
 
-export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({ 
+export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSaldos?: boolean }> = ({ 
   datos, 
   titulo, 
   tiemposCanon, 
@@ -123,7 +134,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
   horasExtrasFin = 2,
   trasladosDesdeCentro2000 = [],
   isCentro1000 = false,
-  trasladosViables = []
+  trasladosViables = [],
+  showSaldos = false
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedLinea, setSelectedLinea] = useState<string>('');
@@ -278,9 +290,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const _disponibilidad = _stockInicial + _prodViable + trViable;
       const _demanda = safeNumber(r.UnidadesProyectado);
       
-      // REGLA CORREGIDA BACKLOG VENTAS:
-      // Si Disponibilidad - Demanda es positivo (sobra), backlog es 0.
-      // Si es negativo (falta), backlog es la diferencia (unidades faltantes).
       const _diffBacklog = _disponibilidad - _demanda;
       const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
 
@@ -482,8 +491,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r">Horas Extras</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-orange-700 uppercase bg-orange-100 border-r">Sábados</th>
-              <th colSpan={isCentro1000 ? 3 : 5} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r">Resultados Consolidados</th>
-              {!isCentro1000 && <th colSpan={2} className="px-2 py-1 text-center font-bold text-indigo-700 uppercase bg-indigo-100">Saldos</th>}
+              <th colSpan={showSaldos || !isCentro1000 ? 5 : 3} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r">Resultados Consolidados</th>
+              {showSaldos && <th colSpan={2} className="px-2 py-1 text-center font-bold text-indigo-700 uppercase bg-indigo-100">Saldos</th>}
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left">Clase</th>
@@ -514,7 +523,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               <th className="px-2 py-1 text-right text-orange-600">Disp.Min</th>
               <th className="px-2 py-1 text-right text-orange-700 border-r">Max.Sab</th>
               <th className="px-2 py-1 text-right text-purple-600">Viable</th>
-              {isCentro1000 ? (
+              {showSaldos ? (
+                <>
+                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
+                  <th className="px-2 py-1 text-right text-teal-600">Tr.Viable</th>
+                  <th className="px-2 py-1 text-right text-purple-600 border-r">Def.Neto</th>
+                  <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
+                  <th className="px-2 py-1 text-right text-blue-600">BackLogVentas</th>
+                </>
+              ) : isCentro1000 ? (
                 <>
                   <th className="px-2 py-1 text-right text-teal-600">Envio.2000</th>
                   <th className="px-2 py-1 text-right text-cyan-600">Queda.1000</th>
@@ -525,15 +542,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                   <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
                   <th className="px-2 py-1 text-right text-teal-600">Tr.Viable</th>
                   <th className="px-2 py-1 text-right text-purple-600 border-r">Def.Neto</th>
-                  <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
-                  <th className="px-2 py-1 text-right text-blue-600">BackLogVentas</th>
                 </>
               )}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedData.map((row: any, idx: number) => (
-              <DataRow key={row.id || `${row.CodMaterial}-${currentPage}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} />
+              <DataRow key={row.id || `${row.CodMaterial}-${currentPage}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} showSaldos={showSaldos} />
             ))}
           </tbody>
           <tfoot className="sticky bottom-0 z-20">
@@ -554,32 +569,31 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
               
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
-                  {/* Info General Alignment */}
                   <td colSpan={8} className="px-2 py-2">TOTAL ({datosFiltrados.length})</td>
-                  <td></td> {/* Responsable */}
-                  <td></td> {/* T.Unit */}
+                  <td></td>
+                  <td></td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-gray-300 border-r">{totalNecPropia.toLocaleString()}</td>
-                  
-                  {/* JN Alignment */}
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td></td> {/* Part% */}
+                  <td></td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 border-r">{totalNecesidadMaxima.toLocaleString()}</td>
-                  
-                  {/* HE Alignment */}
                   <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td>
-                  <td colSpan={3}></td> {/* T.Def, Part%, Disp.Min */}
+                  <td colSpan={3}></td>
                   <td className="px-2 py-2 text-right font-mono text-green-300 border-r">HE</td>
-                  
-                  {/* SAB Alignment */}
                   <td colSpan={4}></td>
                   <td className="px-2 py-2 text-right font-mono text-orange-300 border-r">SAB</td>
-                  
-                  {/* Resultados Alignment */}
                   <td className="px-2 py-2 text-right font-mono text-purple-300">{totalProducible.toLocaleString()}</td>
-                  {isCentro1000 ? (
+                  {showSaldos ? (
+                    <>
+                      <td className="px-2 py-2 text-right font-mono text-red-300">{totalDeficitGral.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTrViable.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-purple-300 border-r">{totalDeficitNeto.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-indigo-300">{totalStockInicial.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
+                    </>
+                  ) : isCentro1000 ? (
                     <>
                       <td colSpan={2}></td>
                       <td className="px-2 py-2 text-right font-mono text-red-300">{totalDeficitGral.toLocaleString()}</td>
@@ -589,9 +603,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                       <td className="px-2 py-2 text-right font-mono text-red-300">{totalDeficitGral.toLocaleString()}</td>
                       <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTrViable.toLocaleString()}</td>
                       <td className="px-2 py-2 text-right font-mono text-purple-300 border-r">{totalDeficitNeto.toLocaleString()}</td>
-                      {/* SECCIÓN SALDOS TOTALS */}
-                      <td className="px-2 py-2 text-right font-mono text-indigo-300">{totalStockInicial.toLocaleString()}</td>
-                      <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
                     </>
                   )}
                 </tr>
