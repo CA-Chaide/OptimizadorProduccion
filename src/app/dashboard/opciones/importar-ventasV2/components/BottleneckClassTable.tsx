@@ -54,7 +54,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000 }: { row: any, idx: number
       <td className="px-2 py-2 text-xs text-right font-mono text-green-600">
         {row.minutosDisponiblesHorasExtras != null ? Number(row.minutosDisponiblesHorasExtras).toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'} min
       </td>
-      <td className="px-2 py-2 text-xs text-right font-mono text-green-800 font-semibold border-r-2 border-green-300">
+      <td className="px-2 py-2 text-xs text-right font-mono text-green-700 border-r-2 border-green-300">
         {row.necesidadMaximaProducirHorasExtras != null ? Number(row.necesidadMaximaProducirHorasExtras).toLocaleString() : '-'}
       </td>
       <td className="px-2 py-2 text-xs text-right font-mono text-orange-700">
@@ -102,7 +102,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000 }: { row: any, idx: number
           <td className="px-2 py-2 text-xs text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30">
             {row._stockInicial.toLocaleString()}
           </td>
-          <td className="px-2 py-2 text-xs text-right font-mono text-blue-700 font-bold bg-blue-50/30">
+          <td className={`px-2 py-2 text-xs text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas < 0 ? 'text-red-600' : 'text-blue-700'}`}>
             {row._backlogVentas.toLocaleString()}
           </td>
         </>
@@ -277,8 +277,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
       const _stockInicial = safeNumber(r.StockActual);
       const _disponibilidad = _stockInicial + _prodViable + trViable;
       const _demanda = safeNumber(r.UnidadesProyectado);
-      // BackLogVentas = Math.min(Demanda, Disponibilidad) - basado en la lógica solicitada
-      const _backlogVentas = (_disponibilidad - _demanda >= 0) ? _demanda : _disponibilidad;
+      
+      // REGLA CORREGIDA BACKLOG VENTAS:
+      // Si Disponibilidad - Demanda es positivo (sobra), backlog es 0.
+      // Si es negativo (falta), backlog es la diferencia (unidades faltantes).
+      const _diffBacklog = _disponibilidad - _demanda;
+      const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
 
       return {
         ...r,
@@ -376,7 +380,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
         <select 
           value={selectedLinea} 
           onChange={e => setSelectedLinea(e.target.value)} 
-          className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
+          className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white"
         >
           <option value="">Línea: Todas</option>
           {options.lineas.map(l => <option key={l} value={l}>{l}</option>)}
@@ -587,7 +591,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps> = ({
                       <td className="px-2 py-2 text-right font-mono text-purple-300 border-r">{totalDeficitNeto.toLocaleString()}</td>
                       {/* SECCIÓN SALDOS TOTALS */}
                       <td className="px-2 py-2 text-right font-mono text-indigo-300">{totalStockInicial.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-blue-300 bg-blue-900/50">{totalBacklog.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
                     </>
                   )}
                 </tr>
