@@ -378,6 +378,8 @@ export default function ImportarVentasPage() {
               
               if (transfers.length > 0) {
                 logger.log(`[AUDIT] Emitiendo ${transfers.length} traslados confirmados desde Quito hacia Guayaquil.`, 'success');
+              } else {
+                console.log('[DEBUG] No hay traslados con cantidad > 0 en el set de datos de C1000');
               }
               
               // Actualizar estados para C2000 y Resumen C1000
