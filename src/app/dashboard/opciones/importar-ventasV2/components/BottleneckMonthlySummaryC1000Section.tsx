@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { TiempoCanonResult, ViableTransfer } from './types';
+import { TiempoCanonResult, ViableTransfer, TransferNeed } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { safeNumber, normalizeMaterialCode } from './utils';
@@ -14,6 +14,7 @@ interface BottleneckMonthlySummaryC1000SectionProps {
   horasTrabajo: number;
   horasExtrasFin: number;
   trasladosViables?: ViableTransfer[];
+  trasladosDesdeCentro2000?: TransferNeed[];
 }
 
 export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySummaryC1000SectionProps> = ({ 
@@ -23,7 +24,8 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
   maxExtrasHoras, 
   horasTrabajo, 
   horasExtrasFin,
-  trasladosViables = []
+  trasladosViables = [],
+  trasladosDesdeCentro2000 = []
 }) => {
   const [computedDataEXF, setComputedDataEXF] = useState<any[]>([]);
 
@@ -138,6 +140,7 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
         isCentro1000={true}
         showSaldos={true}
         trasladosViables={trasladosViables}
+        trasladosDesdeCentro2000={trasladosDesdeCentro2000}
       />
     </div>
   );

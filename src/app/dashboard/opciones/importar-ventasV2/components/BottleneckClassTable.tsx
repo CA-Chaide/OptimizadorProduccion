@@ -212,8 +212,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const cDem = String(row.Centro || '').trim();
       
       const traslado = trasladosMap.get(code) || 0;
-      // CRÍTICO: necPropia solo si demanda es C1000 (evitar duplicidad)
-      // Si el dato ya viene agregado (_isAggregated), respetamos su _necPropia
       const rawNec = computeNecLocal(row);
       const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
@@ -644,39 +642,27 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
-                  {/* General (9) */}
                   <td className="px-2 py-2">TOTAL</td>
                   <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-                  
-                  {/* Aprov (3) */}
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-gray-300 border-r-2 border-gray-300">{totalNecPropia.toLocaleString()}</td>
-                  
-                  {/* JN (5) */}
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totalNecesidadMaxima.toLocaleString()}</td>
-                  
-                  {/* HE (5) */}
                   <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-200">{totalTDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totalTMinHE).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalMaxHE.toLocaleString()}</td>
-                  
-                  {/* Sab (5) */}
                   <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDefHE.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totalTMinSAB).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
-                  
-                  {/* Consolidados (1 produccion viable + condicionales) */}
                   <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totalProducible.toLocaleString()}</td>
-                  
                   {showSaldos ? (
                     <>
                       <td className={`px-2 py-2 text-right font-mono bg-red-900/20 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>

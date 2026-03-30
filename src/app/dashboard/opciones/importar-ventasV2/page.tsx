@@ -344,6 +344,7 @@ export default function ImportarVentasPage() {
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
             trasladosViables={trasladosViablesHaciaC1000}
+            trasladosDesdeCentro2000={trasladosDesdeCentro2000}
           />
         </div>
 
