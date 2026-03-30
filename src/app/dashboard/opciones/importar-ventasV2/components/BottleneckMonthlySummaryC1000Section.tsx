@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { TiempoCanonResult, ViableTransfer } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
+import { safeNumber, normalizeMaterialCode } from './utils';
 
 interface BottleneckMonthlySummaryC1000SectionProps {
   data: any[];
@@ -35,11 +36,29 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
     });
   }, [data]);
 
+  // IMPORTANTE: Agrupar por material para que la lógica de prorrateo sea idéntica al tab de análisis
   const dataEXF = useMemo(() => {
-    return filteredDataCentro1000.filter(row => {
+    const rawFiltered = filteredDataCentro1000.filter(row => {
       const clase = String(row.ClaseAprovisionam || '').trim().toUpperCase();
       return ['E', 'X', 'F'].includes(clase);
     });
+
+    const porMaterial = new Map<string, any>();
+    rawFiltered.forEach(row => {
+      const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const mes = String(row.Mes ?? '');
+      const key = `${code}|${mes}`;
+      
+      if (!porMaterial.has(key)) {
+        porMaterial.set(key, { ...row, UnidadesProyectado: 0, StockActual: 0, StockSeguridad: 0 });
+      }
+      const agg = porMaterial.get(key)!;
+      agg.UnidadesProyectado += safeNumber(row.UnidadesProyectado);
+      agg.StockActual = safeNumber(row.StockActual); // El stock suele ser el mismo para el par mat-centro
+      agg.StockSeguridad = safeNumber(row.StockSeguridad);
+    });
+
+    return Array.from(porMaterial.values());
   }, [filteredDataCentro1000]);
 
   if (data.length === 0) {
