@@ -213,7 +213,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       
       const traslado = trasladosMap.get(code) || 0;
       // CRÍTICO: necPropia solo si demanda es C1000 (evitar duplicidad)
-      const necPropia = (isCentro1000 && cDem !== '1000') ? 0 : computeNecLocal(row);
+      // Si el dato ya viene agregado (_isAggregated), respetamos su _necPropia
+      const rawNec = computeNecLocal(row);
+      const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
       
       const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
@@ -254,8 +256,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const cDem = String(row.Centro || '').trim();
       
       const traslado = trasladosMap.get(code) || 0;
-      // CRÍTICO: necPropia solo si demanda es C1000
-      const necPropia = (isCentro1000 && cDem !== '1000') ? 0 : computeNecLocal(row);
+      const rawNec = computeNecLocal(row);
+      const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
       
       const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
@@ -273,11 +275,17 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       }
 
       return {
-        ...row, _necPropia: necPropia, _traslado: traslado, _necesidad: necesidad,
-        tiempoUnitarioPorPuesto: tupp, participacionIndividual: partInd,
-        necesidadMaximaProducirJornadaNormal: maxJN, deficitJornadaNormal: Math.max(0, necesidad - maxJN),
+        ...row, 
+        _necPropia: necPropia, 
+        _traslado: traslado, 
+        _necesidad: necesidad,
+        tiempoUnitarioPorPuesto: tupp, 
+        participacionIndividual: partInd,
+        necesidadMaximaProducirJornadaNormal: maxJN, 
+        deficitJornadaNormal: Math.max(0, necesidad - maxJN),
         tiempoTotalNecesidadDeficitJN: prodAqui ? Math.max(0, necesidad - maxJN) * tupp : 0,
-        mesRef: mes, lineaRef: linea
+        mesRef: mes, 
+        lineaRef: linea
       };
     });
 
@@ -638,14 +646,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
                   {/* General (9) */}
                   <td className="px-2 py-2">TOTAL</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
+                  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
                   
                   {/* Aprov (3) */}
                   <td className="px-2 py-2"></td>

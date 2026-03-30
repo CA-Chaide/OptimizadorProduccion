@@ -51,17 +51,38 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
       const key = `${code}|${mes}`;
       
       if (!porMaterial.has(key)) {
-        porMaterial.set(key, { ...row, UnidadesProyectado: 0, StockActual: 0, StockSeguridad: 0, _Necesidades: 0 });
+        porMaterial.set(key, { 
+          ...row, 
+          UnidadesProyectado: 0, 
+          StockActual: 0, 
+          StockSeguridad: 0, 
+          _Necesidades: 0, 
+          _necPropia: 0,
+          Centro: '1000', // Forzar para evitar el filtrado en la tabla
+          _isAggregated: true 
+        });
       }
       const agg = porMaterial.get(key)!;
       
       // SOLO SUMAR SI LA DEMANDA ES DE QUITO (CENTRO 1000)
-      // Los requerimientos de C2000 se manejan a través del trasladosMap en la tabla final
       if (cDem === '1000') {
-        agg.UnidadesProyectado += safeNumber(row.UnidadesProyectado);
+        agg.UnidadesProyectado = safeNumber(agg.UnidadesProyectado) + safeNumber(row.UnidadesProyectado ?? 0);
         agg.StockActual = safeNumber(row.StockActual); 
         agg.StockSeguridad = safeNumber(row.StockSeguridad);
-        agg._Necesidades = safeNumber(agg._Necesidades) + safeNumber(row._Necesidades ?? 0);
+        
+        // Determinar necesidad neta
+        let nec = 0;
+        if (row._Necesidades !== undefined && row._Necesidades !== null) {
+          nec = safeNumber(row._Necesidades);
+        } else {
+          const up = safeNumber(row.UnidadesProyectado ?? 0);
+          const ss = safeNumber(row.StockSeguridad ?? 0);
+          const sa = safeNumber(row.StockActual ?? 0);
+          nec = Math.max(0, up - sa + ss);
+        }
+        
+        agg._Necesidades = safeNumber(agg._Necesidades) + nec;
+        agg._necPropia = safeNumber(agg._necPropia) + nec;
       }
     });
 
