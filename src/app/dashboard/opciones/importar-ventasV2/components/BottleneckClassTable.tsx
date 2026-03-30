@@ -323,6 +323,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         ...r,
         necesidadMaximaProducirHorasExtras: maxHE,
         necesidadMaximaProducirSabados: maxSab,
+        deficitHorasExtras: deficitHE,
+        tiempoTotalNecesidadDeficitHE: prodAqui ? deficitHE * tupp : 0,
         _prodViable, _deficitGeneral,
         _envioC2000,
         _quedaC1000: Math.round(_prodViable * (r._necesidad > 0 ? r._necPropia / r._necesidad : 0)),
@@ -330,6 +332,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         _trValorAMostrar,
         _deficitNeto2000: Math.max(0, _deficitGeneral - _trValorAMostrar),
         participacionDeficitJN: partDefJN,
+        participacionDeficitHE: (prodAqui && deficitHE > 0) ? (deficitHE / (sumDefJN.get(k) || 1)) * 100 : 0, // Placeholder calculation
         minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
         minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
         _stockInicial,
@@ -520,8 +523,16 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r-2 border-gray-300">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r-2 border-gray-300">Horas Extras</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-orange-700 uppercase bg-orange-100 border-r-2 border-gray-300">Sábados</th>
-              <th colSpan={4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
-              {showSaldos && <th colSpan={3} className="px-2 py-1 text-center font-bold text-indigo-700 uppercase bg-indigo-100 border-r-2 border-gray-300">Saldos</th>}
+              {showSaldos ? (
+                <>
+                  <th colSpan={4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
+                  <th colSpan={3} className="px-2 py-1 text-center font-bold text-indigo-700 uppercase bg-indigo-100 border-r-2 border-gray-300">Saldos</th>
+                </>
+              ) : isCentro1000 ? (
+                <th colSpan={3} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
+              ) : (
+                <th colSpan={3} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
+              )}
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left">Clase</th>
@@ -553,14 +564,26 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th className="px-2 py-1 text-right text-orange-700 border-r-2 border-gray-300">Max.Sab</th>
               
               <th className="px-2 py-1 text-right text-purple-600">Viable</th>
-              <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
-              <th className="px-2 py-1 text-right text-teal-600">TR.Viable</th>
-              <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
-              {showSaldos && (
+              {showSaldos ? (
                 <>
+                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
+                  <th className="px-2 py-1 text-right text-teal-600">TR.Viable</th>
+                  <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
                   <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
                   <th className="px-2 py-1 text-right text-blue-600">BackLogVentas</th>
                   <th className="px-2 py-1 text-right text-emerald-600 border-r-2 border-gray-300">Saldo Final</th>
+                </>
+              ) : isCentro1000 ? (
+                <>
+                  <th className="px-2 py-1 text-right text-teal-600">Envío 2000</th>
+                  <th className="px-2 py-1 text-right text-cyan-600">Queda 1000</th>
+                  <th className="px-2 py-1 text-right text-red-600 border-r-2 border-gray-300">Def.Gral</th>
+                </>
+              ) : (
+                <>
+                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
+                  <th className="px-2 py-1 text-right text-teal-600">TR.Viable</th>
+                  <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
                 </>
               )}
             </tr>
@@ -579,43 +602,78 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               const totalMinutosDisponibles = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesJornadaNormal ?? 0), 0);
               const totalNecesidadMaxima = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirJornadaNormal ?? 0), 0);
               const totalDeficitJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitJornadaNormal ?? 0), 0);
+              const totalTDefJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitJN ?? 0), 0);
+              const totalMaxHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirHorasExtras ?? 0), 0);
+              const totalDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitHorasExtras ?? 0), 0);
+              const totalTDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitHE ?? 0), 0);
+              const totalMaxSab = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirSabados ?? 0), 0);
               
               const totalProducible = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._prodViable ?? 0), 0);
               const totalDeficitGral = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitGeneral ?? 0), 0);
               const totalTrViable = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._trValorAMostrar ?? 0), 0);
               const totalDeficitNeto = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitNeto2000 ?? 0), 0);
               
+              const totalEnvio2000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._envioC2000 ?? 0), 0);
+              const totalQueda1000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._quedaC1000 ?? 0), 0);
+
               const totalStockInicial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._stockInicial ?? 0), 0);
               const totalBacklog = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._backlogVentas ?? 0), 0);
               const totalSaldoFinal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._saldoFinal ?? 0), 0);
               
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
+                  {/* General Info (9 cols) */}
                   <td colSpan={9} className="px-2 py-2">TOTAL ({datosFiltrados.length})</td>
+                  
+                  {/* Aprovisionamiento (3 cols) */}
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-gray-300 border-r-2 border-gray-300">{totalNecPropia.toLocaleString()}</td>
+                  
+                  {/* Jornada Normal (5 cols) */}
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totalNecesidadMaxima.toLocaleString()}</td>
+                  
+                  {/* Horas Extras (5 cols) */}
                   <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td>
-                  <td colSpan={3} className="px-2 py-2"></td>
-                  <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">HE</td>
-                  <td colSpan={4} className="px-2 py-2"></td>
-                  <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">SAB</td>
+                  <td className="px-2 py-2 text-right font-mono text-green-200">{totalTDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalMaxHE.toLocaleString()}</td>
                   
+                  {/* Sábados (5 cols) */}
+                  <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDefHE.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
+                  
+                  {/* Resultados Consolidados (Variable) */}
                   <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totalProducible.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-red-300 bg-red-900/20">{totalDeficitGral.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-purple-300 border-r-2 border-gray-300 bg-purple-900/30">{totalDeficitNeto.toLocaleString()}</td>
-                  
-                  {showSaldos && (
+                  {showSaldos ? (
                     <>
+                      <td className={`px-2 py-2 text-right font-mono bg-red-900/20 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-purple-900/30 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
+                      {/* Saldos (3 cols) */}
                       <td className="px-2 py-2 text-right font-mono text-indigo-300 bg-indigo-900/20">{totalStockInicial.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-emerald-900/20 ${totalSaldoFinal < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{totalSaldoFinal.toLocaleString()}</td>
+                    </>
+                  ) : isCentro1000 ? (
+                    <>
+                      <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalEnvio2000.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-cyan-300 bg-cyan-900/20">{totalQueda1000.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className={`px-2 py-2 text-right font-mono ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTrViable.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 text-purple-300`}>{totalDeficitNeto.toLocaleString()}</td>
                     </>
                   )}
                 </tr>
@@ -662,7 +720,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           </div>
 
           <button
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
             className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
