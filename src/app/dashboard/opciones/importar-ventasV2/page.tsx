@@ -335,6 +335,7 @@ export default function ImportarVentasPage() {
               }));
               setTrasladosViablesHaciaC1000(transfersInC1000);
             }}
+            trasladosViables={trasladosViablesHaciaC2000}
           />
         </div>
 

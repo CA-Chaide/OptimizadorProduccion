@@ -97,6 +97,8 @@ export interface BottleneckAnalysisSectionProps {
   horasTrabajo: number;
   horasExtrasFin: number;
   onTransferNeedsConsolidatedChanged?: (needs: TransferNeed[]) => void;
+  onComputedDataReady?: (data: any[]) => void;
+  trasladosViables?: ViableTransfer[];
 }
 
 export interface Centro1000SummaryTableProps {

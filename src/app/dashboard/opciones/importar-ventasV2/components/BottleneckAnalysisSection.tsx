@@ -2,21 +2,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { safeNumber } from './utils';
-import { TiempoCanonResult, TransferNeed } from './types';
+import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckAnalysisSectionProps } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
-
-interface BottleneckAnalysisSectionProps {
-  data: any[];
-  tiemposCanon: TiempoCanonResult[];
-  numMaximoSabados: number;
-  maxExtrasHoras: number;
-  horasTrabajo: number;
-  horasExtrasFin: number;
-  onTransferNeedsConsolidatedChanged?: (needs: TransferNeed[]) => void;
-  onComputedDataReady?: (data: any[]) => void;
-}
 
 export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps> = ({ 
   data, 
@@ -26,7 +15,8 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   horasTrabajo, 
   horasExtrasFin, 
   onTransferNeedsConsolidatedChanged,
-  onComputedDataReady
+  onComputedDataReady,
+  trasladosViables = []
 }) => {
   const [transferNeedsEX, setTransferNeedsEX] = useState<TransferNeed[]>([]);
   const [computedDataEX, setComputedDataEX] = useState<any[]>([]);
@@ -86,6 +76,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
         onComputedDataReady={setComputedDataEX}
         maxExtrasHoras={maxExtrasHoras}
         horasExtrasFin={horasExtrasFin}
+        trasladosViables={trasladosViables}
       />
       
       {dataF.length > 0 && (
