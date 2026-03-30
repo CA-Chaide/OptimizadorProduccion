@@ -93,6 +93,9 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any,
           <td className="px-2 py-2 text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30">
             {row._stockInicial.toLocaleString()}
           </td>
+          <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50/30">
+            {row._demandaCubierta.toLocaleString()}
+          </td>
           <td className={`px-2 py-2 text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas < 0 ? 'text-red-600' : 'text-blue-700'}`}>
             {row._backlogVentas.toLocaleString()}
           </td>
@@ -341,9 +344,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
       const _diffBacklog = _disponibilidad - _demanda;
       const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
+      
+      // Demanda Cubierta: Lo que si se puede entregar localmente
+      const _demandaCubierta = Math.min(_demanda, Math.max(0, _disponibilidad));
 
-      // Saldo Final = Disponibilidad - Atendido
-      const _saldoFinal = _disponibilidad - (_demanda + (_backlogVentas < 0 ? _backlogVentas : 0));
+      // Saldo Final = Disponibilidad - Entregado
+      const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
 
       return {
         ...r,
@@ -362,6 +368,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
         minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
         _stockInicial,
+        _demandaCubierta,
         _backlogVentas,
         _saldoFinal
       };
@@ -553,7 +560,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r-2 border-gray-300">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r-2 border-gray-300">Horas Extras</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-orange-700 uppercase bg-orange-100 border-r-2 border-gray-300">Sábados</th>
-              <th colSpan={showSaldos ? 7 : 4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
+              <th colSpan={showSaldos ? 8 : 4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left">Clase</th>
@@ -591,6 +598,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                   <th className="px-2 py-1 text-right text-teal-600">Traslados Entrantes</th>
                   <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
                   <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
+                  <th className="px-2 py-1 text-right text-green-600">Dem. Cubierta</th>
                   <th className="px-2 py-1 text-right text-blue-600">BackLogVentas</th>
                   <th className="px-2 py-1 text-right text-emerald-600 border-r-2 border-gray-300">Saldo Final</th>
                 </>
@@ -635,6 +643,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               const totalEnvio2000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._envioC2000 ?? 0), 0);
               const totalQueda1000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._quedaC1000 ?? 0), 0);
               const totalStockInicial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._stockInicial ?? 0), 0);
+              const totalDemandaCubierta = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._demandaCubierta ?? 0), 0);
               const totalBacklog = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._backlogVentas ?? 0), 0);
               const totalSaldoFinal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._saldoFinal ?? 0), 0);
               const totalTMinHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesHorasExtras ?? 0), 0);
@@ -643,7 +652,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
                   <td className="px-2 py-2">TOTAL</td>
-                  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-gray-300 border-r-2 border-gray-300">{totalNecPropia.toLocaleString()}</td>
@@ -669,6 +685,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                       <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-purple-900/30 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
                       <td className="px-2 py-2 text-right font-mono text-indigo-300 bg-indigo-900/20">{totalStockInicial.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-green-300 bg-green-900/20">{totalDemandaCubierta.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-emerald-900/20 ${totalSaldoFinal < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{totalSaldoFinal.toLocaleString()}</td>
                     </>
