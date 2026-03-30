@@ -327,13 +327,8 @@ export default function ImportarVentasPage() {
             horasExtrasFin={horasExtrasFin}
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
             onComputedDataReady={(data) => {
-              // Actualizar traslados para el resumen del Centro 1000
-              const transfersInC1000 = data.map((r: any) => ({
-                CodMaterial: r.CodMaterial,
-                mes: r.mesRef,
-                cantidad: r._envioC2000 || 0 
-              }));
-              setTrasladosViablesHaciaC1000(transfersInC1000);
+              // Actualizar traslados hacia C1000 basados en lo que C2000 no puede cubrir (conceptual)
+              // Aquí podrías añadir lógica para envíos de vuelta si fuera necesario
             }}
             trasladosViables={trasladosViablesHaciaC2000}
           />
@@ -373,21 +368,22 @@ export default function ImportarVentasPage() {
             horasExtrasFin={horasExtrasFin}
             trasladosDesdeCentro2000={trasladosDesdeCentro2000}
             onComputedDataReady={(data) => {
-              // Actualizar traslados para C2000
+              // ESTO ES LO QUE LLENA TR. VIABLE EN C2000:
+              // Normalizar el mes para que el Joint sea exitoso
               const transfersToC2000 = data.map((r: any) => ({
-                CodMaterial: r.CodMaterial,
-                mes: r.mesRef,
+                CodMaterial: String(r.CodMaterial),
+                mes: String(getMesNumero(r.mesRef)), // Normalizar a número de mes
                 cantidad: r._envioC2000 || 0
               }));
               setTrasladosViablesHaciaC2000(transfersToC2000);
               
-              // Actualizar la trazabilidad interna de C1000
-              const transfersFromC1000 = data.map((r: any) => ({
-                CodMaterial: r.CodMaterial,
-                mes: r.mesRef,
+              // ESTO ES LO QUE LLENA TR. VIABLE EN RESUMEN C1000:
+              const transfersForQuitoSummary = data.map((r: any) => ({
+                CodMaterial: String(r.CodMaterial),
+                mes: String(getMesNumero(r.mesRef)),
                 cantidad: r._envioC2000 || 0
               }));
-              setTrasladosViablesHaciaC1000(transfersFromC1000);
+              setTrasladosViablesHaciaC1000(transfersForQuitoSummary);
             }}
           />
         </div>
