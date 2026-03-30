@@ -295,7 +295,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const ratioTr = r._necesidad > 0 ? r._traslado / r._necesidad : 0;
       const _envioC2000 = Math.round(_prodViable * ratioTr);
 
-      // LÓGICA DE TR. VIABLE: 
+      // LÓGICA DE TR. VIABLE (JOINT): 
       const trViableValue = (viableTransfersMap.get(`${r.CodMaterial}|${r.mesRef}`) || 0);
       const _trasladosViablesARecibir = isCentro1000 ? 0 : trViableValue;
       
@@ -315,7 +315,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
 
       // Saldo Final = Disponibilidad - Atendido (donde Atendido = Ventas - Backlog, pero backlog es negativo)
-      // El usuario pide: (Stock + Viable - TR) - (Ventas - Backlog)
       const _atendido = _demanda + _backlogVentas; 
       const _saldoFinal = _disponibilidad - _atendido;
 
@@ -332,7 +331,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         _trValorAMostrar,
         _deficitNeto2000: Math.max(0, _deficitGeneral - _trValorAMostrar),
         participacionDeficitJN: partDefJN,
-        participacionDeficitHE: (prodAqui && deficitHE > 0) ? (deficitHE / (sumDefJN.get(k) || 1)) * 100 : 0, // Placeholder calculation
+        participacionDeficitHE: (prodAqui && deficitHE > 0) ? (deficitHE / (sumDefJN.get(k) || 1)) * 100 : 0,
         minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
         minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
         _stockInicial,
@@ -368,10 +367,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     setCurrentPage(1);
   }, [searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
 
+  // Fingerprint robusto para evitar bucles pero permitir actualizaciones de TR
   const lastSyncRef = useRef<string>('');
   useEffect(() => {
     if (!onComputedDataReady || filasCalculadas.length === 0) return;
-    const currentFingerprint = `${filasCalculadas.length}-${filasCalculadas[0]?._prodViable}`;
+    
+    const sumViable = filasCalculadas.reduce((s, r) => s + r._prodViable, 0);
+    const sumTR = filasCalculadas.reduce((s, r) => s + (r._envioC2000 || 0) + (r._trasladosViablesARecibir || 0), 0);
+    const currentFingerprint = `${filasCalculadas.length}-${sumViable}-${sumTR}`;
+    
     if (currentFingerprint === lastSyncRef.current) return;
     lastSyncRef.current = currentFingerprint;
     onComputedDataReady(filasCalculadas);
@@ -622,43 +626,32 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
-                  {/* General Info (9 cols) */}
                   <td colSpan={9} className="px-2 py-2">TOTAL ({datosFiltrados.length})</td>
-                  
-                  {/* Aprovisionamiento (3 cols) */}
                   <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-gray-300 border-r-2 border-gray-300">{totalNecPropia.toLocaleString()}</td>
-                  
-                  {/* Jornada Normal (5 cols) */}
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totalNecesidadMaxima.toLocaleString()}</td>
-                  
-                  {/* Horas Extras (5 cols) */}
                   <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-200">{totalTDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalMaxHE.toLocaleString()}</td>
-                  
-                  {/* Sábados (5 cols) */}
                   <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDefHE.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
                   
-                  {/* Resultados Consolidados (Variable) */}
                   <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totalProducible.toLocaleString()}</td>
                   {showSaldos ? (
                     <>
                       <td className={`px-2 py-2 text-right font-mono bg-red-900/20 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
                       <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-purple-900/30 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
-                      {/* Saldos (3 cols) */}
                       <td className="px-2 py-2 text-right font-mono text-indigo-300 bg-indigo-900/20">{totalStockInicial.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-emerald-900/20 ${totalSaldoFinal < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{totalSaldoFinal.toLocaleString()}</td>
