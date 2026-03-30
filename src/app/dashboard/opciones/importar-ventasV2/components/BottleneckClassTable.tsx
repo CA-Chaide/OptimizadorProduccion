@@ -201,7 +201,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
       
-      const necPropia = Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
+      // PRIORIDAD: Usar _Necesidades si viene pre-calculado desde Datos Backend
+      const necPropia = row._Necesidades != null ? safeNumber(row._Necesidades) : Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
       const traslado = trasladosMap.get(code) || 0;
       const necesidad = necPropia + traslado;
@@ -242,7 +243,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const key = `${mes}|${linea}`;
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
       
-      const necPropia = Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
+      const necPropia = row._Necesidades != null ? safeNumber(row._Necesidades) : Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
       const traslado = trasladosMap.get(code) || 0;
       const necesidad = necPropia + traslado;
       
@@ -579,7 +580,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               {showSaldos ? (
                 <>
                   <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
-                  <th className="px-2 py-1 text-right text-teal-600">TR Viable</th>
+                  <th className="px-2 py-1 text-right text-teal-600">Traslados Entrantes</th>
                   <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
                   <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
                   <th className="px-2 py-1 text-right text-blue-600">BackLogVentas</th>

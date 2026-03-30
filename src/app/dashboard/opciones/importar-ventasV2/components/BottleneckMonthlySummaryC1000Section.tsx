@@ -50,12 +50,14 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
       const key = `${code}|${mes}`;
       
       if (!porMaterial.has(key)) {
-        porMaterial.set(key, { ...row, UnidadesProyectado: 0, StockActual: 0, StockSeguridad: 0 });
+        porMaterial.set(key, { ...row, UnidadesProyectado: 0, StockActual: 0, StockSeguridad: 0, _Necesidades: 0 });
       }
       const agg = porMaterial.get(key)!;
       agg.UnidadesProyectado += safeNumber(row.UnidadesProyectado);
       agg.StockActual = safeNumber(row.StockActual); // El stock suele ser el mismo para el par mat-centro
       agg.StockSeguridad = safeNumber(row.StockSeguridad);
+      // Sincronización de necesidades: Sumar las necesidades individuales calculadas en Datos Backend
+      agg._Necesidades = safeNumber(agg._Necesidades) + safeNumber(row._Necesidades ?? 0);
     });
 
     return Array.from(porMaterial.values());
