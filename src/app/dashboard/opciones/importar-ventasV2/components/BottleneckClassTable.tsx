@@ -324,7 +324,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         necesidadMaximaProducirHorasExtras: maxHE,
         necesidadMaximaProducirSabados: maxSab,
         deficitHorasExtras: deficitHE,
-        tiempoTotalNecesidadDeficitHE: prodAqui ? deficitHE * tupp : 0,
+        tiempoTotalNecesidadDeficitHE: prodAqui ? deficitHE * r.tiempoUnitarioPorPuesto : 0,
         _prodViable, _deficitGeneral,
         _envioC2000,
         _quedaC1000: Math.round(_prodViable * (r._necesidad > 0 ? r._necPropia / r._necesidad : 0)),
@@ -626,29 +626,29 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                   <td colSpan={9} className="px-2 py-2">TOTAL ({datosFiltrados.length})</td>
                   
                   {/* Aprovisionamiento (3 cols) */}
-                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-gray-300 border-r-2 border-gray-300">{totalNecPropia.toLocaleString()}</td>
                   
                   {/* Jornada Normal (5 cols) */}
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totalNecesidadMaxima.toLocaleString()}</td>
                   
                   {/* Horas Extras (5 cols) */}
                   <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-200">{totalTDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2 text-right"></td>
+                  <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalMaxHE.toLocaleString()}</td>
                   
                   {/* Sábados (5 cols) */}
                   <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDefHE.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2 text-right"></td>
+                  <td className="px-2 py-2 text-right"></td>
                   <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
                   
                   {/* Resultados Consolidados (Variable) */}
