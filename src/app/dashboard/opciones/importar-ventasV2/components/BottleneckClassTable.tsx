@@ -5,6 +5,7 @@ import { MONTH_NAMES } from './constants';
 import { safeNumber, exportToXLSX, getMesNumero, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
 import { Download } from 'lucide-react';
+import { logger } from '@/services/LogService';
 
 // Componente de fila altamente optimizado
 const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any, idx: number, linea: string, isCentro1000: boolean, showSaldos: boolean }) => {
@@ -236,10 +237,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const mes = String(row.Mes ?? 'Sin mes');
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
-      const necPropia = Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      
+      const necPropia = Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
       const traslado = trasladosMap.get(code) || 0;
       const necesidad = necPropia + traslado;
+      
       const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
       const prodAqui = isCentro1000 || !esF;
       
@@ -613,58 +616,35 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               const totalDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitHorasExtras ?? 0), 0);
               const totalTDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitHE ?? 0), 0);
               const totalMaxSab = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirSabados ?? 0), 0);
-              
               const totalProducible = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._prodViable ?? 0), 0);
               const totalDeficitGral = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitGeneral ?? 0), 0);
               const totalTrViable = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._trValorAMostrar ?? 0), 0);
               const totalDeficitNeto = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitNeto2000 ?? 0), 0);
-              
               const totalEnvio2000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._envioC2000 ?? 0), 0);
               const totalQueda1000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._quedaC1000 ?? 0), 0);
-
               const totalStockInicial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._stockInicial ?? 0), 0);
               const totalBacklog = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._backlogVentas ?? 0), 0);
               const totalSaldoFinal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._saldoFinal ?? 0), 0);
               
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
-                  {/* Info General (9 celdas) */}
+                  {/* General (9) */}
                   <td className="px-2 py-2">TOTAL</td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td>
-                  
-                  {/* Aprovisionamiento (3 celdas) */}
-                  <td className="px-2 py-2 text-right"></td>
-                  <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-gray-300 border-r-2 border-gray-300">{totalNecPropia.toLocaleString()}</td>
-                  
-                  {/* Jornada Normal (5 celdas) */}
-                  <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totalNecesidadMaxima.toLocaleString()}</td>
-                  
-                  {/* Horas Extras (5 celdas) */}
-                  <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-green-200">{totalTDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td><td className="px-2 py-2"></td>
-                  <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalMaxHE.toLocaleString()}</td>
-                  
-                  {/* Sábados (5 celdas) */}
-                  <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDefHE.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td><td className="px-2 py-2"></td>
-                  <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
-                  
-                  {/* Resultados Consolidados (1 viable + las específicas) */}
+                  {/* Aprov (3) */}
+                  <td className="px-2 py-2 text-right"></td><td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td><td className="px-2 py-2 text-right font-mono text-gray-300 border-r-2 border-gray-300">{totalNecPropia.toLocaleString()}</td>
+                  {/* JN (5) */}
+                  <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td><td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td><td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totalNecesidadMaxima.toLocaleString()}</td>
+                  {/* HE (5) */}
+                  <td className="px-2 py-2 text-right font-mono text-green-300">{totalDeficitJN.toLocaleString()}</td><td className="px-2 py-2 text-right font-mono text-green-200">{totalTDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalMaxHE.toLocaleString()}</td>
+                  {/* Sab (5) */}
+                  <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDefHE.toLocaleString()}</td><td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
+                  {/* Consolidados (1 produccion viable) */}
                   <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totalProducible.toLocaleString()}</td>
-                  
                   {showSaldos ? (
                     <>
                       <td className={`px-2 py-2 text-right font-mono bg-red-900/20 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
                       <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-purple-900/30 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
-                      
-                      {/* Saldos (3 celdas) */}
                       <td className="px-2 py-2 text-right font-mono text-indigo-300 bg-indigo-900/20">{totalStockInicial.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
                       <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-emerald-900/20 ${totalSaldoFinal < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{totalSaldoFinal.toLocaleString()}</td>
@@ -677,9 +657,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                     </>
                   ) : (
                     <>
-                      <td className={`px-2 py-2 text-right font-mono ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono bg-red-900/20 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
                       <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
-                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-purple-900/30 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
                     </>
                   )}
                 </tr>

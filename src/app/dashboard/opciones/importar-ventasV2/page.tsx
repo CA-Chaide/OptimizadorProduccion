@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
+import { logger } from '@/services/LogService';
 
 import {
   MONTH_NUMBERS,
@@ -328,7 +329,7 @@ export default function ImportarVentasPage() {
             horasExtrasFin={horasExtrasFin}
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
             onComputedDataReady={(data) => {
-              // Actualizar traslados hacia C1000 basados en lo que C2000 no puede cubrir (conceptual)
+              // C2000 no suele enviar a C1000 en este modelo, pero capturamos por si acaso
             }}
             trasladosViables={trasladosViablesHaciaC2000}
           />
@@ -368,22 +369,20 @@ export default function ImportarVentasPage() {
             horasExtrasFin={horasExtrasFin}
             trasladosDesdeCentro2000={trasladosDesdeCentro2000}
             onComputedDataReady={(data) => {
-              // ESTO ES LO QUE LLENA TR. VIABLE EN C2000:
-              // Normalizar código y mes para que el Joint sea exitoso
-              const transfersToC2000 = data.map((r: any) => ({
+              // AUDITORIA DE TRASLADOS QUITO -> GUAYAQUIL
+              const transfers = data.map((r: any) => ({
                 CodMaterial: normalizeMaterialCode(r.CodMaterial),
                 mes: String(getMesNumero(r.mesRef)), 
                 cantidad: r._envioC2000 || 0
-              }));
-              setTrasladosViablesHaciaC2000(transfersToC2000);
+              })).filter(t => t.cantidad > 0);
               
-              // ESTO ES LO QUE LLENA TR. VIABLE EN RESUMEN C1000:
-              const transfersForQuitoSummary = data.map((r: any) => ({
-                CodMaterial: normalizeMaterialCode(r.CodMaterial),
-                mes: String(getMesNumero(r.mesRef)),
-                cantidad: r._envioC2000 || 0
-              }));
-              setTrasladosViablesHaciaC1000(transfersForQuitoSummary);
+              if (transfers.length > 0) {
+                logger.log(`[AUDIT] Emitiendo ${transfers.length} traslados confirmados desde Quito hacia Guayaquil.`, 'success');
+              }
+              
+              // Actualizar estados para C2000 y Resumen C1000
+              setTrasladosViablesHaciaC2000(transfers);
+              setTrasladosViablesHaciaC1000(transfers);
             }}
           />
         </div>
