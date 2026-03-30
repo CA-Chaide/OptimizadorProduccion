@@ -161,7 +161,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const viableTransfersMap = useMemo(() => {
     const map = new Map<string, number>();
     trasladosViables.forEach(item => {
-      // Normalización absoluta: Material|NumeroMes
       const mesNum = getMesNumero(item.mes);
       const key = `${String(item.CodMaterial)}|${mesNum}`;
       map.set(key, (map.get(key) || 0) + item.cantidad);
@@ -296,24 +295,20 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const ratioTr = r._necesidad > 0 ? r._traslado / r._necesidad : 0;
       const _envioC2000 = Math.round(_prodViable * ratioTr);
 
-      // LÓGICA DE TR. VIABLE (JOINT NORMALIZADO): 
       const mesNum = getMesNumero(r.mesRef);
       const jointKey = `${String(r.CodMaterial)}|${mesNum}`;
       const trViableValue = (viableTransfersMap.get(jointKey) || 0);
       
-      // El valor a mostrar en la columna "TR. Viable"
-      const _trasladosViablesARecibir = isCentro1000 ? trViableValue : trViableValue;
-      const _trValorAMostrar = (isCentro1000 && showSaldos) ? _envioC2000 : _trasladosViablesARecibir;
+      const _trasladosViablesARecibir = trViableValue;
+      const _trValorAMostrar = _trasladosViablesARecibir;
 
       // LÓGICA DE SALDOS
       const _stockInicial = safeNumber(r.StockActual);
       
       // Disponibilidad = Stock + Producción +/- Transferencias
-      // Para Quito (C1000) los traslados se restan ya que son envíos. 
-      // Para Guayaquil (C2000) los traslados se suman ya que son recepciones.
       const _disponibilidad = (isCentro1000 && showSaldos)
-        ? (_stockInicial + _prodViable - _envioC2000) 
-        : (_stockInicial + _prodViable + _trasladosViablesARecibir);
+        ? (_stockInicial + _prodViable - _trValorAMostrar) 
+        : (_stockInicial + _prodViable + _trValorAMostrar);
 
       const _demanda = safeNumber(r.UnidadesProyectado);
       const _diffBacklog = _disponibilidad - _demanda;
@@ -360,7 +355,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     });
   }, [filasCalculadas, searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
 
-  // Paginación
   const totalPages = Math.ceil(datosFiltrados.length / itemsPerPage);
   const paginatedData = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -371,7 +365,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     setCurrentPage(1);
   }, [searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
 
-  // Fingerprint robusto para evitar bucles pero permitir actualizaciones de TR
   const lastSyncRef = useRef<string>('');
   useEffect(() => {
     if (!onComputedDataReady || filasCalculadas.length === 0) return;
@@ -575,7 +568,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               {showSaldos ? (
                 <>
                   <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
-                  <th className="px-2 py-1 text-right text-teal-600">TR.Viable</th>
+                  <th className="px-2 py-1 text-right text-teal-600">Traslados Entrantes</th>
                   <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
                   <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
                   <th className="px-2 py-1 text-right text-blue-600">BackLogVentas</th>
@@ -590,7 +583,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               ) : (
                 <>
                   <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
-                  <th className="px-2 py-1 text-right text-teal-600">TR.Viable</th>
+                  <th className="px-2 py-1 text-right text-teal-600">Traslados Entrantes</th>
                   <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
                 </>
               )}
@@ -603,7 +596,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           </tbody>
           <tfoot className="sticky bottom-0 z-20">
             {(() => {
-              // Cálculos de totales generales
               const totalNecPropia = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necPropia ?? 0), 0);
               const totalTraslados = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._traslado ?? 0), 0);
               const totalNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necesidad ?? 0), 0);
@@ -632,9 +624,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
                   {/* Info General (9 celdas) */}
-                  <td className="px-2 py-2">TOTAL</td>
-                  <td className="px-2 py-2">({datosFiltrados.length})</td>
-                  <td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td>
+                  <td className="px-2 py-2">TOTAL</td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td><td className="px-2 py-2"></td>
                   
                   {/* Aprovisionamiento (3 celdas) */}
                   <td className="px-2 py-2 text-right"></td>
@@ -660,7 +650,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                   <td className="px-2 py-2"></td><td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
                   
-                  {/* Resultados Consolidados (4 celdas) */}
+                  {/* Resultados Consolidados (1 viable + las específicas) */}
                   <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totalProducible.toLocaleString()}</td>
                   
                   {showSaldos ? (
@@ -683,8 +673,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                   ) : (
                     <>
                       <td className={`px-2 py-2 text-right font-mono ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTrViable.toLocaleString()}</td>
-                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 text-purple-300`}>{totalDeficitNeto.toLocaleString()}</td>
+                      <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
+                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
                     </>
                   )}
                 </tr>
