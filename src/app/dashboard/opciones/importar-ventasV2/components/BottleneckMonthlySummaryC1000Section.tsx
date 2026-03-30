@@ -27,7 +27,7 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
 }) => {
   const [computedDataEXF, setComputedDataEXF] = useState<any[]>([]);
 
-  // Filtrar solo datos del Centro 1000 para este resumen
+  // Filtrar solo datos que involucren al Centro 1000 como fabricante
   const filteredDataCentro1000 = useMemo(() => {
     return data.filter(row => {
       const cFab = String(row.CentroFabricacion || '').trim();
@@ -36,7 +36,7 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
     });
   }, [data]);
 
-  // IMPORTANTE: Agrupar por material para que la lógica de prorrateo sea idéntica al tab de análisis
+  // IMPORTANTE: Agrupar por material separando demanda C1000 de demanda C2000
   const dataEXF = useMemo(() => {
     const rawFiltered = filteredDataCentro1000.filter(row => {
       const clase = String(row.ClaseAprovisionam || '').trim().toUpperCase();
@@ -47,17 +47,22 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
     rawFiltered.forEach(row => {
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
       const mes = String(row.Mes ?? '');
+      const cDem = String(row.Centro || '').trim();
       const key = `${code}|${mes}`;
       
       if (!porMaterial.has(key)) {
         porMaterial.set(key, { ...row, UnidadesProyectado: 0, StockActual: 0, StockSeguridad: 0, _Necesidades: 0 });
       }
       const agg = porMaterial.get(key)!;
-      agg.UnidadesProyectado += safeNumber(row.UnidadesProyectado);
-      agg.StockActual = safeNumber(row.StockActual); // El stock suele ser el mismo para el par mat-centro
-      agg.StockSeguridad = safeNumber(row.StockSeguridad);
-      // Sincronización de necesidades: Sumar las necesidades individuales calculadas en Datos Backend
-      agg._Necesidades = safeNumber(agg._Necesidades) + safeNumber(row._Necesidades ?? 0);
+      
+      // SOLO SUMAR SI LA DEMANDA ES DE QUITO (CENTRO 1000)
+      // Los requerimientos de C2000 se manejan a través del trasladosMap en la tabla final
+      if (cDem === '1000') {
+        agg.UnidadesProyectado += safeNumber(row.UnidadesProyectado);
+        agg.StockActual = safeNumber(row.StockActual); 
+        agg.StockSeguridad = safeNumber(row.StockSeguridad);
+        agg._Necesidades = safeNumber(agg._Necesidades) + safeNumber(row._Necesidades ?? 0);
+      }
     });
 
     return Array.from(porMaterial.values());

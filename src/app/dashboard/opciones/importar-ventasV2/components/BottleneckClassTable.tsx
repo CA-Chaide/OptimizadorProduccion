@@ -153,7 +153,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 50;
 
-  // 1. Mapas de búsqueda rápida O(1) con normalización
+  // 1. Mapas de búsqueda rápida
   const trasladosMap = useMemo(() => {
     const map = new Map<string, number>();
     trasladosDesdeCentro2000.forEach(item => {
@@ -166,7 +166,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const viableTransfersMap = useMemo(() => {
     const map = new Map<string, number>();
     trasladosViables.forEach(item => {
-      const mesNum = getMesNumero(item.mes);
+      const mesNum = parseInt(item.mes); // Asegurar que sea número
       const code = normalizeMaterialCode(item.CodMaterial);
       const key = `${code}|${mesNum}`;
       map.set(key, (map.get(key) || 0) + item.cantidad);
@@ -187,24 +187,33 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
 
+    const computeNecLocal = (row: any) => {
+      if (row._Necesidades !== undefined && row._Necesidades !== null) return safeNumber(row._Necesidades);
+      const up = safeNumber(row.UnidadesProyectado ?? 0);
+      const ss = safeNumber(row.StockSeguridad ?? 0);
+      const sa = safeNumber(row.StockActual ?? 0);
+      return Math.max(0, up - sa + ss);
+    };
+
     const mapaAgrupamiento = new Map<string, { necesidades: number }>();
     const sumaTiempoNecPorLinea = new Map<string, number>();
     const tiempoDispGlobalPorLinea = new Map<string, number>();
     const poolMinutosHEPorLinea = new Map<string, number>();
     const poolMinutosSabadosPorLinea = new Map<string, number>();
 
-    // Primer pase: Agregaciones USANDO datosCompletos para que el prorrateo sea consistente
+    // Primer pase: Agregaciones USANDO datosCompletos
     const sourceDataForAggr = (datosCompletos && datosCompletos.length > 0) ? datosCompletos : datos;
     
     sourceDataForAggr.forEach(row => {
       const mes = String(row.Mes ?? 'Sin mes');
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
-      
-      // PRIORIDAD: Usar _Necesidades si viene pre-calculado desde Datos Backend
-      const necPropia = row._Necesidades != null ? safeNumber(row._Necesidades) : Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const cDem = String(row.Centro || '').trim();
+      
       const traslado = trasladosMap.get(code) || 0;
+      // CRÍTICO: necPropia solo si demanda es C1000 (evitar duplicidad)
+      const necPropia = (isCentro1000 && cDem !== '1000') ? 0 : computeNecLocal(row);
       const necesidad = necPropia + traslado;
       
       const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
@@ -242,9 +251,11 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const cDem = String(row.Centro || '').trim();
       
-      const necPropia = row._Necesidades != null ? safeNumber(row._Necesidades) : Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
       const traslado = trasladosMap.get(code) || 0;
+      // CRÍTICO: necPropia solo si demanda es C1000
+      const necPropia = (isCentro1000 && cDem !== '1000') ? 0 : computeNecLocal(row);
       const necesidad = necPropia + traslado;
       
       const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
@@ -311,7 +322,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const jointKey = `${code}|${mesNum}`;
       const trViableValue = (viableTransfersMap.get(jointKey) || 0);
       
-      const _trValorAMostrar = trViableValue;
+      const _trValorAMostrar = isCentro1000 ? _envioC2000 : trViableValue;
 
       // LÓGICA DE SALDOS
       const _stockInicial = safeNumber(r.StockActual);
@@ -325,7 +336,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const _diffBacklog = _disponibilidad - _demanda;
       const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
 
-      // Saldo Final = Disponibilidad - Atendido (Atendido = Demanda - faltante)
+      // Saldo Final = Disponibilidad - Atendido
       const _saldoFinal = _disponibilidad - (_demanda + (_backlogVentas < 0 ? _backlogVentas : 0));
 
       return {
@@ -536,16 +547,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r-2 border-gray-300">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r-2 border-gray-300">Horas Extras</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-orange-700 uppercase bg-orange-100 border-r-2 border-gray-300">Sábados</th>
-              {showSaldos ? (
-                <>
-                  <th colSpan={4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
-                  <th colSpan={3} className="px-2 py-1 text-center font-bold text-indigo-700 uppercase bg-indigo-100 border-r-2 border-gray-300">Saldos</th>
-                </>
-              ) : isCentro1000 ? (
-                <th colSpan={4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
-              ) : (
-                <th colSpan={4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
-              )}
+              <th colSpan={showSaldos ? 7 : 4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left">Clase</th>

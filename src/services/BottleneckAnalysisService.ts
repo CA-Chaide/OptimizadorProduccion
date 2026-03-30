@@ -333,26 +333,31 @@ class BottleneckAnalysisService {
       return this.cache.center1000;
     }
 
-    // 1. Filtrar Centro 1000
+    // 1. Filtrar Centro 1000 (Incluimos los que se fabrican en 1000 aunque se demanden en 2000)
     const rawRows = data
       .filter(row => {
         const cFab = String(row.CentroFabricacion || '').trim();
         const cDem = String(row.Centro || '').trim();
         return cFab === '1000' || (cFab === '' && cDem === '1000');
-      })
-      .map(row => ({ ...row, Centro: '' }));
+      });
 
-    // 2. Agregar por material
+    // 2. Agregar por material, pero separar Necesidad Propia (Demanda C1000) de Necesidad Externa (C2000)
     const porMaterial = new Map<string, any>();
     rawRows.forEach(row => {
       const cod = String(row.CodMaterial ?? '');
+      const cDem = String(row.Centro || '').trim();
+      
       if (!porMaterial.has(cod)) {
-        porMaterial.set(cod, { ...row, UnidadesProyectado: 0, _Necesidades: 0 });
+        porMaterial.set(cod, { ...row, UnidadesProyectado: 0, _Necesidades: 0, Centro: '' });
       }
       const agg = porMaterial.get(cod)!;
-      agg.UnidadesProyectado = this.safeNumber(agg.UnidadesProyectado) + this.safeNumber(row.UnidadesProyectado ?? 0);
-      // AGREGACIÓN CRÍTICA: Sumar las necesidades individuales calculadas en Datos Backend
-      agg._Necesidades = this.safeNumber(agg._Necesidades) + this.computeNecesidad(row);
+      
+      // AGREGACIÓN CRÍTICA: Sumar SOLO si la demanda original es del Centro 1000
+      // La demanda del Centro 2000 vendrá a través del trasladosMap
+      if (cDem === '1000') {
+        agg.UnidadesProyectado = this.safeNumber(agg.UnidadesProyectado) + this.safeNumber(row.UnidadesProyectado ?? 0);
+        agg._Necesidades = this.safeNumber(agg._Necesidades) + this.computeNecesidad(row);
+      }
     });
     const filteredData = Array.from(porMaterial.values());
 
@@ -368,7 +373,8 @@ class BottleneckAnalysisService {
       const k = `${String(row.Mes ?? 'Sin mes')}|${String(row.LineaFabricacion ?? 'Sin línea')}`;
       const codMaterial = String(row.CodMaterial ?? '');
       const traslado = trasladosMap.get(codMaterial) || 0;
-      const necesidadTotal = (row._Necesidades != null ? this.safeNumber(row._Necesidades) : this.computeNecesidad(row)) + traslado;
+      const necPropia = this.safeNumber(row._Necesidades);
+      const necesidadTotal = necPropia + traslado;
       mapa[k] = (mapa[k] || 0) + necesidadTotal;
     });
 
@@ -381,7 +387,7 @@ class BottleneckAnalysisService {
       const key = `${mes}|${linea}`;
       const codMaterial = String(row.CodMaterial ?? '');
       const traslado = trasladosMap.get(codMaterial) || 0;
-      const necPropia = row._Necesidades != null ? this.safeNumber(row._Necesidades) : this.computeNecesidad(row);
+      const necPropia = this.safeNumber(row._Necesidades);
       const necesidadTotal = necPropia + traslado;
       const tiempoPorUnidad = this.safeNumber(row.TiempoPorUnidad ?? 0);
       const numeroPuestos = this.safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
@@ -400,7 +406,7 @@ class BottleneckAnalysisService {
       const key = `${mes}|${linea}`;
       const codMaterial = String(row.CodMaterial ?? '');
       const traslado = trasladosMap.get(codMaterial) || 0;
-      const necesidadPropia = row._Necesidades != null ? this.safeNumber(row._Necesidades) : this.computeNecesidad(row);
+      const necesidadPropia = this.safeNumber(row._Necesidades);
       const necesidadTotal = necesidadPropia + traslado;
       const sumaNecLinea = mapa[key] ?? necesidadTotal;
       const participacionIndividual = sumaNecLinea > 0 ? (necesidadTotal / sumaNecLinea) * 100 : 0;
