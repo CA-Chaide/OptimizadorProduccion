@@ -337,7 +337,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const _stockInicial = safeNumber(r.StockActual);
       const _demanda = safeNumber(r.UnidadesProyectado);
       
-      // Disponibilidad = Stock + Producción +/- Transferencias (C1000 resta lo que envía, C2000 suma lo que recibe)
+      // Disponibilidad = Stock + Producción +/- Traslados (C1000 resta lo que envía, C2000 suma lo que recibe)
       const _disponibilidad = (isCentro1000)
         ? (_stockInicial + _prodViable - _envioC2000) 
         : (_stockInicial + _prodViable + _trValorAMostrar);
@@ -595,7 +595,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               {showSaldos ? (
                 <>
                   <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
-                  <th className="px-2 py-1 text-right text-teal-600">Traslados Entrantes</th>
+                  <th className="px-2 py-1 text-right text-teal-600">{isCentro1000 ? 'Traslados Salientes' : 'Traslados Entrantes'}</th>
                   <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
                   <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
                   <th className="px-2 py-1 text-right text-green-600">Dem. Cubierta</th>
