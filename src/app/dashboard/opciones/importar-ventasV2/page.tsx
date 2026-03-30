@@ -24,7 +24,8 @@ import {
   ViableTransfer,
   FilterOptions,
   SelectedFilters,
-  RawBackendDataTableHandle
+  RawBackendDataTableHandle,
+  normalizeMaterialCode
 } from './components';
 
 export default function ImportarVentasPage() {
@@ -328,7 +329,6 @@ export default function ImportarVentasPage() {
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
             onComputedDataReady={(data) => {
               // Actualizar traslados hacia C1000 basados en lo que C2000 no puede cubrir (conceptual)
-              // Aquí podrías añadir lógica para envíos de vuelta si fuera necesario
             }}
             trasladosViables={trasladosViablesHaciaC2000}
           />
@@ -369,17 +369,17 @@ export default function ImportarVentasPage() {
             trasladosDesdeCentro2000={trasladosDesdeCentro2000}
             onComputedDataReady={(data) => {
               // ESTO ES LO QUE LLENA TR. VIABLE EN C2000:
-              // Normalizar el mes para que el Joint sea exitoso
+              // Normalizar código y mes para que el Joint sea exitoso
               const transfersToC2000 = data.map((r: any) => ({
-                CodMaterial: String(r.CodMaterial),
-                mes: String(getMesNumero(r.mesRef)), // Normalizar a número de mes
+                CodMaterial: normalizeMaterialCode(r.CodMaterial),
+                mes: String(getMesNumero(r.mesRef)), 
                 cantidad: r._envioC2000 || 0
               }));
               setTrasladosViablesHaciaC2000(transfersToC2000);
               
               // ESTO ES LO QUE LLENA TR. VIABLE EN RESUMEN C1000:
               const transfersForQuitoSummary = data.map((r: any) => ({
-                CodMaterial: String(r.CodMaterial),
+                CodMaterial: normalizeMaterialCode(r.CodMaterial),
                 mes: String(getMesNumero(r.mesRef)),
                 cantidad: r._envioC2000 || 0
               }));

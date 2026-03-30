@@ -5,6 +5,12 @@ import { MONTH_NUMBERS, MONTH_NAMES } from './constants';
 import type { WorkDaysCalculation, TiempoCanonResult, FilaHorasExtras, HorasExtrasPorMesCentro } from './types';
 import * as XLSX from 'xlsx';
 
+// Función para normalizar códigos de material a 8 dígitos consistentes
+export const normalizeMaterialCode = (code: string | number): string => {
+  const codeStr = String(code).trim();
+  return codeStr.slice(-8);
+};
+
 // Función para exportar datos a XLSX
 export function exportToXLSX(data: any[], filename: string, columns?: { key: string; header: string }[]) {
   if (!data || data.length === 0) {
@@ -615,7 +621,7 @@ export function consumirHorasExtras(
   resultado.filasActualizadas = filas;
   resultado.necesidadCubierta = minutosRestantes <= 0;
   
-  // Guardar en localStorage si se solicita
+  // Guardar en storage si se solicita
   if (guardarEnStorage) {
     data.lineas[linea] = filas;
     guardarHorasExtrasEnStorage(data);

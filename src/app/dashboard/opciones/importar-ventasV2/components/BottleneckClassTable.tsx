@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { MONTH_NAMES } from './constants';
-import { safeNumber, exportToXLSX, getMesNumero } from './utils';
+import { safeNumber, exportToXLSX, getMesNumero, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
 import { Download } from 'lucide-react';
 
@@ -117,7 +117,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any,
             {row._deficitGeneral.toLocaleString()}
           </td>
           <td className="px-2 py-2 text-right font-mono text-teal-700 font-semibold">
-            {row._trasladosViablesARecibir.toLocaleString()}
+            {row._trValorAMostrar.toLocaleString()}
           </td>
           <td className={`px-2 py-2 text-right font-mono font-bold ${row._deficitNeto2000 > 0 ? 'text-red-700' : 'text-green-700'} border-r-2 border-gray-300`}>
             {row._deficitNeto2000.toLocaleString()}
@@ -151,10 +151,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 50;
 
-  // 1. Mapas de búsqueda rápida O(1)
+  // 1. Mapas de búsqueda rápida O(1) con normalización
   const trasladosMap = useMemo(() => {
     const map = new Map<string, number>();
-    trasladosDesdeCentro2000.forEach(item => map.set(String(item.CodMaterial), (map.get(String(item.CodMaterial)) || 0) + item.necesidadTraslado));
+    trasladosDesdeCentro2000.forEach(item => {
+      const code = normalizeMaterialCode(item.CodMaterial);
+      map.set(code, (map.get(code) || 0) + item.necesidadTraslado);
+    });
     return map;
   }, [trasladosDesdeCentro2000]);
 
@@ -162,7 +165,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     const map = new Map<string, number>();
     trasladosViables.forEach(item => {
       const mesNum = getMesNumero(item.mes);
-      const key = `${String(item.CodMaterial)}|${mesNum}`;
+      const code = normalizeMaterialCode(item.CodMaterial);
+      const key = `${code}|${mesNum}`;
       map.set(key, (map.get(key) || 0) + item.cantidad);
     });
     return map;
@@ -193,9 +197,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
       
-      const codMaterial = String(row.CodMaterial ?? '');
       const necPropia = Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
-      const traslado = trasladosMap.get(codMaterial) || 0;
+      const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const traslado = trasladosMap.get(code) || 0;
       const necesidad = necPropia + traslado;
       
       const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
@@ -232,9 +236,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const mes = String(row.Mes ?? 'Sin mes');
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
-      const codMaterial = String(row.CodMaterial ?? '');
       const necPropia = Math.max(0, safeNumber(row.UnidadesProyectado ?? 0) - safeNumber(row.StockActual ?? 0) + safeNumber(row.StockSeguridad ?? 0));
-      const traslado = trasladosMap.get(codMaterial) || 0;
+      const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const traslado = trasladosMap.get(code) || 0;
       const necesidad = necPropia + traslado;
       const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
       const prodAqui = isCentro1000 || !esF;
@@ -296,7 +300,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const _envioC2000 = Math.round(_prodViable * ratioTr);
 
       const mesNum = getMesNumero(r.mesRef);
-      const jointKey = `${String(r.CodMaterial)}|${mesNum}`;
+      const code = normalizeMaterialCode(r.CodMaterial);
+      const jointKey = `${code}|${mesNum}`;
       const trViableValue = (viableTransfersMap.get(jointKey) || 0);
       
       const _trasladosViablesARecibir = trViableValue;
@@ -304,13 +309,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
       // LÓGICA DE SALDOS
       const _stockInicial = safeNumber(r.StockActual);
+      const _demanda = safeNumber(r.UnidadesProyectado);
       
       // Disponibilidad = Stock + Producción +/- Transferencias
       const _disponibilidad = (isCentro1000 && showSaldos)
         ? (_stockInicial + _prodViable - _trValorAMostrar) 
         : (_stockInicial + _prodViable + _trValorAMostrar);
 
-      const _demanda = safeNumber(r.UnidadesProyectado);
       const _diffBacklog = _disponibilidad - _demanda;
       const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
 
