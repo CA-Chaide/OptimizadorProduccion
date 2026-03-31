@@ -9,8 +9,12 @@ import { logger } from '@/services/LogService';
 
 // Componente de fila altamente optimizado
 const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any, idx: number, linea: string, isCentro1000: boolean, showSaldos: boolean }) => {
+  // Traducir mes si es número
+  const mesDisplay = !isNaN(parseInt(row.mesRef)) ? (MONTH_NAMES[parseInt(row.mesRef)] || row.mesRef) : row.mesRef;
+
   return (
     <tr key={`${linea}-${idx}`} className="hover:bg-gray-50 transition-colors text-[11px]">
+      <td className="px-2 py-2 font-bold text-indigo-900 bg-indigo-50/30 whitespace-nowrap">{mesDisplay}</td>
       <td className="px-2 py-2 font-medium text-gray-600">{String(row.ClaseAprovisionam || '-').trim().toUpperCase()}</td>
       <td className="px-2 py-2 font-medium text-gray-900 font-mono">{row.CodMaterial ?? '-'}</td>
       <td className="px-2 py-2 text-gray-600 max-w-40 truncate" title={row.Descripcion ?? ''}>{row.Descripcion ?? '-'}</td>
@@ -555,7 +559,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-100 shadow-sm text-[10px]">
             <tr className="border-b border-gray-300">
-              <th colSpan={9} className="px-2 py-1 text-center font-bold text-gray-700 uppercase bg-gray-200">Información General</th>
+              <th colSpan={10} className="px-2 py-1 text-center font-bold text-gray-700 uppercase bg-gray-200">Información General</th>
               <th colSpan={3} className="px-2 py-1 text-center font-bold text-teal-700 uppercase bg-teal-50 border-r-2 border-gray-300">Aprovisionamiento</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r-2 border-gray-300">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r-2 border-gray-300">Horas Extras</th>
@@ -563,6 +567,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th colSpan={showSaldos ? 8 : 4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
+              <th className="px-2 py-1 text-left bg-indigo-50/50">Mes</th>
               <th className="px-2 py-1 text-left">Clase</th>
               <th className="px-2 py-1 text-left">Material</th>
               <th className="px-2 py-1 text-left">Descripción</th>
@@ -651,16 +656,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
-                  <td className="px-2 py-2">TOTAL</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2"></td>
+                  <td colSpan={11} className="px-2 py-2">TOTAL</td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-gray-300 border-r-2 border-gray-300">{totalNecPropia.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidad.toLocaleString()}</td>
@@ -673,7 +669,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totalTMinHE).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalMaxHE.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDefHE.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDef_HE.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totalTMinSAB).toLocaleString()}</td>
