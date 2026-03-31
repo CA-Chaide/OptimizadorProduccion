@@ -279,9 +279,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         ? (_stockInicial + _prodViable - _envioC2000) 
         : (_stockInicial + _prodViable + _trValorAMostrar);
 
+      const _demandaCubierta = Math.min(_demanda, Math.max(0, _disponibilidad));
       const _diffBacklog = _disponibilidad - _demanda;
       const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
-      const _demandaCubierta = Math.min(_demanda, Math.max(0, _disponibilidad));
       const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
 
       return {
@@ -559,58 +559,65 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           </tbody>
           <tfoot className="sticky bottom-0 z-20">
             {(() => {
-              const totalNecPropia = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necPropia ?? 0), 0);
-              const totalTraslados = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._traslado ?? 0), 0);
-              const totalNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necesidad ?? 0), 0);
-              const totalTiempoNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidad ?? 0), 0);
-              const totalMinutosDisponibles = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesJornadaNormal ?? 0), 0);
-              const totalNecesidadMaxima = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirJornadaNormal ?? 0), 0);
-              const totalDeficitJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitJornadaNormal ?? 0), 0);
-              const totalTDefJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitJN ?? 0), 0);
-              const totalMaxHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirHorasExtras ?? 0), 0);
-              const totalDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitHorasExtras ?? 0), 0);
-              const totalTDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitHE ?? 0), 0);
-              const totalMaxSab = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirSabados ?? 0), 0);
-              const totalProducible = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._prodViable ?? 0), 0);
-              const totalDeficitGral = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitGeneral ?? 0), 0);
-              const totalTrViable = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._trValorAMostrar ?? 0), 0);
-              const totalDeficitNeto = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitNeto2000 ?? 0), 0);
-              const totalEnvio2000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._envioC2000 ?? 0), 0);
-              const totalQueda1000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._quedaC1000 ?? 0), 0);
-              const totalStockInicial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._stockInicial ?? 0), 0);
-              const totalDemandaCubierta = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._demandaCubierta ?? 0), 0);
-              const totalBacklog = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._backlogVentas ?? 0), 0);
-              const totalSaldoFinal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._saldoFinal ?? 0), 0);
-              const totalTMinHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesHorasExtras ?? 0), 0);
-              const totalTMinSAB = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesSabados ?? 0), 0);
+              const totalNecPropia = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necPropia), 0);
+              const totalTraslados = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._traslado), 0);
+              const totalNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necesidad), 0);
+              const totalTiempoNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidad), 0);
+              const totalMinutosDisponibles = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesJornadaNormal), 0);
+              const totalNecesidadMaxima = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirJornadaNormal), 0);
+              const totalDeficitJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitJornadaNormal), 0);
+              const totalTDefJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitJN), 0);
+              const totalMaxHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirHorasExtras), 0);
+              const totalDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitHorasExtras), 0);
+              const totalTDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitHE), 0);
+              const totalMaxSab = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirSabados), 0);
+              const totalProducible = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._prodViable), 0);
+              const totalDeficitGral = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitGeneral), 0);
+              const totalTrViable = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._trValorAMostrar), 0);
+              const totalDeficitNeto = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitNeto2000), 0);
+              const totalEnvio2000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._envioC2000), 0);
+              const totalQueda1000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._quedaC1000), 0);
+              const totalStockInicial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._stockInicial), 0);
+              const totalDemandaCubierta = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._demandaCubierta), 0);
+              const totalBacklog = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._backlogVentas), 0);
+              const totalSaldoFinal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._saldoFinal), 0);
+              const totalTMinHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesHorasExtras), 0);
+              const totalTMinSAB = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesSabados), 0);
               
               return (
                 <tr className="bg-gray-800 text-white font-bold text-[10px]">
+                  {/* General - 11 cols */}
                   <td colSpan={11} className="px-2 py-2">TOTAL</td>
                   
+                  {/* Aprov - 3 cols */}
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-gray-300">{totalNecPropia.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totalNecesidad.toLocaleString()}</td>
                   
+                  {/* JN - 5 cols */}
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidadMaxima.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalDeficitJN.toLocaleString()}</td>
                   
+                  {/* HE - 5 cols */}
                   <td className="px-2 py-2 text-right font-mono text-green-200">{totalTDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totalTMinHE).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-300">{totalMaxHE.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalDefHE.toLocaleString()}</td>
                   
+                  {/* SAB - 4 cols */}
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totalTMinSAB).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
                   
+                  {/* Viable - 1 col */}
                   <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totalProducible.toLocaleString()}</td>
                   
+                  {/* Resultados */}
                   {showSaldos ? (
                     <>
                       <td className={`px-2 py-2 text-right font-mono bg-red-900/20 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
