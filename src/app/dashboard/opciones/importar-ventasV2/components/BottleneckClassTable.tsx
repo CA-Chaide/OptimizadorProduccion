@@ -220,10 +220,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       
       const traslado = trasladosMap.get(code) || 0;
       const rawNec = computeNecLocal(row);
+      const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      
+      // Lógica crítica de Quito: Nec. Propia es la demanda donde el cliente es 1000
       const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
       
-      const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
       const prodAqui = isCentro1000 || !esF;
 
       if (!mapaAgrupamiento.has(key)) mapaAgrupamiento.set(key, { necesidades: 0 });
@@ -262,10 +264,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       
       const traslado = trasladosMap.get(code) || 0;
       const rawNec = computeNecLocal(row);
+      const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+      
+      // Lógica crítica de Quito: Nec. Propia es la demanda donde el cliente es 1000
       const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
       
-      const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
       const prodAqui = isCentro1000 || !esF;
       
       const tupp = safeNumber(row.TiempoPorUnidad ?? 0) / Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
@@ -559,7 +563,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-100 shadow-sm text-[10px]">
             <tr className="border-b border-gray-300">
-              <th colSpan={10} className="px-2 py-1 text-center font-bold text-gray-700 uppercase bg-gray-200">Información General</th>
+              <th colSpan={11} className="px-2 py-1 text-center font-bold text-gray-700 uppercase bg-gray-200">Información General</th>
               <th colSpan={3} className="px-2 py-1 text-center font-bold text-teal-700 uppercase bg-teal-50 border-r-2 border-gray-300">Aprovisionamiento</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r-2 border-gray-300">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r-2 border-gray-300">Horas Extras</th>
@@ -669,7 +673,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totalTMinHE).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalMaxHE.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDef_HE.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-orange-300">{totalDefHE.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totalTMinSAB).toLocaleString()}</td>
