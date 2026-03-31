@@ -6,6 +6,7 @@ import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckAnalysisSect
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
+import { MONTH_NAMES } from './constants';
 
 export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps> = ({ 
   data, 
