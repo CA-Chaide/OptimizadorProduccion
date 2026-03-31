@@ -111,7 +111,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
     const viables = new Map<string, number>();
     trasladosViables.forEach(item => {
-      viables.set(`${normalizeMaterialCode(item.CodMaterial)}|${parseInt(item.mes)}`, (viables.get(`${normalizeMaterialCode(item.CodMaterial)}|${parseInt(item.mes)}`) || 0) + item.cantidad);
+      // Intentar ambos formatos de mes (nombre y número)
+      const mesNum = parseInt(item.mes);
+      const mesNom = MONTH_NAMES[mesNum];
+      const code = normalizeMaterialCode(item.CodMaterial);
+      
+      viables.set(`${code}|${item.mes}`, item.cantidad);
+      if (mesNum) viables.set(`${code}|${mesNum}`, item.cantidad);
+      if (mesNom) viables.set(`${code}|${mesNom}`, item.cantidad);
     });
 
     const tiempos = new Map<string, TiempoCanonResult>();
@@ -169,8 +176,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       
       const trKey = `${code}|${mes}`;
       const traslado = quickMaps.traslados.get(trKey) || 0;
-      const necPropia = row._isAggregated ? (row._necPropia ?? row._necSum) : (isCentro1000 && cDem !== '1000' ? 0 : row._necSum);
-      const necesidad = necPropia + traslado;
+      const rawNec = row._isAggregated ? (row._necPropia ?? row._unidadesSum) : (isCentro1000 && cDem !== '1000' ? 0 : row._necSum);
+      const necesidad = rawNec + traslado;
       const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
       const prodAqui = isCentro1000 || !esF;
 
@@ -281,16 +288,26 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
       const mesNum = getMesNumero(r.mesRef);
       const code = normalizeMaterialCode(r.CodMaterial);
-      const jointKey = `${code}|${mesNum}`;
-      const trViableValue = (quickMaps.viables.get(jointKey) || 0);
       
-      const _trValorAMostrar = isCentro1000 ? _envioC2000 : trViableValue;
+      // Intentar obtener traslado viable confirmado del prop
+      let trViableValue = 0;
+      if (trasladosViables && trasladosViables.length > 0) {
+        trViableValue = (quickMaps.viables.get(`${code}|${r.mesRef}`) || 
+                         quickMaps.viables.get(`${code}|${mesNum}`) || 0);
+      }
+      
+      // Si somos Quito y estamos en modo resumen, _trValorAMostrar es lo que enviamos (basado en lo que ya se calculó en Tab 5)
+      // Si somos Guayaquil, es lo que recibimos.
+      // Priorizar el valor del prop trasladosViables si está disponible
+      const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
+        ? trViableValue 
+        : (isCentro1000 ? _envioC2000 : trViableValue);
 
       // LÓGICA DE SALDOS
       const _stockInitial = safeNumber(r.StockActual);
       const _demanda = safeNumber(r.UnidadesProyectado);
       const _disponibilidad = (isCentro1000)
-        ? (_stockInitial + _prodViable - _envioC2000) 
+        ? (_stockInitial + _prodViable - _trValorAMostrar) 
         : (_stockInitial + _prodViable + _trValorAMostrar);
 
       const _demandaCubierta = Math.min(_demanda, Math.max(0, _disponibilidad));
@@ -321,7 +338,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         _saldoFinal
       };
     });
-  }, [datos, datosCompletos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin]);
+  }, [datos, datosCompletos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables]);
 
   // 3. Filtrado de la tabla (INSTANTÁNEO)
   const datosFiltrados = useMemo(() => {
@@ -348,7 +365,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     };
     
     datosFiltrados.forEach((r: any) => {
-      if (!Number.isFinite(res.necPropia)) res.necPropia = 0;
       res.necPropia += safeNumber(r._necPropia);
       res.traslados += safeNumber(r._traslado);
       res.necesidad += safeNumber(r._necesidad);
@@ -452,7 +468,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r-2 border-gray-300">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r-2 border-gray-300">Horas Extras</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-orange-700 uppercase bg-orange-100 border-r-2 border-gray-300">Sábados</th>
-              <th colSpan={showSaldos ? 8 : 4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
+              <th colSpan={showSaldos ? 7 : 4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left bg-indigo-50/50">Mes</th>
