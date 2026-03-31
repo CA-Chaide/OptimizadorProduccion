@@ -24,7 +24,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any,
       <td className="px-2 py-2 text-right font-mono text-gray-600">{row.NumeroPuestos ?? row.numero_puestos ?? '-'}</td>
       <td className="px-2 py-2 text-gray-600">{row.Sector ?? '-'}</td>
       <td className="px-2 py-2 text-gray-600">{row.NombRespControlProd ?? row.RespCtrlProd ?? '-'}</td>
-      <td className="px-2 py-2 text-right font-mono text-indigo-600 font-semibold">{row.tiempoUnitarioPorPuesto != null ? Number(row.tiempoUnitarioPorPuesto).toLocaleString(undefined, { maximumFractionDigits: 3 }) : '-'}</td>
+      <td className="px-2 py-2 text-right font-mono text-indigo-600 font-semibold border-r-2 border-gray-200">{row.tiempoUnitarioPorPuesto != null ? Number(row.tiempoUnitarioPorPuesto).toLocaleString(undefined, { maximumFractionDigits: 3 }) : '-'}</td>
       
       <td className="px-2 py-2 text-right font-mono text-teal-700 font-semibold">{row._traslado.toLocaleString()}</td>
       <td className="px-2 py-2 text-right font-mono text-gray-700">{row._necPropia.toLocaleString()}</td>
@@ -111,11 +111,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
     const viables = new Map<string, number>();
     trasladosViables.forEach(item => {
-      // Intentar ambos formatos de mes (nombre y número)
       const mesNum = parseInt(item.mes);
       const mesNom = MONTH_NAMES[mesNum];
       const code = normalizeMaterialCode(item.CodMaterial);
-      
       viables.set(`${code}|${item.mes}`, item.cantidad);
       if (mesNum) viables.set(`${code}|${mesNum}`, item.cantidad);
       if (mesNom) viables.set(`${code}|${mesNom}`, item.cantidad);
@@ -130,63 +128,68 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     return { traslados, viables, tiempos };
   }, [trasladosDesdeCentro2000, trasladosViables, tiemposCanon]);
 
-  // 2. Lógica de cálculo pesado (SOLO CUANDO CAMBIAN LOS DATOS DE ENTRADA)
+  // 2. Lógica de cálculo pesado con ARRASTRE DE INVENTARIO
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
 
-    const computeNecLocal = (row: any) => {
-      if (row._Necesidades !== undefined && row._Necesidades !== null) return safeNumber(row._Necesidades);
-      const up = safeNumber(row.UnidadesProyectado ?? 0);
-      const ss = safeNumber(row.StockSeguridad ?? 0);
-      const sa = safeNumber(row.StockActual ?? 0);
-      return Math.max(0, up - sa + ss);
-    };
+    // --- PASO 0: Identificar meses y ordenar cronológicamente ---
+    const mesesUnicos = Array.from(new Set(datos.map(r => getMesNumero(String(r.Mes || r.mesRef || '')))))
+      .filter((m): m is number => m !== null)
+      .sort((a, b) => a - b);
 
-    const mapaAgrupamiento = new Map<string, { necesidades: number }>();
-    const sumaTiempoNecPorLinea = new Map<string, number>();
-    const tiempoDispGlobalPorLinea = new Map<string, number>();
-    const poolMinutosHEPorLinea = new Map<string, number>();
-    const poolMinutosSabadosPorLinea = new Map<string, number>();
+    if (mesesUnicos.length === 0) return [];
 
-    const sourceDataForAggr = (datosCompletos && datosCompletos.length > 0) ? datosCompletos : datos;
-    
-    // PRE-AGREGACIÓN para evitar doble contabilidad de traslados en el total de la línea
-    const uniqueSourceMap = new Map<string, any>();
-    sourceDataForAggr.forEach(row => {
-      const code = normalizeMaterialCode(row.CodMaterial ?? '');
-      const mes = String(row.Mes ?? 'Sin mes');
-      const cDem = String(row.Centro || '').trim();
-      const linea = String(row.LineaFabricacion ?? 'Sin línea');
-      const key = `${code}|${mes}|${cDem}|${linea}`;
-      
-      if (!uniqueSourceMap.has(key)) {
-        uniqueSourceMap.set(key, { ...row, _unidadesSum: 0, _necSum: 0 });
-      }
-      const existing = uniqueSourceMap.get(key)!;
-      existing._unidadesSum += safeNumber(row.UnidadesProyectado ?? 0);
-      existing._necSum += computeNecLocal(row);
-    });
+    const stockTracker = new Map<string, number>(); // Key: Material|DemandCenter
+    const todasLasFilasProcesadas: any[] = [];
 
-    uniqueSourceMap.forEach(row => {
-      const mes = String(row.Mes ?? 'Sin mes');
-      const linea = String(row.LineaFabricacion ?? 'Sin línea');
-      const key = `${mes}|${linea}`;
-      const code = normalizeMaterialCode(row.CodMaterial ?? '');
-      const cDem = String(row.Centro || '').trim();
-      
-      const trKey = `${code}|${mes}`;
-      const traslado = quickMaps.traslados.get(trKey) || 0;
-      const rawNec = row._isAggregated ? (row._necPropia ?? row._unidadesSum) : (isCentro1000 && cDem !== '1000' ? 0 : row._necSum);
-      const necesidad = rawNec + traslado;
-      const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
-      const prodAqui = isCentro1000 || !esF;
+    // --- PROCESAMIENTO MES A MES (CARRY-OVER) ---
+    for (const mesNum of mesesUnicos) {
+      const mesNombre = MONTH_NAMES[mesNum];
+      const tc = quickMaps.tiempos.get(String(mesNum)) || quickMaps.tiempos.get(mesNombre);
+      if (!tc) continue;
 
-      if (!mapaAgrupamiento.has(key)) mapaAgrupamiento.set(key, { necesidades: 0 });
-      if (prodAqui) mapaAgrupamiento.get(key)!.necesidades += necesidad;
+      const filasDelMes = datos.filter(r => getMesNumero(String(r.Mes || r.mesRef || '')) === mesNum);
+      const poolMinutosHEPorLinea = new Map<string, number>();
+      const poolMinutosSabadosPorLinea = new Map<string, number>();
+      const sumaTiempoNecPorLinea = new Map<string, number>();
+      const mapaAgrupamiento = new Map<string, { necesidades: number }>();
+      const tiempoDispGlobalPorLinea = new Map<string, number>();
 
-      if (!tiempoDispGlobalPorLinea.has(key)) {
-        const tc = quickMaps.tiempos.get(mes);
-        if (tc && tc.data) {
+      // A. Pre-cálculo de necesidades y capacidades para este mes
+      const enriquecidosBase = filasDelMes.map(row => {
+        const code = normalizeMaterialCode(row.CodMaterial ?? '');
+        const cDem = String(row.Centro || '').trim();
+        const keyStock = `${code}|${cDem}`;
+        const linea = String(row.LineaFabricacion ?? 'Sin línea');
+        const mesStr = String(mesNum);
+        const keyLinea = `${mesStr}|${linea}`;
+
+        // Determinar Stock Inicial (Arrastre o Backend)
+        const isFirstMonth = mesNum === mesesUnicos[0];
+        const _stockInitial = (!isFirstMonth && stockTracker.has(keyStock))
+          ? stockTracker.get(keyStock)!
+          : safeNumber(row.StockActual);
+
+        const ss = safeNumber(row.StockSeguridad);
+        const up = safeNumber(row.UnidadesProyectado);
+        
+        // Traslado desde el mapa consolidado
+        const trKey = `${code}|${mesNum}`;
+        const _traslado = quickMaps.traslados.get(trKey) || 0;
+        
+        // Necesidad Propia basada en el Stock Inicial Dinámico
+        const _necPropia = Math.max(0, up - _stockInitial + ss);
+        const rawNec = (isCentro1000 && cDem !== '1000') ? 0 : _necPropia;
+        const _necesidad = rawNec + _traslado;
+
+        const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
+        const prodAqui = isCentro1000 || !esF;
+
+        // Registrar para agregación de línea
+        if (!mapaAgrupamiento.has(keyLinea)) mapaAgrupamiento.set(keyLinea, { necesidades: 0 });
+        if (prodAqui) mapaAgrupamiento.get(keyLinea)!.necesidades += _necesidad;
+
+        if (!tiempoDispGlobalPorLinea.has(keyLinea)) {
           const lineaNorm = String(linea).toLowerCase().replace(/\s+/g, '');
           const registrosLinea = tc.data.filter((item: any) => {
             const nl = String(item?.nombre_linea ?? '').toLowerCase().replace(/\s+/g, '');
@@ -195,150 +198,126 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           
           let pBotella = registrosLinea[0];
           const disp = safeNumber(pBotella?.minutos_horario_normal_TOTAL ?? 0);
-          tiempoDispGlobalPorLinea.set(key, disp);
-          poolMinutosHEPorLinea.set(key, (tc.diasLaborables ?? 0) * maxExtrasHoras * 60);
-          poolMinutosSabadosPorLinea.set(key, (tc.diasSabados ?? 0) * horasExtrasFin * 60);
+          tiempoDispGlobalPorLinea.set(keyLinea, disp);
+          poolMinutosHEPorLinea.set(keyLinea, (tc.diasLaborables ?? 0) * maxExtrasHoras * 60);
+          poolMinutosSabadosPorLinea.set(keyLinea, (tc.diasSabados ?? 0) * horasExtrasFin * 60);
         }
-      }
 
-      if (prodAqui) {
         const tupp = safeNumber(row.TiempoPorUnidad ?? 0) / Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
-        sumaTiempoNecPorLinea.set(key, (sumaTiempoNecPorLinea.get(key) || 0) + (tupp * necesidad));
-      }
-    });
+        if (prodAqui) {
+          sumaTiempoNecPorLinea.set(keyLinea, (sumaTiempoNecPorLinea.get(keyLinea) || 0) + (tupp * _necesidad));
+        }
 
-    const enriquecidos = datos.map(row => {
-      const mes = String(row.Mes ?? 'Sin mes');
-      const linea = String(row.LineaFabricacion ?? 'Sin línea');
-      const key = `${mes}|${linea}`;
-      const code = normalizeMaterialCode(row.CodMaterial ?? '');
-      const cDem = String(row.Centro || '').trim();
-      
-      const trKey = `${code}|${mes}`;
-      const traslado = quickMaps.traslados.get(trKey) || 0;
-      const rawNec = computeNecLocal(row);
-      const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
-      const necesidad = necPropia + traslado;
-      const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
-      const prodAqui = isCentro1000 || !esF;
-      
-      const tupp = safeNumber(row.TiempoPorUnidad ?? 0) / Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
-      const partInd = (prodAqui && (mapaAgrupamiento.get(key)?.necesidades ?? 0) > 0) ? (necesidad / mapaAgrupamiento.get(key)!.necesidades) * 100 : 0;
-      
-      const dispJN = tiempoDispGlobalPorLinea.get(key) || 0;
-      let maxJN = 0;
-      if (!forzarTrasladoTotal && prodAqui) {
-        const totalNecLinea = sumaTiempoNecPorLinea.get(key) || 0;
-        if (totalNecLinea <= dispJN) maxJN = necesidad;
-        else maxJN = tupp > 0 ? Math.floor(((partInd / 100) * dispJN) / tupp) : 0;
-      }
+        return {
+          ...row,
+          mesRef: String(mesNum),
+          lineaRef: linea,
+          _stockInitial,
+          _traslado,
+          _necPropia,
+          _necesidad,
+          tiempoUnitarioPorPuesto: tupp,
+          prodAqui,
+          keyLinea,
+          keyStock,
+          up, ss
+        };
+      });
 
-      return {
-        ...row, 
-        _necPropia: necPropia, 
-        _traslado: traslado, 
-        _necesidad: necesidad,
-        tiempoUnitarioPorPuesto: tupp, 
-        participacionIndividual: partInd,
-        minutosDisponiblesJornadaNormal: (partInd / 100) * dispJN,
-        tiempoTotalNecesidad: prodAqui ? necesidad * tupp : 0,
-        necesidadMaximaProducirJornadaNormal: maxJN, 
-        deficitJornadaNormal: Math.max(0, necesidad - maxJN),
-        tiempoTotalNecesidadDeficitJN: prodAqui ? Math.max(0, necesidad - maxJN) * tupp : 0,
-        mesRef: mes, 
-        lineaRef: linea
-      };
-    });
+      // B. Segundo pase: Reparto de capacidad y cálculo de Saldo Final
+      const sumDefJN = new Map<string, number>();
+      const sumTDefJN = new Map<string, number>();
 
-    const sumDefJN = new Map();
-    const sumTDefJN = new Map();
-    enriquecidos.forEach(r => {
-      const k = `${r.mesRef}|${r.lineaRef}`;
-      sumDefJN.set(k, (sumDefJN.get(k) || 0) + r.deficitJornadaNormal);
-      sumTDefJN.set(k, (sumTDefJN.get(k) || 0) + r.tiempoTotalNecesidadDeficitJN);
-    });
+      const pase2 = enriquecidosBase.map(r => {
+        const partInd = (r.prodAqui && (mapaAgrupamiento.get(r.keyLinea)?.necesidades ?? 0) > 0) 
+          ? (r._necesidad / mapaAgrupamiento.get(r.keyLinea)!.necesidades) * 100 : 0;
+        
+        const dispJN = tiempoDispGlobalPorLinea.get(r.keyLinea) || 0;
+        let maxJN = 0;
+        if (!forzarTrasladoTotal && r.prodAqui) {
+          const totalNecLinea = sumaTiempoNecPorLinea.get(r.keyLinea) || 0;
+          if (totalNecLinea <= dispJN) maxJN = r._necesidad;
+          else maxJN = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partInd / 100) * dispJN) / r.tiempoUnitarioPorPuesto) : 0;
+        }
 
-    return enriquecidos.map(r => {
-      const k = `${r.mesRef}|${r.lineaRef}`;
-      const esF = String(r.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
-      const prodAqui = isCentro1000 || !esF;
-      const partDefJN = (prodAqui && sumDefJN.get(k) > 0) ? (r.deficitJornadaNormal / sumDefJN.get(k)) * 100 : 0;
-      
-      const poolHE = poolMinutosHEPorLinea.get(k) || 0;
-      let maxHE = 0;
-      if (prodAqui && sumTDefJN.get(k) > 0) {
-        if (sumTDefJN.get(k) <= poolHE) maxHE = r.deficitJornadaNormal;
-        else maxHE = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolHE) / r.tiempoUnitarioPorPuesto) : 0;
-      }
+        const defJN = Math.max(0, r._necesidad - maxJN);
+        const tDefJN = r.prodAqui ? defJN * r.tiempoUnitarioPorPuesto : 0;
 
-      const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
-      const poolSab = poolMinutosSabadosPorLinea.get(k) || 0;
-      let maxSab = 0;
-      if (prodAqui && deficitHE > 0) {
-        if (poolSab > 0) maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
-        maxSab = Math.min(maxSab, deficitHE);
-      }
+        sumDefJN.set(r.keyLinea, (sumDefJN.get(r.keyLinea) || 0) + defJN);
+        sumTDefJN.set(r.keyLinea, (sumTDefJN.get(r.keyLinea) || 0) + tDefJN);
 
-      const deficitSabados = Math.max(0, deficitHE - maxSab);
-      const _prodViable = r.necesidadMaximaProducirJornadaNormal + maxHE + maxSab;
-      const _deficitGeneral = Math.max(0, r._necesidad - _prodViable);
-      
-      const ratioTr = r._necesidad > 0 ? r._traslado / r._necesidad : 0;
-      const _envioC2000 = Math.round(_prodViable * ratioTr);
+        return {
+          ...r,
+          participacionIndividual: partInd,
+          minutosDisponiblesJornadaNormal: (partInd / 100) * dispJN,
+          tiempoTotalNecesidad: r.prodAqui ? r._necesidad * r.tiempoUnitarioPorPuesto : 0,
+          necesidadMaximaProducirJornadaNormal: maxJN,
+          deficitJornadaNormal: defJN,
+          tiempoTotalNecesidadDeficitJN: tDefJN
+        };
+      });
 
-      const mesNum = getMesNumero(r.mesRef);
-      const code = normalizeMaterialCode(r.CodMaterial);
-      
-      // Intentar obtener traslado viable confirmado del prop
-      let trViableValue = 0;
-      if (trasladosViables && trasladosViables.length > 0) {
-        trViableValue = (quickMaps.viables.get(`${code}|${r.mesRef}`) || 
-                         quickMaps.viables.get(`${code}|${mesNum}`) || 0);
-      }
-      
-      // Si somos Quito y estamos en modo resumen, _trValorAMostrar es lo que enviamos (basado en lo que ya se calculó en Tab 5)
-      // Si somos Guayaquil, es lo que recibimos.
-      // Priorizar el valor del prop trasladosViables si está disponible
-      const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
-        ? trViableValue 
-        : (isCentro1000 ? _envioC2000 : trViableValue);
+      // C. Tercer pase: Horas Extras, Sábados y actualización de Stock Dinámico
+      pase2.forEach(r => {
+        const poolHE = poolMinutosHEPorLinea.get(r.keyLinea) || 0;
+        const partDefJN = (r.prodAqui && sumDefJN.get(r.keyLinea)! > 0) ? (r.deficitJornadaNormal / sumDefJN.get(r.keyLinea)!) * 100 : 0;
+        
+        let maxHE = 0;
+        if (r.prodAqui && sumTDefJN.get(r.keyLinea)! > 0) {
+          if (sumTDefJN.get(r.keyLinea)! <= poolHE) maxHE = r.deficitJornadaNormal;
+          else maxHE = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolHE) / r.tiempoUnitarioPorPuesto) : 0;
+        }
 
-      // LÓGICA DE SALDOS
-      const _stockInitial = safeNumber(r.StockActual);
-      const _demanda = safeNumber(r.UnidadesProyectado);
-      const _disponibilidad = (isCentro1000)
-        ? (_stockInitial + _prodViable - _trValorAMostrar) 
-        : (_stockInitial + _prodViable + _trValorAMostrar);
+        const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
+        const poolSab = poolMinutosSabadosPorLinea.get(r.keyLinea) || 0;
+        let maxSab = 0;
+        if (r.prodAqui && deficitHE > 0) {
+          if (poolSab > 0) maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
+          maxSab = Math.min(maxSab, deficitHE);
+        }
 
-      const _demandaCubierta = Math.min(_demanda, Math.max(0, _disponibilidad));
-      const _diffBacklog = _disponibilidad - _demanda;
-      const _backlogVentas = _diffBacklog >= 0 ? 0 : _diffBacklog;
-      const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
+        const deficitSabados = Math.max(0, deficitHE - maxSab);
+        const _prodViable = r.necesidadMaximaProducirJornadaNormal + maxHE + maxSab;
+        const _deficitGeneral = Math.max(0, r._necesidad - _prodViable);
+        
+        const ratioTr = r._necesidad > 0 ? r._traslado / r._necesidad : 0;
+        const _envioC2000 = Math.round(_prodViable * ratioTr);
+        const trViableValue = (quickMaps.viables.get(`${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`) || 0);
+        const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) ? trViableValue : (isCentro1000 ? _envioC2000 : trViableValue);
 
-      return {
-        ...r,
-        necesidadMaximaProducirHorasExtras: maxHE,
-        necesidadMaximaProducirSabados: maxSab,
-        deficitHorasExtras: deficitHE,
-        deficitSabados,
-        tiempoTotalNecesidadDeficitHE: prodAqui ? deficitHE * r.tiempoUnitarioPorPuesto : 0,
-        _prodViable, _deficitGeneral,
-        _envioC2000,
-        _quedaC1000: Math.round(_prodViable * (r._necesidad > 0 ? r._necPropia / r._necesidad : 0)),
-        _trasladosViablesARecibir: trViableValue,
-        _trValorAMostrar,
-        _deficitNeto2000: Math.max(0, _deficitGeneral - trViableValue),
-        participacionDeficitJN: partDefJN,
-        participacionDeficitHE: (prodAqui && deficitHE > 0) ? (deficitHE / (sumDefJN.get(k) || 1)) * 100 : 0,
-        minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
-        minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
-        _stockInitial,
-        _demandaCubierta,
-        _backlogVentas,
-        _saldoFinal
-      };
-    });
-  }, [datos, datosCompletos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables]);
+        // SALDOS FINALES
+        const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
+        const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
+        const _backlogVentas = Math.min(0, _disponibilidad - r.up);
+        const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
+
+        // ACTUALIZAR TRACKER PARA EL SIGUIENTE MES
+        stockTracker.set(r.keyStock, _saldoFinal);
+
+        todasLasFilasProcesadas.push({
+          ...r,
+          necesidadMaximaProducirHorasExtras: maxHE,
+          necesidadMaximaProducirSabados: maxSab,
+          deficitHorasExtras: deficitHE,
+          deficitSabados,
+          tiempoTotalNecesidadDeficitHE: r.prodAqui ? deficitHE * r.tiempoUnitarioPorPuesto : 0,
+          _prodViable, _deficitGeneral, _envioC2000,
+          _quedaC1000: Math.round(_prodViable * (r._necesidad > 0 ? r._necPropia / r._necesidad : 0)),
+          _trValorAMostrar,
+          _deficitNeto2000: Math.max(0, _deficitGeneral - trViableValue),
+          participacionDeficitJN: partDefJN,
+          participacionDeficitHE: (r.prodAqui && deficitHE > 0) ? (deficitHE / (sumDefJN.get(r.keyLinea) || 1)) * 100 : 0,
+          minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
+          minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
+          _demandaCubierta,
+          _backlogVentas,
+          _saldoFinal
+        });
+      });
+    }
+
+    return todasLasFilasProcesadas;
+  }, [datos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables]);
 
   // 3. Filtrado de la tabla (INSTANTÁNEO)
   const datosFiltrados = useMemo(() => {
@@ -411,7 +390,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   useEffect(() => {
     if (onTransferNeedsCalculated && filasCalculadas.length > 0 && !isCentro1000) {
       onTransferNeedsCalculated(filasCalculadas.filter(r => r._deficitGeneral > 0).map(r => ({
-        CodMaterial: r.CodMaterial, mes: String(r.Mes || r.mesRef), necesidadTraslado: r._deficitGeneral
+        CodMaterial: r.CodMaterial, mes: String(r.mesRef), necesidadTraslado: r._deficitGeneral
       })));
     }
   }, [filasCalculadas, onTransferNeedsCalculated, isCentro1000]);
@@ -481,7 +460,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th className="px-2 py-1 text-right">Puestos</th>
               <th className="px-2 py-1 text-left">Sector</th>
               <th className="px-2 py-1 text-left">Responsable</th>
-              <th className="px-2 py-1 text-right text-indigo-600">T.Unit</th>
+              <th className="px-2 py-1 text-right text-indigo-600 border-r-2 border-gray-200">T.Unit</th>
               <th className="px-2 py-1 text-right text-teal-600">Traslado</th>
               <th className="px-2 py-1 text-right text-gray-600">Nec.Propia</th>
               <th className="px-2 py-1 text-right text-blue-600 border-r-2 border-gray-300">Necesidad</th>
@@ -533,47 +512,47 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           </tbody>
           <tfoot className="sticky bottom-0 z-20 bg-gray-800 text-white font-bold text-[10px]">
             <tr>
-              <td colSpan={11} className="px-2 py-2">TOTAL</td>
+              <td colSpan={11} className="px-2 py-2 border-r-2 border-gray-600">TOTALES FILTRADOS</td>
               <td className="px-2 py-2 text-right font-mono text-teal-300">{totals.traslados.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-gray-300">{totals.necPropia.toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totals.necesidad.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-600">{totals.necesidad.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-blue-200">{totals.tiempoNec.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
               <td className="px-2 py-2"></td>
               <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totals.dispMinJN).toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-blue-300">{totals.maxJN.toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totals.defJN.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-600">{totals.defJN.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-green-200">{totals.tDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
               <td className="px-2 py-2"></td>
               <td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totals.tMinHE).toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-green-300">{totals.maxHE.toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totals.defHE.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-600">{totals.defHE.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-orange-200">{totals.tDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
               <td className="px-2 py-2"></td>
               <td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totals.tMinSAB).toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-orange-300">{totals.maxSAB.toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono text-orange-200 border-r-2 border-gray-300">{totals.defSAB.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-orange-200 border-r-2 border-gray-600">{totals.defSAB.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totals.viable.toLocaleString()}</td>
               {showSaldos ? (
                 <>
                   <td className="px-2 py-2 text-right font-mono text-red-300">{totals.defGral.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totals.trViable.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-300">{totals.defNeto.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-600">{totals.defNeto.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-indigo-300">{totals.stockIni.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-300">{totals.demCubierta.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300">{totals.backlog.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-300">{totals.saldoFinal.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-600">{totals.saldoFinal.toLocaleString()}</td>
                 </>
               ) : isCentro1000 ? (
                 <>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totals.envio2000.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-cyan-300">{totals.queda1000.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-300">{totals.defGral.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-600">{totals.defGral.toLocaleString()}</td>
                 </>
               ) : (
                 <>
                   <td className="px-2 py-2 text-right font-mono text-red-300">{totals.defGral.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300">{totals.trViable.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-300">{totals.defNeto.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-600">{totals.defNeto.toLocaleString()}</td>
                 </>
               )}
             </tr>
