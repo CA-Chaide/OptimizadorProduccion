@@ -63,7 +63,6 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     const tablaTiempos = new Map<string, number>();
     const mapa = new Map<string, string>(); // Mes|Línea -> Puesto cuello de botella
     
-    // Paso 1: Agrupar por Mes|Línea|Puesto y sumar tiempos
     filas.forEach(row => {
       const tiempoTotal = safeNumber(row.tiempoTotalNecesidad ?? 0);
       if (tiempoTotal === 0) return;
@@ -79,7 +78,6 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
       tablaTiempos.set(key, tiempoActual + tiempoTotal);
     });
     
-    // Paso 2: Identificar cuello de botella por Mes|Línea (puesto con mayor tiempo)
     tablaTiempos.forEach((tiempo, key) => {
       const [mes, linea, puesto] = key.split('|');
       const lineaKey = `${mes}|${linea}`;
@@ -272,6 +270,23 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     exportToXLSX(dataToExport, `Resumen_${centroLabel.replace(/\s+/g, '')}_PorLinea`);
   };
 
+  const totals = useMemo(() => {
+    const res = { nec: 0, necFab: 0, envio: 0, queda: 0, consJN: 0, libJN: 0, consHE: 0, libHE: 0, consSAB: 0, libSAB: 0 };
+    resumenFiltered.forEach(r => {
+      res.nec += r.necesidadTotal;
+      res.necFab += r.necesidadAFabricarTotal;
+      res.envio += r.envioC2000Total;
+      res.queda += r.quedaC1000Total;
+      res.consJN += r.consumidoJN;
+      res.libJN += r.libreJN;
+      res.consHE += r.consumidoHE;
+      res.libHE += r.libreHE;
+      res.consSAB += r.consumidoSAB;
+      res.libSAB += r.libreSAB;
+    });
+    return res;
+  }, [resumenFiltered]);
+
   return (
     <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
@@ -377,7 +392,7 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
                 <td className="px-2 py-2 text-sm text-right font-mono text-amber-700 bg-amber-50/30">{resumen.consumidoHE > 0 ? Number(resumen.consumidoHE).toLocaleString(undefined, { maximumFractionDigits: 0 }) : <span className="text-gray-400">—</span>}</td>
                 <td className="px-2 py-2 text-sm text-right font-mono text-amber-600 bg-amber-50/30">{resumen.consumidoHE > 0 ? (resumen.consumidoHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : <span className="text-gray-400">—</span>}</td>
                 <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreHE).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                <td className={`px-2 py-2 text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                 <td className="px-2 py-2 text-sm text-right font-mono text-violet-700 bg-violet-50/30">{resumen.consumidoSAB > 0 ? Number(resumen.consumidoSAB).toLocaleString(undefined, { maximumFractionDigits: 0 }) : <span className="text-gray-400">—</span>}</td>
                 <td className="px-2 py-2 text-sm text-right font-mono text-violet-600 bg-violet-50/30">{resumen.consumidoSAB > 0 ? (resumen.consumidoSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : <span className="text-gray-400">—</span>}</td>
                 <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreSAB).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
@@ -386,6 +401,30 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
               </tr>
             ))}
           </tbody>
+          <tfoot className="sticky bottom-0 z-20 bg-gray-800 text-white font-bold text-[10px]">
+            <tr>
+              <td colSpan={6} className="px-3 py-2 text-right border-r border-gray-600">TOTAL GENERAL</td>
+              <td className="px-2 py-2 text-right font-mono text-indigo-300">{Math.floor(totals.nec).toLocaleString()}</td>
+              <td className="px-2 py-2"></td>
+              <td className="px-2 py-2 text-right font-mono text-purple-300 border-r border-gray-600">{Math.floor(totals.necFab).toLocaleString()}</td>
+              <td className="px-2 py-2"></td>
+              {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-right font-mono text-teal-300 border-r border-gray-600">{Math.floor(totals.envio).toLocaleString()}</td>}
+              {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-right font-mono text-cyan-300 border-r border-gray-600">{Math.floor(totals.queda).toLocaleString()}</td>}
+              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consJN).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono">{(totals.consJN / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libJN).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libJN / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consHE).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono">{(totals.consHE / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libHE).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libHE / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consSAB).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono">{(totals.consSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libSAB).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
       <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">{resumenFiltered.length} registros</div>

@@ -116,7 +116,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const quickMaps = useMemo(() => {
     const traslados = new Map<string, number>();
     trasladosDesdeCentro2000.forEach(item => {
-      traslados.set(`${normalizeMaterialCode(item.CodMaterial)}|${item.mes}`, (traslados.get(`${normalizeMaterialCode(item.CodMaterial)}|${item.mes}`) || 0) + item.necesidadTraslado);
+      const code = normalizeMaterialCode(item.CodMaterial);
+      const key = `${code}|${item.mes}`;
+      traslados.set(key, (traslados.get(key) || 0) + item.necesidadTraslado);
     });
 
     const viables = new Map<string, number>();
@@ -137,7 +139,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
 
-    // Identificar meses y años únicos, ordenar cronológicamente
     const timeline = Array.from(new Set(datos.map(r => getTimelineKey(r))))
       .sort((a, b) => a - b);
 
@@ -145,6 +146,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
     const stockTracker = new Map<string, number>(); 
     const todasLasFilasProcesadas: any[] = [];
+    const trasladosAplicados = new Set<string>(); // Para evitar doble conteo en C1000
 
     for (const tKey of timeline) {
       const filasDelMes = datos.filter(r => getTimelineKey(r) === tKey);
@@ -160,7 +162,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const mapaAgrupamiento = new Map<string, { necesidades: number }>();
       const tiempoDispGlobalPorLinea = new Map<string, number>();
 
-      // Pase 1: Determinar Necesidades con Arrastre
       const enriquecidosBase = filasDelMes.map(row => {
         const code = normalizeMaterialCode(row.CodMaterial ?? '');
         const cDem = String(row.Centro || '').trim();
@@ -168,15 +169,20 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const linea = String(row.LineaFabricacion ?? 'Sin línea');
         const keyLinea = `${tKey}|${linea}`;
 
-        // REGLA: Stock Inicial viene del Tracker si existe (arrastre), sino del backend (primera aparición)
         const _stockInitial = stockTracker.has(keyStock)
           ? stockTracker.get(keyStock)!
           : safeNumber(row.StockActual);
 
         const ss = safeNumber(row.StockSeguridad);
         const up = safeNumber(row.UnidadesProyectado);
+        
+        // REGLA: El traslado desde Guayaquil solo se suma UNA VEZ por material/mes en Quito
         const trKey = `${code}|${mesRef}`;
-        const _traslado = quickMaps.traslados.get(trKey) || 0;
+        let _traslado = 0;
+        if (isCentro1000 && !trasladosAplicados.has(trKey)) {
+          _traslado = quickMaps.traslados.get(trKey) || 0;
+          trasladosAplicados.add(trKey);
+        }
         
         const _necPropia = Math.max(0, up - _stockInitial + ss);
         const rawNec = (isCentro1000 && cDem !== '1000') ? 0 : _necPropia;
@@ -206,7 +212,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         return { ...row, mesRef, lineaRef: linea, _stockInitial, _traslado, _necPropia, _necesidad, tiempoUnitarioPorPuesto: tupp, prodAqui, keyLinea, keyStock, up, ss };
       });
 
-      // Pase 2: Reparto de capacidad y cálculo de Saldo Final
       const sumDefJN = new Map<string, number>();
       const sumTDefJN = new Map<string, number>();
 
@@ -230,7 +235,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         return { ...r, participacionIndividual: partInd, minutosDisponiblesJornadaNormal: (partInd / 100) * dispJN, tiempoTotalNecesidad: r.prodAqui ? r._necesidad * r.tiempoUnitarioPorPuesto : 0, necesidadMaximaProducirJornadaNormal: maxJN, deficitJornadaNormal: defJN, tiempoTotalNecesidadDeficitJN: tDefJN };
       });
 
-      // Pase 3: Extras, Sábados y actualización de Stock Dinámico
       pase2.forEach(r => {
         const poolHE = poolMinutosHEPorLinea.get(r.keyLinea) || 0;
         const partDefJN = (r.prodAqui && sumDefJN.get(r.keyLinea)! > 0) ? (r.deficitJornadaNormal / sumDefJN.get(r.keyLinea)!) * 100 : 0;
@@ -255,7 +259,11 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         
         const trKey = `${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`;
         const trViableValue = quickMaps.viables.get(trKey) || 0;
-        const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) ? trViableValue : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
+        
+        // SHIPMENT CALCULATION: Proportional share of viable production for the transfer
+        const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
+          ? trViableValue 
+          : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
 
         const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
         const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
@@ -271,6 +279,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           deficitHorasExtras: deficitHE,
           deficitSabados,
           tiempoTotalNecesidadDeficitHE: r.prodAqui ? deficitHE * r.tiempoUnitarioPorPuesto : 0,
+          tiempoTotalNecesidadDeficitSAB: r.prodAqui ? deficitSabados * r.tiempoUnitarioPorPuesto : 0,
           _prodViable, _deficitGeneral, _trValorAMostrar,
           _deficitNeto2000: Math.max(0, _deficitGeneral - trViableValue),
           _envioC2000: isCentro1000 ? _trValorAMostrar : 0,
@@ -302,7 +311,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const totals = useMemo(() => {
     const res = {
       necPropia: 0, traslados: 0, necesidad: 0, tiempoNec: 0, dispMinJN: 0, maxJN: 0, defJN: 0,
-      tDefJN: 0, tMinHE: 0, maxHE: 0, defHE: 0, tDefHE: 0, tMinSAB: 0, maxSAB: 0, defSAB: 0, viable: 0,
+      tDefJN: 0, tMinHE: 0, maxHE: 0, defHE: 0, tDefHE: 0, tMinSAB: 0, maxSAB: 0, defSAB: 0, tDefSAB: 0, viable: 0,
       defGral: 0, trViable: 0, defNeto: 0, stockIni: 0, demCubierta: 0, backlog: 0, saldoFinal: 0,
       envio2000: 0, queda1000: 0
     };
@@ -322,6 +331,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       res.tMinSAB += safeNumber(r.minutosDisponiblesSabados);
       res.maxSAB += safeNumber(r.necesidadMaximaProducirSabados);
       res.defSAB += safeNumber(r.deficitSabados);
+      res.tDefSAB += safeNumber(r.tiempoTotalNecesidadDeficitSAB);
       res.viable += safeNumber(r._prodViable);
       res.defGral += safeNumber(r._deficitGeneral);
       res.trViable += safeNumber(r._trValorAMostrar);
