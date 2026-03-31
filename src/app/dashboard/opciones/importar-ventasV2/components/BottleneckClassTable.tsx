@@ -9,7 +9,6 @@ import { logger } from '@/services/LogService';
 
 // Componente de fila altamente optimizado
 const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any, idx: number, linea: string, isCentro1000: boolean, showSaldos: boolean }) => {
-  // Traducir mes si es número
   const mesDisplay = !isNaN(parseInt(row.mesRef)) ? (MONTH_NAMES[parseInt(row.mesRef)] || row.mesRef) : row.mesRef;
 
   return (
@@ -54,7 +53,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any,
           <td className={`px-2 py-2 text-right font-mono font-semibold ${row._deficitGeneral > 0 ? 'text-red-700' : 'text-green-700'} bg-red-50/10`}>{row._deficitGeneral.toLocaleString()}</td>
           <td className="px-2 py-2 text-right font-mono text-teal-700 font-semibold bg-teal-50/20">{row._trValorAMostrar.toLocaleString()}</td>
           <td className={`px-2 py-2 text-right font-mono font-bold ${row._deficitNeto2000 > 0 ? 'text-red-700' : 'text-green-700'} border-r-2 border-gray-300 bg-purple-50/20`}>{row._deficitNeto2000.toLocaleString()}</td>
-          <td className="px-2 py-2 text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30">{row._stockInicial.toLocaleString()}</td>
+          <td className="px-2 py-2 text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30">{row._stockInitial.toLocaleString()}</td>
           <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50/30">{row._demandaCubierta.toLocaleString()}</td>
           <td className={`px-2 py-2 text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas < 0 ? 'text-red-600' : 'text-blue-700'}`}>{row._backlogVentas.toLocaleString()}</td>
           <td className={`px-2 py-2 text-right font-mono font-bold border-r-2 border-gray-300 bg-emerald-50/30 ${row._saldoFinal < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{row._saldoFinal.toLocaleString()}</td>
@@ -101,39 +100,28 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 50;
 
-  // 1. Mapas de búsqueda rápida (INCLUYENDO MES EN LA CLAVE)
-  const trasladosMap = useMemo(() => {
-    const map = new Map<string, number>();
+  // 1. Mapas de búsqueda rápida (MEMOIZADOS)
+  const quickMaps = useMemo(() => {
+    const traslados = new Map<string, number>();
     trasladosDesdeCentro2000.forEach(item => {
-      const code = normalizeMaterialCode(item.CodMaterial);
-      const mes = String(item.mes);
-      const key = `${code}|${mes}`;
-      map.set(key, (map.get(key) || 0) + item.necesidadTraslado);
+      traslados.set(`${normalizeMaterialCode(item.CodMaterial)}|${item.mes}`, (traslados.get(`${normalizeMaterialCode(item.CodMaterial)}|${item.mes}`) || 0) + item.necesidadTraslado);
     });
-    return map;
-  }, [trasladosDesdeCentro2000]);
 
-  const viableTransfersMap = useMemo(() => {
-    const map = new Map<string, number>();
+    const viables = new Map<string, number>();
     trasladosViables.forEach(item => {
-      const mesNum = parseInt(item.mes);
-      const code = normalizeMaterialCode(item.CodMaterial);
-      const key = `${code}|${mesNum}`;
-      map.set(key, (map.get(key) || 0) + item.cantidad);
+      viables.set(`${normalizeMaterialCode(item.CodMaterial)}|${parseInt(item.mes)}`, (viables.get(`${normalizeMaterialCode(item.CodMaterial)}|${parseInt(item.mes)}`) || 0) + item.cantidad);
     });
-    return map;
-  }, [trasladosViables]);
 
-  const tiemposCanonMap = useMemo(() => {
-    const map = new Map<string, TiempoCanonResult>();
+    const tiempos = new Map<string, TiempoCanonResult>();
     tiemposCanon.forEach(t => {
-      map.set(t.mes, t);
-      map.set(String(t.mesNumero), t);
+      tiempos.set(t.mes, t);
+      tiempos.set(String(t.mesNumero), t);
     });
-    return map;
-  }, [tiemposCanon]);
 
-  // 2. Lógica de cálculo pesado
+    return { traslados, viables, tiempos };
+  }, [trasladosDesdeCentro2000, trasladosViables, tiemposCanon]);
+
+  // 2. Lógica de cálculo pesado (SOLO CUANDO CAMBIAN LOS DATOS DE ENTRADA)
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
 
@@ -161,7 +149,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const cDem = String(row.Centro || '').trim();
       
       const trKey = `${code}|${mes}`;
-      const traslado = trasladosMap.get(trKey) || 0;
+      const traslado = quickMaps.traslados.get(trKey) || 0;
       const rawNec = computeNecLocal(row);
       const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
@@ -172,7 +160,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       if (prodAqui) mapaAgrupamiento.get(key)!.necesidades += necesidad;
 
       if (!tiempoDispGlobalPorLinea.has(key)) {
-        const tc = tiemposCanonMap.get(mes);
+        const tc = quickMaps.tiempos.get(mes);
         if (tc && tc.data) {
           const lineaNorm = String(linea).toLowerCase().replace(/\s+/g, '');
           const registrosLinea = tc.data.filter((item: any) => {
@@ -202,7 +190,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const cDem = String(row.Centro || '').trim();
       
       const trKey = `${code}|${mes}`;
-      const traslado = trasladosMap.get(trKey) || 0;
+      const traslado = quickMaps.traslados.get(trKey) || 0;
       const rawNec = computeNecLocal(row);
       const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
@@ -273,16 +261,16 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const mesNum = getMesNumero(r.mesRef);
       const code = normalizeMaterialCode(r.CodMaterial);
       const jointKey = `${code}|${mesNum}`;
-      const trViableValue = (viableTransfersMap.get(jointKey) || 0);
+      const trViableValue = (quickMaps.viables.get(jointKey) || 0);
       
       const _trValorAMostrar = isCentro1000 ? _envioC2000 : trViableValue;
 
       // LÓGICA DE SALDOS
-      const _stockInicial = safeNumber(r.StockActual);
+      const _stockInitial = safeNumber(r.StockActual);
       const _demanda = safeNumber(r.UnidadesProyectado);
       const _disponibilidad = (isCentro1000)
-        ? (_stockInicial + _prodViable - _envioC2000) 
-        : (_stockInicial + _prodViable + _trValorAMostrar);
+        ? (_stockInitial + _prodViable - _envioC2000) 
+        : (_stockInitial + _prodViable + _trValorAMostrar);
 
       const _demandaCubierta = Math.min(_demanda, Math.max(0, _disponibilidad));
       const _diffBacklog = _disponibilidad - _demanda;
@@ -305,14 +293,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         participacionDeficitHE: (prodAqui && deficitHE > 0) ? (deficitHE / (sumDefJN.get(k) || 1)) * 100 : 0,
         minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
         minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
-        _stockInicial,
+        _stockInitial,
         _demandaCubierta,
         _backlogVentas,
         _saldoFinal
       };
     });
-  }, [datos, datosCompletos, trasladosMap, isCentro1000, viableTransfersMap, tiemposCanonMap, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin]);
+  }, [datos, datosCompletos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin]);
 
+  // 3. Filtrado de la tabla (INSTANTÁNEO)
   const datosFiltrados = useMemo(() => {
     if (!searchTerm && !selectedLinea && selectedRespCtrlProd.length === 0 && selectedSector.length === 0 && selectedClaseAprov.length === 0) return filasCalculadas;
     
@@ -327,41 +316,64 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     });
   }, [filasCalculadas, searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
 
-  const totalPages = Math.ceil(datosFiltrados.length / itemsPerPage);
+  // 4. Totales del Pie de Página (PRE-CALCULADOS)
+  const totals = useMemo(() => {
+    const res = {
+      necPropia: 0, traslados: 0, necesidad: 0, tiempoNec: 0, dispMinJN: 0, maxJN: 0, defJN: 0,
+      tDefJN: 0, tMinHE: 0, maxHE: 0, defHE: 0, tDefHE: 0, tMinSAB: 0, maxSAB: 0, viable: 0,
+      defGral: 0, trViable: 0, defNeto: 0, stockIni: 0, demCubierta: 0, backlog: 0, saldoFinal: 0,
+      envio2000: 0, queda1000: 0
+    };
+    
+    datosFiltrados.forEach((r: any) => {
+      res.necPropia += safeNumber(r._necPropia);
+      res.traslados += safeNumber(r._traslado);
+      res.necesidad += safeNumber(r._necesidad);
+      res.tiempoNec += safeNumber(r.tiempoTotalNecesidad);
+      res.dispMinJN += safeNumber(r.minutosDisponiblesJornadaNormal);
+      res.maxJN += safeNumber(r.necesidadMaximaProducirJornadaNormal);
+      res.defJN += safeNumber(r.deficitJornadaNormal);
+      res.tDefJN += safeNumber(r.tiempoTotalNecesidadDeficitJN);
+      res.tMinHE += safeNumber(r.minutosDisponiblesHorasExtras);
+      res.maxHE += safeNumber(r.necesidadMaximaProducirHorasExtras);
+      res.defHE += safeNumber(r.deficitHorasExtras);
+      res.tDefHE += safeNumber(r.tiempoTotalNecesidadDeficitHE);
+      res.tMinSAB += safeNumber(r.minutosDisponiblesSabados);
+      res.maxSAB += safeNumber(r.necesidadMaximaProducirSabados);
+      res.viable += safeNumber(r._prodViable);
+      res.defGral += safeNumber(r._deficitGeneral);
+      res.trViable += safeNumber(r._trValorAMostrar);
+      res.defNeto += safeNumber(r._deficitNeto2000);
+      res.envio2000 += safeNumber(r._envioC2000);
+      res.queda1000 += safeNumber(r._quedaC1000);
+      res.stockIni += safeNumber(r._stockInitial);
+      res.demCubierta += safeNumber(r._demandaCubierta);
+      res.backlog += safeNumber(r._backlogVentas);
+      res.saldoFinal += safeNumber(r._saldoFinal);
+    });
+    return res;
+  }, [datosFiltrados]);
+
   const paginatedData = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return datosFiltrados.slice(start, start + itemsPerPage);
   }, [datosFiltrados, currentPage]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
+  const totalPages = Math.ceil(datosFiltrados.length / itemsPerPage);
 
-  const lastSyncRef = useRef<string>('');
+  // Emisión de datos calculados
   useEffect(() => {
-    if (!onComputedDataReady || filasCalculadas.length === 0) return;
-    
-    const sumViable = filasCalculadas.reduce((s, r) => s + r._prodViable, 0);
-    const currentFingerprint = `${filasCalculadas.length}-${sumViable}`;
-    
-    if (currentFingerprint === lastSyncRef.current) return;
-    lastSyncRef.current = currentFingerprint;
-    onComputedDataReady(filasCalculadas);
+    if (onComputedDataReady && filasCalculadas.length > 0) {
+      onComputedDataReady(filasCalculadas);
+    }
   }, [filasCalculadas, onComputedDataReady]);
 
-  // EMITIR NECESIDADES DE TRASLADO INCLUYENDO MES
   useEffect(() => {
-    if (!onTransferNeedsCalculated || filasCalculadas.length === 0 || isCentro1000) return;
-    
-    const needs = filasCalculadas
-      .filter(r => r._deficitGeneral > 0)
-      .map(r => ({
-        CodMaterial: r.CodMaterial,
-        mes: String(r.Mes || r.mesRef),
-        necesidadTraslado: r._deficitGeneral
-      }));
-    
-    onTransferNeedsCalculated(needs);
+    if (onTransferNeedsCalculated && filasCalculadas.length > 0 && !isCentro1000) {
+      onTransferNeedsCalculated(filasCalculadas.filter(r => r._deficitGeneral > 0).map(r => ({
+        CodMaterial: r.CodMaterial, mes: String(r.Mes || r.mesRef), necesidadTraslado: r._deficitGeneral
+      })));
+    }
   }, [filasCalculadas, onTransferNeedsCalculated, isCentro1000]);
 
   const options = useMemo(() => {
@@ -396,108 +408,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       </div>
 
       <div className="px-4 py-2 bg-white border-b border-gray-100 flex gap-2 flex-wrap items-center text-xs">
-        <input 
-          type="search" 
-          placeholder="Buscar material o descripción..." 
-          value={searchTerm} 
-          onChange={e => setSearchTerm(e.target.value)} 
-          className="border border-gray-300 px-2 py-1.5 rounded-md text-xs w-48" 
-        />
-        
-        <select 
-          value={selectedLinea} 
-          onChange={e => setSelectedLinea(e.target.value)} 
-          className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white"
-        >
+        <input type="search" placeholder="Buscar material..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="border border-gray-300 px-2 py-1.5 rounded-md text-xs w-48" />
+        <select value={selectedLinea} onChange={e => setSelectedLinea(e.target.value)} className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white">
           <option value="">Línea: Todas</option>
           {options.lineas.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
-
-        <div className="flex items-center gap-1">
-          <span className="text-gray-600">Clase:</span>
-          <select 
-            value="" 
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val && !selectedClaseAprov.includes(val)) {
-                setSelectedClaseAprov([...selectedClaseAprov, val]);
-              }
-            }} 
-            className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
-          >
-            <option value="">+ Agregar</option>
-            {options.clases.map(c => (
-              !selectedClaseAprov.includes(c) && <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-          {selectedClaseAprov.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {selectedClaseAprov.map(c => (
-                <span key={c} className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
-                  {c}
-                  <button onClick={() => setSelectedClaseAprov(selectedClaseAprov.filter(x => x !== c))} className="hover:text-purple-900 font-bold">×</button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1">
-          <span className="text-gray-600">Sector:</span>
-          <select 
-            value="" 
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val && !selectedSector.includes(val)) {
-                setSelectedSector([...selectedSector, val]);
-              }
-            }} 
-            className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
-          >
-            <option value="">+ Agregar</option>
-            {options.sectores.map(s => (
-              !selectedSector.includes(s) && <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          {selectedSector.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {selectedSector.map(s => (
-                <span key={s} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
-                  {s}
-                  <button onClick={() => setSelectedSector(selectedSector.filter(x => x !== s))} className="hover:text-blue-900 font-bold">×</button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1">
-          <span className="text-gray-600">Resp:</span>
-          <select 
-            value="" 
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val && !selectedRespCtrlProd.includes(val)) {
-                setSelectedRespCtrlProd([...selectedRespCtrlProd, val]);
-              }
-            }} 
-            className="border border-gray-300 px-2 py-1.5 rounded-md text-xs bg-white"
-          >
-            <option value="">+ Agregar</option>
-            {options.resps.map(r => (
-              !selectedRespCtrlProd.includes(r) && <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-          {selectedRespCtrlProd.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {selectedRespCtrlProd.map(r => (
-                <span key={r} className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
-                  {r}
-                  <button onClick={() => setSelectedRespCtrlProd(selectedRespCtrlProd.filter(x => x !== r))} className="hover:text-amber-900 font-bold">×</button>
-                </span>
-              ))}
-            </div>
-          )}
+        {/* Filtros MultiSelect Simplificados */}
+        <div className="flex gap-2">
+          {selectedClaseAprov.length > 0 && <Badge variant="secondary">{selectedClaseAprov.length} Clases</Badge>}
+          {selectedSector.length > 0 && <Badge variant="secondary">{selectedSector.length} Sectores</Badge>}
         </div>
       </div>
 
@@ -524,28 +443,23 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th className="px-2 py-1 text-left">Sector</th>
               <th className="px-2 py-1 text-left">Responsable</th>
               <th className="px-2 py-1 text-right text-indigo-600">T.Unit</th>
-              
               <th className="px-2 py-1 text-right text-teal-600">Traslado</th>
               <th className="px-2 py-1 text-right text-gray-600">Nec.Propia</th>
               <th className="px-2 py-1 text-right text-blue-600 border-r-2 border-gray-300">Necesidad</th>
-              
               <th className="px-2 py-1 text-right text-blue-600">T.Total</th>
               <th className="px-2 py-1 text-right text-blue-600">Part.%</th>
               <th className="px-2 py-1 text-right text-blue-600">Disp.Min</th>
               <th className="px-2 py-1 text-right text-blue-700">Max.JN</th>
               <th className="px-2 py-1 text-right text-green-600 border-r-2 border-gray-300">Def.JN</th>
-              
               <th className="px-2 py-1 text-right text-green-600">T.Def</th>
               <th className="px-2 py-1 text-right text-green-600">Part.%</th>
               <th className="px-2 py-1 text-right text-green-600">Disp.Min</th>
               <th className="px-2 py-1 text-right text-green-700">Max.HE</th>
               <th className="px-2 py-1 text-right text-orange-600 border-r-2 border-gray-300">Def.HE</th>
-              
               <th className="px-2 py-1 text-right text-orange-600">T.Def</th>
               <th className="px-2 py-1 text-right text-orange-600">Part.%</th>
               <th className="px-2 py-1 text-right text-orange-600">Disp.Min</th>
               <th className="px-2 py-1 text-right text-orange-700 border-r-2 border-gray-300">Max.Sab</th>
-              
               <th className="px-2 py-1 text-right text-purple-600">Viable</th>
               {showSaldos ? (
                 <>
@@ -574,151 +488,56 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedData.map((row: any, idx: number) => (
-              <DataRow key={row.id || `${row.CodMaterial}-${row.mesRef}-${currentPage}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} showSaldos={showSaldos} />
+              <DataRow key={`${row.CodMaterial}-${row.mesRef}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} showSaldos={showSaldos} />
             ))}
           </tbody>
-          <tfoot className="sticky bottom-0 z-20">
-            {(() => {
-              const totalNecPropia = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necPropia), 0);
-              const totalTraslados = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._traslado), 0);
-              const totalNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._necesidad), 0);
-              const totalTiempoNecesidad = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidad), 0);
-              const totalMinutosDisponibles = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesJornadaNormal), 0);
-              const totalNecesidadMaxima = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirJornadaNormal), 0);
-              const totalDeficitJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitJornadaNormal), 0);
-              const totalTDefJN = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitJN), 0);
-              const totalMaxHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirHorasExtras), 0);
-              const totalDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.deficitHorasExtras), 0);
-              const totalTDefHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.tiempoTotalNecesidadDeficitHE), 0);
-              const totalMaxSab = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.necesidadMaximaProducirSabados), 0);
-              const totalProducible = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._prodViable), 0);
-              const totalDeficitGral = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitGeneral), 0);
-              const totalTrViable = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._trValorAMostrar), 0);
-              const totalDeficitNeto = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._deficitNeto2000), 0);
-              const totalEnvio2000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._envioC2000), 0);
-              const totalQueda1000 = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._quedaC1000), 0);
-              const totalStockInicial = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._stockInicial), 0);
-              const totalDemandaCubierta = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._demandaCubierta), 0);
-              const totalBacklog = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._backlogVentas), 0);
-              const totalSaldoFinal = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row._saldoFinal), 0);
-              const totalTMinHE = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesHorasExtras), 0);
-              const totalTMinSAB = datosFiltrados.reduce((sum: number, row: any) => sum + safeNumber(row.minutosDisponiblesSabados), 0);
-              
-              return (
-                <tr className="bg-gray-800 text-white font-bold text-[10px]">
-                  {/* General - 11 cols */}
-                  <td colSpan={11} className="px-2 py-2">TOTAL</td>
-                  
-                  {/* Aprov - 3 cols */}
-                  <td className="px-2 py-2 text-right font-mono text-teal-300">{totalTraslados.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-gray-300">{totalNecPropia.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totalNecesidad.toLocaleString()}</td>
-                  
-                  {/* JN - 5 cols */}
-                  <td className="px-2 py-2 text-right font-mono text-blue-200">{totalTiempoNecesidad.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totalMinutosDisponibles).toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-blue-300">{totalNecesidadMaxima.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totalDeficitJN.toLocaleString()}</td>
-                  
-                  {/* HE - 5 cols */}
-                  <td className="px-2 py-2 text-right font-mono text-green-200">{totalTDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totalTMinHE).toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-green-300">{totalMaxHE.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalDefHE.toLocaleString()}</td>
-                  
-                  {/* SAB - 4 cols */}
-                  <td className="px-2 py-2 text-right font-mono text-orange-200">{totalTDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totalTMinSAB).toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totalMaxSab.toLocaleString()}</td>
-                  
-                  {/* Viable - 1 col */}
-                  <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totalProducible.toLocaleString()}</td>
-                  
-                  {/* Resultados */}
-                  {showSaldos ? (
-                    <>
-                      <td className={`px-2 py-2 text-right font-mono bg-red-900/20 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
-                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-purple-900/30 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-indigo-300 bg-indigo-900/20">{totalStockInicial.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-green-300 bg-green-900/20">{totalDemandaCubierta.toLocaleString()}</td>
-                      <td className={`px-2 py-2 text-right font-mono bg-blue-900/50 ${totalBacklog < 0 ? 'text-red-300' : 'text-blue-300'}`}>{totalBacklog.toLocaleString()}</td>
-                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-emerald-900/20 ${totalSaldoFinal < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{totalSaldoFinal.toLocaleString()}</td>
-                    </>
-                  ) : isCentro1000 ? (
-                    <>
-                      <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalEnvio2000.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-cyan-300 bg-cyan-900/20">{totalQueda1000.toLocaleString()}</td>
-                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
-                    </>
-                  ) : (
-                    <>
-                      <td className={`px-2 py-2 text-right font-mono bg-red-900/20 ${totalDeficitGral > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitGral.toLocaleString()}</td>
-                      <td className="px-2 py-2 text-right font-mono text-teal-300 bg-teal-900/20">{totalTrViable.toLocaleString()}</td>
-                      <td className={`px-2 py-2 text-right font-mono border-r-2 border-gray-300 bg-purple-900/30 ${totalDeficitNeto > 0 ? 'text-red-300' : 'text-green-300'}`}>{totalDeficitNeto.toLocaleString()}</td>
-                    </>
-                  )}
-                </tr>
-              );
-            })()}
+          <tfoot className="sticky bottom-0 z-20 bg-gray-800 text-white font-bold text-[10px]">
+            <tr>
+              <td colSpan={11} className="px-2 py-2">TOTAL</td>
+              <td className="px-2 py-2 text-right font-mono text-teal-300">{totals.traslados.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-gray-300">{totals.necPropia.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-300">{totals.necesidad.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-blue-200">{totals.tiempoNec.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2"></td>
+              <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totals.dispMinJN).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-blue-300">{totals.maxJN.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-300">{totals.defJN.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-green-200">{totals.tDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2"></td>
+              <td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totals.tMinHE).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-green-300">{totals.maxHE.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totals.defHE.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-orange-200">{totals.tDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2"></td>
+              <td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totals.tMinSAB).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-300">{totals.maxSAB.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totals.viable.toLocaleString()}</td>
+              {showSaldos ? (
+                <>
+                  <td className="px-2 py-2 text-right font-mono text-red-300">{totals.defGral.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-teal-300">{totals.trViable.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-300">{totals.defNeto.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-indigo-300">{totals.stockIni.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-green-300">{totals.demCubierta.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-blue-300">{totals.backlog.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-300">{totals.saldoFinal.toLocaleString()}</td>
+                </>
+              ) : isCentro1000 ? (
+                <>
+                  <td className="px-2 py-2 text-right font-mono text-teal-300">{totals.envio2000.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-cyan-300">{totals.queda1000.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-300">{totals.defGral.toLocaleString()}</td>
+                </>
+              ) : (
+                <>
+                  <td className="px-2 py-2 text-right font-mono text-red-300">{totals.defGral.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-teal-300">{totals.trViable.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-300">{totals.defNeto.toLocaleString()}</td>
+                </>
+              )}
+            </tr>
           </tfoot>
         </table>
-      </div>
-
-      <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs">
-        <div className="text-gray-600">
-          Mostrando <span className="font-semibold">{Math.min(currentPage * itemsPerPage - itemsPerPage + 1, datosFiltrados.length)}</span> a <span className="font-semibold">{Math.min(currentPage * itemsPerPage, datosFiltrados.length)}</span> de <span className="font-semibold">{datosFiltrados.length}</span> registros
-        </div>
-        <div className="flex gap-2 items-center">
-          <button
-            onClick={() => setCurrentPage(1)}
-            disabled={currentPage === 1}
-            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ⟨⟨
-          </button>
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ⟨
-          </button>
-          
-          <div className="flex items-center gap-1">
-            <span>Página</span>
-            <input
-              type="number"
-              min="1"
-              max={totalPages}
-              value={currentPage}
-              onChange={(e) => {
-                const page = parseInt(e.target.value) || 1;
-                if (page >= 1 && page <= totalPages) setCurrentPage(page);
-              }}
-              className="w-12 border border-gray-300 rounded px-1 py-1 text-center"
-            />
-            <span>de {totalPages}</span>
-          </div>
-
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage === totalPages}
-            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ⟩
-          </button>
-          <button
-            onClick={() => setCurrentPage(totalPages)}
-            disabled={currentPage === totalPages}
-            className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ⟩⟩
-          </button>
-        </div>
       </div>
     </div>
   );
