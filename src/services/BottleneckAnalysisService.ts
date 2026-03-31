@@ -12,6 +12,7 @@
 import { DataSnapshot, dataStore } from './DataStore';
 import { MONTH_NAMES } from '@/app/dashboard/opciones/importar-ventasV2/components/constants';
 import type { TiempoCanonResult, TransferNeed } from '@/app/dashboard/opciones/importar-ventasV2/components/types';
+import { normalizeMaterialCode } from '@/app/dashboard/opciones/importar-ventasV2/components/utils';
 
 // ============================================================
 // TIPOS E INTERFACES
@@ -277,7 +278,7 @@ class BottleneckAnalysisService {
     const transferNeedsF: TransferNeed[] = [];
     const mapF = new Map<string, number>();
     dataF.forEach(row => {
-      const cod = String(row.CodMaterial ?? '');
+      const cod = normalizeMaterialCode(row.CodMaterial ?? '');
       const mes = String(row.Mes ?? '');
       const key = `${cod}|${mes}`;
       const nec = this.computeNecesidad(row);
@@ -347,7 +348,7 @@ class BottleneckAnalysisService {
     // 2. Agregar por material Y MES para no colapsar meses distintos
     const porMaterialMes = new Map<string, any>();
     rawRows.forEach(row => {
-      const cod = String(row.CodMaterial ?? '');
+      const cod = normalizeMaterialCode(row.CodMaterial ?? '');
       const mes = String(row.Mes ?? '');
       const cDem = String(row.Centro || '').trim();
       const key = `${cod}|${mes}`; // CLAVE COMPUESTA
@@ -376,7 +377,7 @@ class BottleneckAnalysisService {
     // 3. Mapa de traslados desde Centro 2000 (Incluyendo Mes en la clave)
     const trasladosMap = new Map<string, number>();
     transfersFromCenter2000.forEach(item => {
-      const key = `${item.CodMaterial}|${item.mes}`;
+      const key = `${normalizeMaterialCode(item.CodMaterial)}|${item.mes}`;
       trasladosMap.set(key, (trasladosMap.get(key) || 0) + item.necesidadTraslado);
     });
 
@@ -386,8 +387,8 @@ class BottleneckAnalysisService {
       const mes = String(row.Mes ?? 'Sin mes');
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
-      const codMaterial = String(row.CodMaterial ?? '');
-      const trKey = `${codMaterial}|${mes}`;
+      const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const trKey = `${code}|${mes}`;
       const traslado = trasladosMap.get(trKey) || 0;
       const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
       const necesidadTotal = necesidadPropia + traslado;
@@ -401,8 +402,8 @@ class BottleneckAnalysisService {
       const mes = String(row.Mes ?? 'Sin mes');
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
-      const codMaterial = String(row.CodMaterial ?? '');
-      const trKey = `${codMaterial}|${mes}`;
+      const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const trKey = `${code}|${mes}`;
       const traslado = trasladosMap.get(trKey) || 0;
       const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
       const necesidadTotal = necesidadPropia + traslado;
@@ -421,8 +422,8 @@ class BottleneckAnalysisService {
       const mes = String(row.Mes ?? 'Sin mes');
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
-      const codMaterial = String(row.CodMaterial ?? '');
-      const trKey = `${codMaterial}|${mes}`;
+      const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const trKey = `${code}|${mes}`;
       const traslado = trasladosMap.get(trKey) || 0;
       const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
       const necesidadTotal = necesidadPropia + traslado;
