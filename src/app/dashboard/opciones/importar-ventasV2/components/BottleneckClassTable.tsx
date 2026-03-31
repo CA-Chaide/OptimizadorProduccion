@@ -6,6 +6,7 @@ import { safeNumber, exportToXLSX, getMesNumero, normalizeMaterialCode } from '.
 import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
 import { Download } from 'lucide-react';
 import { logger } from '@/services/LogService';
+import { Badge } from '@/components/ui/badge';
 
 // Componente de fila altamente optimizado
 const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any, idx: number, linea: string, isCentro1000: boolean, showSaldos: boolean }) => {
@@ -200,9 +201,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const tupp = safeNumber(row.TiempoPorUnidad ?? 0) / Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
       const partInd = (prodAqui && (mapaAgrupamiento.get(key)?.necesidades ?? 0) > 0) ? (necesidad / mapaAgrupamiento.get(key)!.necesidades) * 100 : 0;
       
+      const dispJN = tiempoDispGlobalPorLinea.get(key) || 0;
       let maxJN = 0;
       if (!forzarTrasladoTotal && prodAqui) {
-        const dispJN = tiempoDispGlobalPorLinea.get(key) || 0;
         const totalNecLinea = sumaTiempoNecPorLinea.get(key) || 0;
         if (totalNecLinea <= dispJN) maxJN = necesidad;
         else maxJN = tupp > 0 ? Math.floor(((partInd / 100) * dispJN) / tupp) : 0;
@@ -215,6 +216,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         _necesidad: necesidad,
         tiempoUnitarioPorPuesto: tupp, 
         participacionIndividual: partInd,
+        minutosDisponiblesJornadaNormal: (partInd / 100) * dispJN,
+        tiempoTotalNecesidad: prodAqui ? necesidad * tupp : 0,
         necesidadMaximaProducirJornadaNormal: maxJN, 
         deficitJornadaNormal: Math.max(0, necesidad - maxJN),
         tiempoTotalNecesidadDeficitJN: prodAqui ? Math.max(0, necesidad - maxJN) * tupp : 0,
@@ -413,7 +416,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           <option value="">Línea: Todas</option>
           {options.lineas.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
-        {/* Filtros MultiSelect Simplificados */}
         <div className="flex gap-2">
           {selectedClaseAprov.length > 0 && <Badge variant="secondary">{selectedClaseAprov.length} Clases</Badge>}
           {selectedSector.length > 0 && <Badge variant="secondary">{selectedSector.length} Sectores</Badge>}

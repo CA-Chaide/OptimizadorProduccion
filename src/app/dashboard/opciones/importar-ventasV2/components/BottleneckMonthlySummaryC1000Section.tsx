@@ -46,6 +46,8 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
     });
 
     const porMaterial = new Map<string, any>();
+    
+    // Primero, procesar todas las filas que Quito fabrica
     rawFiltered.forEach(row => {
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
       const mes = String(row.Mes ?? '');
@@ -72,7 +74,6 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
         agg.StockActual = safeNumber(row.StockActual); 
         agg.StockSeguridad = safeNumber(row.StockSeguridad);
         
-        // Determinar necesidad neta
         let nec = 0;
         if (row._Necesidades !== undefined && row._Necesidades !== null) {
           nec = safeNumber(row._Necesidades);
@@ -88,8 +89,33 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
       }
     });
 
+    // Segundo, asegurar que materiales que SOLO tienen traslados también aparezcan
+    trasladosDesdeCentro2000.forEach(tr => {
+      const code = normalizeMaterialCode(tr.CodMaterial);
+      const mes = String(tr.mes);
+      const key = `${code}|${mes}`;
+      
+      if (!porMaterial.has(key)) {
+        // Buscar el material en los datos completos para obtener descripción
+        const refRow = data.find(r => normalizeMaterialCode(r.CodMaterial) === code);
+        if (refRow) {
+          porMaterial.set(key, {
+            ...refRow,
+            Mes: mes,
+            UnidadesProyectado: 0,
+            StockActual: 0,
+            StockSeguridad: 0,
+            _Necesidades: 0,
+            _necPropia: 0,
+            Centro: '1000',
+            _isAggregated: true
+          });
+        }
+      }
+    });
+
     return Array.from(porMaterial.values());
-  }, [filteredDataCentro1000]);
+  }, [filteredDataCentro1000, trasladosDesdeCentro2000, data]);
 
   if (data.length === 0) {
     return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend"</div>;
