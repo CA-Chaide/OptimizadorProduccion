@@ -389,8 +389,8 @@ class BottleneckAnalysisService {
       const codMaterial = String(row.CodMaterial ?? '');
       const trKey = `${codMaterial}|${mes}`;
       const traslado = trasladosMap.get(trKey) || 0;
-      const necPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
-      const necesidadTotal = necPropia + traslado;
+      const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
+      const necesidadTotal = necesidadPropia + traslado;
       mapa[key] = (mapa[key] || 0) + necesidadTotal;
     });
 
@@ -404,8 +404,8 @@ class BottleneckAnalysisService {
       const codMaterial = String(row.CodMaterial ?? '');
       const trKey = `${codMaterial}|${mes}`;
       const traslado = trasladosMap.get(trKey) || 0;
-      const necPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
-      const necesidadTotal = necPropia + traslado;
+      const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
+      const necesidadTotal = necesidadPropia + traslado;
       const tiempoPorUnidad = this.safeNumber(row.TiempoPorUnidad ?? 0);
       const numeroPuestos = this.safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
       const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
@@ -424,8 +424,8 @@ class BottleneckAnalysisService {
       const codMaterial = String(row.CodMaterial ?? '');
       const trKey = `${codMaterial}|${mes}`;
       const traslado = trasladosMap.get(trKey) || 0;
-      const necPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
-      const necesidadTotal = necPropia + traslado;
+      const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
+      const necesidadTotal = necesidadPropia + traslado;
       const sumaNecLinea = mapa[key] ?? necesidadTotal;
       const participacionIndividual = sumaNecLinea > 0 ? (necesidadTotal / sumaNecLinea) * 100 : 0;
       const tiempoPorUnidad = this.safeNumber(row.TiempoPorUnidad ?? 0);
@@ -444,7 +444,7 @@ class BottleneckAnalysisService {
         const sumaTiempoNecLinea = sumaTiempoNecPorLinea[key] || 0;
         const tiempoDispGlobal = tiempoDispGlobalPorLinea[key] || 0;
 
-        if (sumaTiempoNecLinea <= tiempoDispGlobal) {
+        if (sumaTiempoNecLinea <= tiempoDisponibleBase) {
           necesidadMaximaAFabricar = necesidadTotal;
         } else {
           necesidadMaximaAFabricar = tiempoUnitarioPorPuesto > 0
