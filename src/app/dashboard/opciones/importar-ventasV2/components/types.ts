@@ -30,6 +30,7 @@ export interface SelectedFilters {
 
 export interface TransferNeed {
   CodMaterial: string;
+  mes: string;
   necesidadTraslado: number;
 }
 

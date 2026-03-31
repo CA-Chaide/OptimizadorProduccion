@@ -273,19 +273,22 @@ class BottleneckAnalysisService {
       }
     });
 
-    // 3. Calcular traslados F (simplificado)
+    // 3. Calcular traslados F (incluyendo mes)
     const transferNeedsF: TransferNeed[] = [];
     const mapF = new Map<string, number>();
     dataF.forEach(row => {
       const cod = String(row.CodMaterial ?? '');
+      const mes = String(row.Mes ?? '');
+      const key = `${cod}|${mes}`;
       const nec = this.computeNecesidad(row);
-      mapF.set(cod, (mapF.get(cod) || 0) + nec);
+      mapF.set(key, (mapF.get(key) || 0) + nec);
     });
-    mapF.forEach((necesidadTraslado, CodMaterial) => {
-      transferNeedsF.push({ CodMaterial, necesidadTraslado });
+    mapF.forEach((necesidadTraslado, key) => {
+      const [CodMaterial, mes] = key.split('|');
+      transferNeedsF.push({ CodMaterial, mes, necesidadTraslado });
     });
 
-    // 4. Consolidación (por ahora transferNeedsEX es calculado en el componente)
+    // 4. Consolidación
     const transferNeedsEX: TransferNeed[] = [];
     const transferNeedsConsolidated = [...transferNeedsEX, ...transferNeedsF];
 
@@ -333,7 +336,7 @@ class BottleneckAnalysisService {
       return this.cache.center1000;
     }
 
-    // 1. Filtrar Centro 1000 (Incluimos los que se fabrican en 1000 aunque se demanden en 2000)
+    // 1. Filtrar Centro 1000
     const rawRows = data
       .filter(row => {
         const cFab = String(row.CentroFabricacion || '').trim();
@@ -341,26 +344,26 @@ class BottleneckAnalysisService {
         return cFab === '1000' || (cFab === '' && cDem === '1000');
       });
 
-    // 2. Agregar por material, pero separar Necesidad Propia (Demanda C1000) de Necesidad Externa (C2000)
-    const porMaterial = new Map<string, any>();
+    // 2. Agregar por material Y MES para no colapsar meses distintos
+    const porMaterialMes = new Map<string, any>();
     rawRows.forEach(row => {
       const cod = String(row.CodMaterial ?? '');
+      const mes = String(row.Mes ?? '');
       const cDem = String(row.Centro || '').trim();
+      const key = `${cod}|${mes}`; // CLAVE COMPUESTA
       
-      if (!porMaterial.has(cod)) {
-        porMaterial.set(cod, { 
+      if (!porMaterialMes.has(key)) {
+        porMaterialMes.set(key, { 
           ...row, 
           UnidadesProyectado: 0, 
           _Necesidades: 0, 
           _necPropia: 0, 
-          Centro: '1000', // FORZAR CENTRO A 1000 PARA QUE LA TABLA NO LO FILTRE
+          Centro: '1000',
           _isAggregated: true 
         });
       }
-      const agg = porMaterial.get(cod)!;
+      const agg = porMaterialMes.get(key)!;
       
-      // AGREGACIÓN CRÍTICA: Sumar SOLO si la demanda original es del Centro 1000
-      // La demanda del Centro 2000 vendrá a través del trasladosMap
       if (cDem === '1000') {
         agg.UnidadesProyectado = this.safeNumber(agg.UnidadesProyectado) + this.safeNumber(row.UnidadesProyectado ?? 0);
         const nec = this.computeNecesidad(row);
@@ -368,23 +371,27 @@ class BottleneckAnalysisService {
         agg._necPropia = this.safeNumber(agg._necPropia) + nec;
       }
     });
-    const filteredData = Array.from(porMaterial.values());
+    const filteredData = Array.from(porMaterialMes.values());
 
-    // 3. Mapa de traslados desde Centro 2000
+    // 3. Mapa de traslados desde Centro 2000 (Incluyendo Mes en la clave)
     const trasladosMap = new Map<string, number>();
     transfersFromCenter2000.forEach(item => {
-      trasladosMap.set(item.CodMaterial, (trasladosMap.get(item.CodMaterial) || 0) + item.necesidadTraslado);
+      const key = `${item.CodMaterial}|${item.mes}`;
+      trasladosMap.set(key, (trasladosMap.get(key) || 0) + item.necesidadTraslado);
     });
 
     // 4. Enriquecer datos
     const mapa: { [k: string]: number } = {};
     filteredData.forEach(row => {
-      const k = `${String(row.Mes ?? 'Sin mes')}|${String(row.LineaFabricacion ?? 'Sin línea')}`;
+      const mes = String(row.Mes ?? 'Sin mes');
+      const linea = String(row.LineaFabricacion ?? 'Sin línea');
+      const key = `${mes}|${linea}`;
       const codMaterial = String(row.CodMaterial ?? '');
-      const traslado = trasladosMap.get(codMaterial) || 0;
+      const trKey = `${codMaterial}|${mes}`;
+      const traslado = trasladosMap.get(trKey) || 0;
       const necPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
       const necesidadTotal = necPropia + traslado;
-      mapa[k] = (mapa[k] || 0) + necesidadTotal;
+      mapa[key] = (mapa[key] || 0) + necesidadTotal;
     });
 
     const sumaTiempoNecPorLinea: { [k: string]: number } = {};
@@ -395,7 +402,8 @@ class BottleneckAnalysisService {
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
       const codMaterial = String(row.CodMaterial ?? '');
-      const traslado = trasladosMap.get(codMaterial) || 0;
+      const trKey = `${codMaterial}|${mes}`;
+      const traslado = trasladosMap.get(trKey) || 0;
       const necPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
       const necesidadTotal = necPropia + traslado;
       const tiempoPorUnidad = this.safeNumber(row.TiempoPorUnidad ?? 0);
@@ -414,9 +422,10 @@ class BottleneckAnalysisService {
       const linea = String(row.LineaFabricacion ?? 'Sin línea');
       const key = `${mes}|${linea}`;
       const codMaterial = String(row.CodMaterial ?? '');
-      const traslado = trasladosMap.get(codMaterial) || 0;
-      const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
-      const necesidadTotal = necesidadPropia + traslado;
+      const trKey = `${codMaterial}|${mes}`;
+      const traslado = trasladosMap.get(trKey) || 0;
+      const necPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
+      const necesidadTotal = necPropia + traslado;
       const sumaNecLinea = mapa[key] ?? necesidadTotal;
       const participacionIndividual = sumaNecLinea > 0 ? (necesidadTotal / sumaNecLinea) * 100 : 0;
       const tiempoPorUnidad = this.safeNumber(row.TiempoPorUnidad ?? 0);
@@ -478,6 +487,7 @@ class BottleneckAnalysisService {
           const tupp = this.safeNumber(row.TiempoPorUnidad ?? 0) / numeroPuestos;
           const deficit = Math.max(0, this.safeNumber(row.necesidadTotal ?? 0) - this.safeNumber(row.necesidadMaximaAFabricar ?? 0));
           exportSheet.push({
+            'Mes': row.mesRef,
             'CodMaterial': row.CodMaterial ?? '',
             'Descripcion': row.Descripcion || row.NombreMaterial || row.CodMaterial || '',
             'Linea': row.lineaRef || row.LineaFabricacion || '',

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { safeNumber } from './utils';
+import { safeNumber, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckAnalysisSectionProps } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
@@ -30,13 +30,22 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   // Extraer datos del análisis
   const { dataEX = [], dataF = [], transferNeedsF = [], filteredDataCentro2000 = [] } = analysis || {};
 
-  // Consolidar transferencias
+  // Consolidar transferencias INCLUYENDO MES
   const transferNeedsConsolidated = useMemo(() => {
     const consolidated = new Map<string, number>();
-    transferNeedsEX.forEach(item => consolidated.set(item.CodMaterial, (consolidated.get(item.CodMaterial) || 0) + item.necesidadTraslado));
-    transferNeedsF.forEach(item => consolidated.set(item.CodMaterial, (consolidated.get(item.CodMaterial) || 0) + item.necesidadTraslado));
     
-    return Array.from(consolidated.entries()).map(([CodMaterial, necesidadTraslado]) => ({ CodMaterial, necesidadTraslado }));
+    const addToMap = (item: TransferNeed) => {
+      const key = `${normalizeMaterialCode(item.CodMaterial)}|${item.mes}`;
+      consolidated.set(key, (consolidated.get(key) || 0) + item.necesidadTraslado);
+    };
+
+    transferNeedsEX.forEach(addToMap);
+    transferNeedsF.forEach(addToMap);
+    
+    return Array.from(consolidated.entries()).map(([key, necesidadTraslado]) => {
+      const [CodMaterial, mes] = key.split('|');
+      return { CodMaterial, mes, necesidadTraslado };
+    });
   }, [transferNeedsEX, transferNeedsF]);
 
   useEffect(() => {
@@ -87,6 +96,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
             <table className="w-full text-[10px]">
               <thead className="bg-amber-100 sticky top-0">
                 <tr>
+                  <th className="px-2 py-1 text-left">Mes</th>
                   <th className="px-2 py-1 text-left">Código</th>
                   <th className="px-2 py-1 text-left">Descripción</th>
                   <th className="px-2 py-1 text-right">Necesidad Traslado</th>
@@ -95,8 +105,10 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
               <tbody>
                 {dataF.map((row, idx) => {
                   const nec = Math.max(0, safeNumber(row.UnidadesProyectado) - safeNumber(row.StockActual) + safeNumber(row.StockSeguridad));
+                  const mesDisplay = !isNaN(parseInt(row.Mes)) ? (MONTH_NAMES[parseInt(row.Mes)] || row.Mes) : row.Mes;
                   return (
                     <tr key={idx} className="border-b border-amber-50">
+                      <td className="px-2 py-1 font-bold text-indigo-900">{mesDisplay}</td>
                       <td className="px-2 py-1 font-mono">{row.CodMaterial}</td>
                       <td className="px-2 py-1 truncate max-w-xs">{row.Descripcion || row.NombreMaterial}</td>
                       <td className="px-2 py-1 text-right font-mono font-bold">{Math.round(nec).toLocaleString()}</td>

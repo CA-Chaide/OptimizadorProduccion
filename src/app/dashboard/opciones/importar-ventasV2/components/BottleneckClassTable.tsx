@@ -84,6 +84,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   tiemposCanon, 
   onExportSheetReady,
   onComputedDataReady,
+  onTransferNeedsCalculated,
   forzarTrasladoTotal = false,
   maxExtrasHoras = 2,
   horasExtrasFin = 2,
@@ -100,12 +101,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 50;
 
-  // 1. Mapas de búsqueda rápida
+  // 1. Mapas de búsqueda rápida (INCLUYENDO MES EN LA CLAVE)
   const trasladosMap = useMemo(() => {
     const map = new Map<string, number>();
     trasladosDesdeCentro2000.forEach(item => {
       const code = normalizeMaterialCode(item.CodMaterial);
-      map.set(code, (map.get(code) || 0) + item.necesidadTraslado);
+      const mes = String(item.mes);
+      const key = `${code}|${mes}`;
+      map.set(key, (map.get(key) || 0) + item.necesidadTraslado);
     });
     return map;
   }, [trasladosDesdeCentro2000]);
@@ -157,7 +160,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
       const cDem = String(row.Centro || '').trim();
       
-      const traslado = trasladosMap.get(code) || 0;
+      const trKey = `${code}|${mes}`;
+      const traslado = trasladosMap.get(trKey) || 0;
       const rawNec = computeNecLocal(row);
       const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
@@ -197,7 +201,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       const code = normalizeMaterialCode(row.CodMaterial ?? '');
       const cDem = String(row.Centro || '').trim();
       
-      const traslado = trasladosMap.get(code) || 0;
+      const trKey = `${code}|${mes}`;
+      const traslado = trasladosMap.get(trKey) || 0;
       const rawNec = computeNecLocal(row);
       const necPropia = row._isAggregated ? (row._necPropia ?? rawNec) : (isCentro1000 && cDem !== '1000' ? 0 : rawNec);
       const necesidad = necPropia + traslado;
@@ -343,6 +348,21 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     lastSyncRef.current = currentFingerprint;
     onComputedDataReady(filasCalculadas);
   }, [filasCalculadas, onComputedDataReady]);
+
+  // EMITIR NECESIDADES DE TRASLADO INCLUYENDO MES
+  useEffect(() => {
+    if (!onTransferNeedsCalculated || filasCalculadas.length === 0 || isCentro1000) return;
+    
+    const needs = filasCalculadas
+      .filter(r => r._deficitGeneral > 0)
+      .map(r => ({
+        CodMaterial: r.CodMaterial,
+        mes: String(r.Mes || r.mesRef),
+        necesidadTraslado: r._deficitGeneral
+      }));
+    
+    onTransferNeedsCalculated(needs);
+  }, [filasCalculadas, onTransferNeedsCalculated, isCentro1000]);
 
   const options = useMemo(() => {
     const lineas = new Set<string>();
@@ -554,7 +574,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedData.map((row: any, idx: number) => (
-              <DataRow key={row.id || `${row.CodMaterial}-${currentPage}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} showSaldos={showSaldos} />
+              <DataRow key={row.id || `${row.CodMaterial}-${row.mesRef}-${currentPage}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} showSaldos={showSaldos} />
             ))}
           </tbody>
           <tfoot className="sticky bottom-0 z-20">
