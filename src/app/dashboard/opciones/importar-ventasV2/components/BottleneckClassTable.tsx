@@ -1,11 +1,11 @@
+
 'use client';
 
-import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
-import { MONTH_NAMES } from './constants';
-import { safeNumber, exportToXLSX, getMesNumero, normalizeMaterialCode } from './utils';
+import React, { useState, useMemo, useEffect, memo } from 'react';
+import { MONTH_NAMES, MONTH_NUMBERS } from './constants';
+import { safeNumber, exportToXLSX, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
 import { Download } from 'lucide-react';
-import { logger } from '@/services/LogService';
 import { Badge } from '@/components/ui/badge';
 
 // Componente de fila altamente optimizado
@@ -48,7 +48,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any,
       <td className="px-2 py-2 text-right font-mono text-orange-800 font-semibold">{row.necesidadMaximaProducirSabados != null ? Number(row.necesidadMaximaProducirSabados).toLocaleString() : '-'}</td>
       <td className="px-2 py-2 text-right font-mono text-orange-700 border-r-2 border-gray-300">{row.deficitSabados != null ? Number(row.deficitSabados).toLocaleString() : '-'}</td>
       
-      <td className="px-2 py-2 text-right font-mono text-purple-700 font-bold bg-purple-50/30">{row._prodViable.toLocaleString()}</td>
+      <td className="px-2 py-2 text-right font-mono text-purple-700 font-bold bg-purple-50/30 border-r-2 border-gray-300">{row._prodViable.toLocaleString()}</td>
       
       {showSaldos ? (
         <>
@@ -102,7 +102,17 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 50;
 
-  // 1. Mapas de búsqueda rápida (MEMOIZADOS)
+  // Helper para clave cronológica
+  const getTimelineKey = (row: any) => {
+    const year = safeNumber(row.Año || row.año || new Date().getFullYear());
+    let month = 0;
+    const mesRaw = String(row.Mes || row.mesRef || '');
+    const asNum = parseInt(mesRaw);
+    if (!isNaN(asNum) && asNum >= 1 && asNum <= 12) month = asNum;
+    else month = MONTH_NUMBERS[mesRaw as keyof typeof MONTH_NUMBERS] || 0;
+    return (year * 12) + month;
+  };
+
   const quickMaps = useMemo(() => {
     const traslados = new Map<string, number>();
     trasladosDesdeCentro2000.forEach(item => {
@@ -111,12 +121,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
     const viables = new Map<string, number>();
     trasladosViables.forEach(item => {
-      const mesNum = parseInt(item.mes);
-      const mesNom = MONTH_NAMES[mesNum];
       const code = normalizeMaterialCode(item.CodMaterial);
       viables.set(`${code}|${item.mes}`, item.cantidad);
-      if (mesNum) viables.set(`${code}|${mesNum}`, item.cantidad);
-      if (mesNom) viables.set(`${code}|${mesNom}`, item.cantidad);
     });
 
     const tiempos = new Map<string, TiempoCanonResult>();
@@ -128,56 +134,50 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     return { traslados, viables, tiempos };
   }, [trasladosDesdeCentro2000, trasladosViables, tiemposCanon]);
 
-  // 2. Lógica de cálculo pesado con ARRASTRE DE INVENTARIO
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
 
-    // --- PASO 0: Identificar meses y ordenar cronológicamente ---
-    const mesesUnicos = Array.from(new Set(datos.map(r => getMesNumero(String(r.Mes || r.mesRef || '')))))
-      .filter((m): m is number => m !== null)
+    // Identificar meses y años únicos, ordenar cronológicamente
+    const timeline = Array.from(new Set(datos.map(r => getTimelineKey(r))))
       .sort((a, b) => a - b);
 
-    if (mesesUnicos.length === 0) return [];
+    if (timeline.length === 0) return [];
 
-    const stockTracker = new Map<string, number>(); // Key: Material|DemandCenter
+    const stockTracker = new Map<string, number>(); 
     const todasLasFilasProcesadas: any[] = [];
 
-    // --- PROCESAMIENTO MES A MES (CARRY-OVER) ---
-    for (const mesNum of mesesUnicos) {
-      const mesNombre = MONTH_NAMES[mesNum];
-      const tc = quickMaps.tiempos.get(String(mesNum)) || quickMaps.tiempos.get(mesNombre);
+    for (const tKey of timeline) {
+      const filasDelMes = datos.filter(r => getTimelineKey(r) === tKey);
+      if (filasDelMes.length === 0) continue;
+
+      const mesRef = String(filasDelMes[0].Mes || filasDelMes[0].mesRef || '');
+      const tc = quickMaps.tiempos.get(mesRef) || quickMaps.tiempos.get(String(parseInt(mesRef)));
       if (!tc) continue;
 
-      const filasDelMes = datos.filter(r => getMesNumero(String(r.Mes || r.mesRef || '')) === mesNum);
       const poolMinutosHEPorLinea = new Map<string, number>();
       const poolMinutosSabadosPorLinea = new Map<string, number>();
       const sumaTiempoNecPorLinea = new Map<string, number>();
       const mapaAgrupamiento = new Map<string, { necesidades: number }>();
       const tiempoDispGlobalPorLinea = new Map<string, number>();
 
-      // A. Pre-cálculo de necesidades y capacidades para este mes
+      // Pase 1: Determinar Necesidades con Arrastre
       const enriquecidosBase = filasDelMes.map(row => {
         const code = normalizeMaterialCode(row.CodMaterial ?? '');
         const cDem = String(row.Centro || '').trim();
         const keyStock = `${code}|${cDem}`;
         const linea = String(row.LineaFabricacion ?? 'Sin línea');
-        const mesStr = String(mesNum);
-        const keyLinea = `${mesStr}|${linea}`;
+        const keyLinea = `${tKey}|${linea}`;
 
-        // Determinar Stock Inicial (Arrastre o Backend)
-        const isFirstMonth = mesNum === mesesUnicos[0];
-        const _stockInitial = (!isFirstMonth && stockTracker.has(keyStock))
+        // REGLA: Stock Inicial viene del Tracker si existe (arrastre), sino del backend (primera aparición)
+        const _stockInitial = stockTracker.has(keyStock)
           ? stockTracker.get(keyStock)!
           : safeNumber(row.StockActual);
 
         const ss = safeNumber(row.StockSeguridad);
         const up = safeNumber(row.UnidadesProyectado);
-        
-        // Traslado desde el mapa consolidado
-        const trKey = `${code}|${mesNum}`;
+        const trKey = `${code}|${mesRef}`;
         const _traslado = quickMaps.traslados.get(trKey) || 0;
         
-        // Necesidad Propia basada en el Stock Inicial Dinámico
         const _necPropia = Math.max(0, up - _stockInitial + ss);
         const rawNec = (isCentro1000 && cDem !== '1000') ? 0 : _necPropia;
         const _necesidad = rawNec + _traslado;
@@ -185,7 +185,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
         const prodAqui = isCentro1000 || !esF;
 
-        // Registrar para agregación de línea
         if (!mapaAgrupamiento.has(keyLinea)) mapaAgrupamiento.set(keyLinea, { necesidades: 0 });
         if (prodAqui) mapaAgrupamiento.get(keyLinea)!.necesidades += _necesidad;
 
@@ -195,36 +194,19 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
             const nl = String(item?.nombre_linea ?? '').toLowerCase().replace(/\s+/g, '');
             return nl === lineaNorm || nl.includes(lineaNorm) || lineaNorm.includes(nl);
           });
-          
-          let pBotella = registrosLinea[0];
-          const disp = safeNumber(pBotella?.minutos_horario_normal_TOTAL ?? 0);
-          tiempoDispGlobalPorLinea.set(keyLinea, disp);
+          const pBotella = registrosLinea[0];
+          tiempoDispGlobalPorLinea.set(keyLinea, safeNumber(pBotella?.minutos_horario_normal_TOTAL ?? 0));
           poolMinutosHEPorLinea.set(keyLinea, (tc.diasLaborables ?? 0) * maxExtrasHoras * 60);
           poolMinutosSabadosPorLinea.set(keyLinea, (tc.diasSabados ?? 0) * horasExtrasFin * 60);
         }
 
         const tupp = safeNumber(row.TiempoPorUnidad ?? 0) / Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
-        if (prodAqui) {
-          sumaTiempoNecPorLinea.set(keyLinea, (sumaTiempoNecPorLinea.get(keyLinea) || 0) + (tupp * _necesidad));
-        }
+        if (prodAqui) sumaTiempoNecPorLinea.set(keyLinea, (sumaTiempoNecPorLinea.get(keyLinea) || 0) + (tupp * _necesidad));
 
-        return {
-          ...row,
-          mesRef: String(mesNum),
-          lineaRef: linea,
-          _stockInitial,
-          _traslado,
-          _necPropia,
-          _necesidad,
-          tiempoUnitarioPorPuesto: tupp,
-          prodAqui,
-          keyLinea,
-          keyStock,
-          up, ss
-        };
+        return { ...row, mesRef, lineaRef: linea, _stockInitial, _traslado, _necPropia, _necesidad, tiempoUnitarioPorPuesto: tupp, prodAqui, keyLinea, keyStock, up, ss };
       });
 
-      // B. Segundo pase: Reparto de capacidad y cálculo de Saldo Final
+      // Pase 2: Reparto de capacidad y cálculo de Saldo Final
       const sumDefJN = new Map<string, number>();
       const sumTDefJN = new Map<string, number>();
 
@@ -242,22 +224,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
         const defJN = Math.max(0, r._necesidad - maxJN);
         const tDefJN = r.prodAqui ? defJN * r.tiempoUnitarioPorPuesto : 0;
-
         sumDefJN.set(r.keyLinea, (sumDefJN.get(r.keyLinea) || 0) + defJN);
         sumTDefJN.set(r.keyLinea, (sumTDefJN.get(r.keyLinea) || 0) + tDefJN);
 
-        return {
-          ...r,
-          participacionIndividual: partInd,
-          minutosDisponiblesJornadaNormal: (partInd / 100) * dispJN,
-          tiempoTotalNecesidad: r.prodAqui ? r._necesidad * r.tiempoUnitarioPorPuesto : 0,
-          necesidadMaximaProducirJornadaNormal: maxJN,
-          deficitJornadaNormal: defJN,
-          tiempoTotalNecesidadDeficitJN: tDefJN
-        };
+        return { ...r, participacionIndividual: partInd, minutosDisponiblesJornadaNormal: (partInd / 100) * dispJN, tiempoTotalNecesidad: r.prodAqui ? r._necesidad * r.tiempoUnitarioPorPuesto : 0, necesidadMaximaProducirJornadaNormal: maxJN, deficitJornadaNormal: defJN, tiempoTotalNecesidadDeficitJN: tDefJN };
       });
 
-      // C. Tercer pase: Horas Extras, Sábados y actualización de Stock Dinámico
+      // Pase 3: Extras, Sábados y actualización de Stock Dinámico
       pase2.forEach(r => {
         const poolHE = poolMinutosHEPorLinea.get(r.keyLinea) || 0;
         const partDefJN = (r.prodAqui && sumDefJN.get(r.keyLinea)! > 0) ? (r.deficitJornadaNormal / sumDefJN.get(r.keyLinea)!) * 100 : 0;
@@ -271,8 +244,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
         const poolSab = poolMinutosSabadosPorLinea.get(r.keyLinea) || 0;
         let maxSab = 0;
-        if (r.prodAqui && deficitHE > 0) {
-          if (poolSab > 0) maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
+        if (r.prodAqui && deficitHE > 0 && poolSab > 0) {
+          maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
           maxSab = Math.min(maxSab, deficitHE);
         }
 
@@ -280,18 +253,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const _prodViable = r.necesidadMaximaProducirJornadaNormal + maxHE + maxSab;
         const _deficitGeneral = Math.max(0, r._necesidad - _prodViable);
         
-        const ratioTr = r._necesidad > 0 ? r._traslado / r._necesidad : 0;
-        const _envioC2000 = Math.round(_prodViable * ratioTr);
-        const trViableValue = (quickMaps.viables.get(`${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`) || 0);
-        const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) ? trViableValue : (isCentro1000 ? _envioC2000 : trViableValue);
+        const trKey = `${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`;
+        const trViableValue = quickMaps.viables.get(trKey) || 0;
+        const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) ? trViableValue : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
 
-        // SALDOS FINALES
         const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
         const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
         const _backlogVentas = Math.min(0, _disponibilidad - r.up);
         const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
 
-        // ACTUALIZAR TRACKER PARA EL SIGUIENTE MES
         stockTracker.set(r.keyStock, _saldoFinal);
 
         todasLasFilasProcesadas.push({
@@ -301,17 +271,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           deficitHorasExtras: deficitHE,
           deficitSabados,
           tiempoTotalNecesidadDeficitHE: r.prodAqui ? deficitHE * r.tiempoUnitarioPorPuesto : 0,
-          _prodViable, _deficitGeneral, _envioC2000,
-          _quedaC1000: Math.round(_prodViable * (r._necesidad > 0 ? r._necPropia / r._necesidad : 0)),
-          _trValorAMostrar,
+          _prodViable, _deficitGeneral, _trValorAMostrar,
           _deficitNeto2000: Math.max(0, _deficitGeneral - trViableValue),
+          _envioC2000: isCentro1000 ? _trValorAMostrar : 0,
+          _quedaC1000: isCentro1000 ? Math.round(_prodViable - _trValorAMostrar) : _prodViable,
           participacionDeficitJN: partDefJN,
-          participacionDeficitHE: (r.prodAqui && deficitHE > 0) ? (deficitHE / (sumDefJN.get(r.keyLinea) || 1)) * 100 : 0,
           minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
           minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
-          _demandaCubierta,
-          _backlogVentas,
-          _saldoFinal
+          _demandaCubierta, _backlogVentas, _saldoFinal
         });
       });
     }
@@ -319,10 +286,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     return todasLasFilasProcesadas;
   }, [datos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables]);
 
-  // 3. Filtrado de la tabla (INSTANTÁNEO)
   const datosFiltrados = useMemo(() => {
     if (!searchTerm && !selectedLinea && selectedRespCtrlProd.length === 0 && selectedSector.length === 0 && selectedClaseAprov.length === 0) return filasCalculadas;
-    
     const q = searchTerm.toLowerCase();
     return filasCalculadas.filter((row: any) => {
       if (q && !String(row.CodMaterial || '').toLowerCase().includes(q) && !String(row.Descripcion || '').toLowerCase().includes(q)) return false;
@@ -334,7 +299,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     });
   }, [filasCalculadas, searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
 
-  // 4. Totales del Pie de Página (PRE-CALCULADOS)
   const totals = useMemo(() => {
     const res = {
       necPropia: 0, traslados: 0, necesidad: 0, tiempoNec: 0, dispMinJN: 0, maxJN: 0, defJN: 0,
@@ -342,7 +306,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       defGral: 0, trViable: 0, defNeto: 0, stockIni: 0, demCubierta: 0, backlog: 0, saldoFinal: 0,
       envio2000: 0, queda1000: 0
     };
-    
     datosFiltrados.forEach((r: any) => {
       res.necPropia += safeNumber(r._necPropia);
       res.traslados += safeNumber(r._traslado);
@@ -378,13 +341,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     return datosFiltrados.slice(start, start + itemsPerPage);
   }, [datosFiltrados, currentPage]);
 
-  const totalPages = Math.ceil(datosFiltrados.length / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(datosFiltrados.length / itemsPerPage));
 
-  // Emisión de datos calculados
   useEffect(() => {
-    if (onComputedDataReady && filasCalculadas.length > 0) {
-      onComputedDataReady(filasCalculadas);
-    }
+    if (onComputedDataReady && filasCalculadas.length > 0) onComputedDataReady(filasCalculadas);
   }, [filasCalculadas, onComputedDataReady]);
 
   useEffect(() => {
@@ -394,25 +354,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       })));
     }
   }, [filasCalculadas, onTransferNeedsCalculated, isCentro1000]);
-
-  const options = useMemo(() => {
-    const lineas = new Set<string>();
-    const resps = new Set<string>();
-    const sectores = new Set<string>();
-    const clases = new Set<string>();
-    filasCalculadas.forEach(r => {
-      lineas.add(r.lineaRef);
-      resps.add(String(r.NombRespControlProd || r.RespCtrlProd || '').trim());
-      sectores.add(String(r.Sector || '').trim());
-      clases.add(String(r.ClaseAprovisionam || '').trim().toUpperCase());
-    });
-    return {
-      lineas: Array.from(lineas).sort(),
-      resps: Array.from(resps).filter(Boolean).sort(),
-      sectores: Array.from(sectores).filter(Boolean).sort(),
-      clases: Array.from(clases).filter(Boolean).sort()
-    };
-  }, [filasCalculadas]);
 
   return (
     <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -430,12 +371,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         <input type="search" placeholder="Buscar material..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="border border-gray-300 px-2 py-1.5 rounded-md text-xs w-48" />
         <select value={selectedLinea} onChange={e => setSelectedLinea(e.target.value)} className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white">
           <option value="">Línea: Todas</option>
-          {options.lineas.map(l => <option key={l} value={l}>{l}</option>)}
+          {Array.from(new Set(filasCalculadas.map(r => r.lineaRef))).sort().map(l => <option key={l} value={l}>{l}</option>)}
         </select>
-        <div className="flex gap-2">
-          {selectedClaseAprov.length > 0 && <Badge variant="secondary">{selectedClaseAprov.length} Clases</Badge>}
-          {selectedSector.length > 0 && <Badge variant="secondary">{selectedSector.length} Sectores</Badge>}
-        </div>
       </div>
 
       <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
@@ -451,55 +388,37 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left bg-indigo-50/50">Mes</th>
-              <th className="px-2 py-1 text-left">Clase</th>
-              <th className="px-2 py-1 text-left">Material</th>
-              <th className="px-2 py-1 text-left">Descripción</th>
-              <th className="px-2 py-1 text-left">Centro</th>
-              <th className="px-2 py-1 text-left">Línea</th>
-              <th className="px-2 py-1 text-left">Puesto</th>
-              <th className="px-2 py-1 text-right">Puestos</th>
-              <th className="px-2 py-1 text-left">Sector</th>
-              <th className="px-2 py-1 text-left">Responsable</th>
+              <th className="px-2 py-1 text-left">Clase</th><th className="px-2 py-1 text-left">Material</th><th className="px-2 py-1 text-left">Descripción</th>
+              <th className="px-2 py-1 text-left">Centro</th><th className="px-2 py-1 text-left">Línea</th><th className="px-2 py-1 text-left">Puesto</th>
+              <th className="px-2 py-1 text-right">Puestos</th><th className="px-2 py-1 text-left">Sector</th><th className="px-2 py-1 text-left">Responsable</th>
               <th className="px-2 py-1 text-right text-indigo-600 border-r-2 border-gray-200">T.Unit</th>
-              <th className="px-2 py-1 text-right text-teal-600">Traslado</th>
-              <th className="px-2 py-1 text-right text-gray-600">Nec.Propia</th>
+              <th className="px-2 py-1 text-right text-teal-600">Traslado</th><th className="px-2 py-1 text-right text-gray-600">Nec.Propia</th>
               <th className="px-2 py-1 text-right text-blue-600 border-r-2 border-gray-300">Necesidad</th>
-              <th className="px-2 py-1 text-right text-blue-600">T.Total</th>
-              <th className="px-2 py-1 text-right text-blue-600">Part.%</th>
-              <th className="px-2 py-1 text-right text-blue-600">Disp.Min</th>
-              <th className="px-2 py-1 text-right text-blue-700">Max.JN</th>
+              <th className="px-2 py-1 text-right text-blue-600">T.Total</th><th className="px-2 py-1 text-right text-blue-600">Part.%</th>
+              <th className="px-2 py-1 text-right text-blue-600">Disp.Min</th><th className="px-2 py-1 text-right text-blue-700">Max.JN</th>
               <th className="px-2 py-1 text-right text-green-600 border-r-2 border-gray-300">Def.JN</th>
-              <th className="px-2 py-1 text-right text-green-600">T.Def</th>
-              <th className="px-2 py-1 text-right text-green-600">Part.%</th>
-              <th className="px-2 py-1 text-right text-green-600">Disp.Min</th>
-              <th className="px-2 py-1 text-right text-green-700">Max.HE</th>
+              <th className="px-2 py-1 text-right text-green-600">T.Def</th><th className="px-2 py-1 text-right text-green-600">Part.%</th>
+              <th className="px-2 py-1 text-right text-green-600">Disp.Min</th><th className="px-2 py-1 text-right text-green-700">Max.HE</th>
               <th className="px-2 py-1 text-right text-orange-600 border-r-2 border-gray-300">Def.HE</th>
-              <th className="px-2 py-1 text-right text-orange-600">T.Def</th>
-              <th className="px-2 py-1 text-right text-orange-600">Part.%</th>
-              <th className="px-2 py-1 text-right text-orange-600">Disp.Min</th>
-              <th className="px-2 py-1 text-right text-orange-700">Max.Sab</th>
+              <th className="px-2 py-1 text-right text-orange-600">T.Def</th><th className="px-2 py-1 text-right text-orange-600">Part.%</th>
+              <th className="px-2 py-1 text-right text-orange-600">Disp.Min</th><th className="px-2 py-1 text-right text-orange-700">Max.Sab</th>
               <th className="px-2 py-1 text-right text-orange-600 border-r-2 border-gray-300">Def.Sab</th>
               <th className="px-2 py-1 text-right text-purple-600">Viable</th>
               {showSaldos ? (
                 <>
-                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
-                  <th className="px-2 py-1 text-right text-teal-600">{isCentro1000 ? 'Traslados Salientes' : 'Traslados Entrantes'}</th>
-                  <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
-                  <th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
-                  <th className="px-2 py-1 text-right text-green-600">Dem. Cubierta</th>
-                  <th className="px-2 py-1 text-right text-blue-600">BackLogVentas</th>
+                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th><th className="px-2 py-1 text-right text-teal-600">{isCentro1000 ? 'Traslados Salientes' : 'Traslados Entrantes'}</th>
+                  <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th><th className="px-2 py-1 text-right text-indigo-600">Stock Inicial</th>
+                  <th className="px-2 py-1 text-right text-green-600">Dem. Cubierta</th><th className="px-2 py-1 text-right text-blue-600">BackLog</th>
                   <th className="px-2 py-1 text-right text-emerald-600 border-r-2 border-gray-300">Saldo Final</th>
                 </>
               ) : isCentro1000 ? (
                 <>
-                  <th className="px-2 py-1 text-right text-teal-600">Envío 2000</th>
-                  <th className="px-2 py-1 text-right text-cyan-600">Queda 1000</th>
+                  <th className="px-2 py-1 text-right text-teal-600">Envío 2000</th><th className="px-2 py-1 text-right text-cyan-600">Queda 1000</th>
                   <th className="px-2 py-1 text-right text-red-600 border-r-2 border-gray-300">Def.Gral</th>
                 </>
               ) : (
                 <>
-                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th>
-                  <th className="px-2 py-1 text-right text-teal-600">Traslados Entrantes</th>
+                  <th className="px-2 py-1 text-right text-red-600">Def.Gral</th><th className="px-2 py-1 text-right text-teal-600">Traslados Entrantes</th>
                   <th className="px-2 py-1 text-right text-purple-600 border-r-2 border-gray-300">Def.Neto</th>
                 </>
               )}
@@ -507,7 +426,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedData.map((row: any, idx: number) => (
-              <DataRow key={`${row.CodMaterial}-${row.mesRef}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} showSaldos={showSaldos} />
+              <DataRow key={`${row.CodMaterial}-${idx}`} row={row} idx={idx} linea={row.lineaRef} isCentro1000={isCentro1000} showSaldos={showSaldos} />
             ))}
           </tbody>
           <tfoot className="sticky bottom-0 z-20 bg-gray-800 text-white font-bold text-[10px]">
@@ -517,21 +436,18 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <td className="px-2 py-2 text-right font-mono text-gray-300">{totals.necPropia.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-blue-300 border-r-2 border-gray-600">{totals.necesidad.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-blue-200">{totals.tiempoNec.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2"></td>
-              <td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totals.dispMinJN).toLocaleString()}</td>
+              <td></td><td className="px-2 py-2 text-right font-mono text-blue-200">{Math.round(totals.dispMinJN).toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-blue-300">{totals.maxJN.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-green-300 border-r-2 border-gray-600">{totals.defJN.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-green-200">{totals.tDefJN.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2"></td>
-              <td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totals.tMinHE).toLocaleString()}</td>
+              <td></td><td className="px-2 py-2 text-right font-mono text-green-200">{Math.round(totals.tMinHE).toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-green-300">{totals.maxHE.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-orange-300 border-r-2 border-gray-600">{totals.defHE.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-orange-200">{totals.tDefHE.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2"></td>
-              <td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totals.tMinSAB).toLocaleString()}</td>
+              <td></td><td className="px-2 py-2 text-right font-mono text-orange-200">{Math.round(totals.tMinSAB).toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-orange-300">{totals.maxSAB.toLocaleString()}</td>
               <td className="px-2 py-2 text-right font-mono text-orange-200 border-r-2 border-gray-600">{totals.defSAB.toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20">{totals.viable.toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-purple-300 bg-purple-900/20 border-r-2 border-gray-600">{totals.viable.toLocaleString()}</td>
               {showSaldos ? (
                 <>
                   <td className="px-2 py-2 text-right font-mono text-red-300">{totals.defGral.toLocaleString()}</td>
@@ -558,6 +474,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
             </tr>
           </tfoot>
         </table>
+      </div>
+      
+      {/* Paginación */}
+      <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex justify-between items-center text-xs">
+        <span className="text-gray-600">Página {currentPage} de {totalPages}</span>
+        <div className="flex gap-1">
+          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-2 py-1 border rounded disabled:opacity-50 hover:bg-white">Anterior</button>
+          <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-2 py-1 border rounded disabled:opacity-50 hover:bg-white">Siguiente</button>
+        </div>
       </div>
     </div>
   );

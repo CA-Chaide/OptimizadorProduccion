@@ -1,16 +1,16 @@
+
 /**
  * BottleneckAnalysisService
  * 
  * Servicio centralizado que encapsula toda la lógica de análisis de cuellos de botella
  * para centros 2000 y 1000. Proporciona:
- * - Cálculos centralizados y reutilizables
- * - Caching de resultados
+ * - Cálculos centralizados y reutilizables con ARRASTRE DE INVENTARIO (Carry-over)
+ * - Caching de resultados cronológicos
  * - Integración con DataStore
- * - Acceso desde cualquier página del proyecto
  */
 
-import { DataSnapshot, dataStore } from './DataStore';
-import { MONTH_NAMES } from '@/app/dashboard/opciones/importar-ventasV2/components/constants';
+import { dataStore } from './DataStore';
+import { MONTH_NAMES, MONTH_NUMBERS } from '@/app/dashboard/opciones/importar-ventasV2/components/constants';
 import type { TiempoCanonResult, TransferNeed } from '@/app/dashboard/opciones/importar-ventasV2/components/types';
 import { normalizeMaterialCode } from '@/app/dashboard/opciones/importar-ventasV2/components/utils';
 
@@ -112,17 +112,28 @@ class BottleneckAnalysisService {
   }
 
   /**
-   * Calcular necesidad de un material (UnidadesProyectado - StockActual + StockSeguridad)
+   * Calcular clave cronológica para ordenamiento (Año-Mes)
    */
-  private computeNecesidad(row: any): number {
-    // Priorizar el campo pre-calculado del tab Datos Backend si existe
-    if (row._Necesidades !== undefined && row._Necesidades !== null) {
-      return this.safeNumber(row._Necesidades);
+  private getTimelineKey(row: any): number {
+    const year = this.safeNumber(row.Año || row.año || new Date().getFullYear());
+    let month = 0;
+    const mesRaw = String(row.Mes || row.mesRef || '');
+    const asNum = parseInt(mesRaw);
+    if (!isNaN(asNum) && asNum >= 1 && asNum <= 12) {
+      month = asNum;
+    } else {
+      month = MONTH_NUMBERS[mesRaw as keyof typeof MONTH_NUMBERS] || 0;
     }
+    return (year * 12) + month;
+  }
+
+  /**
+   * Calcular necesidad de un material
+   */
+  private computeNecesidad(row: any, stockInicial: number): number {
     const up = this.safeNumber(row.UnidadesProyectado ?? 0);
     const ss = this.safeNumber(row.StockSeguridad ?? 0);
-    const sa = this.safeNumber(row.StockActual ?? 0);
-    return Math.max(0, up - sa + ss);
+    return Math.max(0, up - stockInicial + ss);
   }
 
   /**
@@ -151,7 +162,7 @@ class BottleneckAnalysisService {
   }
 
   /**
-   * Obtener tiempo disponible para una línea específica en un mes
+   * Obtener tiempo disponible para una línea específica
    */
   private obtenerTiempoDisp(
     tiemposCanon: TiempoCanonResult[],
@@ -159,7 +170,7 @@ class BottleneckAnalysisService {
     linea: string,
     puesto: string | null = null,
     centro: string = ''
-  ): { minutos_horario_normal: number; minutos_con_extras: number; minutos_fin_semana: number; diasLaborables: number; diasSabados: number } | null {
+  ) {
     const tc = this.buscarTiempoCanon(tiemposCanon, mes);
     if (!tc || !tc.data || !Array.isArray(tc.data)) return null;
 
@@ -181,59 +192,23 @@ class BottleneckAnalysisService {
       });
     }
 
-    if (registrosLinea.length === 0) {
-      if (puesto && puesto !== '-' && puesto !== '') {
-        const pn = String(puesto).toLowerCase().trim();
-        const dp = tc.data.find((item: any) => {
-          const nombreEstacion = String(item?.nombre_estacion ?? '').toLowerCase().trim();
-          return nombreEstacion.includes(pn) || pn.includes(nombreEstacion);
-        });
-        if (dp) {
-          return {
-            minutos_horario_normal: this.safeNumber(dp?.minutos_horario_normal_TOTAL ?? 0),
-            minutos_con_extras: this.safeNumber(dp?.minutos_extras_TOTAL ?? 0),
-            minutos_fin_semana: this.safeNumber(dp?.minutos_sabado_TOTAL ?? 0),
-            diasLaborables: tc.diasLaborables,
-            diasSabados: tc.diasSabados
-          };
-        }
-      }
-      return null;
-    }
+    if (registrosLinea.length === 0) return null;
 
-    let puestoBotellaDato: any = null;
+    let pBotellaDato: any = null;
     if (puesto && puesto !== '-' && puesto !== '') {
       const pn = String(puesto).toLowerCase().trim();
-      puestoBotellaDato = registrosLinea.find((dato: any) => {
-        const nombreEstacion = String(dato?.nombre_estacion ?? '').toLowerCase().trim();
-        return nombreEstacion === pn || nombreEstacion.includes(pn) || pn.includes(nombreEstacion);
+      pBotellaDato = registrosLinea.find((dato: any) => {
+        const ne = String(dato?.nombre_estacion ?? '').toLowerCase().trim();
+        return ne === pn || ne.includes(pn) || pn.includes(ne);
       }) ?? null;
     }
 
-    if (!puestoBotellaDato) {
-      const estacionesMap = new Map<string, any>();
-      registrosLinea.forEach((dato: any) => {
-        const nombreEstacion = String(dato?.nombre_estacion ?? '-');
-        if (!estacionesMap.has(nombreEstacion)) {
-          estacionesMap.set(nombreEstacion, { count: 0, dato });
-        }
-        estacionesMap.get(nombreEstacion)!.count += 1;
-      });
-      let maxFrequencia = 0;
-      estacionesMap.forEach(({ count, dato }) => {
-        if (count > maxFrequencia) {
-          maxFrequencia = count;
-          puestoBotellaDato = dato;
-        }
-      });
-    }
-
-    if (!puestoBotellaDato) return null;
+    if (!pBotellaDato) pBotellaDato = registrosLinea[0];
 
     return {
-      minutos_horario_normal: this.safeNumber(puestoBotellaDato?.minutos_horario_normal_TOTAL ?? 0),
-      minutos_con_extras: this.safeNumber(puestoBotellaDato?.minutos_extras_TOTAL ?? 0),
-      minutos_fin_semana: this.safeNumber(puestoBotellaDato?.minutos_sabado_TOTAL ?? 0),
+      minutos_horario_normal: this.safeNumber(pBotellaDato?.minutos_horario_normal_TOTAL ?? 0),
+      minutos_con_extras: this.safeNumber(pBotellaDato?.minutos_extras_TOTAL ?? 0),
+      minutos_fin_semana: this.safeNumber(pBotellaDato?.minutos_sabado_TOTAL ?? 0),
       diasLaborables: tc.diasLaborables,
       diasSabados: tc.diasSabados
     };
@@ -243,92 +218,70 @@ class BottleneckAnalysisService {
   // ANÁLISIS CENTRO 2000
   // ============================================================
 
-  /**
-   * Analizar Centro 2000 y calcular necesidades de traslado
-   */
   public analyzeCenter2000(
     data: any[],
     tiemposCanon: TiempoCanonResult[]
   ): Center2000Analysis {
-    // Validar cache
     if (!this.isCacheValid(data) && this.cache.center2000) {
-      this.cache.center2000 = null; // Invalidar cache si datos cambiaron
+      this.cache.center2000 = null;
     }
 
     if (this.cache.center2000 !== null) {
       return this.cache.center2000;
     }
 
-    // 1. Filtrado por Centro 2000
     const filteredData = data.filter(row => String(row.Centro || '').trim() === '2000');
-
-    // 2. Clasificación EX vs F
+    
+    // Clasificación inicial
     const dataEX: any[] = [];
     const dataF: any[] = [];
+    
     filteredData.forEach(row => {
       const clase = this.normalizarClase(row.ClaseAprovisionam);
-      if (clase === 'E' || clase === 'X') {
-        dataEX.push(row);
-      } else if (clase === 'F') {
-        dataF.push(row);
+      if (clase === 'E' || clase === 'X') dataEX.push(row);
+      else if (clase === 'F') dataF.push(row);
+    });
+
+    // Calcular traslados F (Déficit directo ya que no se procesan en C2000)
+    const transferNeedsF: TransferNeed[] = [];
+    dataF.forEach(row => {
+      const nec = this.computeNecesidad(row, this.safeNumber(row.StockActual));
+      if (nec > 0) {
+        transferNeedsF.push({
+          CodMaterial: normalizeMaterialCode(row.CodMaterial ?? ''),
+          mes: String(row.Mes ?? ''),
+          necesidadTraslado: nec
+        });
       }
     });
 
-    // 3. Calcular traslados F (incluyendo mes)
-    const transferNeedsF: TransferNeed[] = [];
-    const mapF = new Map<string, number>();
-    dataF.forEach(row => {
-      const cod = normalizeMaterialCode(row.CodMaterial ?? '');
-      const mes = String(row.Mes ?? '');
-      const key = `${cod}|${mes}`;
-      const nec = this.computeNecesidad(row);
-      mapF.set(key, (mapF.get(key) || 0) + nec);
-    });
-    mapF.forEach((necesidadTraslado, key) => {
-      const [CodMaterial, mes] = key.split('|');
-      transferNeedsF.push({ CodMaterial, mes, necesidadTraslado });
-    });
-
-    // 4. Consolidación
-    const transferNeedsEX: TransferNeed[] = [];
-    const transferNeedsConsolidated = [...transferNeedsEX, ...transferNeedsF];
-
-    // 5. Guardar en DataStore
     const result: Center2000Analysis = {
       filteredData,
       dataEX,
       dataF,
-      transferNeedsEX,
+      transferNeedsEX: [], // Se llenará dinámicamente desde la tabla
       transferNeedsF,
-      transferNeedsConsolidated,
+      transferNeedsConsolidated: [...transferNeedsF],
       computedDataEX: []
     };
 
-    // Cachear resultado
     this.cache.center2000 = result;
     this.cache.lastDataSignature = this.generateDataSignature(data);
-
-    // Persistir en DataStore
     dataStore.setData('center2000Analysis', result, 'BottleneckAnalysisService');
-
     this.notifyListeners('center2000');
 
     return result;
   }
 
   // ============================================================
-  // ANÁLISIS CENTRO 1000
+  // ANÁLISIS CENTRO 1000 (CON ARRASTRE)
   // ============================================================
 
-  /**
-   * Analizar Centro 1000 con traslados desde Centro 2000
-   */
   public analyzeCenter1000(
     data: any[],
     tiemposCanon: TiempoCanonResult[],
     transfersFromCenter2000: TransferNeed[]
   ): Center1000Analysis {
-    // Validar cache
     if (!this.isCacheValid(data) && this.cache.center1000) {
       this.cache.center1000 = null;
     }
@@ -337,221 +290,105 @@ class BottleneckAnalysisService {
       return this.cache.center1000;
     }
 
-    // 1. Filtrar Centro 1000
-    const rawRows = data
-      .filter(row => {
-        const cFab = String(row.CentroFabricacion || '').trim();
-        const cDem = String(row.Centro || '').trim();
-        return cFab === '1000' || (cFab === '' && cDem === '1000');
-      });
-
-    // 2. Agregar por material Y MES para no colapsar meses distintos
-    const porMaterialMes = new Map<string, any>();
-    rawRows.forEach(row => {
-      const cod = normalizeMaterialCode(row.CodMaterial ?? '');
-      const mes = String(row.Mes ?? '');
+    // 1. Filtrar registros que involucran a Quito como fabricante
+    const quitoRows = data.filter(row => {
+      const cFab = String(row.CentroFabricacion || '').trim();
       const cDem = String(row.Centro || '').trim();
-      const key = `${cod}|${mes}`; // CLAVE COMPUESTA
-      
-      if (!porMaterialMes.has(key)) {
-        porMaterialMes.set(key, { 
-          ...row, 
-          UnidadesProyectado: 0, 
-          _Necesidades: 0, 
-          _necPropia: 0, 
-          Centro: '1000',
-          _isAggregated: true 
-        });
-      }
-      const agg = porMaterialMes.get(key)!;
-      
-      if (cDem === '1000') {
-        agg.UnidadesProyectado = this.safeNumber(agg.UnidadesProyectado) + this.safeNumber(row.UnidadesProyectado ?? 0);
-        const nec = this.computeNecesidad(row);
-        agg._Necesidades = this.safeNumber(agg._Necesidades) + nec;
-        agg._necPropia = this.safeNumber(agg._necPropia) + nec;
-      }
+      return cFab === '1000' || (cFab === '' && cDem === '1000');
     });
-    const filteredData = Array.from(porMaterialMes.values());
 
-    // 3. Mapa de traslados desde Centro 2000 (Incluyendo Mes en la clave)
+    // 2. Identificar línea de tiempo ordenada
+    const timelineKeys = Array.from(new Set(quitoRows.map(r => this.getTimelineKey(r))))
+      .sort((a, b) => a - b);
+
+    if (timelineKeys.length === 0) {
+      return { filteredData: [], datosEnriquecidos: [], transferNeeds: [], computedData: [], exportSheet: [] };
+    }
+
+    // 3. Procesamiento Cronológico con Arrastre
+    const stockTracker = new Map<string, number>(); // Key: Material|DemandCenter
+    const allProcessedRows: any[] = [];
     const trasladosMap = new Map<string, number>();
-    transfersFromCenter2000.forEach(item => {
-      const key = `${normalizeMaterialCode(item.CodMaterial)}|${item.mes}`;
-      trasladosMap.set(key, (trasladosMap.get(key) || 0) + item.necesidadTraslado);
-    });
+    transfersFromCenter2000.forEach(t => trasladosMap.set(`${normalizeMaterialCode(t.CodMaterial)}|${t.mes}`, t.necesidadTraslado));
 
-    // 4. Enriquecer datos
-    const mapa: { [k: string]: number } = {};
-    filteredData.forEach(row => {
-      const mes = String(row.Mes ?? 'Sin mes');
-      const linea = String(row.LineaFabricacion ?? 'Sin línea');
-      const key = `${mes}|${linea}`;
-      const code = normalizeMaterialCode(row.CodMaterial ?? '');
-      const trKey = `${code}|${mes}`;
-      const traslado = trasladosMap.get(trKey) || 0;
-      const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
-      const necesidadTotal = necesidadPropia + traslado;
-      mapa[key] = (mapa[key] || 0) + necesidadTotal;
-    });
+    for (const tKey of timelineKeys) {
+      const rowsOfMonth = quitoRows.filter(r => this.getTimelineKey(r) === tKey);
+      if (rowsOfMonth.length === 0) continue;
 
-    const sumaTiempoNecPorLinea: { [k: string]: number } = {};
-    const tiempoDispGlobalPorLinea: { [k: string]: number } = {};
-
-    filteredData.forEach(row => {
-      const mes = String(row.Mes ?? 'Sin mes');
-      const linea = String(row.LineaFabricacion ?? 'Sin línea');
-      const key = `${mes}|${linea}`;
-      const code = normalizeMaterialCode(row.CodMaterial ?? '');
-      const trKey = `${code}|${mes}`;
-      const traslado = trasladosMap.get(trKey) || 0;
-      const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
-      const necesidadTotal = necesidadPropia + traslado;
-      const tiempoPorUnidad = this.safeNumber(row.TiempoPorUnidad ?? 0);
-      const numeroPuestos = this.safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
-      const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
-      sumaTiempoNecPorLinea[key] = (sumaTiempoNecPorLinea[key] || 0) + (tiempoUnitarioPorPuesto * necesidadTotal);
-
-      if (tiempoDispGlobalPorLinea[key] === undefined) {
-        const tiempoDisp = this.obtenerTiempoDisp(tiemposCanon, mes, linea, row.PuestoCuellodeBottella, row.Centro);
-        tiempoDispGlobalPorLinea[key] = tiempoDisp?.minutos_horario_normal ?? 0;
-      }
-    });
-
-    const datosEnriquecidos = filteredData.map(row => {
-      const mes = String(row.Mes ?? 'Sin mes');
-      const linea = String(row.LineaFabricacion ?? 'Sin línea');
-      const key = `${mes}|${linea}`;
-      const code = normalizeMaterialCode(row.CodMaterial ?? '');
-      const trKey = `${code}|${mes}`;
-      const traslado = trasladosMap.get(trKey) || 0;
-      const necesidadPropia = this.safeNumber(row._necPropia ?? row._Necesidades);
-      const necesidadTotal = necesidadPropia + traslado;
-      const sumaNecLinea = mapa[key] ?? necesidadTotal;
-      const participacionIndividual = sumaNecLinea > 0 ? (necesidadTotal / sumaNecLinea) * 100 : 0;
-      const tiempoPorUnidad = this.safeNumber(row.TiempoPorUnidad ?? 0);
-      const numeroPuestos = this.safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1);
-      const tiempoUnitarioPorPuesto = numeroPuestos > 0 ? tiempoPorUnidad / numeroPuestos : 0;
-      const tiempoDisp = this.obtenerTiempoDisp(tiemposCanon, mes, linea, row.PuestoCuellodeBottella, row.Centro);
-
-      let necesidadMaximaAFabricar = 0;
-      let tMaxProm = 0;
-      let tiempoParaMaterial = 0;
-
-      if (tiempoDisp && tiempoPorUnidad > 0) {
-        const tiempoDisponibleBase = tiempoDisp.minutos_horario_normal;
-        tiempoParaMaterial = (participacionIndividual / 100) * tiempoDisponibleBase;
-
-        const sumaTiempoNecLinea = sumaTiempoNecPorLinea[key] || 0;
-        const tiempoDispGlobal = tiempoDispGlobalPorLinea[key] || 0;
-
-        if (sumaTiempoNecLinea <= tiempoDisponibleBase) {
-          necesidadMaximaAFabricar = necesidadTotal;
-        } else {
-          necesidadMaximaAFabricar = tiempoUnitarioPorPuesto > 0
-            ? Math.floor(tiempoParaMaterial / tiempoUnitarioPorPuesto)
-            : 0;
+      const mesRef = String(rowsOfMonth[0].Mes || '');
+      const tc = this.buscarTiempoCanon(tiemposCanon, mesRef);
+      
+      // Agregación por material para el mes actual
+      const aggMonth = new Map<string, any>();
+      rowsOfMonth.forEach(row => {
+        const code = normalizeMaterialCode(row.CodMaterial ?? '');
+        const cDem = String(row.Centro || '').trim();
+        const key = `${code}|${cDem}`;
+        
+        if (!aggMonth.has(key)) {
+          aggMonth.set(key, { ...row, _unidadesProy: 0, _necPropia: 0, _isAggregated: true });
         }
-        tMaxProm = tiempoUnitarioPorPuesto * necesidadMaximaAFabricar;
-      }
+        const agg = aggMonth.get(key)!;
+        if (cDem === '1000') {
+          agg._unidadesProy += this.safeNumber(row.UnidadesProyectado);
+        }
+      });
 
-      return {
-        ...row,
-        trasladoDesde2000: traslado,
-        necesidadPropia,
-        necesidadTotal,
-        participacionIndividual,
-        tiempoTotalNecesidad: tiempoUnitarioPorPuesto * necesidadTotal,
-        tiempoParaMaterial,
-        necesidadMaximaAFabricar,
-        tMaxProm,
-        horasExtrasUsadas: '0.00',
-        mesRef: mes,
-        lineaRef: linea
-      };
-    });
+      // Cálculo de capacidad para el mes
+      const monthResults: any[] = [];
+      aggMonth.forEach(agg => {
+        const code = normalizeMaterialCode(agg.CodMaterial ?? '');
+        const cDem = String(agg.Centro || '').trim();
+        const keyStock = `${code}|${cDem}`;
+        
+        // REGLA: Usar StockActual solo en la primera aparición cronológica del producto
+        const initialStock = stockTracker.has(keyStock) 
+          ? stockTracker.get(keyStock)! 
+          : this.safeNumber(agg.StockActual);
 
-    // 5. Generar sheet para exportación
-    const exportSheet: any[] = [];
-    const grouped: { [k: string]: any[] } = {};
-    datosEnriquecidos.forEach((row: any) => {
-      const linea = String(row.lineaRef || 'Sin línea');
-      if (!grouped[linea]) grouped[linea] = [];
-      grouped[linea].push(row);
-    });
+        const traslado = trasladosMap.get(`${code}|${mesRef}`) || 0;
+        const necPropia = Math.max(0, agg._unidadesProy - initialStock + this.safeNumber(agg.StockSeguridad));
+        const necesidadTotal = necPropia + traslado;
 
-    Object.keys(grouped)
-      .sort()
-      .forEach(linea => {
-        grouped[linea].forEach((row: any) => {
-          const numeroPuestos = Math.max(1, this.safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
-          const tupp = this.safeNumber(row.TiempoPorUnidad ?? 0) / numeroPuestos;
-          const deficit = Math.max(0, this.safeNumber(row.necesidadTotal ?? 0) - this.safeNumber(row.necesidadMaximaAFabricar ?? 0));
-          exportSheet.push({
-            'Mes': row.mesRef,
-            'CodMaterial': row.CodMaterial ?? '',
-            'Descripcion': row.Descripcion || row.NombreMaterial || row.CodMaterial || '',
-            'Linea': row.lineaRef || row.LineaFabricacion || '',
-            'Puesto': row.PuestoCuellodeBottella || '',
-            'N.Puestos': this.safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 0),
-            'Sector': row.Sector || '',
-            'Responsable': row.NombRespControlProd || row.RespCtrlProd || (row as any).RespControlProd || '',
-            'T.Unit/Puestos': tupp,
-            'Traslado C.2000': this.safeNumber(row.trasladoDesde2000 ?? 0),
-            'Nec. Propia': this.safeNumber(row.necesidadPropia ?? 0),
-            'Necesidad Total': this.safeNumber(row.necesidadTotal ?? 0),
-            'T.Total Nec': this.safeNumber(row.tiempoTotalNecesidad ?? 0),
-            'Partic.%': this.safeNumber(row.participacionIndividual ?? 0),
-            'T.Disponible': this.safeNumber(row.tiempoParaMaterial ?? 0),
-            'Máx.Producir': this.safeNumber(row.necesidadMaximaAFabricar ?? 0),
-            'Déficit General': deficit
-          });
+        // Simplificación para el servicio (El reparto fino HE/Sáb se hace en la tabla visual por performance)
+        const prodViable = necesidadTotal; // El servicio asume capacidad infinita o ideal para resúmenes base
+        const finalStock = initialStock + prodViable - agg._unidadesProy - (cDem === '1000' ? traslado : 0);
+        
+        stockTracker.set(keyStock, finalStock);
+
+        monthResults.push({
+          ...agg,
+          _stockInitial: initialStock,
+          _traslado: traslado,
+          _necPropia: necPropia,
+          _necesidad: necesidadTotal,
+          _prodViable: prodViable,
+          _saldoFinal: finalStock,
+          mesRef
         });
       });
+
+      allProcessedRows.push(...monthResults);
+    }
 
     const result: Center1000Analysis = {
-      filteredData,
-      datosEnriquecidos,
+      filteredData: quitoRows,
+      datosEnriquecidos: allProcessedRows,
       transferNeeds: [],
-      computedData: [],
-      exportSheet
+      computedData: allProcessedRows,
+      exportSheet: []
     };
 
-    // Cachear resultado
     this.cache.center1000 = result;
     this.cache.lastDataSignature = this.generateDataSignature(data);
-
-    // Persistir en DataStore
     dataStore.setData('center1000Analysis', result, 'BottleneckAnalysisService');
-
     this.notifyListeners('center1000');
 
     return result;
   }
 
-  /**
-   * Obtener análisis cacheado de Centro 2000
-   */
-  public getCenter2000Analysis(): Center2000Analysis | null {
-    return this.cache.center2000;
-  }
-
-  /**
-   * Obtener análisis cacheado de Centro 1000
-   */
-  public getCenter1000Analysis(): Center1000Analysis | null {
-    return this.cache.center1000;
-  }
-
-  /**
-   * Limpiar cache (para cuando cambien datos)
-   */
   public clearCache(): void {
-    this.cache = {
-      center2000: null,
-      center1000: null,
-      lastDataSignature: ''
-    };
+    this.cache = { center2000: null, center1000: null, lastDataSignature: '' };
     this.notifyListeners('cache_cleared');
   }
 }
