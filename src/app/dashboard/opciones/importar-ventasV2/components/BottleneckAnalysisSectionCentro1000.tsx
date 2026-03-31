@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { safeNumber, exportToXLSX } from './utils';
-import { TiempoCanonResult, TransferNeed, BottleneckAnalysisSectionCentro1000Props } from './types';
+import { exportToXLSX } from './utils';
+import { TransferNeed, BottleneckAnalysisSectionCentro1000Props } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
@@ -17,10 +17,11 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
   trasladosDesdeCentro2000,
   onComputedDataReady
 }) => {
-  // === HOOKS ===
+  // Estado para capturar los datos calculados finales del motor de la tabla
+  const [computedData, setComputedData] = useState<any[]>([]);
   const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
 
-  // Usar el servicio centralizado
+  // Usar el servicio centralizado para el filtrado inicial
   const analysis = useMemo(() => {
     if (data.length === 0) return null;
     return bottleneckAnalysisService.analyzeCenter1000(data, tiemposCanon, trasladosDesdeCentro2000);
@@ -28,13 +29,12 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
 
   // Extraer datos del análisis
   const { 
-    datosEnriquecidos = [], 
     filteredData = [],
     exportSheet = []
   } = analysis || {};
 
   if (data.length === 0) {
-    return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend - Necesidades"</div>;
+    return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend"</div>;
   }
 
   if (filteredData.length === 0) {
@@ -56,8 +56,9 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       </div>
 
       <BottleneckSummaryTable 
-        datosEnriquecidosE={datosEnriquecidos}
+        datosEnriquecidosE={[]}
         datosEnriquecidosX={[]}
+        datosCalculados={computedData} // USAR DATOS CALCULADOS FINALES
         tiemposCanon={tiemposCanon}
         numMaximoSabados={numMaximoSabados}
         maxExtrasHoras={maxExtrasHoras}
@@ -74,7 +75,10 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
         tiemposCanon={tiemposCanon}
         tiempoConsumidoAnterior={{}}
         onTransferNeedsCalculated={setTransferNeeds}
-        onComputedDataReady={onComputedDataReady}
+        onComputedDataReady={(results) => {
+          setComputedData(results);
+          onComputedDataReady?.(results);
+        }}
         maxExtrasHoras={maxExtrasHoras}
         horasExtrasFin={horasExtrasFin}
         trasladosDesdeCentro2000={trasladosDesdeCentro2000}

@@ -1,12 +1,10 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect, memo } from 'react';
 import { MONTH_NAMES, MONTH_NUMBERS } from './constants';
 import { safeNumber, exportToXLSX, normalizeMaterialCode } from './utils';
-import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
+import { TiempoCanonResult, TransferNeed, BottleneckClassTableProps } from './types';
 import { Download } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 
 // Componente de fila altamente optimizado
 const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any, idx: number, linea: string, isCentro1000: boolean, showSaldos: boolean }) => {
@@ -96,9 +94,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedLinea, setSelectedLinea] = useState<string>('');
-  const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string[]>([]);
-  const [selectedSector, setSelectedSector] = useState<string[]>([]);
-  const [selectedClaseAprov, setSelectedClaseAprov] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 50;
 
@@ -176,7 +171,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const ss = safeNumber(row.StockSeguridad);
         const up = safeNumber(row.UnidadesProyectado);
         
-        // REGLA: El traslado desde Guayaquil solo se suma UNA VEZ por material/mes en Quito
         const trKey = `${code}|${mesRef}`;
         let _traslado = 0;
         if (isCentro1000 && !trasladosAplicados.has(trKey)) {
@@ -249,7 +243,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const poolSab = poolMinutosSabadosPorLinea.get(r.keyLinea) || 0;
         let maxSab = 0;
         if (r.prodAqui && deficitHE > 0 && poolSab > 0) {
-          maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
+          if ((deficitHE * r.tiempoUnitarioPorPuesto) <= poolSab) maxSab = deficitHE;
+          else maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
           maxSab = Math.min(maxSab, deficitHE);
         }
 
@@ -260,7 +255,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const trKey = `${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`;
         const trViableValue = quickMaps.viables.get(trKey) || 0;
         
-        // SHIPMENT CALCULATION: Proportional share of viable production for the transfer
+        // PRIORIDAD: Si se proveen traslados ya viables (desde Quito), usarlos. 
+        // Si no (estamos en el análisis base de Quito), calcular el envío proporcional.
         const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
           ? trViableValue 
           : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
@@ -296,17 +292,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   }, [datos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables]);
 
   const datosFiltrados = useMemo(() => {
-    if (!searchTerm && !selectedLinea && selectedRespCtrlProd.length === 0 && selectedSector.length === 0 && selectedClaseAprov.length === 0) return filasCalculadas;
+    if (!searchTerm && !selectedLinea) return filasCalculadas;
     const q = searchTerm.toLowerCase();
     return filasCalculadas.filter((row: any) => {
       if (q && !String(row.CodMaterial || '').toLowerCase().includes(q) && !String(row.Descripcion || '').toLowerCase().includes(q)) return false;
       if (selectedLinea && row.lineaRef !== selectedLinea) return false;
-      if (selectedRespCtrlProd.length > 0 && !selectedRespCtrlProd.includes(String(row.NombRespControlProd || row.RespCtrlProd || '').trim())) return false;
-      if (selectedSector.length > 0 && !selectedSector.includes(String(row.Sector || '').trim())) return false;
-      if (selectedClaseAprov.length > 0 && !selectedClaseAprov.includes(String(row.ClaseAprovisionam || '').trim().toUpperCase())) return false;
       return true;
     });
-  }, [filasCalculadas, searchTerm, selectedLinea, selectedRespCtrlProd, selectedSector, selectedClaseAprov]);
+  }, [filasCalculadas, searchTerm, selectedLinea]);
 
   const totals = useMemo(() => {
     const res = {
@@ -394,7 +387,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r-2 border-gray-300">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r-2 border-gray-300">Horas Extras</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-orange-700 uppercase bg-orange-100 border-r-2 border-gray-300">Sábados</th>
-              <th colSpan={showSaldos ? 7 : 4} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
+              <th colSpan={showSaldos ? 7 : 3} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left bg-indigo-50/50">Mes</th>
@@ -407,10 +400,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th className="px-2 py-1 text-right text-blue-600">T.Total</th><th className="px-2 py-1 text-right text-blue-600">Part.%</th>
               <th className="px-2 py-1 text-right text-blue-600">Disp.Min</th><th className="px-2 py-1 text-right text-blue-700">Max.JN</th>
               <th className="px-2 py-1 text-right text-green-600 border-r-2 border-gray-300">Def.JN</th>
-              <th className="px-2 py-1 text-right text-green-600">T.Def</th><th className="px-2 py-1 text-right text-green-600">Part.%</th>
+              <th className="px-2 py-1 text-right text-green-600">T.Total</th><th className="px-2 py-1 text-right text-green-600">Part.%</th>
               <th className="px-2 py-1 text-right text-green-600">Disp.Min</th><th className="px-2 py-1 text-right text-green-700">Max.HE</th>
               <th className="px-2 py-1 text-right text-orange-600 border-r-2 border-gray-300">Def.HE</th>
-              <th className="px-2 py-1 text-right text-orange-600">T.Def</th><th className="px-2 py-1 text-right text-orange-600">Part.%</th>
+              <th className="px-2 py-1 text-right text-orange-600">T.Total</th><th className="px-2 py-1 text-right text-orange-600">Part.%</th>
               <th className="px-2 py-1 text-right text-orange-600">Disp.Min</th><th className="px-2 py-1 text-right text-orange-700">Max.Sab</th>
               <th className="px-2 py-1 text-right text-orange-600 border-r-2 border-gray-300">Def.Sab</th>
               <th className="px-2 py-1 text-right text-purple-600">Viable</th>
