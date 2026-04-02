@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -62,7 +63,7 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
           StockSeguridad: 0, 
           _Necesidades: 0, 
           _necPropia: 0,
-          Centro: '1000', // Forzar para evitar el filtrado en la tabla
+          Centro: '1000', 
           _isAggregated: true 
         });
       }
@@ -71,8 +72,9 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
       // SOLO SUMAR SI LA DEMANDA ES DE QUITO (CENTRO 1000)
       if (cDem === '1000') {
         agg.UnidadesProyectado = safeNumber(agg.UnidadesProyectado) + safeNumber(row.UnidadesProyectado ?? 0);
-        agg.StockActual = safeNumber(row.StockActual); 
-        agg.StockSeguridad = safeNumber(row.StockSeguridad);
+        // CORRECCIÓN: Preservar el stock más alto encontrado en la agregación
+        agg.StockActual = Math.max(safeNumber(agg.StockActual), safeNumber(row.StockActual)); 
+        agg.StockSeguridad = Math.max(safeNumber(agg.StockSeguridad), safeNumber(row.StockSeguridad));
         
         let nec = 0;
         if (row._Necesidades !== undefined && row._Necesidades !== null) {
@@ -96,15 +98,14 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
       const key = `${code}|${mes}`;
       
       if (!porMaterial.has(key)) {
-        // Buscar el material en los datos completos para obtener descripción
         const refRow = data.find(r => normalizeMaterialCode(r.CodMaterial) === code);
         if (refRow) {
           porMaterial.set(key, {
             ...refRow,
             Mes: mes,
             UnidadesProyectado: 0,
-            StockActual: 0,
-            StockSeguridad: 0,
+            StockActual: Math.max(0, safeNumber(refRow.StockActual)),
+            StockSeguridad: Math.max(0, safeNumber(refRow.StockSeguridad)),
             _Necesidades: 0,
             _necPropia: 0,
             Centro: '1000',

@@ -232,11 +232,31 @@ class BottleneckAnalysisService {
 
     const filteredData = data.filter(row => String(row.Centro || '').trim() === '2000');
     
-    // Clasificación inicial
+    // Agregación por material para evitar duplicidad de stock en el análisis secuencial
+    const aggDataMap = new Map<string, any>();
+    filteredData.forEach(row => {
+      const code = normalizeMaterialCode(row.CodMaterial ?? '');
+      const mes = String(row.Mes ?? '');
+      const key = `${code}|${mes}`;
+      
+      if (!aggDataMap.has(key)) {
+        aggDataMap.set(key, { 
+          ...row, 
+          UnidadesProyectado: 0, 
+          _isAggregated: true 
+        });
+      }
+      const agg = aggDataMap.get(key)!;
+      agg.UnidadesProyectado = this.safeNumber(agg.UnidadesProyectado) + this.safeNumber(row.UnidadesProyectado);
+      // Preservar el stock más alto encontrado (evitar ceros de filas secundarias)
+      agg.StockActual = Math.max(this.safeNumber(agg.StockActual), this.safeNumber(row.StockActual));
+      agg.StockSeguridad = Math.max(this.safeNumber(agg.StockSeguridad), this.safeNumber(row.StockSeguridad));
+    });
+
     const dataEX: any[] = [];
     const dataF: any[] = [];
     
-    filteredData.forEach(row => {
+    Array.from(aggDataMap.values()).forEach(row => {
       const clase = this.normalizarClase(row.ClaseAprovisionam);
       if (clase === 'E' || clase === 'X') dataEX.push(row);
       else if (clase === 'F') dataF.push(row);
@@ -256,10 +276,10 @@ class BottleneckAnalysisService {
     });
 
     const result: Center2000Analysis = {
-      filteredData,
+      filteredData: Array.from(aggDataMap.values()),
       dataEX,
       dataF,
-      transferNeedsEX: [], // Se llenará dinámicamente desde la tabla
+      transferNeedsEX: [], 
       transferNeedsF,
       transferNeedsConsolidated: [...transferNeedsF],
       computedDataEX: []
@@ -306,7 +326,7 @@ class BottleneckAnalysisService {
     }
 
     // 3. Procesamiento Cronológico con Arrastre
-    const stockTracker = new Map<string, number>(); // Key: Material|DemandCenter
+    const stockTracker = new Map<string, number>(); 
     const allProcessedRows: any[] = [];
     const trasladosMap = new Map<string, number>();
     transfersFromCenter2000.forEach(t => trasladosMap.set(`${normalizeMaterialCode(t.CodMaterial)}|${t.mes}`, t.necesidadTraslado));
@@ -316,7 +336,6 @@ class BottleneckAnalysisService {
       if (rowsOfMonth.length === 0) continue;
 
       const mesRef = String(rowsOfMonth[0].Mes || '');
-      const tc = this.buscarTiempoCanon(tiemposCanon, mesRef);
       
       // Agregación por material para el mes actual
       const aggMonth = new Map<string, any>();
@@ -332,16 +351,18 @@ class BottleneckAnalysisService {
         if (cDem === '1000') {
           agg._unidadesProy += this.safeNumber(row.UnidadesProyectado);
         }
+        // Preservar stock real
+        agg.StockActual = Math.max(this.safeNumber(agg.StockActual), this.safeNumber(row.StockActual));
+        agg.StockSeguridad = Math.max(this.safeNumber(agg.StockSeguridad), this.safeNumber(row.StockSeguridad));
       });
 
-      // Cálculo de capacidad para el mes
+      // Cálculo base para el mes
       const monthResults: any[] = [];
       aggMonth.forEach(agg => {
         const code = normalizeMaterialCode(agg.CodMaterial ?? '');
         const cDem = String(agg.Centro || '').trim();
         const keyStock = `${code}|${cDem}`;
         
-        // REGLA: Usar StockActual solo en la primera aparición cronológica del producto
         const initialStock = stockTracker.has(keyStock) 
           ? stockTracker.get(keyStock)! 
           : this.safeNumber(agg.StockActual);
@@ -350,8 +371,7 @@ class BottleneckAnalysisService {
         const necPropia = Math.max(0, agg._unidadesProy - initialStock + this.safeNumber(agg.StockSeguridad));
         const necesidadTotal = necPropia + traslado;
 
-        // Simplificación para el servicio (El reparto fino HE/Sáb se hace en la tabla visual por performance)
-        const prodViable = necesidadTotal; // El servicio asume capacidad infinita o ideal para resúmenes base
+        const prodViable = necesidadTotal; 
         const finalStock = initialStock + prodViable - agg._unidadesProy - (cDem === '1000' ? traslado : 0);
         
         stockTracker.set(keyStock, finalStock);
