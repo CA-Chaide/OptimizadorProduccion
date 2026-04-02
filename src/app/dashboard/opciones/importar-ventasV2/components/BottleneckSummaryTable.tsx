@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MONTH_NAMES } from './constants';
 import { safeNumber, exportToXLSX } from './utils';
 import { TiempoCanonResult } from './types';
@@ -34,6 +35,11 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
 }) => {
   const [selectedLinea, setSelectedLinea] = useState<string>('');
   const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string>('');
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const buscarTiempoCanonPorMesSummary = (mesRaw: string) => {
     let found = tiemposCanon.find(t => t.mes === mesRaw);
@@ -378,49 +384,49 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
                 <td className="px-3 py-2 text-sm"><span className="inline-block bg-red-100 text-red-800 px-2 py-0.5 rounded font-semibold text-xs">{resumen.puestoSeleccionado}</span></td>
                 <td className="px-3 py-2 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
                 <td className="px-3 py-2 text-sm text-center font-mono text-gray-600">{resumen.numeroSemanas}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-700 font-semibold">{Math.floor(resumen.necesidadTotal).toLocaleString()}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-600">{Number(resumen.necesidadPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">{Math.floor(resumen.necesidadAFabricarTotal).toLocaleString()}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-purple-600">{Number(resumen.necesidadAFabricarPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{resumen.envioC2000Total.toLocaleString()}</td>}
-                {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">{resumen.quedaC1000Total.toLocaleString()}</td>}
-                <td className="px-2 py-2 text-sm text-right font-mono text-blue-700 bg-blue-50/30">{Number(resumen.consumidoJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-blue-600 bg-blue-50/30">{(resumen.consumidoJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-amber-700 bg-amber-50/30">{resumen.consumidoHE > 0 ? Number(resumen.consumidoHE).toLocaleString(undefined, { maximumFractionDigits: 0 }) : <span className="text-gray-400">—</span>}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-amber-600 bg-amber-50/30">{resumen.consumidoHE > 0 ? (resumen.consumidoHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : <span className="text-gray-400">—</span>}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreHE).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className={`px-2 py-2 text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-violet-700 bg-violet-50/30">{resumen.consumidoSAB > 0 ? Number(resumen.consumidoSAB).toLocaleString(undefined, { maximumFractionDigits: 0 }) : <span className="text-gray-400">—</span>}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-violet-600 bg-violet-50/30">{resumen.consumidoSAB > 0 ? (resumen.consumidoSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : <span className="text-gray-400">—</span>}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreSAB).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-gray-700">{Number(resumen.horasPromedioPorDia ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-700 font-semibold">{isMounted ? Math.floor(resumen.necesidadTotal).toLocaleString() : ''}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-600">{isMounted ? Number(resumen.necesidadPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 }) : ''}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">{isMounted ? Math.floor(resumen.necesidadAFabricarTotal).toLocaleString() : ''}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-purple-600">{isMounted ? Number(resumen.necesidadAFabricarPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 }) : ''}</td>
+                {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-sm text-right font-mono text-teal-700 font-semibold">{isMounted ? resumen.envioC2000Total.toLocaleString() : ''}</td>}
+                {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-sm text-right font-mono text-cyan-700 font-semibold">{isMounted ? resumen.quedaC1000Total.toLocaleString() : ''}</td>}
+                <td className="px-2 py-2 text-sm text-right font-mono text-blue-700 bg-blue-50/30">{isMounted ? Number(resumen.consumidoJN).toLocaleString(undefined, { maximumFractionDigits: 0 }) : ''}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-blue-600 bg-blue-50/30">{isMounted ? (resumen.consumidoJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{isMounted ? Number(resumen.libreJN).toLocaleString(undefined, { maximumFractionDigits: 0 }) : ''}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{isMounted ? (resumen.libreJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-amber-700 bg-amber-50/30">{isMounted && resumen.consumidoHE > 0 ? Number(resumen.consumidoHE).toLocaleString(undefined, { maximumFractionDigits: 0 }) : <span className="text-gray-400">—</span>}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-amber-600 bg-amber-50/30">{isMounted && resumen.consumidoHE > 0 ? (resumen.consumidoHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : <span className="text-gray-400">—</span>}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{isMounted ? Number(resumen.libreHE).toLocaleString(undefined, { maximumFractionDigits: 0 }) : ''}</td>
+                <td className={`px-2 py-2 text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{isMounted ? (resumen.libreHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-violet-700 bg-violet-50/30">{isMounted && resumen.consumidoSAB > 0 ? Number(resumen.consumidoSAB).toLocaleString(undefined, { maximumFractionDigits: 0 }) : <span className="text-gray-400">—</span>}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-violet-600 bg-violet-50/30">{isMounted && resumen.consumidoSAB > 0 ? (resumen.consumidoSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : <span className="text-gray-400">—</span>}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{isMounted ? Number(resumen.libreSAB).toLocaleString(undefined, { maximumFractionDigits: 0 }) : ''}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{isMounted ? (resumen.libreSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-gray-700">{isMounted ? Number(resumen.horasPromedioPorDia ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}</td>
               </tr>
             ))}
           </tbody>
           <tfoot className="sticky bottom-0 z-20 bg-gray-800 text-white font-bold text-[10px]">
             <tr>
               <td colSpan={6} className="px-3 py-2 text-right border-r border-gray-600">TOTAL GENERAL</td>
-              <td className="px-2 py-2 text-right font-mono text-indigo-300">{Math.floor(totals.nec).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-indigo-300">{isMounted ? Math.floor(totals.nec).toLocaleString() : ''}</td>
               <td className="px-2 py-2"></td>
-              <td className="px-2 py-2 text-right font-mono text-purple-300 border-r border-gray-600">{Math.floor(totals.necFab).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-purple-300 border-r border-gray-600">{isMounted ? Math.floor(totals.necFab).toLocaleString() : ''}</td>
               <td className="px-2 py-2"></td>
-              {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-right font-mono text-teal-300 border-r border-gray-600">{Math.floor(totals.envio).toLocaleString()}</td>}
-              {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-right font-mono text-cyan-300 border-r border-gray-600">{Math.floor(totals.queda).toLocaleString()}</td>}
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consJN).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono">{(totals.consJN / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libJN).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libJN / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consHE).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono">{(totals.consHE / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libHE).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libHE / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consSAB).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono">{(totals.consSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libSAB).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-right font-mono text-teal-300 border-r border-gray-600">{isMounted ? Math.floor(totals.envio).toLocaleString() : ''}</td>}
+              {isCentro1000 && !showSaldos && <td className="px-2 py-2 text-right font-mono text-cyan-300 border-r border-gray-600">{isMounted ? Math.floor(totals.queda).toLocaleString() : ''}</td>}
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? Math.round(totals.consJN).toLocaleString() : ''}</td>
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? (totals.consJN / 60).toLocaleString(undefined, { maximumFractionDigits: 1 }) : ''}</td>
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? Math.round(totals.libJN).toLocaleString() : ''}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{isMounted ? (totals.libJN / 60).toLocaleString(undefined, { maximumFractionDigits: 1 }) : ''}</td>
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? Math.round(totals.consHE).toLocaleString() : ''}</td>
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? (totals.consHE / 60).toLocaleString(undefined, { maximumFractionDigits: 1 }) : ''}</td>
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? Math.round(totals.libHE).toLocaleString() : ''}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{isMounted ? (totals.libHE / 60).toLocaleString(undefined, { maximumFractionDigits: 1 }) : ''}</td>
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? Math.round(totals.consSAB).toLocaleString() : ''}</td>
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? (totals.consSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 1 }) : ''}</td>
+              <td className="px-2 py-2 text-right font-mono">{isMounted ? Math.round(totals.libSAB).toLocaleString() : ''}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{isMounted ? (totals.libSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 1 }) : ''}</td>
               <td></td>
             </tr>
           </tfoot>

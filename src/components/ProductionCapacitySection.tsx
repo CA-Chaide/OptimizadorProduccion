@@ -105,7 +105,7 @@ const MultiSelectFilter: React.FC<{
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
-                    const matchingOption = options.find(opt => opt.value.toLowerCase() === currentValue.toLowerCase());
+                    const matchingOption = options.find(opt => opt.label.toLowerCase() === currentValue.toLowerCase());
                     if (matchingOption) {
                       handleSelect(matchingOption.value);
                     }
@@ -141,6 +141,11 @@ const MultiSelectFilter: React.FC<{
 
 export const ProductionCapacitySection: React.FC = () => {
     const { constraints, planningYear, planningMonth, c2000RequiredHours } = useAppContext();
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     const [dailyFilters, setDailyFilters] = useState<Partial<Record<keyof DailyCapacityRow, string | string[]>>>({});
     const [dailyFilterOptions, setDailyFilterOptions] = useState<Record<string, { value: string, label: string }[]>>({});
@@ -381,10 +386,18 @@ export const ProductionCapacitySection: React.FC = () => {
                                                             <td className="px-3 py-2 text-right font-mono">{ws.numPuestos}</td>
                                                             <td className="px-3 py-2 text-right font-mono">{ws.numPersonasPorPuesto}</td>
                                                             <td className="px-3 py-2 text-right font-mono font-semibold">{ws.totalPersonas}</td>
-                                                            <td className="px-3 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{Math.round(ws.horasDisponibles).toLocaleString()}</td>
-                                                            <td className="px-3 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">{ws.horasRequeridas.toLocaleString()}</td>
-                                                            <td className="px-3 py-2 text-right font-mono font-bold text-green-800 bg-green-50">{Math.round(ws.saldoHoras).toLocaleString()}</td>
-                                                            <td className="px-3 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">{ws.ocupacion.toFixed(1)}%</td>
+                                                            <td className="px-3 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">
+                                                                {isMounted ? Math.round(ws.horasDisponibles).toLocaleString() : ''}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">
+                                                                {isMounted ? ws.horasRequeridas.toLocaleString() : ''}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-mono font-bold text-green-800 bg-green-50">
+                                                                {isMounted ? Math.round(ws.saldoHoras).toLocaleString() : ''}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">
+                                                                {isMounted ? `${ws.ocupacion.toFixed(1)}%` : ''}
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </React.Fragment>
@@ -438,14 +451,14 @@ export const ProductionCapacitySection: React.FC = () => {
                                             <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.mes}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.año}</td>
-                                            <td className="px-2 py-2 whitespace-nowrap">{row.fecha}</td>
+                                            <td className="px-2 py-2 whitespace-nowrap">{isMounted ? row.fecha : ''}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.dia}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.linea}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">{row.puestoDeTrabajo}</td>
                                             <td className="px-2 py-2 text-right whitespace-nowrap">{row.esFeriado}</td>
-                                            <td className="px-2 py-2 text-right font-mono">{row.maxHorasJornada.toFixed(2)}</td>
+                                            <td className="px-2 py-2 text-right font-mono">{isMounted ? row.maxHorasJornada.toFixed(2) : ''}</td>
                                             <td className="px-2 py-2 text-right font-mono">{row.cantidadPuestos}</td>
-                                            <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{row.horasMaxDisponibles.toFixed(2)}</td>
+                                            <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{isMounted ? row.horasMaxDisponibles.toFixed(2) : ''}</td>
                                         </tr>
                                     ))
                                 ) : (
@@ -459,7 +472,9 @@ export const ProductionCapacitySection: React.FC = () => {
                              <tfoot className="bg-gray-800 text-white sticky bottom-0 font-bold">
                                 <tr>
                                     <th colSpan={10} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
-                                    <td className="px-2 py-2 text-right font-mono">{dailyFooterTotals.horasMaxDisponibles.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                        {isMounted ? dailyFooterTotals.horasMaxDisponibles.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}
+                                    </td>
                                 </tr>
                             </tfoot>
                         </table>
