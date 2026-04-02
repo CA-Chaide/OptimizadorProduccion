@@ -24,30 +24,30 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos, isMounted }: 
       <td className="px-2 py-2 text-gray-600 min-w-[100px]">{row.Sector ?? '-'}</td>
       <td className="px-2 py-2 text-gray-600 min-w-[120px]">{row.NombRespControlProd ?? row.RespCtrlProd ?? '-'}</td>
       <td className="px-2 py-2 text-right font-mono text-indigo-600 font-semibold border-r-2 border-gray-200 min-w-[70px]">
-        {row.tiempoUnitarioPorPuesto != null && isMounted ? Number(row.tiempoUnitarioPorPuesto).toLocaleString(undefined, { maximumFractionDigits: 3 }) : '-'}
+        {row.tiempoUnitarioPorPuesto != null && isMounted ? Number(row.tiempoUnitarioPorPuesto).toLocaleString(undefined, { maximumFractionDigits: 3 }) : ''}
       </td>
       
       <td className="px-2 py-2 text-right font-mono text-teal-700 font-semibold min-w-[80px]">{isMounted ? row._traslado.toLocaleString() : ''}</td>
       <td className="px-2 py-2 text-right font-mono text-gray-700 min-w-[80px]">{isMounted ? row._necPropia.toLocaleString() : ''}</td>
       <td className="px-2 py-2 text-right font-mono text-blue-700 border-r-2 border-gray-300 min-w-[90px]">{isMounted ? Math.floor(row._necesidad).toLocaleString() : ''}</td>
       
-      <td className="px-2 py-2 text-right font-mono text-blue-600 min-w-[80px]">{row.tiempoTotalNecesidad != null && isMounted ? Number(row.tiempoTotalNecesidad).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}</td>
+      <td className="px-2 py-2 text-right font-mono text-blue-600 min-w-[80px]">{row.tiempoTotalNecesidad != null && isMounted ? Number(row.tiempoTotalNecesidad).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}</td>
       <td className="px-2 py-2 text-right font-mono text-blue-600 min-w-[60px]">{isMounted ? Number(row.participacionIndividual ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}%</td>
-      <td className="px-2 py-2 text-right font-mono text-blue-600 min-w-[90px]">{row.minutosDisponiblesJornadaNormal != null && isMounted ? Number(row.minutosDisponiblesJornadaNormal).toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'} m</td>
-      <td className="px-2 py-2 text-right font-mono text-blue-800 font-semibold min-w-[80px]">{row.necesidadMaximaProducirJornadaNormal != null && isMounted ? Number(row.necesidadMaximaProducirJornadaNormal).toLocaleString() : '-'}</td>
-      <td className="px-2 py-2 text-right font-mono text-green-700 border-r-2 border-gray-300 min-w-[80px]">{row.deficitJornadaNormal != null && isMounted ? Number(row.deficitJornadaNormal).toLocaleString() : '-'}</td>
+      <td className="px-2 py-2 text-right font-mono text-blue-600 min-w-[90px]">{row.minutosDisponiblesJornadaNormal != null && isMounted ? `${Number(row.minutosDisponiblesJornadaNormal).toLocaleString(undefined, { maximumFractionDigits: 1 })} m` : ''}</td>
+      <td className="px-2 py-2 text-right font-mono text-blue-800 font-semibold min-w-[80px]">{row.necesidadMaximaProducirJornadaNormal != null && isMounted ? Number(row.necesidadMaximaProducirJornadaNormal).toLocaleString() : ''}</td>
+      <td className="px-2 py-2 text-right font-mono text-green-700 border-r-2 border-gray-300 min-w-[80px]">{row.deficitJornadaNormal != null && isMounted ? Number(row.deficitJornadaNormal).toLocaleString() : ''}</td>
       
-      <td className="px-2 py-2 text-right font-mono text-green-600 min-w-[80px]">{row.tiempoTotalNecesidadDeficitJN != null && isMounted ? Number(row.tiempoTotalNecesidadDeficitJN).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}</td>
+      <td className="px-2 py-2 text-right font-mono text-green-600 min-w-[80px]">{row.tiempoTotalNecesidadDeficitJN != null && isMounted ? Number(row.tiempoTotalNecesidadDeficitJN).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}</td>
       <td className="px-2 py-2 text-right font-mono text-green-600 min-w-[60px]">{isMounted ? Number(row.participacionDeficitJN ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}%</td>
-      <td className="px-2 py-2 text-right font-mono text-green-600 min-w-[90px]">{row.minutosDisponiblesHorasExtras != null && isMounted ? Number(row.minutosDisponiblesHorasExtras).toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'} m</td>
-      <td className="px-2 py-2 text-right font-mono text-green-700 min-w-[80px]">{row.necesidadMaximaProducirHorasExtras != null && isMounted ? Number(row.necesidadMaximaProducirHorasExtras).toLocaleString() : '-'}</td>
-      <td className="px-2 py-2 text-right font-mono text-orange-700 border-r-2 border-gray-300 min-w-[80px]">{row.deficitHorasExtras != null && isMounted ? Number(row.deficitHorasExtras).toLocaleString() : '-'}</td>
+      <td className="px-2 py-2 text-right font-mono text-green-600 min-w-[90px]">{row.minutosDisponiblesHorasExtras != null && isMounted ? `${Number(row.minutosDisponiblesHorasExtras).toLocaleString(undefined, { maximumFractionDigits: 1 })} m` : ''}</td>
+      <td className="px-2 py-2 text-right font-mono text-green-700 min-w-[80px]">{row.necesidadMaximaProducirHorasExtras != null && isMounted ? Number(row.necesidadMaximaProducirHorasExtras).toLocaleString() : ''}</td>
+      <td className="px-2 py-2 text-right font-mono text-orange-700 border-r-2 border-gray-300 min-w-[80px]">{row.deficitHorasExtras != null && isMounted ? Number(row.deficitHorasExtras).toLocaleString() : ''}</td>
       
-      <td className="px-2 py-2 text-right font-mono text-orange-600 min-w-[80px]">{row.tiempoTotalNecesidadDeficitHE != null && isMounted ? Number(row.tiempoTotalNecesidadDeficitHE).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}</td>
+      <td className="px-2 py-2 text-right font-mono text-orange-600 min-w-[80px]">{row.tiempoTotalNecesidadDeficitHE != null && isMounted ? Number(row.tiempoTotalNecesidadDeficitHE).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}</td>
       <td className="px-2 py-2 text-right font-mono text-orange-600 min-w-[60px]">{isMounted ? Number(row.participacionDeficitHE ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}%</td>
-      <td className="px-2 py-2 text-right font-mono text-orange-600 min-w-[90px]">{row.minutosDisponiblesSabados != null && isMounted ? Number(row.minutosDisponiblesSabados).toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'} m</td>
-      <td className="px-2 py-2 text-right font-mono text-orange-800 font-semibold min-w-[80px]">{row.necesidadMaximaProducirSabados != null && isMounted ? Number(row.necesidadMaximaProducirSabados).toLocaleString() : '-'}</td>
-      <td className="px-2 py-2 text-right font-mono text-orange-700 border-r-2 border-gray-300 min-w-[80px]">{row.deficitSabados != null && isMounted ? Number(row.deficitSabados).toLocaleString() : '-'}</td>
+      <td className="px-2 py-2 text-right font-mono text-orange-600 min-w-[90px]">{row.minutosDisponiblesSabados != null && isMounted ? `${Number(row.minutosDisponiblesSabados).toLocaleString(undefined, { maximumFractionDigits: 1 })} m` : ''}</td>
+      <td className="px-2 py-2 text-right font-mono text-orange-800 font-semibold min-w-[80px]">{row.necesidadMaximaProducirSabados != null && isMounted ? Number(row.necesidadMaximaProducirSabados).toLocaleString() : ''}</td>
+      <td className="px-2 py-2 text-right font-mono text-orange-700 border-r-2 border-gray-300 min-w-[80px]">{row.deficitSabados != null && isMounted ? Number(row.deficitSabados).toLocaleString() : ''}</td>
       
       <td className="px-2 py-2 text-right font-mono text-purple-700 font-bold bg-purple-50/30 border-r-2 border-gray-300 min-w-[90px]">{isMounted ? row._prodViable.toLocaleString() : ''}</td>
       
