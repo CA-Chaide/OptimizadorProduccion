@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { useAppContext } from '@/context/AppProvider';
 import { Activity, Check, ChevronsUpDown } from 'lucide-react';
 import { AppConstraints, Holiday, ProductionLine, ShiftParameters, WorkCenter, WorkstationDefinition, DailyCapacityRow as OriginalDailyCapacityRow } from '@/types/types';
@@ -26,19 +25,17 @@ interface CapacityRow {
     ocupacion: number;
 }
 
-// Renombrar para evitar conflicto en el ámbito del archivo
 type DailyCapacityRow = OriginalDailyCapacityRow & { mes: string; año: number };
 
 const EFFICIENCY_FACTOR = 0.87;
 
-// Helper to get hours for a specific day
 const getDailyHours = (date: Date, constraints: AppConstraints): number => {
     const { holidays, shiftParameters } = constraints;
     if (!shiftParameters) return 0;
     
     const dateString = date.toISOString().split('T')[0];
     const holiday = holidays.find(h => h.date === dateString && h.appliesTo !== 'Distribucion');
-    const dayOfWeek = date.getDay(); // 0=Sun, 6=Sat
+    const dayOfWeek = date.getDay();
 
     let rawHours = 0;
     if (holiday) {
@@ -50,11 +47,11 @@ const getDailyHours = (date: Date, constraints: AppConstraints): number => {
             rawHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
         }
     } else {
-        if (dayOfWeek === 0) { // Sunday
+        if (dayOfWeek === 0) {
             rawHours = 0;
-        } else if (dayOfWeek === 6) { // Saturday
+        } else if (dayOfWeek === 6) {
             rawHours = shiftParameters.saturdayAndHolidayHours;
-        } else { // Weekday
+        } else {
             rawHours = shiftParameters.regularHoursPerDay + shiftParameters.extraHoursPerDay;
         }
     }
@@ -68,7 +65,7 @@ const MultiSelectFilter: React.FC<{
   onChange: (selected: string[]) => void;
   placeholder?: string;
 }> = ({ options, selected, onChange, placeholder }) => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = React.useState(false);
 
   const handleSelect = (value: string) => {
     const newSelected = selected.includes(value)
@@ -141,14 +138,7 @@ const MultiSelectFilter: React.FC<{
 
 export const ProductionCapacitySection: React.FC = () => {
     const { constraints, planningYear, planningMonth, c2000RequiredHours } = useAppContext();
-    const [isMounted, setIsMounted] = useState(false);
-
-    useEffect(() => {
-        setIsMounted(true);
-    }, []);
-
-    const [dailyFilters, setDailyFilters] = useState<Partial<Record<keyof DailyCapacityRow, string | string[]>>>({});
-    const [dailyFilterOptions, setDailyFilterOptions] = useState<Record<string, { value: string, label: string }[]>>({});
+    const [dailyFilters, setDailyFilters] = React.useState<Partial<Record<keyof DailyCapacityRow, string | string[]>>>({});
 
     const monthlyCapacityData = useMemo((): CapacityRow[] => {
         const year = parseInt(planningYear, 10);
@@ -281,59 +271,26 @@ export const ProductionCapacitySection: React.FC = () => {
         return dailyRows;
     }, [constraints]);
     
-    useEffect(() => {
-        if (dailyCapacityData.length > 0) {
-            const columnsToFilter: Array<keyof DailyCapacityRow> = ['centro', 'mes', 'año', 'fecha', 'dia', 'linea', 'puestoDeTrabajo'];
-            const options: Record<string, Set<string>> = {};
-            columnsToFilter.forEach(col => options[col] = new Set());
-            
-            dailyCapacityData.forEach(row => {
-               columnsToFilter.forEach(col => {
-                    const value = row[col];
-                    if (value !== null && value !== undefined && String(value).trim() !== '') {
-                        options[col].add(String(value));
-                    }
-               });
-            });
-
-            const formattedOptions: Record<string, { value: string, label: string }[]> = {};
-            for (const key in options) {
-                formattedOptions[key] = Array.from(options[key]).sort((a,b) => a.localeCompare(b, undefined, {numeric: true})).map(val => ({ value: val, label: val }));
-            }
-            setDailyFilterOptions(formattedOptions);
-        }
+    const dailyFilterOptions = useMemo(() => {
+        const options: Record<string, { value: string, label: string }[]> = {};
+        const columns: Array<keyof DailyCapacityRow> = ['centro', 'mes', 'año', 'fecha', 'dia', 'linea', 'puestoDeTrabajo'];
+        
+        columns.forEach(col => {
+            const unique = [...new Set(dailyCapacityData.map(r => String(row[col])))].sort();
+            options[col] = unique.map(v => ({ value: v, label: v }));
+        });
+        return options;
     }, [dailyCapacityData]);
 
-    const handleDailyMultiSelectFilterChange = (column: keyof DailyCapacityRow, value: string[]) => {
-        setDailyFilters(prev => ({ ...prev, [column]: value }));
-    };
-
     const filteredDailyData = useMemo(() => {
-        if (!dailyCapacityData) return [];
         return dailyCapacityData.filter(row => {
              return Object.keys(dailyFilters).every(key => {
                 const filterValue = dailyFilters[key as keyof typeof dailyFilters];
                 if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) return true;
-
-                const rowValue = row[key as keyof DailyCapacityRow];
-                if (rowValue === null || rowValue === undefined) return false;
-
-                if (Array.isArray(filterValue)) { // Multi-select
-                    return filterValue.includes(String(rowValue));
-                } else { // Text filter
-                    return String(rowValue).toLowerCase().includes(String(filterValue).toLowerCase());
-                }
+                return filterValue.includes(String(row[key as keyof DailyCapacityRow]));
             });
         });
     }, [dailyCapacityData, dailyFilters]);
-
-    const dailyFooterTotals = useMemo(() => {
-        return filteredDailyData.reduce((acc, row) => {
-            acc.horasMaxDisponibles += row.horasMaxDisponibles || 0;
-            return acc;
-        }, { horasMaxDisponibles: 0 });
-    }, [filteredDailyData]);
-
 
     return (
         <div className="p-6 md:p-8 space-y-6">
@@ -343,8 +300,8 @@ export const ProductionCapacitySection: React.FC = () => {
             </div>
             
              <p className="text-gray-600 text-sm">
-                Esta sección desglosa la capacidad de producción disponible, tanto en una vista resumida mensual como en un detalle diario para los próximos 17 meses. 
-                Se aplica un factor de eficiencia del <span className="font-bold text-blue-600">{(EFFICIENCY_FACTOR * 100).toFixed(0)}%</span> sobre las horas de jornada.
+                Esta sección desglosa la capacidad de producción disponible. 
+                Se aplica un factor de eficiencia del <span className="font-bold text-blue-600">87%</span>.
             </p>
 
             <Tabs defaultValue="details" className="w-full">
@@ -358,59 +315,49 @@ export const ProductionCapacitySection: React.FC = () => {
                         <table className="min-w-full text-xs divide-y divide-gray-200">
                             <thead className="bg-gray-100 sticky top-0 z-10">
                                 <tr>
-                                    <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Puesto de Trabajo</th>
-                                    <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Nro. Puestos</th>
-                                    <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Nro. Personas x Puesto</th>
-                                    <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Total Personas</th>
-                                    <th className="px-3 py-2 text-right font-bold text-blue-700 uppercase tracking-wider bg-blue-50">Horas Disponibles</th>
-                                    <th className="px-3 py-2 text-right font-bold text-orange-700 uppercase tracking-wider bg-orange-50">Horas Requeridas</th>
-                                    <th className="px-3 py-2 text-right font-bold text-green-700 uppercase tracking-wider bg-green-50">Saldo Horas</th>
-                                    <th className="px-3 py-2 text-right font-bold text-purple-700 uppercase tracking-wider bg-purple-50">% Ocupación</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-600 uppercase">Puesto de Trabajo</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase">Nro. Puestos</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-600 uppercase">Total Personas</th>
+                                    <th className="px-3 py-2 text-right font-bold text-blue-700 uppercase bg-blue-50">Horas Disponibles</th>
+                                    <th className="px-3 py-2 text-right font-bold text-orange-700 uppercase bg-orange-50">Horas Requeridas</th>
+                                    <th className="px-3 py-2 text-right font-bold text-green-700 uppercase bg-green-50">Saldo Horas</th>
+                                    <th className="px-3 py-2 text-right font-bold text-purple-700 uppercase bg-purple-50">% Ocupación</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {monthlyTableHierarchy.length > 0 ? (
-                                    monthlyTableHierarchy.map(({ center, lines }) => (
-                                        <React.Fragment key={center.id}>
-                                            <tr className="bg-gray-200 font-bold">
-                                                <td colSpan={8} className="px-3 py-2 text-gray-800">Centro: {center.name}</td>
-                                            </tr>
-                                            {Array.from(lines.values()).map(({ line, workstations }) => (
-                                                <React.Fragment key={line.id}>
-                                                    <tr className="bg-gray-100 font-semibold">
-                                                        <td colSpan={8} className="px-3 py-2 text-indigo-800 pl-6">Línea: {line.name}</td>
+                                {monthlyTableHierarchy.map(({ center, lines }) => (
+                                    <React.Fragment key={center.id}>
+                                        <tr className="bg-gray-200 font-bold">
+                                            <td colSpan={7} className="px-3 py-2 text-gray-800">Centro: {center.name}</td>
+                                        </tr>
+                                        {Array.from(lines.values()).map(({ line, workstations }) => (
+                                            <React.Fragment key={line.id}>
+                                                <tr className="bg-gray-100 font-semibold">
+                                                    <td colSpan={7} className="px-3 py-2 text-indigo-800 pl-6">Línea: {line.name}</td>
+                                                </tr>
+                                                {workstations.map(ws => (
+                                                    <tr key={ws.workstation.id}>
+                                                        <td className="px-3 py-2 pl-12 text-gray-700">{ws.workstation.name}</td>
+                                                        <td className="px-3 py-2 text-right font-mono">{ws.numPuestos}</td>
+                                                        <td className="px-3 py-2 text-right font-mono font-semibold">{ws.totalPersonas}</td>
+                                                        <td className="px-3 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">
+                                                            {Math.round(ws.horasDisponibles).toLocaleString()}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">
+                                                            {ws.horasRequeridas.toLocaleString()}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right font-mono font-bold text-green-800 bg-green-50">
+                                                            {Math.round(ws.saldoHoras).toLocaleString()}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">
+                                                            {`${ws.ocupacion.toFixed(1)}%`}
+                                                        </td>
                                                     </tr>
-                                                    {workstations.map(ws => (
-                                                        <tr key={ws.workstation.id}>
-                                                            <td className="px-3 py-2 pl-12 text-gray-700">{ws.workstation.name}</td>
-                                                            <td className="px-3 py-2 text-right font-mono">{ws.numPuestos}</td>
-                                                            <td className="px-3 py-2 text-right font-mono">{ws.numPersonasPorPuesto}</td>
-                                                            <td className="px-3 py-2 text-right font-mono font-semibold">{ws.totalPersonas}</td>
-                                                            <td className="px-3 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">
-                                                                {isMounted ? Math.round(ws.horasDisponibles).toLocaleString() : ''}
-                                                            </td>
-                                                            <td className="px-3 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">
-                                                                {isMounted ? ws.horasRequeridas.toLocaleString() : ''}
-                                                            </td>
-                                                            <td className="px-3 py-2 text-right font-mono font-bold text-green-800 bg-green-50">
-                                                                {isMounted ? Math.round(ws.saldoHoras).toLocaleString() : ''}
-                                                            </td>
-                                                            <td className="px-3 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">
-                                                                {isMounted ? `${ws.ocupacion.toFixed(1)}%` : ''}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </React.Fragment>
-                                            ))}
-                                        </React.Fragment>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan={8} className="text-center py-8 text-gray-500">
-                                            No hay datos de capacidad para mostrar. Verifique la configuración de restricciones y el mes seleccionado.
-                                        </td>
-                                    </tr>
-                                )}
+                                                ))}
+                                            </React.Fragment>
+                                        ))}
+                                    </React.Fragment>
+                                ))}
                             </tbody>
                         </table>
                     </div>
@@ -421,59 +368,37 @@ export const ProductionCapacitySection: React.FC = () => {
                         <table className="min-w-full text-xs divide-y divide-gray-200">
                             <thead className="bg-gray-100 sticky top-0 z-10">
                                 <tr>
-                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Centro</th>
-                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Mes</th>
-                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Año</th>
-                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
-                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Día</th>
-                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Línea</th>
-                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Puesto de Trabajo</th>
-                                    <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Feriado</th>
-                                    <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Máx. Horas Jornada</th>
-                                    <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase tracking-wider">Cant. Puestos</th>
-                                    <th className="px-2 py-2 text-right font-bold text-blue-700 uppercase tracking-wider bg-blue-50">Horas Máx. Disponibles</th>
-                                </tr>
-                                <tr>
-                                    <th className="p-1"><MultiSelectFilter placeholder="Centro" options={dailyFilterOptions.centro || []} selected={(dailyFilters.centro as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('centro', value)} /></th>
-                                    <th className="p-1"><MultiSelectFilter placeholder="Mes" options={dailyFilterOptions.mes || []} selected={(dailyFilters.mes as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('mes', value)} /></th>
-                                    <th className="p-1"><MultiSelectFilter placeholder="Año" options={dailyFilterOptions.año || []} selected={(dailyFilters.año as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('año', value)} /></th>
-                                    <th className="p-1"><MultiSelectFilter placeholder="Fecha" options={dailyFilterOptions.fecha || []} selected={(dailyFilters.fecha as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('fecha', value)} /></th>
-                                    <th className="p-1"><MultiSelectFilter placeholder="Día" options={dailyFilterOptions.dia || []} selected={(dailyFilters.dia as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('dia', value)} /></th>
-                                    <th className="p-1"><MultiSelectFilter placeholder="Línea" options={dailyFilterOptions.linea || []} selected={(dailyFilters.linea as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('linea', value)} /></th>
-                                    <th className="p-1"><MultiSelectFilter placeholder="Puesto" options={dailyFilterOptions.puestoDeTrabajo || []} selected={(dailyFilters.puestoDeTrabajo as string[] | undefined) || []} onChange={(value) => handleDailyMultiSelectFilterChange('puestoDeTrabajo', value)} /></th>
-                                    <th className="p-1" colSpan={4}></th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Centro</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Mes</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Año</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Fecha</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Día</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Línea</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Puesto de Trabajo</th>
+                                    <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase">Máx. Horas</th>
+                                    <th className="px-2 py-2 text-right font-bold text-blue-700 uppercase bg-blue-50">Horas Máx. Disp.</th>
                                 </tr>
                             </thead>
                              <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredDailyData.length > 0 ? (
-                                    filteredDailyData.map((row, index) => (
-                                        <tr key={index} className="hover:bg-gray-50">
-                                            <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
-                                            <td className="px-2 py-2 whitespace-nowrap">{row.mes}</td>
-                                            <td className="px-2 py-2 whitespace-nowrap">{row.año}</td>
-                                            <td className="px-2 py-2 whitespace-nowrap">{isMounted ? row.fecha : ''}</td>
-                                            <td className="px-2 py-2 whitespace-nowrap">{row.dia}</td>
-                                            <td className="px-2 py-2 whitespace-nowrap">{row.linea}</td>
-                                            <td className="px-2 py-2 whitespace-nowrap">{row.puestoDeTrabajo}</td>
-                                            <td className="px-2 py-2 text-right whitespace-nowrap">{row.esFeriado}</td>
-                                            <td className="px-2 py-2 text-right font-mono">{isMounted ? row.maxHorasJornada.toFixed(2) : ''}</td>
-                                            <td className="px-2 py-2 text-right font-mono">{row.cantidadPuestos}</td>
-                                            <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{isMounted ? row.horasMaxDisponibles.toFixed(2) : ''}</td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan={11} className="text-center py-8 text-gray-500">
-                                            No hay datos para mostrar con los filtros seleccionados.
-                                        </td>
+                                {filteredDailyData.map((row, index) => (
+                                    <tr key={index} className="hover:bg-gray-50">
+                                        <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
+                                        <td className="px-2 py-2 whitespace-nowrap">{row.mes}</td>
+                                        <td className="px-2 py-2 whitespace-nowrap">{row.año}</td>
+                                        <td className="px-2 py-2 whitespace-nowrap">{row.fecha}</td>
+                                        <td className="px-2 py-2 whitespace-nowrap">{row.dia}</td>
+                                        <td className="px-2 py-2 whitespace-nowrap">{row.linea}</td>
+                                        <td className="px-2 py-2 whitespace-nowrap">{row.puestoDeTrabajo}</td>
+                                        <td className="px-2 py-2 text-right font-mono">{row.maxHorasJornada.toFixed(2)}</td>
+                                        <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{row.horasMaxDisponibles.toFixed(2)}</td>
                                     </tr>
-                                )}
+                                ))}
                             </tbody>
                              <tfoot className="bg-gray-800 text-white sticky bottom-0 font-bold">
                                 <tr>
-                                    <th colSpan={10} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
+                                    <th colSpan={8} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES:</th>
                                     <td className="px-2 py-2 text-right font-mono">
-                                        {isMounted ? dailyFooterTotals.horasMaxDisponibles.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}
+                                        {filteredDailyData.reduce((sum, r) => sum + r.horasMaxDisponibles, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </td>
                                 </tr>
                             </tfoot>
