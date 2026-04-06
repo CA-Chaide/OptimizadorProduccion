@@ -54,9 +54,9 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos }: { row: any,
         <>
           <td className={`px-2 py-2 text-right font-mono font-semibold ${row._deficitGeneral > 0 ? 'text-red-700' : 'text-green-700'} bg-red-50/10 min-w-[80px]`}>{row._deficitGeneral.toLocaleString()}</td>
           <td className="px-2 py-2 text-right font-mono text-teal-700 font-semibold bg-teal-50/20 min-w-[90px]">{row._trValorAMostrar.toLocaleString()}</td>
-          <td className={`px-2 py-2 text-right font-mono font-bold ${row._deficitNeto2000 > 0 ? 'text-red-700' : 'text-green-700'} bg-purple-50/20 min-w-[80px]`}>{row._deficitNeto2000.toLocaleString()}</td>
           <td className="px-2 py-2 text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30 min-w-[90px]">{row._stockInitial.toLocaleString()}</td>
-          <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50/30 min-w-[100px]">{row._demandaCubierta.toLocaleString()}</td>
+          <td className="px-2 py-2 text-right font-mono text-gray-700 min-w-[80px]">{Math.round(row.up).toLocaleString()}</td>
+          <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50/30 min-w-[90px]">{row._demandaCubierta.toLocaleString()}</td>
           <td className={`px-2 py-2 text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas < 0 ? 'text-red-600' : 'text-blue-700'} min-w-[80px]`}>{row._backlogVentas.toLocaleString()}</td>
           <td className={`px-2 py-2 text-right font-mono font-bold border-r-2 border-gray-300 bg-emerald-50/30 ${row._saldoFinal < 0 ? 'text-red-700' : 'text-emerald-700'} min-w-[90px]`}>{row._saldoFinal.toLocaleString()}</td>
         </>
@@ -186,7 +186,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const _necesidad = rawNec + _traslado;
 
         const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
-        const prodAqui = isCentro1000 || !esF;
+        
+        // LÓGICA DE AISLAMIENTO: En C2000, solo E y X se fabrican aquí.
+        const prodAqui = isCentro1000 ? true : !esF;
 
         if (!mapaAgrupamiento.has(keyLinea)) mapaAgrupamiento.set(keyLinea, { necesidades: 0 });
         if (prodAqui) mapaAgrupamiento.get(keyLinea)!.necesidades += _necesidad;
@@ -258,13 +260,21 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const trKey = `${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`;
         const trViableValue = quickMaps.viables.get(trKey) || 0;
         
+        // El valor de traslado a mostrar es lo que efectivamente entra/sale
         const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
           ? trViableValue 
           : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
 
+        // DISPONIBILIDAD TOTAL PARA VENDER
         const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
+        
+        // DESPACHOS (VENTA REALIZADA)
         const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
+        
+        // BACKLOG (LO QUE NO SE PUDO VENDER)
         const _backlogVentas = Math.min(0, _disponibilidad - r.up);
+        
+        // SALDO FINAL (INVENTARIO FÍSICO AL CIERRE)
         const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
 
         stockTracker.set(r.keyStock, _saldoFinal);
@@ -311,7 +321,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     const res = {
       necPropia: 0, traslados: 0, necesidad: 0, tiempoNec: 0, dispMinJN: 0, maxJN: 0, defJN: 0,
       tDefJN: 0, tMinHE: 0, maxHE: 0, defHE: 0, tDefHE: 0, tMinSAB: 0, maxSAB: 0, defSAB: 0, tDefSAB: 0, viable: 0,
-      defGral: 0, trViable: 0, defNeto: 0, stockIni: 0, demCubierta: 0, backlog: 0, saldoFinal: 0,
+      defGral: 0, trViable: 0, defNeto: 0, stockIni: 0, demanda: 0, demCubierta: 0, backlog: 0, saldoFinal: 0,
       envio2000: 0, queda1000: 0
     };
     datosFiltrados.forEach((r: any) => {
@@ -338,6 +348,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       res.envio2000 += safeNumber(r._envioC2000);
       res.queda1000 += safeNumber(r._quedaC1000);
       res.stockIni += safeNumber(r._stockInitial);
+      res.demanda += safeNumber(r.up);
       res.demCubierta += safeNumber(r._demandaCubierta);
       res.backlog += safeNumber(r._backlogVentas);
       res.saldoFinal += safeNumber(r._saldoFinal);
@@ -348,7 +359,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   // Notificar cambios al padre
   useEffect(() => {
     if (onTransferNeedsCalculated && filasCalculadas.length > 0 && !isCentro1000) {
-      const newNeeds = filasCalculadas.filter(r => r._deficitGeneral > 0).map(r => ({
+      const newNeeds = filasCalculadas.filter(r => r._deficitGeneral > 0 || String(r.ClaseAprovisionam).trim().toUpperCase() === 'F').map(r => ({
         CodMaterial: r.CodMaterial, mes: String(r.mesRef), necesidadTraslado: r._deficitGeneral
       }));
       onTransferNeedsCalculated(newNeeds);
@@ -433,9 +444,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th className="px-2 py-1 text-right text-purple-600 min-w-[90px]">Viable</th>
               {showSaldos ? (
                 <>
-                  <th className="px-2 py-1 text-right text-red-600 min-w-[80px]">Def.Gral</th><th className="px-2 py-1 text-right text-teal-600 min-w-[90px]">Envíos</th>
-                  <th className="px-2 py-1 text-right text-purple-600 min-w-[80px]">Def.Neto</th><th className="px-2 py-1 text-right text-indigo-600 min-w-[90px]">Stock Ini</th>
-                  <th className="px-2 py-1 text-right text-green-600 min-w-[100px]">Demanda Cub</th><th className="px-2 py-1 text-right text-blue-600 min-w-[80px]">Backlog</th>
+                  <th className="px-2 py-1 text-right text-red-600 min-w-[80px]">Def.Gral</th><th className="px-2 py-1 text-right text-teal-600 min-w-[90px]">Traslados</th>
+                  <th className="px-2 py-1 text-right text-indigo-600 min-w-[90px]">Stock Ini</th><th className="px-2 py-1 text-right text-gray-600 min-w-[80px]">Demanda</th>
+                  <th className="px-2 py-1 text-right text-green-600 min-w-[90px]">Despachos</th><th className="px-2 py-1 text-right text-blue-600 min-w-[80px]">Backlog</th>
                   <th className="px-2 py-1 text-right text-emerald-600 border-r-2 border-gray-300 min-w-[90px]">Saldo Final</th>
                 </>
               ) : isCentro1000 ? (
@@ -479,9 +490,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                 <>
                   <td className="px-2 py-2 text-right font-mono text-red-300 min-w-[80px]">{totals.defGral.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-teal-300 min-w-[90px]">{totals.trViable.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono min-w-[80px]">{totals.defNeto.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-indigo-300 min-w-[90px]">{totals.stockIni.toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right font-mono text-green-300 min-w-[100px]">{totals.demCubierta.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-gray-300 min-w-[80px]">{totals.demanda.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right font-mono text-green-300 min-w-[90px]">{totals.demCubierta.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 min-w-[80px]">{totals.backlog.toLocaleString()}</td>
                   <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-600 min-w-[90px]">{totals.saldoFinal.toLocaleString()}</td>
                 </>
