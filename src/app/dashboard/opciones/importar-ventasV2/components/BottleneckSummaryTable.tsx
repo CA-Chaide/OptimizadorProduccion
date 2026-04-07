@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MONTH_NAMES } from './constants';
 import { safeNumber, exportToXLSX } from './utils';
 import { TiempoCanonResult } from './types';
@@ -34,6 +35,9 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
 }) => {
   const [selectedLinea, setSelectedLinea] = useState<string>('');
   const [selectedRespCtrlProd, setSelectedRespCtrlProd] = useState<string>('');
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => setIsMounted(true), []);
 
   const buscarTiempoCanonPorMesSummary = (mesRaw: string) => {
     let found = tiemposCanon.find(t => t.mes === mesRaw);
@@ -185,6 +189,14 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
     return res;
   }, [resumenFiltered]);
 
+  const format = (val: number, decimals: number = 0) => {
+    if (!isMounted) return '';
+    return val.toLocaleString(undefined, { 
+      minimumFractionDigits: decimals, 
+      maximumFractionDigits: decimals 
+    });
+  };
+
   return (
     <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
@@ -206,14 +218,14 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
             <label className="text-sm font-medium text-gray-600">Línea:</label>
             <select value={selectedLinea} onChange={e => setSelectedLinea(e.target.value)} className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white">
               <option value="">Todas las líneas</option>
-              {lineasUnicas.map(linea => <option key={linea} value={linea}>{linea}</option>)}
+              {lineasUnicas.map(linea => <option key={`sum-opt-linea-${linea}`} value={linea}>{linea}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-gray-600">Responsable:</label>
             <select value={selectedRespCtrlProd} onChange={e => setSelectedRespCtrlProd(e.target.value)} className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white">
               <option value="">Todos</option>
-              {respCtrlProdUnicos.map(resp => <option key={resp} value={resp}>{resp}</option>)}
+              {respCtrlProdUnicos.map(resp => <option key={`sum-opt-resp-${resp}`} value={resp}>{resp}</option>)}
             </select>
           </div>
         </div>
@@ -263,50 +275,50 @@ export const BottleneckSummaryTable: React.FC<BottleneckSummaryTableProps> = ({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {resumenFiltered.map((resumen, idx) => (
-              <tr key={`${resumen.mes}-${resumen.linea}-${idx}`} className="hover:bg-blue-50/50 transition-colors">
+              <tr key={`res-row-${resumen.mes}-${resumen.linea}-${idx}`} className="hover:bg-blue-50/50 transition-colors">
                 <td className="px-3 py-2 text-sm font-medium text-gray-900">{isNaN(parseInt(resumen.mes)) ? resumen.mes : MONTH_NAMES[parseInt(resumen.mes)] || resumen.mes}</td>
                 <td className="px-3 py-2 text-sm text-gray-600">{resumen.respCtrlProd}</td>
                 <td className="px-3 py-2 text-sm font-medium text-gray-900">{resumen.linea}</td>
                 <td className="px-3 py-2 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-700 font-semibold">{Math.floor(resumen.necesidadTotal).toLocaleString()}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-600">{Number(resumen.necesidadPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">{Math.floor(resumen.necesidadAFabricarTotal).toLocaleString()}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-purple-600">{Number(resumen.necesidadAFabricarPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-blue-700 bg-blue-50/30">{Number(resumen.consumidoJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-blue-600 bg-blue-50/30">{(resumen.consumidoJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreJN).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreJN / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-amber-700 bg-amber-50/30">{resumen.consumidoHE > 0 ? Number(resumen.consumidoHE).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-amber-600 bg-amber-50/30">{resumen.consumidoHE > 0 ? (resumen.consumidoHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreHE).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className={`px-2 py-2 text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreHE / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-violet-700 bg-violet-50/30">{resumen.consumidoSAB > 0 ? Number(resumen.consumidoSAB).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-violet-600 bg-violet-50/30">{resumen.consumidoSAB > 0 ? (resumen.consumidoSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Number(resumen.libreSAB).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{(resumen.libreSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td className="px-2 py-2 text-sm text-right font-mono text-gray-700">{Number(resumen.horasPromedioPorDia ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-700 font-semibold">{format(resumen.necesidadTotal)}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-indigo-600">{format(resumen.necesidadPromedioDiaria, 1)}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-purple-700 font-semibold">{format(resumen.necesidadAFabricarTotal)}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-purple-600">{format(resumen.necesidadAFabricarPromedioDiaria, 1)}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-blue-700 bg-blue-50/30">{format(resumen.consumidoJN)}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-blue-600 bg-blue-50/30">{format(resumen.consumidoJN / 60, 2)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{format(resumen.libreJN)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-blue-50/30 ${resumen.libreJN >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{format(resumen.libreJN / 60, 2)}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-amber-700 bg-amber-50/30">{resumen.consumidoHE > 0 ? format(resumen.consumidoHE) : '—'}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-amber-600 bg-amber-50/30">{resumen.consumidoHE > 0 ? format(resumen.consumidoHE / 60, 2) : '—'}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{format(resumen.libreHE)}</td>
+                <td className={`px-2 py-2 text-right font-mono font-semibold bg-amber-50/30 ${resumen.libreHE >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{format(resumen.libreHE / 60, 2)}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-violet-700 bg-violet-50/30">{resumen.consumidoSAB > 0 ? format(resumen.consumidoSAB) : '—'}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-violet-600 bg-violet-50/30">{resumen.consumidoSAB > 0 ? format(resumen.consumidoSAB / 60, 2) : '—'}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{format(resumen.libreSAB)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-mono font-semibold bg-violet-50/30 ${resumen.libreSAB >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{format(resumen.libreSAB / 60, 2)}</td>
+                <td className="px-2 py-2 text-sm text-right font-mono text-gray-700">{format(resumen.horasPromedioPorDia, 2)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot className="sticky bottom-0 z-20 bg-gray-800 text-white font-bold text-[10px]">
             <tr>
               <td colSpan={4} className="px-3 py-2 text-right border-r border-gray-600">TOTAL GENERAL</td>
-              <td className="px-2 py-2 text-right font-mono text-indigo-300">{Math.floor(totals.nec).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-indigo-300">{format(totals.nec)}</td>
               <td className="px-2 py-2"></td>
-              <td className="px-2 py-2 text-right font-mono text-purple-300 border-r border-gray-600">{Math.floor(totals.necFab).toLocaleString()}</td>
+              <td className="px-2 py-2 text-right font-mono text-purple-300 border-r border-gray-600">{format(totals.necFab)}</td>
               <td className="px-2 py-2"></td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consJN).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono">{(totals.consJN / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libJN).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libJN / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consHE).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono">{(totals.consHE / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libHE).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libHE / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.consSAB).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono">{(totals.consSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-              <td className="px-2 py-2 text-right font-mono">{Math.round(totals.libSAB).toLocaleString()}</td>
-              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{(totals.libSAB / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.consJN)}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.consJN / 60, 1)}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.libJN)}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{format(totals.libJN / 60, 1)}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.consHE)}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.consHE / 60, 1)}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.libHE)}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{format(totals.libHE / 60, 1)}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.consSAB)}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.consSAB / 60, 1)}</td>
+              <td className="px-2 py-2 text-right font-mono">{format(totals.libSAB)}</td>
+              <td className="px-2 py-2 text-right font-mono border-r border-gray-600">{format(totals.libSAB / 60, 1)}</td>
               <td></td>
             </tr>
           </tfoot>

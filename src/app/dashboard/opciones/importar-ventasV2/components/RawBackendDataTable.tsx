@@ -31,11 +31,6 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
     const [loadingPhase, setLoadingPhase] = useState<'downloading' | 'calculating' | null>(null);
     const [batchSize, setBatchSize] = useState<number>(10); 
 
-    // Filtros adicionales
-    const [filterCentroFab, setFilterCentroFab] = useState<string[]>([]);
-    const [filterSector, setFilterSector] = useState<string[]>([]);
-    const [filterRespName, setFilterRespName] = useState<string[]>([]);
-
     const processInBatches = async <T, R>(
       items: T[],
       processor: (item: T) => Promise<R>,
@@ -82,7 +77,6 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
           const mesString = mesNums.join('&');
           let allData: any[] = [];
 
-          // CARGA MULTI-CENTRO PARA AGRUPACIÓN DE CLASE F
           for (const centro of centros) {
             const firstResponse = await serviciosService.getMaestroPorMesesYAnio(año, centro, mesString, 1, 1);
             const total = firstResponse.totalRegistros || firstResponse.data?.length || 0;
@@ -98,7 +92,7 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
             }
           }
 
-          // AGRUPACIÓN POR RESPONSABILIDAD DE FABRICACIÓN (Clase F)
+          // Agregación por material y preservación de stock máximo
           const dataAgrupadaMap = new Map<string, any>();
           
           allData.forEach((item: any) => {
@@ -122,16 +116,8 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
             
             const agg = dataAgrupadaMap.get(key)!;
             agg.UnidadesProyectado += Number(item.UnidadesProyectado || 0);
-            
-            // Preservar el valor máximo de stock encontrado para ser conservadores
-            if (String(item.Centro).trim() === centroFabResponsable) {
-              agg.StockActual = Math.max(agg.StockActual, Number(item.StockActual || 0));
-              agg.StockSeguridad = Math.max(agg.StockSeguridad, Number(item.StockSeguridad || 0));
-            } else {
-              // Si no es el centro responsable, también considerar el stock máximo
-              agg.StockActual = Math.max(agg.StockActual, Number(item.StockActual || 0));
-              agg.StockSeguridad = Math.max(agg.StockSeguridad, Number(item.StockSeguridad || 0));
-            }
+            agg.StockActual = Math.max(agg.StockActual, Number(item.StockActual || 0));
+            agg.StockSeguridad = Math.max(agg.StockSeguridad, Number(item.StockSeguridad || 0));
           });
 
           const dataFinalAgrupada = Array.from(dataAgrupadaMap.values());
@@ -190,9 +176,6 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
 
     const filteredData = rawData.filter((row: any) => {
       if (searchTerm && !String(row.CodMaterial || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
-      if (filterCentroFab.length > 0 && !filterCentroFab.includes(String(row.CentroFabricacion || row.Centro || ''))) return false;
-      if (filterSector.length > 0 && !filterSector.includes(String(row.Sector ?? ''))) return false;
-      if (filterRespName.length > 0 && !filterRespName.includes(String(row.NombRespControlProd || row.RespCtrlProd || ''))) return false;
       return true;
     });
 
@@ -233,7 +216,7 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b">
               <tr>
-                {VISIBLE_COLUMNS.map(col => <th key={col} className="px-4 py-3 text-left font-semibold uppercase">{col}</th>)}
+                {VISIBLE_COLUMNS.map(col => <th key={`head-col-${col}`} className="px-4 py-3 text-left font-semibold uppercase">{col}</th>)}
                 <th className="px-4 py-3 text-right font-bold text-blue-700">Nec. Agrupada</th>
                 <th className="px-4 py-3 text-left">Puesto CB</th>
                 <th className="px-4 py-3 text-right">T. Fab (min)</th>
@@ -241,8 +224,8 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
             </thead>
             <tbody className="divide-y divide-gray-100">
               {pageData.map((row, idx) => (
-                <tr key={idx} className={`hover:bg-gray-50 ${row._isAgregatedF ? 'bg-blue-50/30' : ''}`}>
-                  {VISIBLE_COLUMNS.map(col => <td key={col} className="px-4 py-2">{String(row[col] ?? '')}</td>)}
+                <tr key={`raw-row-${row.CodMaterial}-${idx}`} className={`hover:bg-gray-50 ${row._isAgregatedF ? 'bg-blue-50/30' : ''}`}>
+                  {VISIBLE_COLUMNS.map(col => <td key={`cell-${idx}-${col}`} className="px-4 py-2">{String(row[col] ?? '')}</td>)}
                   <td className="px-4 py-2 text-right font-mono font-bold text-blue-800">{Math.round(row._Necesidades).toLocaleString()}</td>
                   <td className="px-4 py-2">{row.PuestoCuellodeBottella || '-'}</td>
                   <td className="px-4 py-2 text-right font-mono">{row.TiempoFabricacionNecesidad != null ? row.TiempoFabricacionNecesidad.toLocaleString() : '-'}</td>

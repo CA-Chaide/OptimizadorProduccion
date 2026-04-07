@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { useAppContext } from '@/context/AppProvider';
 import { Activity, Check, ChevronsUpDown } from 'lucide-react';
 import { AppConstraints, Holiday, ProductionLine, ShiftParameters, WorkCenter, WorkstationDefinition, DailyCapacityRow as OriginalDailyCapacityRow } from '@/types/types';
@@ -99,7 +100,7 @@ const MultiSelectFilter: React.FC<{
             <CommandGroup className="max-h-60 overflow-y-auto">
               {options.map((option) => (
                 <CommandItem
-                  key={option.value}
+                  key={`opt-${option.value}`}
                   value={option.value}
                   onSelect={(currentValue) => {
                     const matchingOption = options.find(opt => opt.label.toLowerCase() === currentValue.toLowerCase());
@@ -124,7 +125,7 @@ const MultiSelectFilter: React.FC<{
       {selected.length > 0 && (
           <div className="pt-1 text-left w-full min-h-[18px]">
             {selected.slice(0, 1).map(value => (
-                <Badge key={value} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={options.find(opt => opt.value === value)?.label || value}>
+                <Badge key={`badge-${value}`} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={options.find(opt => opt.value === value)?.label || value}>
                     {options.find(opt => opt.value === value)?.label || value}
                 </Badge>
             ))}
@@ -139,6 +140,9 @@ const MultiSelectFilter: React.FC<{
 export const ProductionCapacitySection: React.FC = () => {
     const { constraints, planningYear, planningMonth, c2000RequiredHours } = useAppContext();
     const [dailyFilters, setDailyFilters] = React.useState<Partial<Record<keyof DailyCapacityRow, string | string[]>>>({});
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => setIsMounted(true), []);
 
     const monthlyCapacityData = useMemo((): CapacityRow[] => {
         const year = parseInt(planningYear, 10);
@@ -276,7 +280,7 @@ export const ProductionCapacitySection: React.FC = () => {
         const columns: Array<keyof DailyCapacityRow> = ['centro', 'mes', 'año', 'fecha', 'dia', 'linea', 'puestoDeTrabajo'];
         
         columns.forEach(col => {
-            const unique = [...new Set(dailyCapacityData.map(r => String(row[col])))].sort();
+            const unique = [...new Set(dailyCapacityData.map(r => String(r[col])))].sort();
             options[col] = unique.map(v => ({ value: v, label: v }));
         });
         return options;
@@ -291,6 +295,14 @@ export const ProductionCapacitySection: React.FC = () => {
             });
         });
     }, [dailyCapacityData, dailyFilters]);
+
+    const formatNum = (val: number, decimals: number = 0) => {
+      if (!isMounted) return '';
+      return val.toLocaleString(undefined, { 
+        minimumFractionDigits: decimals, 
+        maximumFractionDigits: decimals 
+      });
+    };
 
     return (
         <div className="p-6 md:p-8 space-y-6">
@@ -326,31 +338,31 @@ export const ProductionCapacitySection: React.FC = () => {
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {monthlyTableHierarchy.map(({ center, lines }) => (
-                                    <React.Fragment key={center.id}>
+                                    <React.Fragment key={`center-group-${center.id}`}>
                                         <tr className="bg-gray-200 font-bold">
                                             <td colSpan={7} className="px-3 py-2 text-gray-800">Centro: {center.name}</td>
                                         </tr>
                                         {Array.from(lines.values()).map(({ line, workstations }) => (
-                                            <React.Fragment key={line.id}>
+                                            <React.Fragment key={`line-group-${line.id}`}>
                                                 <tr className="bg-gray-100 font-semibold">
                                                     <td colSpan={7} className="px-3 py-2 text-indigo-800 pl-6">Línea: {line.name}</td>
                                                 </tr>
                                                 {workstations.map(ws => (
-                                                    <tr key={ws.workstation.id}>
+                                                    <tr key={`ws-row-${ws.workstation.id}`}>
                                                         <td className="px-3 py-2 pl-12 text-gray-700">{ws.workstation.name}</td>
                                                         <td className="px-3 py-2 text-right font-mono">{ws.numPuestos}</td>
                                                         <td className="px-3 py-2 text-right font-mono font-semibold">{ws.totalPersonas}</td>
                                                         <td className="px-3 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">
-                                                            {Math.round(ws.horasDisponibles).toLocaleString()}
+                                                            {formatNum(ws.horasDisponibles)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right font-mono font-bold text-orange-800 bg-orange-50">
-                                                            {ws.horasRequeridas.toLocaleString()}
+                                                            {formatNum(ws.horasRequeridas)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right font-mono font-bold text-green-800 bg-green-50">
-                                                            {Math.round(ws.saldoHoras).toLocaleString()}
+                                                            {formatNum(ws.saldoHoras)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right font-mono font-bold text-purple-800 bg-purple-50">
-                                                            {`${ws.ocupacion.toFixed(1)}%`}
+                                                            {isMounted ? `${ws.ocupacion.toFixed(1)}%` : ''}
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -378,10 +390,21 @@ export const ProductionCapacitySection: React.FC = () => {
                                     <th className="px-2 py-2 text-right font-semibold text-gray-600 uppercase">Máx. Horas</th>
                                     <th className="px-2 py-2 text-right font-bold text-blue-700 uppercase bg-blue-50">Horas Máx. Disp.</th>
                                 </tr>
+                                <tr>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Centro" options={dailyFilterOptions.centro || []} selected={(dailyFilters.centro as string[]) || []} onChange={(val) => setDailyFilters(prev => ({...prev, centro: val}))} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Mes" options={dailyFilterOptions.mes || []} selected={(dailyFilters.mes as string[]) || []} onChange={(val) => setDailyFilters(prev => ({...prev, mes: val}))} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Año" options={dailyFilterOptions.año || []} selected={(dailyFilters.año as string[]) || []} onChange={(val) => setDailyFilters(prev => ({...prev, año: val}))} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Fecha" options={dailyFilterOptions.fecha || []} selected={(dailyFilters.fecha as string[]) || []} onChange={(val) => setDailyFilters(prev => ({...prev, fecha: val}))} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Día" options={dailyFilterOptions.dia || []} selected={(dailyFilters.dia as string[]) || []} onChange={(val) => setDailyFilters(prev => ({...prev, dia: val}))} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Línea" options={dailyFilterOptions.linea || []} selected={(dailyFilters.linea as string[]) || []} onChange={(val) => setDailyFilters(prev => ({...prev, linea: val}))} /></th>
+                                    <th className="p-1"><MultiSelectFilter placeholder="Puesto" options={dailyFilterOptions.puestoDeTrabajo || []} selected={(dailyFilters.puestoDeTrabajo as string[]) || []} onChange={(val) => setDailyFilters(prev => ({...prev, puestoDeTrabajo: val}))} /></th>
+                                    <th></th>
+                                    <th></th>
+                                </tr>
                             </thead>
                              <tbody className="bg-white divide-y divide-gray-200">
                                 {filteredDailyData.map((row, index) => (
-                                    <tr key={index} className="hover:bg-gray-50">
+                                    <tr key={`daily-row-${index}`} className="hover:bg-gray-50">
                                         <td className="px-2 py-2 whitespace-nowrap">{row.centro}</td>
                                         <td className="px-2 py-2 whitespace-nowrap">{row.mes}</td>
                                         <td className="px-2 py-2 whitespace-nowrap">{row.año}</td>
@@ -389,16 +412,16 @@ export const ProductionCapacitySection: React.FC = () => {
                                         <td className="px-2 py-2 whitespace-nowrap">{row.dia}</td>
                                         <td className="px-2 py-2 whitespace-nowrap">{row.linea}</td>
                                         <td className="px-2 py-2 whitespace-nowrap">{row.puestoDeTrabajo}</td>
-                                        <td className="px-2 py-2 text-right font-mono">{row.maxHorasJornada.toFixed(2)}</td>
-                                        <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{row.horasMaxDisponibles.toFixed(2)}</td>
+                                        <td className="px-2 py-2 text-right font-mono">{formatNum(row.maxHorasJornada, 2)}</td>
+                                        <td className="px-2 py-2 text-right font-mono font-bold text-blue-800 bg-blue-50">{formatNum(row.horasMaxDisponibles, 2)}</td>
                                     </tr>
                                 ))}
                             </tbody>
                              <tfoot className="bg-gray-800 text-white sticky bottom-0 font-bold">
                                 <tr>
-                                    <th colSpan={8} className="px-2 py-2 text-right">TOTAL HORAS DISPONIBLES:</th>
+                                    <th colSpan={8} className="px-2 py-2 text-right uppercase">TOTAL HORAS DISPONIBLES FILTRADAS:</th>
                                     <td className="px-2 py-2 text-right font-mono">
-                                        {filteredDailyData.reduce((sum, r) => sum + r.horasMaxDisponibles, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        {formatNum(filteredDailyData.reduce((sum, r) => sum + r.horasMaxDisponibles, 0), 2)}
                                     </td>
                                 </tr>
                             </tfoot>
