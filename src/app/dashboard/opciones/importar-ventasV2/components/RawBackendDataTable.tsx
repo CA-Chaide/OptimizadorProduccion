@@ -26,9 +26,8 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
     const [rawData, setRawData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
-    const [totalRecords, setTotalRecords] = useState<number>(0);
-    const [processedRecords, setProcessedRecords] = useState<number>(0);
     const [totalRecordsTarget, setTotalRecordsTarget] = useState<number>(0);
+    const [processedRecords, setProcessedRecords] = useState<number>(0);
     const [loadingPhase, setLoadingPhase] = useState<'downloading' | 'calculating' | null>(null);
     const [batchSize, setBatchSize] = useState<number>(10); 
 
@@ -37,7 +36,6 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
     const [filterSector, setFilterSector] = useState<string[]>([]);
     const [filterRespName, setFilterRespName] = useState<string[]>([]);
 
-    // Función para procesar en lotes
     const processInBatches = async <T, R>(
       items: T[],
       processor: (item: T) => Promise<R>,
@@ -71,7 +69,6 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
         setError('');
         setRawData([]);
         setPage(1);
-        setTotalRecords(0);
         setProcessedRecords(0);
         setTotalRecordsTarget(0);
 
@@ -86,7 +83,6 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
           let allData: any[] = [];
 
           // CARGA MULTI-CENTRO PARA AGRUPACIÓN DE CLASE F
-          // Quito (1000) es el centro que más necesita la agrupación, pero lo hacemos para todos.
           for (const centro of centros) {
             const firstResponse = await serviciosService.getMaestroPorMesesYAnio(año, centro, mesString, 1, 1);
             const total = firstResponse.totalRegistros || firstResponse.data?.length || 0;
@@ -102,10 +98,7 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
             }
           }
 
-          setTotalRecords(allData.length);
-
           // AGRUPACIÓN POR RESPONSABILIDAD DE FABRICACIÓN (Clase F)
-          // Si un producto es Clase F, su demanda se agrupa en Quito (1000)
           const dataAgrupadaMap = new Map<string, any>();
           
           allData.forEach((item: any) => {
@@ -113,8 +106,6 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
             const mes = String(item.Mes);
             const clase = String(item.ClaseAprovisionam || '').trim().toUpperCase();
             
-            // Si es Clase F, la "Responsabilidad" es del centro 1000 (Quito)
-            // Si es E o X, la "Responsabilidad" es del centro de demanda.
             const centroFabResponsable = clase === 'F' ? '1000' : String(item.Centro).trim();
             const key = `${code}|${mes}|${centroFabResponsable}`;
             
@@ -124,7 +115,7 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
                 UnidadesProyectado: 0,
                 StockActual: 0,
                 StockSeguridad: 0,
-                _originalCentro: item.Centro, // Guardar centro original para auditoría
+                _originalCentro: item.Centro,
                 _isAgregatedF: clase === 'F'
               });
             }
@@ -132,10 +123,14 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
             const agg = dataAgrupadaMap.get(key)!;
             agg.UnidadesProyectado += Number(item.UnidadesProyectado || 0);
             
-            // Para el stock, tomamos el del centro responsable (o el máximo si hay dudas)
+            // Preservar el valor máximo de stock encontrado para ser conservadores
             if (String(item.Centro).trim() === centroFabResponsable) {
-              agg.StockActual = Number(item.StockActual || 0);
-              agg.StockSeguridad = Number(item.StockSeguridad || 0);
+              agg.StockActual = Math.max(agg.StockActual, Number(item.StockActual || 0));
+              agg.StockSeguridad = Math.max(agg.StockSeguridad, Number(item.StockSeguridad || 0));
+            } else {
+              // Si no es el centro responsable, también considerar el stock máximo
+              agg.StockActual = Math.max(agg.StockActual, Number(item.StockActual || 0));
+              agg.StockSeguridad = Math.max(agg.StockSeguridad, Number(item.StockSeguridad || 0));
             }
           });
 
@@ -193,11 +188,6 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
       }
     }), [año, meses, centros, onDataLoaded, batchSize]);
 
-    // Opciones derivadas
-    const centroFabOptions = Array.from(new Set(rawData.map((r: any) => String(r.CentroFabricacion || r.Centro || '').trim()).filter(Boolean))).map(v => ({ value: v, label: v }));
-    const sectorOptions = Array.from(new Set(rawData.map((r: any) => String(r.Sector ?? '').trim()).filter(Boolean))).map(v => ({ value: v, label: v }));
-    const respNameOptions = Array.from(new Set(rawData.map((r: any) => String(r.NombRespControlProd || r.RespCtrlProd || '').trim()).filter(Boolean))).map(v => ({ value: v, label: v }));
-
     const filteredData = rawData.filter((row: any) => {
       if (searchTerm && !String(row.CodMaterial || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
       if (filterCentroFab.length > 0 && !filterCentroFab.includes(String(row.CentroFabricacion || row.Centro || ''))) return false;
@@ -231,15 +221,9 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
         <div className="p-4 border-b border-gray-200">
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[200px]">
-              <MultiSelectDropdown label="Filtrar Centro Fabricación" options={centroFabOptions} selected={filterCentroFab} onChange={setFilterCentroFab} />
-            </div>
-            <div className="flex-1 min-w-[200px]">
-              <MultiSelectDropdown label="Filtrar Sector" options={sectorOptions} selected={filterSector} onChange={setFilterSector} />
-            </div>
-            <div className="flex-1 min-w-[200px]">
               <input type="search" placeholder="Buscar material..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
             </div>
-            <button onClick={() => ref && 'current' in ref && ref.current?.loadData()} className="bg-green-600 text-white px-4 py-2 rounded-md font-bold text-sm hover:bg-green-700 transition">
+            <button onClick={() => ref && 'current' in ref && (ref.current as any)?.loadData()} className="bg-green-600 text-white px-4 py-2 rounded-md font-bold text-sm hover:bg-green-700 transition">
               Cargar y Agrupar
             </button>
           </div>

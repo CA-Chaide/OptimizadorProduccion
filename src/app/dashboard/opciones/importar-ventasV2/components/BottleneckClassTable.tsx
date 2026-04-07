@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useEffect, memo } from 'react';
+import React, { useState, useMemo, useEffect, memo, useRef } from 'react';
 import { MONTH_NAMES, MONTH_NUMBERS } from './constants';
 import { safeNumber, exportToXLSX, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
@@ -84,9 +84,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   datosCompletos,
   titulo, 
   tiemposCanon, 
-  onExportSheetReady,
-  onComputedDataReady,
   onTransferNeedsCalculated,
+  onComputedDataReady,
   forzarTrasladoTotal = false,
   maxExtrasHoras = 2,
   horasExtrasFin = 2,
@@ -100,6 +99,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const [selectedMes, setSelectedMes] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 50;
+
+  // Prevenir loop infinito con una referencia de la última firma enviada
+  const lastEmittedSignature = useRef<string>("");
 
   // Helper para clave cronológica
   const getTimelineKey = (row: any) => {
@@ -140,7 +142,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
     // SI LOS DATOS YA VIENEN PRE-CALCULADOS (Herencia), saltar la lógica pesada
     if (datos[0]._isPreComputed) {
-      console.log(`[BottleneckClassTable] Utilizando datos pre-calculados para: ${titulo}`);
       return datos;
     }
 
@@ -267,28 +268,20 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const trKey = `${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`;
         const trViableValue = quickMaps.viables.get(trKey) || 0;
         
-        // El valor de traslado a mostrar es lo que efectivamente entra/sale
         const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
           ? trViableValue 
           : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
 
-        // DISPONIBILIDAD TOTAL PARA VENDER
         const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
-        
-        // DESPACHOS (VENTA REALIZADA) - Columna Nueva solicitada para Auditoría
         const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
-        
-        // BACKLOG (LO QUE NO SE PUDO VENDER)
         const _backlogVentas = Math.min(0, _disponibilidad - r.up);
-        
-        // SALDO FINAL (INVENTARIO FÍSICO AL CIERRE) - Fórmula simplificada para Auditoría
         const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
 
         stockTracker.set(r.keyStock, _saldoFinal);
 
         todasLasFilasProcesadas.push({
           ...r,
-          _isPreComputed: true, // Marcar para evitar recalculo en espejos
+          _isPreComputed: true, 
           necesidadMaximaProducirHorasExtras: maxHE,
           necesidadMaximaProducirSabados: maxSab,
           deficitHorasExtras: deficitHE,
@@ -308,7 +301,29 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     }
 
     return todasLasFilasProcesadas;
-  }, [datos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables, titulo]);
+  }, [datos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables]);
+
+  // EMITIR RESULTADOS AL PADRE (CEREBRO) EVITANDO LOOPS
+  useEffect(() => {
+    if (onComputedDataReady && filasCalculadas.length > 0) {
+      // Crear una firma del contenido relevante para detectar cambios reales
+      const signature = JSON.stringify(filasCalculadas.map(f => ({ m: f.CodMaterial, mes: f.mesRef, p: f._prodViable })));
+      if (lastEmittedSignature.current !== signature) {
+        lastEmittedSignature.current = signature;
+        onComputedDataReady(filasCalculadas);
+      }
+    }
+  }, [filasCalculadas, onComputedDataReady]);
+
+  // NOTIFICAR TRASLADOS AL PADRE
+  useEffect(() => {
+    if (onTransferNeedsCalculated && filasCalculadas.length > 0 && !isCentro1000) {
+      const newNeeds = filasCalculadas.filter(r => r._deficitGeneral > 0).map(r => ({
+        CodMaterial: r.CodMaterial, mes: String(r.mesRef), necesidadTraslado: r._deficitGeneral
+      }));
+      onTransferNeedsCalculated(newNeeds);
+    }
+  }, [filasCalculadas, onTransferNeedsCalculated, isCentro1000]);
 
   const datosFiltrados = useMemo(() => {
     let result = filasCalculadas;
@@ -363,22 +378,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     });
     return res;
   }, [datosFiltrados]);
-
-  // Notificar cambios al padre (Brain)
-  useEffect(() => {
-    if (onTransferNeedsCalculated && filasCalculadas.length > 0 && !isCentro1000) {
-      const newNeeds = filasCalculadas.filter(r => r._deficitGeneral > 0 || String(r.ClaseAprovisionam).trim().toUpperCase() === 'F').map(r => ({
-        CodMaterial: r.CodMaterial, mes: String(r.mesRef), necesidadTraslado: r._deficitGeneral
-      }));
-      onTransferNeedsCalculated(newNeeds);
-    }
-  }, [filasCalculadas, onTransferNeedsCalculated, isCentro1000]);
-
-  useEffect(() => {
-    if (onComputedDataReady && filasCalculadas.length > 0) {
-      onComputedDataReady(filasCalculadas);
-    }
-  }, [filasCalculadas, onComputedDataReady]);
 
   const paginatedData = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;

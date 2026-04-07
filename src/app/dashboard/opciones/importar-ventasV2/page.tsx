@@ -57,7 +57,6 @@ export default function ImportarVentasPage() {
   
   const [trasladosDesdeCentro2000, setTrasladosDesdeCentro2000] = useState<TransferNeed[]>([]);
   const [trasladosViablesHaciaC2000, setTrasladosViablesHaciaC2000] = useState<ViableTransfer[]>([]);
-  const [trasladosViablesHaciaC1000, setTrasladosViablesHaciaC1000] = useState<ViableTransfer[]>([]);
 
   const [tiemposCanonResults, setTiemposCanonResults] = useState<TiempoCanonResult[]>([]);
   const [isLoadingTimesCanon, setIsLoadingTimesCanon] = useState(false);
@@ -206,6 +205,15 @@ export default function ImportarVentasPage() {
     await Promise.all(promises);
   };
 
+  // HANDLERS PARA CAPTURAR RESULTADOS (ORQUESTADOR)
+  const handleResultsC2000Ready = useCallback((results: any[]) => {
+    setComputedResultsC2000(results);
+  }, []);
+
+  const handleResultsC1000Ready = useCallback((results: any[]) => {
+    setComputedResultsC1000(results);
+  }, []);
+
   const tabs = [
     { id: 1, label: 'Tiempos Canónicos', color: 'blue' },
     { id: 2, label: 'Datos Backend (Ventas)', color: 'blue' },
@@ -333,8 +341,7 @@ export default function ImportarVentasPage() {
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
-            onComputedDataReady={setComputedResultsC2000}
-            trasladosViables={trasladosViablesHaciaC2000}
+            onComputedDataReady={handleResultsC2000Ready}
           />
         </div>
 
@@ -347,7 +354,7 @@ export default function ImportarVentasPage() {
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
             trasladosDesdeCentro2000={trasladosDesdeCentro2000}
-            onComputedDataReady={setComputedResultsC1000}
+            onComputedDataReady={handleResultsC1000Ready}
           />
         </div>
 
@@ -371,7 +378,6 @@ export default function ImportarVentasPage() {
             maxExtrasHoras={maxExtrasHoras}
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
-            trasladosViables={trasladosViablesHaciaC2000}
           />
         </div>
 
