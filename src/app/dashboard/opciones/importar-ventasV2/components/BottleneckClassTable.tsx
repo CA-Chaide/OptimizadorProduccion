@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useEffect, memo } from 'react';
@@ -137,6 +138,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
 
+    // SI LOS DATOS YA VIENEN PRE-CALCULADOS (Herencia), saltar la lógica pesada
+    if (datos[0]._isPreComputed) {
+      console.log(`[BottleneckClassTable] Utilizando datos pre-calculados para: ${titulo}`);
+      return datos;
+    }
+
     const timeline = Array.from(new Set(datos.map(r => getTimelineKey(r))))
       .sort((a, b) => a - b);
 
@@ -187,7 +194,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
         const esF = String(row.ClaseAprovisionam || '').trim().toUpperCase() === 'F';
         
-        // LÓGICA DE AISLAMIENTO: En C2000, solo E y X se fabrican aquí.
+        // REGLA DE NEGOCIO: En C2000, solo E y X se fabrican aquí. F nunca consume tiempo.
         const prodAqui = isCentro1000 ? true : !esF;
 
         if (!mapaAgrupamiento.has(keyLinea)) mapaAgrupamiento.set(keyLinea, { necesidades: 0 });
@@ -268,19 +275,20 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         // DISPONIBILIDAD TOTAL PARA VENDER
         const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
         
-        // DESPACHOS (VENTA REALIZADA)
+        // DESPACHOS (VENTA REALIZADA) - Columna Nueva solicitada para Auditoría
         const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
         
         // BACKLOG (LO QUE NO SE PUDO VENDER)
         const _backlogVentas = Math.min(0, _disponibilidad - r.up);
         
-        // SALDO FINAL (INVENTARIO FÍSICO AL CIERRE)
+        // SALDO FINAL (INVENTARIO FÍSICO AL CIERRE) - Fórmula simplificada para Auditoría
         const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
 
         stockTracker.set(r.keyStock, _saldoFinal);
 
         todasLasFilasProcesadas.push({
           ...r,
+          _isPreComputed: true, // Marcar para evitar recalculo en espejos
           necesidadMaximaProducirHorasExtras: maxHE,
           necesidadMaximaProducirSabados: maxSab,
           deficitHorasExtras: deficitHE,
@@ -300,7 +308,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     }
 
     return todasLasFilasProcesadas;
-  }, [datos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables]);
+  }, [datos, quickMaps, isCentro1000, forzarTrasladoTotal, maxExtrasHoras, horasExtrasFin, trasladosViables, titulo]);
 
   const datosFiltrados = useMemo(() => {
     let result = filasCalculadas;
@@ -356,7 +364,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     return res;
   }, [datosFiltrados]);
 
-  // Notificar cambios al padre
+  // Notificar cambios al padre (Brain)
   useEffect(() => {
     if (onTransferNeedsCalculated && filasCalculadas.length > 0 && !isCentro1000) {
       const newNeeds = filasCalculadas.filter(r => r._deficitGeneral > 0 || String(r.ClaseAprovisionam).trim().toUpperCase() === 'F').map(r => ({

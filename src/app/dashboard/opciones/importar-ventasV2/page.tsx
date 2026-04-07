@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -49,6 +50,11 @@ export default function ImportarVentasPage() {
   const [maxExtrasHoras, setMaxExtrasHoras] = useState<number>(0);
   const [horasTrabajo, setHorasTrabajo] = useState<number>(0);
   const [horasExtrasFin, setHorasExtrasFin] = useState<number>(0);
+  
+  // ESTADOS DE RESULTADOS CALCULADOS (Cerebro Central)
+  const [computedResultsC2000, setComputedResultsC2000] = useState<any[]>([]);
+  const [computedResultsC1000, setComputedResultsC1000] = useState<any[]>([]);
+  
   const [trasladosDesdeCentro2000, setTrasladosDesdeCentro2000] = useState<TransferNeed[]>([]);
   const [trasladosViablesHaciaC2000, setTrasladosViablesHaciaC2000] = useState<ViableTransfer[]>([]);
   const [trasladosViablesHaciaC1000, setTrasladosViablesHaciaC1000] = useState<ViableTransfer[]>([]);
@@ -179,6 +185,8 @@ export default function ImportarVentasPage() {
   // Limpiar cache del servicio cuando cambien datos críticos
   useEffect(() => {
     bottleneckAnalysisService.clearCache();
+    setComputedResultsC2000([]);
+    setComputedResultsC1000([]);
   }, [bottleneckData, tiemposCanonResults]);
 
   const handleLoadData = async () => {
@@ -200,12 +208,12 @@ export default function ImportarVentasPage() {
 
   const tabs = [
     { id: 1, label: 'Tiempos Canónicos', color: 'blue' },
-    { id: 2, label: 'Datos Backend', color: 'blue' },
+    { id: 2, label: 'Datos Backend (Ventas)', color: 'blue' },
     { id: 3, label: 'Identificación de Cuellos de Botella', color: 'red' },
     { id: 4, label: 'Análisis Centro 2000', color: 'blue' },
     { id: 5, label: 'Análisis Centro 1000', color: 'teal' },
     { id: 8, label: 'Resumen Mensual C1000', color: 'teal' },
-    { id: 7, label: 'Resumen MensualC2000', color: 'indigo' },
+    { id: 7, label: 'Resumen Mensual C2000', color: 'indigo' },
     { id: 6, label: 'Bottleneck por Material', color: 'indigo' }
   ];
 
@@ -214,11 +222,11 @@ export default function ImportarVentasPage() {
       {/* Header con filtros */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="px-6 py-4">
-          <h1 className="text-xl font-semibold text-gray-800 mb-4">Importar Ventas V2</h1>
+          <h1 className="text-xl font-semibold text-gray-800 mb-4">Importar Ventas V2 - Optimizador de Producción</h1>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Año</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Año de Planificación</label>
               <select
                 value={selectedFilters.año}
                 onChange={(e) => setSelectedFilters(prev => ({ ...prev, año: e.target.value }))}
@@ -234,7 +242,7 @@ export default function ImportarVentasPage() {
 
             <div>
               <MultiSelectDropdown
-                label="Meses"
+                label="Meses de Horizonte"
                 options={filterOptions.meses}
                 selected={selectedFilters.meses}
                 onChange={(meses) => setSelectedFilters(prev => ({ ...prev, meses }))}
@@ -244,7 +252,7 @@ export default function ImportarVentasPage() {
 
             <div>
               <MultiSelectDropdown
-                label="Centros"
+                label="Centros de Demanda"
                 options={filterOptions.centros}
                 selected={selectedFilters.centros}
                 onChange={(centros) => setSelectedFilters(prev => ({ ...prev, centros }))}
@@ -258,7 +266,7 @@ export default function ImportarVentasPage() {
                 disabled={isLoadingOptions}
                 className="w-full inline-flex items-center justify-center bg-blue-600 text-white rounded-md px-4 py-2.5 font-medium text-sm transition-colors hover:bg-blue-700 disabled:bg-gray-400"
               >
-                Cargar Datos
+                Cargar Datos y Calcular Tiempos
               </button>
             </div>
           </div>
@@ -325,31 +333,7 @@ export default function ImportarVentasPage() {
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
-            trasladosViables={trasladosViablesHaciaC2000}
-          />
-        </div>
-
-        <div style={{ display: activeTab === 8 ? 'block' : 'none' }}>
-          <BottleneckMonthlySummaryC1000Section 
-            data={bottleneckData} 
-            tiemposCanon={tiemposCanonResults}
-            numMaximoSabados={numMaximoSabados}
-            maxExtrasHoras={maxExtrasHoras}
-            horasTrabajo={horasTrabajo}
-            horasExtrasFin={horasExtrasFin}
-            trasladosViables={trasladosViablesHaciaC1000}
-            trasladosDesdeCentro2000={trasladosDesdeCentro2000}
-          />
-        </div>
-
-        <div style={{ display: activeTab === 7 ? 'block' : 'none' }}>
-          <BottleneckMonthlySummaryC2000Section 
-            data={bottleneckData} 
-            tiemposCanon={tiemposCanonResults}
-            numMaximoSabados={numMaximoSabados}
-            maxExtrasHoras={maxExtrasHoras}
-            horasTrabajo={horasTrabajo}
-            horasExtrasFin={horasExtrasFin}
+            onComputedDataReady={setComputedResultsC2000}
             trasladosViables={trasladosViablesHaciaC2000}
           />
         </div>
@@ -363,18 +347,31 @@ export default function ImportarVentasPage() {
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
             trasladosDesdeCentro2000={trasladosDesdeCentro2000}
-            onComputedDataReady={(data) => {
-              const transfers = data.map((r: any) => ({
-                CodMaterial: normalizeMaterialCode(r.CodMaterial),
-                mes: String(getMesNumero(r.mesRef)), 
-                cantidad: r._envioC2000 || 0
-              })).filter(t => t.cantidad > 0);
-              
-              if (transfers.length > 0) {
-                setTrasladosViablesHaciaC2000(transfers);
-                setTrasladosViablesHaciaC1000(transfers);
-              }
-            }}
+            onComputedDataReady={setComputedResultsC1000}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 8 ? 'block' : 'none' }}>
+          <BottleneckMonthlySummaryC1000Section 
+            data={computedResultsC1000} 
+            tiemposCanon={tiemposCanonResults}
+            numMaximoSabados={numMaximoSabados}
+            maxExtrasHoras={maxExtrasHoras}
+            horasTrabajo={horasTrabajo}
+            horasExtrasFin={horasExtrasFin}
+            trasladosDesdeCentro2000={trasladosDesdeCentro2000}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 7 ? 'block' : 'none' }}>
+          <BottleneckMonthlySummaryC2000Section 
+            data={computedResultsC2000} 
+            tiemposCanon={tiemposCanonResults}
+            numMaximoSabados={numMaximoSabados}
+            maxExtrasHoras={maxExtrasHoras}
+            horasTrabajo={horasTrabajo}
+            horasExtrasFin={horasExtrasFin}
+            trasladosViables={trasladosViablesHaciaC2000}
           />
         </div>
 

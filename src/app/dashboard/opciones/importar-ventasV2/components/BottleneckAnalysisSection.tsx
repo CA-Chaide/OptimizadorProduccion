@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -55,12 +56,25 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
     }
   }, [transferNeedsConsolidated, onTransferNeedsConsolidatedChanged]);
 
-  // Exportar datos calculados al padre si es necesario
+  // Exportar datos calculados al padre (Cerebro)
   useEffect(() => {
     if (onComputedDataReady && computedDataEX.length > 0) {
-      onComputedDataReady(computedDataEX);
+      // Unir resultados de E/X con los de F (F tiene producción 0 en Gye)
+      const dataF_with_zeros = dataF.map(row => ({
+        ...row,
+        _prodViable: 0,
+        _isPreComputed: true,
+        necesidadMaximaProducirJornadaNormal: 0,
+        necesidadMaximaProducirHorasExtras: 0,
+        necesidadMaximaProducirSabados: 0,
+        _traslado: 0, // Se llenará en el tab de resumen
+        _necPropia: safeNumber(row._Necesidades),
+        _necesidad: safeNumber(row._Necesidades)
+      }));
+      
+      onComputedDataReady([...computedDataEX, ...dataF_with_zeros]);
     }
-  }, [computedDataEX, onComputedDataReady]);
+  }, [computedDataEX, dataF, onComputedDataReady]);
 
   if (data.length === 0) return <div className="p-4 text-center text-gray-600">Carga datos primero para iniciar el análisis.</div>;
 
@@ -80,7 +94,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
       <BottleneckClassTable 
         datos={dataEX}
         datosCompletos={filteredDataCentro2000}
-        titulo="Centro 2000 - Clases E + X"
+        titulo="Centro 2000 - Clases E + X (Fabricación Local)"
         tiemposCanon={tiemposCanon}
         onTransferNeedsCalculated={setTransferNeedsEX}
         onComputedDataReady={setComputedDataEX}
@@ -92,7 +106,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
       {dataF.length > 0 && (
         <div className="mt-8 p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <h3 className="text-sm font-bold text-amber-900 uppercase mb-2">Materiales Clase F (Traslado Quito)</h3>
-          <p className="text-xs text-amber-800 mb-4">Estos materiales se trasladan completos sin procesar en Centro 2000.</p>
+          <p className="text-xs text-amber-800 mb-4">Estos materiales se trasladan completos sin procesar en Centro 2000. Su demanda ha sido enviada a Quito.</p>
           <div className="max-h-60 overflow-y-auto border border-amber-100 rounded bg-white">
             <table className="w-full text-[10px]">
               <thead className="bg-amber-100 sticky top-0">
@@ -105,7 +119,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
               </thead>
               <tbody>
                 {dataF.map((row, idx) => {
-                  const nec = Math.max(0, safeNumber(row.UnidadesProyectado) - safeNumber(row.StockActual) + safeNumber(row.StockSeguridad));
+                  const nec = safeNumber(row._Necesidades);
                   const mesDisplay = !isNaN(parseInt(row.Mes)) ? (MONTH_NAMES[parseInt(row.Mes)] || row.Mes) : row.Mes;
                   return (
                     <tr key={idx} className="border-b border-amber-50">

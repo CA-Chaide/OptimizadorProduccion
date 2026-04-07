@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -19,7 +20,6 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
 }) => {
   // Estado para capturar los datos calculados finales del motor de la tabla
   const [computedData, setComputedData] = useState<any[]>([]);
-  const [transferNeeds, setTransferNeeds] = useState<TransferNeed[]>([]);
 
   // Usar el servicio centralizado para el filtrado inicial
   const analysis = useMemo(() => {
@@ -58,7 +58,7 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       <BottleneckSummaryTable 
         datosEnriquecidosE={[]}
         datosEnriquecidosX={[]}
-        datosCalculados={computedData} // USAR DATOS CALCULADOS FINALES
+        datosCalculados={computedData} 
         tiemposCanon={tiemposCanon}
         numMaximoSabados={numMaximoSabados}
         maxExtrasHoras={maxExtrasHoras}
@@ -71,10 +71,8 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       <BottleneckClassTable 
         datos={filteredData}
         datosCompletos={filteredData}
-        titulo="Centro 1000 - Análisis de Cuello de Botella"
+        titulo="Centro 1000 - Análisis de Cuello de Botella (Incluye Traslados Gye)"
         tiemposCanon={tiemposCanon}
-        tiempoConsumidoAnterior={{}}
-        onTransferNeedsCalculated={setTransferNeeds}
         onComputedDataReady={(results) => {
           setComputedData(results);
           onComputedDataReady?.(results);
