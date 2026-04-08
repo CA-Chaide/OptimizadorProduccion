@@ -3,6 +3,7 @@
 import React from 'react';
 import { CalendarClock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 
 export const TacticalPlan2Section: React.FC = () => {
   return (
@@ -14,16 +15,13 @@ export const TacticalPlan2Section: React.FC = () => {
       
       <Card>
         <CardHeader>
-          <CardTitle>Programación Táctica colchones</CardTitle>
+          <CardTitle>Datos de Órdenes Previsionales</CardTitle>
           <CardDescription>
-            Sección dedicada a la programación táctica de la línea de colchones.
+            Visualización y exploración de todas las órdenes previsionales disponibles en el sistema.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center py-12 text-gray-500 border-2 border-dashed rounded-lg">
-            <CalendarClock className="w-12 h-12 mb-4 text-gray-300" />
-            <p>Esperando instrucciones adicionales para la implementación de la lógica de colchones.</p>
-          </div>
+          <ProvisionalOrdersTabSection />
         </CardContent>
       </Card>
     </div>
