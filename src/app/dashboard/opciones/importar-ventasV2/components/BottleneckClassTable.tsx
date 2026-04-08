@@ -66,7 +66,7 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos, isMounted }: 
           <td className="px-2 py-2 text-right font-mono text-indigo-700 font-semibold bg-indigo-50/30 min-w-[90px]">{format(row._stockInitial)}</td>
           <td className="px-2 py-2 text-right font-mono text-gray-700 min-w-[80px]">{format(row.up)}</td>
           <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50/30 min-w-[90px]">{format(row._demandaCubierta)}</td>
-          <td className={`px-2 py-2 text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas < 0 ? 'text-red-600' : 'text-blue-700'} min-w-[80px]`}>{format(row._backlogVentas)}</td>
+          <td className={`px-2 py-2 text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas > 0 ? 'text-red-600' : 'text-blue-700'} min-w-[80px]`}>{format(row._backlogVentas)}</td>
           <td className={`px-2 py-2 text-right font-mono font-bold border-r-2 border-gray-300 bg-emerald-50/30 ${row._saldoFinal < 0 ? 'text-red-700' : 'text-emerald-700'} min-w-[90px]`}>{format(row._saldoFinal)}</td>
         </>
       ) : isCentro1000 ? (
@@ -149,10 +149,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
-
-    // HERENCIA DE RESULTADOS: 
-    // No saltamos el useMemo completo porque necesitamos recalcular la LOGÍSTICA (Traslados de Quito)
-    // Pero respetaremos el flag _isPreComputed para no alterar la capacidad (horas extras).
 
     const timeline = Array.from(new Set(datos.map(r => getTimelineKey(r))))
       .sort((a, b) => a - b);
@@ -254,6 +250,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
       pase2.forEach(r => {
         const poolHE = poolMinutosHEPorLinea.get(r.keyLinea) || 0;
+        const poolSab = poolMinutosSabadosPorLinea.get(r.keyLinea) || 0;
         const partDefJN = (r.prodAqui && sumDefJN.get(r.keyLinea)! > 0) ? (r.deficitJornadaNormal / sumDefJN.get(r.keyLinea)!) * 100 : 0;
         
         let maxHE = 0;
@@ -261,19 +258,16 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         let _prodViable = 0;
 
         if (r._isPreComputed) {
-          // HERENCIA: Usar valores calculados en Análisis para JN, HE y Sab
           maxHE = safeNumber(r.necesidadMaximaProducirHorasExtras);
           maxSab = safeNumber(r.necesidadMaximaProducirSabados);
           _prodViable = safeNumber(r._prodViable);
         } else {
-          // CÁLCULO ESTÁNDAR
           if (r.prodAqui && sumTDefJN.get(r.keyLinea)! > 0) {
             if (sumTDefJN.get(r.keyLinea)! <= poolHE) maxHE = r.deficitJornadaNormal;
             else maxHE = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolHE) / r.tiempoUnitarioPorPuesto) : 0;
           }
 
           const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
-          const poolSab = poolMinutosSabadosPorLinea.get(r.keyLinea) || 0;
           if (r.prodAqui && deficitHE > 0 && poolSab > 0) {
             if ((deficitHE * r.tiempoUnitarioPorPuesto) <= poolSab) maxSab = deficitHE;
             else maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
@@ -289,16 +283,14 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const trKey = `${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`;
         const trViableValue = quickMaps.viables.get(trKey) || 0;
         
-        // El valor de traslados es prioritario si viene de Quito (trasladosViables)
         const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
           ? trViableValue 
           : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
 
         const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
         
-        // AUDITORÍA DE DESPACHOS Y SALDO FINAL
         const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
-        const _backlogVentas = Math.min(0, _disponibilidad - r.up);
+        const _backlogVentas = Math.max(0, r.up - _demandaCubierta);
         const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
 
         stockTracker.set(r.keyStock, _saldoFinal);
