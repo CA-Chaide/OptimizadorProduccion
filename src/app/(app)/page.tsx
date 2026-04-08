@@ -11,6 +11,7 @@ import {
   AbsenteeismSection,
   ProductionPlanSection,
   TacticalPlanSection,
+  TacticalPlan2Section,
   WorkShiftPlanningSection,
   RealDataSection,
   InventoryNeedsSection,
@@ -73,11 +74,13 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.MAINTENANCE:
                 return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
             case ActiveView.ABSENTEEISM:
-                return <AbsenteeismSection events={absenteeismEvents} setEvents={setEvents} employees={employees} />;
+                return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
             case ActiveView.PRODUCTION_PLAN:
                 return <ProductionPlanSection />;
             case ActiveView.TACTICAL_SCHEDULING:
                 return <TacticalPlanSection onGeneratePlan={handleGenerateTacticalPlan} />;
+            case ActiveView.TACTICAL_SCHEDULING_2:
+                return <TacticalPlan2Section />;
             case ActiveView.TACTICAL_SCHEDULING_MUEBLES:
                 return <TacticalPlanMueblesSection />;
             case ActiveView.WORK_SHIFT_PLANNING:

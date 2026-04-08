@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import { 
     LayoutDashboard,
@@ -38,6 +36,7 @@ export enum ActiveView {
   MAINTENANCE = 'MAINTENANCE',
   ABSENTEEISM = 'ABSENTEEISM_MANAGEMENT',
   TACTICAL_SCHEDULING = 'TACTICAL_SCHEDULING',
+  TACTICAL_SCHEDULING_2 = 'TACTICAL_SCHEDULING_2',
   TACTICAL_SCHEDULING_MUEBLES = 'TACTICAL_SCHEDULING_MUEBLES',
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
@@ -116,6 +115,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon />, href: '/dashboard/opciones/gestion-ausentismos' },
   { id: ActiveView.PRODUCTION_PLAN, label: 'Plan de Producción', icon: <PlanIcon />, href: '/dashboard/opciones/plan-produccion' },
   { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica' },
+  { id: ActiveView.TACTICAL_SCHEDULING_2, label: 'Programación Táctica 2', icon: <CalendarClock className="w-5 h-5" />, href: '/dashboard/opciones/programacion-tactica-2' },
   { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica-muebles' },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
@@ -142,6 +142,7 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.PRODUCTION_PLAN,
   ActiveView.DATA_IMPORT_V2,
   ActiveView.TACTICAL_SCHEDULING,
+  ActiveView.TACTICAL_SCHEDULING_2,
   ActiveView.TACTICAL_SCHEDULING_MUEBLES,
   ActiveView.WORK_SHIFT_PLANNING,
   ActiveView.DICTIONARY,

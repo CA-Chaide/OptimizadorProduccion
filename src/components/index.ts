@@ -12,6 +12,7 @@ export * from './PersonnelManagementSection';
 export * from './ProductionPlanSection';
 export * from './ProductionCapacitySection';
 export * from './TacticalPlanSection';
+export * from './TacticalPlan2Section';
 export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
 export * from './InventoryNeedsSection';
