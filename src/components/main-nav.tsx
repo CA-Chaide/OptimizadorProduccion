@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ActiveView, viewConfig, OPCIONES_ITEMS, PARAMETROS_ITEMS, CONFIGURACIONES_ITEMS } from '@/constants/constants';
@@ -93,10 +93,20 @@ function CollapsibleSection({
 export function MainNav({ className, isCollapsed = false, ...props }: Readonly<React.HTMLAttributes<HTMLElement> & { isCollapsed?: boolean }>) {
   const { isLoading } = useAppContext();
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
   
   const [opcionesOpen, setOpcionesOpen] = useState(true);
   const [parametrosOpen, setParametrosOpen] = useState(false);
   const [configuracionesOpen, setConfiguracionesOpen] = useState(false);
+
+  // Hydration guard to prevent mismatch errors
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null; // Don't render until client-side hydration is complete
+  }
 
   const dashboardConfig = viewConfig[ActiveView.DASHBOARD];
   const isDashboardActive = pathname === dashboardConfig?.href;
