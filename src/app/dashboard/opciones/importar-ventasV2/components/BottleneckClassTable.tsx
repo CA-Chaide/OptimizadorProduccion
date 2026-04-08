@@ -150,7 +150,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const filasCalculadas = useMemo(() => {
     if (!datos || datos.length === 0) return [];
 
-    if (datos[0]._isPreComputed) return datos;
+    // HERENCIA DE RESULTADOS: 
+    // No saltamos el useMemo completo porque necesitamos recalcular la LOGÍSTICA (Traslados de Quito)
+    // Pero respetaremos el flag _isPreComputed para no alterar la capacidad (horas extras).
 
     const timeline = Array.from(new Set(datos.map(r => getTimelineKey(r))))
       .sort((a, b) => a - b);
@@ -233,7 +235,10 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         
         const dispJN = tiempoDispGlobalPorLinea.get(r.keyLinea) || 0;
         let maxJN = 0;
-        if (!forzarTrasladoTotal && r.prodAqui) {
+
+        if (r._isPreComputed) {
+          maxJN = safeNumber(r.necesidadMaximaProducirJornadaNormal);
+        } else if (!forzarTrasladoTotal && r.prodAqui) {
           const totalNecLinea = sumaTiempoNecPorLinea.get(r.keyLinea) || 0;
           if (totalNecLinea <= dispJN) maxJN = r._necesidad;
           else maxJN = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partInd / 100) * dispJN) / r.tiempoUnitarioPorPuesto) : 0;
@@ -252,32 +257,46 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         const partDefJN = (r.prodAqui && sumDefJN.get(r.keyLinea)! > 0) ? (r.deficitJornadaNormal / sumDefJN.get(r.keyLinea)!) * 100 : 0;
         
         let maxHE = 0;
-        if (r.prodAqui && sumTDefJN.get(r.keyLinea)! > 0) {
-          if (sumTDefJN.get(r.keyLinea)! <= poolHE) maxHE = r.deficitJornadaNormal;
-          else maxHE = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolHE) / r.tiempoUnitarioPorPuesto) : 0;
+        let maxSab = 0;
+        let _prodViable = 0;
+
+        if (r._isPreComputed) {
+          // HERENCIA: Usar valores calculados en Análisis para JN, HE y Sab
+          maxHE = safeNumber(r.necesidadMaximaProducirHorasExtras);
+          maxSab = safeNumber(r.necesidadMaximaProducirSabados);
+          _prodViable = safeNumber(r._prodViable);
+        } else {
+          // CÁLCULO ESTÁNDAR
+          if (r.prodAqui && sumTDefJN.get(r.keyLinea)! > 0) {
+            if (sumTDefJN.get(r.keyLinea)! <= poolHE) maxHE = r.deficitJornadaNormal;
+            else maxHE = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolHE) / r.tiempoUnitarioPorPuesto) : 0;
+          }
+
+          const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
+          const poolSab = poolMinutosSabadosPorLinea.get(r.keyLinea) || 0;
+          if (r.prodAqui && deficitHE > 0 && poolSab > 0) {
+            if ((deficitHE * r.tiempoUnitarioPorPuesto) <= poolSab) maxSab = deficitHE;
+            else maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
+            maxSab = Math.min(maxSab, deficitHE);
+          }
+          _prodViable = r.necesidadMaximaProducirJornadaNormal + maxHE + maxSab;
         }
 
         const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
-        const poolSab = poolMinutosSabadosPorLinea.get(r.keyLinea) || 0;
-        let maxSab = 0;
-        if (r.prodAqui && deficitHE > 0 && poolSab > 0) {
-          if ((deficitHE * r.tiempoUnitarioPorPuesto) <= poolSab) maxSab = deficitHE;
-          else maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
-          maxSab = Math.min(maxSab, deficitHE);
-        }
-
         const deficitSabados = Math.max(0, deficitHE - maxSab);
-        const _prodViable = r.necesidadMaximaProducirJornadaNormal + maxHE + maxSab;
         const _deficitGeneral = Math.max(0, r._necesidad - _prodViable);
         
         const trKey = `${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`;
         const trViableValue = quickMaps.viables.get(trKey) || 0;
         
+        // El valor de traslados es prioritario si viene de Quito (trasladosViables)
         const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
           ? trViableValue 
           : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
 
         const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
+        
+        // AUDITORÍA DE DESPACHOS Y SALDO FINAL
         const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
         const _backlogVentas = Math.min(0, _disponibilidad - r.up);
         const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
@@ -286,7 +305,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
         todasLasFilasProcesadas.push({
           ...r,
-          _isPreComputed: true, 
+          _isPreComputed: r._isPreComputed || true, 
           necesidadMaximaProducirHorasExtras: maxHE,
           necesidadMaximaProducirSabados: maxSab,
           deficitHorasExtras: deficitHE,
@@ -310,7 +329,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
   useEffect(() => {
     if (onComputedDataReady && filasCalculadas.length > 0) {
-      const signature = JSON.stringify(filasCalculadas.map(f => ({ m: f.CodMaterial, mes: f.mesRef, p: f._prodViable })));
+      const signature = JSON.stringify(filasCalculadas.map(f => ({ m: f.CodMaterial, mes: f.mesRef, p: f._prodViable, t: f._trValorAMostrar })));
       if (lastEmittedSignature.current !== signature) {
         lastEmittedSignature.current = signature;
         onComputedDataReady(filasCalculadas);
@@ -391,7 +410,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
 
   const totalPages = Math.max(1, Math.ceil(datosFiltrados.length / itemsPerPage));
 
-  // Corrección de duplicados en mesesUnicos y adición de keys seguras
   const mesesUnicosOptions = useMemo(() => {
     const nombres = filasCalculadas.map(r => {
       const val = String(r.mesRef || '');
@@ -552,7 +570,6 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         </table>
       </div>
       
-      {/* Paginación */}
       <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex justify-between items-center text-xs">
         <span className="text-gray-600">Página {currentPage} de {totalPages}</span>
         <div className="flex gap-1">

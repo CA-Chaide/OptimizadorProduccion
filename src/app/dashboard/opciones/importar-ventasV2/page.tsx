@@ -108,8 +108,8 @@ export default function ImportarVentasPage() {
           })),
           
           centros: (centrosRes.data || []).map((item: any) => ({ 
-            value: String(item.Centro || item.centro || item), 
-            label: String(item.Centro || item.centro || item) 
+            value: item.Centro || item.centro || item, 
+            label: item.Centro || item.centro || item 
           }))
         });
 
@@ -186,6 +186,7 @@ export default function ImportarVentasPage() {
     bottleneckAnalysisService.clearCache();
     setComputedResultsC2000([]);
     setComputedResultsC1000([]);
+    setTrasladosViablesHaciaC2000([]);
   }, [bottleneckData, tiemposCanonResults]);
 
   const handleLoadData = async () => {
@@ -212,6 +213,21 @@ export default function ImportarVentasPage() {
 
   const handleResultsC1000Ready = useCallback((results: any[]) => {
     setComputedResultsC1000(results);
+    
+    // CAPTURAR TRASLADOS REALES (VIABLES) PARA GUAYAQUIL
+    // Cada vez que Quito calcula su capacidad, extraemos lo que REALMENTE va a enviar
+    const viableTransfers = results
+      .filter(row => (row._envioC2000 || 0) > 0)
+      .map(row => ({
+        CodMaterial: normalizeMaterialCode(row.CodMaterial),
+        mes: String(row.mesRef || row.Mes || ''),
+        cantidad: Number(row._envioC2000)
+      }));
+    
+    if (viableTransfers.length > 0) {
+      console.log(`[Cerebro] Capturados ${viableTransfers.length} traslados viables desde Quito para el Resumen de Guayaquil.`);
+      setTrasladosViablesHaciaC2000(viableTransfers);
+    }
   }, []);
 
   const tabs = [
@@ -342,6 +358,7 @@ export default function ImportarVentasPage() {
             horasExtrasFin={horasExtrasFin}
             onTransferNeedsConsolidatedChanged={setTrasladosDesdeCentro2000}
             onComputedDataReady={handleResultsC2000Ready}
+            trasladosViables={trasladosViablesHaciaC2000}
           />
         </div>
 
@@ -378,6 +395,7 @@ export default function ImportarVentasPage() {
             maxExtrasHoras={maxExtrasHoras}
             horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
+            trasladosViables={trasladosViablesHaciaC2000}
           />
         </div>
 
