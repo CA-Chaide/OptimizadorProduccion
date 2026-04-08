@@ -141,7 +141,7 @@ export const serviciosService = {
     const response = await fetch(API_URL + "/presupuestoPorCentroAnio", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ anio: anio, centro: centro, meses:meses, page: page, rowsPerPage: rows }),
+      body: JSON.stringify({ anio: anio, centro: centro, meses: meses, page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
       const errorBody = await response
@@ -158,7 +158,7 @@ export const serviciosService = {
     const response = await fetch(API_URL + "/presupuestoPorMesesYAnio", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ anio: anio, centro: centro, meses:meses, page: page, rowsPerPage: rows }),
+      body: JSON.stringify({ anio: anio, centro: centro, meses: meses, page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
       const errorBody = await response
@@ -171,11 +171,11 @@ export const serviciosService = {
 
 
   //////Consultas a la tabla unificada
-    async getMaestroPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
+  async getMaestroPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/MaestroPorMesesYAnio", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ anio: anio, centro: centro, meses:meses, page: page, rowsPerPage: rows }),
+      body: JSON.stringify({ anio: anio, centro: centro, meses: meses, page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
       const errorBody = await response
@@ -205,15 +205,15 @@ export const serviciosService = {
 
 
   /////////Metodos para el Plan de Mediano Plazo
-  
-  async getTiempoMaximoDeFabricacionMaterial(CodigoMaterial : string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number ): Promise<BodyResponse<any>> {
+
+  async getTiempoMaximoDeFabricacionMaterial(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ CodigoMaterial : CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
+      body: JSON.stringify({ CodigoMaterial: CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
     });
     if (!response.ok) {
-      const errorBody = await response  
+      const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
       throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
@@ -221,14 +221,14 @@ export const serviciosService = {
     return response.json();
   },
 
-  async getTiemposCanonPorPuestoDeTrabajo(dias_laborales : string, dias_sabados: string): Promise<BodyResponse<any>> {
+  async getTiemposCanonPorPuestoDeTrabajo(dias_laborales: string, dias_sabados: string): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/TiemposCanonTrabajoPorEstacion", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dias_laborales : dias_laborales, dias_sabados: dias_sabados}),
+      body: JSON.stringify({ dias_laborales: dias_laborales, dias_sabados: dias_sabados }),
     });
     if (!response.ok) {
-      const errorBody = await response  
+      const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
       throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
@@ -237,19 +237,87 @@ export const serviciosService = {
   },
 
 
-  async getTiempoCanonicoEnFuncionDelCuelloCanonico(CodigoMaterial : string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number ): Promise<BodyResponse<any>> {
+  async getTiempoCanonicoEnFuncionDelCuelloCanonico(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ CodigoMaterial : CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
+      body: JSON.stringify({ CodigoMaterial: CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
     });
     if (!response.ok) {
-      const errorBody = await response  
+      const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
       throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
     }
     return response.json();
   },
+
+
+
+
+
+
+  ////////////////////endpoints para el plan a corto plazo
+
+  async getHabilidadesOperadorPorEstacion(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/HabilidadesOperadorPorEstacion", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+  async getMMaterialesBrutosPorMaterialMateriaPrima(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/MaterialesBrutosPorMaterialMateriaPrima", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+
+  async ListarMantenimientoPreventivosProgramados(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/ListarMantenimientosPreventivos", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+
+  async OrdenesProvisionalesPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/OrdenesProvisionalesPaginadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+
 
 };
