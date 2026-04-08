@@ -3,7 +3,7 @@
 import React from 'react';
 import { CalendarClock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 
 export const TacticalPlan2Section: React.FC = () => {
   return (
@@ -13,28 +13,17 @@ export const TacticalPlan2Section: React.FC = () => {
         <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica colchones</h2>
       </div>
       
-      <Tabs defaultValue="backend" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-1">
-          <TabsTrigger value="backend">Backend Previsionales</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="backend" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Backend Previsionales</CardTitle>
-              <CardDescription>
-                Sección dedicada a la visualización y gestión de órdenes previsionales desde el backend para colchones.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col items-center justify-center py-12 text-gray-500 border-2 border-dashed rounded-lg">
-                <CalendarClock className="w-12 h-12 mb-4 text-gray-300" />
-                <p>Esperando instrucciones para la carga y visualización de datos en esta pestaña.</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <Card>
+        <CardHeader>
+          <CardTitle>Datos de Órdenes Previsionales</CardTitle>
+          <CardDescription>
+            Visualización y exploración de todas las órdenes previsionales disponibles en el sistema.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ProvisionalOrdersTabSection />
+        </CardContent>
+      </Card>
     </div>
   );
 };
