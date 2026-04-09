@@ -29,6 +29,7 @@ interface PaginationState {
   totalRegistros: number;
   pageSize: number;
   isExploring: boolean;
+  rowsPerPage: number;
 }
 
 export const ProvisionalOrdersTabSection: React.FC = () => {
@@ -41,6 +42,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     totalRegistros: 0,
     pageSize: 1,
     isExploring: true,
+    rowsPerPage: 20,
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +69,15 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             isExploring: false,
           }));
 
-          addNotification('success', `Se encontraron ${total} órdenes previsionales. Ahora puedes cargar datos con paginación.`);
+          addNotification('success', `Se encontraron ${total} órdenes previsionales. Cargando tabla...`);
+          
+          // Cargar la primera página después de la exploración
+          setIsLoading(true);
+          const pageResponse = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
+          if (pageResponse.data) {
+            setOrders(pageResponse.data);
+            logger.log(`[ProvisionalOrdersTab] Primera página cargada con ${pageResponse.data.length} registros`);
+          }
         } else {
           throw new Error('No se obtuvieron datos en la exploración');
         }
@@ -115,21 +125,43 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   }, [pagination.pageSize, addNotification]);
 
   const totalPages = Math.ceil(pagination.totalRegistros / pagination.pageSize);
+  const totalPagesLocal = Math.ceil(orders.length / pagination.rowsPerPage);
+  
+  const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
+  const endIndex = startIndex + pagination.rowsPerPage;
+  const displayedOrders = orders.slice(startIndex, endIndex);
 
   const handlePrevious = () => {
     if (pagination.currentPage > 1) {
-      loadOrdersForPage(pagination.currentPage - 1);
+      setPagination(prev => ({
+        ...prev,
+        currentPage: prev.currentPage - 1,
+      }));
     }
   };
 
   const handleNext = () => {
-    if (pagination.currentPage < totalPages) {
-      loadOrdersForPage(pagination.currentPage + 1);
+    if (pagination.currentPage < totalPagesLocal) {
+      setPagination(prev => ({
+        ...prev,
+        currentPage: prev.currentPage + 1,
+      }));
     }
   };
 
   const handleLoadPage = (page: number) => {
-    loadOrdersForPage(page);
+    setPagination(prev => ({
+      ...prev,
+      currentPage: page,
+    }));
+  };
+
+  const handleRowsPerPageChange = (newRowsPerPage: number) => {
+    setPagination(prev => ({
+      ...prev,
+      rowsPerPage: newRowsPerPage,
+      currentPage: 1,
+    }));
   };
 
   return (
@@ -208,7 +240,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {orders.map((order, index) => (
+                {displayedOrders.map((order, index) => (
                   <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {order.ORDENPREVISIONAL}
@@ -249,48 +281,65 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       )}
 
       {/* Pagination Controls */}
-      {!isLoading && pagination.totalRegistros > 0 && totalPages > 1 && (
+      {!isLoading && orders.length > 0 && (
         <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-lg">
-          <button
-            onClick={handlePrevious}
-            disabled={pagination.currentPage === 1 || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            ← Anterior
-          </button>
-
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">
-              Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPages}</span>
-            </span>
-            <div className="flex space-x-1 ml-4">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                const page = i + 1;
-                return (
-                  <button
-                    key={page}
-                    onClick={() => handleLoadPage(page)}
-                    disabled={isLoading}
-                    className={`px-3 py-1 rounded ${
-                      pagination.currentPage === page
-                        ? 'bg-indigo-600 text-white font-semibold'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                );
-              })}
-            </div>
+          <div className="flex items-center space-x-4">
+            <label className="text-sm font-semibold text-gray-700">Filas por página:</label>
+            <select
+              value={pagination.rowsPerPage}
+              onChange={(e) => handleRowsPerPageChange(Number(e.target.value))}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
           </div>
 
-          <button
-            onClick={handleNext}
-            disabled={pagination.currentPage === totalPages || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            Siguiente →
-          </button>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={handlePrevious}
+              disabled={pagination.currentPage === 1 || isLoading}
+              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+            >
+              ← Anterior
+            </button>
+
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">
+                Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
+              </span>
+              <div className="flex space-x-1 ml-4">
+                {Array.from({ length: Math.min(5, totalPagesLocal) }, (_, i) => {
+                  const page = i + 1;
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => handleLoadPage(page)}
+                      disabled={isLoading}
+                      className={`px-3 py-1 rounded ${
+                        pagination.currentPage === page
+                          ? 'bg-indigo-600 text-white font-semibold'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              onClick={handleNext}
+              disabled={pagination.currentPage === totalPagesLocal || isLoading}
+              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+            >
+              Siguiente →
+            </button>
+          </div>
         </div>
       )}
 
