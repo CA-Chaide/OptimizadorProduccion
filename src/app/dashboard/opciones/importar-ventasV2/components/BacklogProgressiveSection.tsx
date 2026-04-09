@@ -36,7 +36,7 @@ const BacklogDataRow = memo(({ r, isMounted, format, centro }: { r: any, isMount
       <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50">{format(r._prodBL)}</td>
       <td className="px-2 py-2 text-right font-mono text-green-800 font-bold border-r">{format(r._viableTotal)}</td>
       
-      <td className="px-2 py-2 text-right font-mono text-purple-600">{format(r._dispatchMC)}</td>
+      <td className="px-2 py-2 text-right font-mono text-purple-600">{format(r._dispatchSales)}</td>
       <td className="px-2 py-2 text-right font-mono text-purple-600 border-r">{format(r._dispatchBL)}</td>
       
       <td className="px-2 py-2 text-right font-mono text-red-500">{format(r._backlogMC)}</td>
@@ -165,14 +165,26 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         
         const prodMC = safeNumber(r._prodViable);
         
-        // El disponible incluye traslados entrantes (Gye)
-        const totalDisponibleParaMC = initialStock + prodMC + trIn;
-        // El requerimiento incluye ventas locales + traslados salientes (Quito)
-        const demandTotalMC = safeNumber(r.up) + trOut;
+        // El disponible físico real
+        const totalDisponibleFisico = initialStock + prodMC + trIn;
         
-        const dispatchMC = Math.min(demandTotalMC, totalDisponibleParaMC);
-        const backlogMC = Math.max(0, demandTotalMC - dispatchMC);
-        const sobraDespuesMC = Math.max(0, totalDisponibleParaMC - dispatchMC);
+        // La demanda total del mes (Ventas locales + Salidas por Traslado en C1000)
+        const demandLocalSales = safeNumber(r.up);
+        const demandTotalMC = demandLocalSales + trOut;
+        
+        // Despacho total que sale del inventario
+        const totalDispatchMC = Math.min(demandTotalMC, totalDisponibleFisico);
+        
+        // Desglose de despacho para visualización (Prioridad Ventas Locales)
+        const dispatchSales = Math.min(demandLocalSales, totalDisponibleFisico);
+        const remainingForTransfers = Math.max(0, totalDisponibleFisico - dispatchSales);
+        const actualTransferSent = Math.min(trOut, remainingForTransfers);
+        
+        // Backlog generado este mes
+        const backlogMC = Math.max(0, demandTotalMC - totalDispatchMC);
+        
+        // Sobrante para pagar deuda antigua
+        const sobraDespuesMC = Math.max(0, totalDisponibleFisico - totalDispatchMC);
 
         let prodBL = 0;
         const clase = String(r.ClaseAprovisionam || '').trim().toUpperCase();
@@ -198,11 +210,11 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
           ...r,
           mesNombre: MONTH_NAMES[mesNum],
           _stockInitial: initialStock,
-          _traslado: trVal, // Guardamos el valor absoluto para visualización
+          _traslado: trVal, 
           _prodMC: prodMC,
           _prodBL: prodBL,
           _viableTotal: prodMC + prodBL,
-          _dispatchMC: dispatchMC,
+          _dispatchSales: dispatchSales, // Mostramos solo cumplimiento de ventas locales
           _dispatchBL: dispatchBL,
           _backlogMC: backlogMC,
           _backlogAcum: backlogAcumulado,
@@ -246,7 +258,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
       res.prodMC += r._prodMC;
       res.prodBL += r._prodBL;
       res.viable += r._viableTotal;
-      res.dispMC += r._dispatchMC;
+      res.dispMC += r._dispatchSales;
       res.dispBL += r._dispatchBL;
       res.blMC += r._backlogMC;
       res.blAcum += r._backlogAcum;
