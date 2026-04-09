@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useEffect, memo } from 'react';
@@ -66,7 +67,6 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
 
   useEffect(() => setIsMounted(true), []);
 
-  // Helper para normalizar el mes a número (1-12)
   const getMesNumerico = (mesRaw: any): number => {
     if (!mesRaw) return 0;
     const val = String(mesRaw).trim();
@@ -75,11 +75,9 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
     return MONTH_NUMBERS[val as keyof typeof MONTH_NUMBERS] || 0;
   };
 
-  // 1. Ejecutar simulación cronológica sobre TODOS los datos
   const allSimulationResults = useMemo(() => {
     if (!data || data.length === 0) return [];
 
-    // Claves únicas de mes ordenadas
     const timeline = Array.from(new Set(data.map(r => {
       const year = safeNumber(r.Año || r.año || new Date().getFullYear());
       const mesNum = getMesNumerico(r.mesRef || r.Mes);
@@ -151,41 +149,38 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         const code = normalizeMaterialCode(r.CodMaterial);
         const linea = String(r.lineaRef || r.LineaFabricacion || 'Sin línea');
         const tupp = safeNumber(r.tiempoUnitarioPorPuesto);
-        
-        // --- LÓGICA DE TRASLADOS DINÁMICA ---
         const isC1000 = centro === '1000';
         const isC2000 = centro === '2000';
-        const trVal = viablesMap.get(`${code}|${mesNum}`) || 0;
         
-        const trIn = isC2000 ? trVal : 0;  // Entrada para Guayaquil
-        const trOut = isC1000 ? trVal : 0; // Salida para Quito
-        
-        const initialStock = stockTracker.get(code) ?? safeNumber(r._stockInitial);
+        const initialStock = stockTracker.get(code) ?? safeNumber(r.StockActual);
         const backlogAnterior = backlogBag.get(code) || 0;
+        const prodMC = safeNumber(r.necesidadMaximaProducirJornadaNormal) + 
+                       safeNumber(r.necesidadMaximaProducirHorasExtras) + 
+                       safeNumber(r.necesidadMaximaProducirSabados);
         
-        const prodMC = safeNumber(r._prodViable);
-        
-        // El disponible físico real
+        // --- 1. ENTRADAS ---
+        const trVal = viablesMap.get(`${code}|${mesNum}`) || 0;
+        const trIn = isC2000 ? trVal : 0;
         const totalDisponibleFisico = initialStock + prodMC + trIn;
-        
-        // La demanda total del mes (Ventas locales + Salidas por Traslado en C1000)
-        const demandLocalSales = safeNumber(r.up);
-        const demandTotalMC = demandLocalSales + trOut;
-        
-        // Despacho total que sale del inventario
-        const totalDispatchMC = Math.min(demandTotalMC, totalDisponibleFisico);
-        
-        // Desglose de despacho para visualización (Prioridad Ventas Locales)
-        const dispatchSales = Math.min(demandLocalSales, totalDisponibleFisico);
-        const remainingForTransfers = Math.max(0, totalDisponibleFisico - dispatchSales);
-        const actualTransferSent = Math.min(trOut, remainingForTransfers);
-        
-        // Backlog generado este mes
-        const backlogMC = Math.max(0, demandTotalMC - totalDispatchMC);
-        
-        // Sobrante para pagar deuda antigua
-        const sobraDespuesMC = Math.max(0, totalDisponibleFisico - totalDispatchMC);
 
+        // --- 2. PRIORIDAD 1: VENTA DEL MES ---
+        const demandLocalSales = safeNumber(r.UnidadesProyectado);
+        const dispatchSales = Math.min(demandLocalSales, totalDisponibleFisico);
+        let inventarioRestante = Math.max(0, totalDisponibleFisico - dispatchSales);
+
+        // --- 3. TRASLADOS (SALIDA PARA C1000) ---
+        let actualTransferSent = 0;
+        if (isC1000) {
+          actualTransferSent = Math.min(trVal, inventarioRestante);
+          inventarioRestante -= actualTransferSent;
+        }
+
+        // --- 4. BACKLOG GENERADO ESTE MES ---
+        const demandTotalMC = isC1000 ? (demandLocalSales + trVal) : demandLocalSales;
+        const actualSentMC = isC1000 ? (dispatchSales + actualTransferSent) : dispatchSales;
+        const backlogMC = Math.max(0, demandTotalMC - actualSentMC);
+
+        // --- 5. PRIORIDAD 2: RECUPERACIÓN DE DEUDA ---
         let prodBL = 0;
         const clase = String(r.ClaseAprovisionam || '').trim().toUpperCase();
         const puedeFabricarAqui = isC1000 ? true : clase !== 'F';
@@ -197,28 +192,32 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
           idleTimeByLine.set(linea, timeAvailable - (prodBL * tupp));
         }
 
-        const totalParaBL = sobraDespuesMC + prodBL;
-        const dispatchBL = Math.min(backlogAnterior, totalParaBL);
+        const totalDisponibleParaBL = inventarioRestante + prodBL;
+        const dispatchBL = Math.min(backlogAnterior, totalDisponibleParaBL);
+        const finalStock = Math.max(0, totalDisponibleParaBL - dispatchBL);
         
-        const backlogAcumulado = (backlogAnterior - dispatchBL) + backlogMC;
-        const saldoFinal = backlogAcumulado === 0 ? (totalParaBL - dispatchBL) : 0;
+        // El Backlog Acumulado solo baja si despachamos BL
+        const backlogAcumulado = Math.max(0, (backlogAnterior - dispatchBL) + backlogMC);
+        
+        // Corregir Saldo Final: Si hay deuda, no puede haber saldo (a menos que el saldo sea de un lote mínimo incompatible, pero aquí simplificamos a 0)
+        const saldoFinalCorregido = backlogAcumulado > 0 ? 0 : finalStock;
 
-        stockTracker.set(code, saldoFinal);
+        stockTracker.set(code, saldoFinalCorregido);
         backlogBag.set(code, backlogAcumulado);
 
         return {
           ...r,
           mesNombre: MONTH_NAMES[mesNum],
           _stockInitial: initialStock,
-          _traslado: trVal, 
+          _traslado: isC1000 ? actualTransferSent : trVal, 
           _prodMC: prodMC,
           _prodBL: prodBL,
           _viableTotal: prodMC + prodBL,
-          _dispatchSales: dispatchSales, // Mostramos solo cumplimiento de ventas locales
+          _dispatchSales: dispatchSales,
           _dispatchBL: dispatchBL,
           _backlogMC: backlogMC,
           _backlogAcum: backlogAcumulado,
-          _saldoFinal: saldoFinal
+          _saldoFinal: saldoFinalCorregido
         };
       });
 
@@ -228,7 +227,6 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
     return todasLasFilas;
   }, [data, tiemposCanon, centro, trasladosViables, maxExtrasHoras, horasExtrasFin]);
 
-  // 2. Aplicar Filtros sobre los resultados
   const filteredResults = useMemo(() => {
     let results = allSimulationResults;
     if (searchTerm.trim()) {
@@ -288,7 +286,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
       <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h3 className="text-lg font-bold text-gray-800 uppercase">{titulo}</h3>
-          <p className="text-xs text-gray-500 mt-1">Simulación cronológica con balance de inventario y recuperación</p>
+          <p className="text-xs text-gray-500 mt-1">Simulación cronológica con balance de inventario real</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
@@ -327,7 +325,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
                 {centro === '1000' ? 'Existencias y Salidas' : 'Existencias y Entradas'}
               </th>
               <th colSpan={3} className="px-2 py-2 bg-green-50 text-green-800 border-r">Producción</th>
-              <th colSpan={2} className="px-2 py-2 bg-purple-50 text-purple-800 border-r">Salidas (Despachos)</th>
+              <th colSpan={2} className="px-2 py-2 bg-purple-50 text-purple-800 border-r">Salidas Reales</th>
               <th colSpan={2} className="px-2 py-2 bg-red-50 text-red-800 border-r">Deuda (Backlog)</th>
               <th className="px-2 py-2 bg-emerald-50 text-emerald-800">Inventario</th>
             </tr>
@@ -339,7 +337,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
               
               <th className="px-2 py-1 min-w-[80px] text-blue-700">Stock Ini</th>
               <th className={`px-2 py-1 min-w-[80px] border-r ${centro === '1000' ? 'text-orange-700' : 'text-blue-700'}`}>
-                {centro === '1000' ? 'Traslado (Sal)' : 'Traslados'}
+                {centro === '1000' ? 'Traslado (Real)' : 'Traslados'}
               </th>
               
               <th className="px-2 py-1 min-w-[80px] text-green-700">Viable Base</th>
