@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -409,6 +408,7 @@ export default function ImportarVentasPage() {
             numMaximoSabados={numMaximoSabados}
             maxExtrasHoras={maxExtrasHoras}
             horasExtrasFin={horasExtrasFin}
+            trasladosViables={trasladosViablesHaciaC2000}
           />
         </div>
 

@@ -19,7 +19,7 @@ interface BacklogProgressiveSectionProps {
 }
 
 // Componente de fila memoizado para optimizar el rendimiento
-const BacklogDataRow = memo(({ r, isMounted, format }: { r: any, isMounted: boolean, format: (v: number, d?: number) => string }) => {
+const BacklogDataRow = memo(({ r, isMounted, format, centro }: { r: any, isMounted: boolean, format: (v: number, d?: number) => string, centro: string }) => {
   return (
     <tr className="hover:bg-gray-50 transition-colors">
       <td className="px-2 py-2 font-bold text-gray-700">{r.mesNombre}</td>
@@ -28,7 +28,9 @@ const BacklogDataRow = memo(({ r, isMounted, format }: { r: any, isMounted: bool
       <td className="px-2 py-2 truncate border-r max-w-[200px]" title={r.Descripcion}>{r.Descripcion}</td>
       
       <td className="px-2 py-2 text-right font-mono text-blue-600">{format(r._stockInitial)}</td>
-      <td className="px-2 py-2 text-right font-mono text-blue-600 border-r">{format(r._traslado)}</td>
+      <td className={`px-2 py-2 text-right font-mono border-r ${centro === '1000' ? 'text-orange-600' : 'text-blue-600'}`}>
+        {centro === '1000' && r._traslado > 0 ? '-' : ''}{format(r._traslado)}
+      </td>
       
       <td className="px-2 py-2 text-right font-mono text-green-600">{format(r._prodMC)}</td>
       <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50">{format(r._prodBL)}</td>
@@ -64,26 +66,24 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
 
   useEffect(() => setIsMounted(true), []);
 
-  // Helper para normalizar el mes a número (1-12) manejando nombres o strings
+  // Helper para normalizar el mes a número (1-12)
   const getMesNumerico = (mesRaw: any): number => {
     if (!mesRaw) return 0;
     const val = String(mesRaw).trim();
     const asNum = parseInt(val);
     if (!isNaN(asNum) && asNum >= 1 && asNum <= 12) return asNum;
-    
-    // Buscar por nombre en español
     return MONTH_NUMBERS[val as keyof typeof MONTH_NUMBERS] || 0;
   };
 
-  // 1. Ejecutar simulación cronológica sobre TODOS los datos (sin filtrar)
+  // 1. Ejecutar simulación cronológica sobre TODOS los datos
   const allSimulationResults = useMemo(() => {
     if (!data || data.length === 0) return [];
 
-    // Obtener meses ordenados usando clave base 0 para evitar error en Diciembre
+    // Claves únicas de mes ordenadas
     const timeline = Array.from(new Set(data.map(r => {
       const year = safeNumber(r.Año || r.año || new Date().getFullYear());
       const mesNum = getMesNumerico(r.mesRef || r.Mes);
-      return (year * 12) + (mesNum - 1); // mesNum 1-12 -> 0-11
+      return (year * 12) + (mesNum - 1);
     }))).sort((a, b) => a - b);
 
     const viablesMap = new Map<string, number>();
@@ -105,17 +105,12 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
 
     for (const tKey of timeline) {
       const year = Math.floor(tKey / 12);
-      const mesIndex = tKey % 12;
-      const mesNum = mesIndex + 1;
+      const mesNum = (tKey % 12) + 1;
       const mesKey = String(mesNum);
       
       const tc = tcMap.get(mesKey);
-      if (!tc) {
-        console.warn(`[BacklogProgressive] No se encontró Tiempo Canon para Mes: ${mesNum}, Año: ${year}`);
-        continue;
-      }
+      if (!tc) continue;
 
-      // Filtrar filas del mes actual normalizando el campo mes
       const filasMes = data.filter(r => {
         const rYear = safeNumber(r.Año || r.año || new Date().getFullYear());
         const rMes = getMesNumerico(r.mesRef || r.Mes);
@@ -128,9 +123,11 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
 
       filasMes.forEach(r => {
         const linea = String(r.lineaRef || r.LineaFabricacion || 'Sin línea');
+        const tupp = safeNumber(r.tiempoUnitarioPorPuesto);
         const timeMC = (safeNumber(r.necesidadMaximaProducirJornadaNormal) + 
                         safeNumber(r.necesidadMaximaProducirHorasExtras) + 
-                        safeNumber(r.necesidadMaximaProducirSabados)) * safeNumber(r.tiempoUnitarioPorPuesto);
+                        safeNumber(r.necesidadMaximaProducirSabados)) * tupp;
+        
         timeUsedByLineMC.set(linea, (timeUsedByLineMC.get(linea) || 0) + timeMC);
 
         if (!totalTimeByLine.has(linea)) {
@@ -155,23 +152,31 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         const linea = String(r.lineaRef || r.LineaFabricacion || 'Sin línea');
         const tupp = safeNumber(r.tiempoUnitarioPorPuesto);
         
+        // --- LÓGICA DE TRASLADOS DINÁMICA ---
+        const isC1000 = centro === '1000';
+        const isC2000 = centro === '2000';
+        const trVal = viablesMap.get(`${code}|${mesNum}`) || 0;
+        
+        const trIn = isC2000 ? trVal : 0;  // Entrada para Guayaquil
+        const trOut = isC1000 ? trVal : 0; // Salida para Quito
+        
         const initialStock = stockTracker.get(code) ?? safeNumber(r._stockInitial);
         const backlogAnterior = backlogBag.get(code) || 0;
         
-        // Buscar traslado viable para este mes
-        const trasladosIn = centro === '2000' ? (viablesMap.get(`${code}|${mesNum}`) || 0) : 0;
-        
         const prodMC = safeNumber(r._prodViable);
-        const totalDisponibleParaMC = initialStock + prodMC + trasladosIn;
-        const demandMC = safeNumber(r.up);
-        const dispatchMC = Math.min(demandMC, totalDisponibleParaMC);
-        const backlogMC = Math.max(0, demandMC - dispatchMC);
+        
+        // El disponible incluye traslados entrantes (Gye)
+        const totalDisponibleParaMC = initialStock + prodMC + trIn;
+        // El requerimiento incluye ventas locales + traslados salientes (Quito)
+        const demandTotalMC = safeNumber(r.up) + trOut;
+        
+        const dispatchMC = Math.min(demandTotalMC, totalDisponibleParaMC);
+        const backlogMC = Math.max(0, demandTotalMC - dispatchMC);
         const sobraDespuesMC = Math.max(0, totalDisponibleParaMC - dispatchMC);
 
         let prodBL = 0;
-        // Solo fabricar recuperación si la clase NO es 'F' (Quito fabrica Clase F)
         const clase = String(r.ClaseAprovisionam || '').trim().toUpperCase();
-        const puedeFabricarAqui = centro === '1000' ? true : clase !== 'F';
+        const puedeFabricarAqui = isC1000 ? true : clase !== 'F';
 
         if (backlogAnterior > 0 && tupp > 0 && puedeFabricarAqui && (idleTimeByLine.get(linea) || 0) > 0) {
           const timeAvailable = idleTimeByLine.get(linea)!;
@@ -193,7 +198,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
           ...r,
           mesNombre: MONTH_NAMES[mesNum],
           _stockInitial: initialStock,
-          _traslado: trasladosIn,
+          _traslado: trVal, // Guardamos el valor absoluto para visualización
           _prodMC: prodMC,
           _prodBL: prodBL,
           _viableTotal: prodMC + prodBL,
@@ -211,10 +216,9 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
     return todasLasFilas;
   }, [data, tiemposCanon, centro, trasladosViables, maxExtrasHoras, horasExtrasFin]);
 
-  // 2. Aplicar Filtros sobre los resultados de la simulación
+  // 2. Aplicar Filtros sobre los resultados
   const filteredResults = useMemo(() => {
     let results = allSimulationResults;
-    
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       results = results.filter(r => 
@@ -222,15 +226,12 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         String(r.Descripcion).toLowerCase().includes(q)
       );
     }
-    
     if (selectedMes) {
       results = results.filter(r => r.mesNombre === selectedMes);
     }
-    
     return results;
   }, [allSimulationResults, searchTerm, selectedMes]);
 
-  // 3. Paginación
   const totalPages = Math.max(1, Math.ceil(filteredResults.length / itemsPerPage));
   const paginatedResults = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -272,11 +273,10 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      {/* Header y Filtros */}
       <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h3 className="text-lg font-bold text-gray-800 uppercase">{titulo}</h3>
-          <p className="text-xs text-gray-500 mt-1">Simulación cronológica de recuperación de deuda</p>
+          <p className="text-xs text-gray-500 mt-1">Simulación cronológica con balance de inventario y recuperación</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
@@ -306,13 +306,14 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         </div>
       </div>
 
-      {/* Tabla con scroll horizontal */}
       <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-100 text-[10px] uppercase font-bold text-gray-600">
             <tr className="border-b border-300">
               <th colSpan={4} className="px-2 py-2 bg-gray-200 border-r">Producto</th>
-              <th colSpan={2} className="px-2 py-2 bg-blue-50 text-blue-800 border-r">Entradas</th>
+              <th colSpan={2} className="px-2 py-2 bg-blue-50 text-blue-800 border-r">
+                {centro === '1000' ? 'Existencias y Salidas' : 'Existencias y Entradas'}
+              </th>
               <th colSpan={3} className="px-2 py-2 bg-green-50 text-green-800 border-r">Producción</th>
               <th colSpan={2} className="px-2 py-2 bg-purple-50 text-purple-800 border-r">Salidas (Despachos)</th>
               <th colSpan={2} className="px-2 py-2 bg-red-50 text-red-800 border-r">Deuda (Backlog)</th>
@@ -325,7 +326,9 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
               <th className="px-2 py-1 text-left min-w-[150px] border-r">Descripción</th>
               
               <th className="px-2 py-1 min-w-[80px] text-blue-700">Stock Ini</th>
-              <th className="px-2 py-1 min-w-[80px] text-blue-700 border-r">Traslados</th>
+              <th className={`px-2 py-1 min-w-[80px] border-r ${centro === '1000' ? 'text-orange-700' : 'text-blue-700'}`}>
+                {centro === '1000' ? 'Traslado (Sal)' : 'Traslados'}
+              </th>
               
               <th className="px-2 py-1 min-w-[80px] text-green-700">Viable Base</th>
               <th className="px-2 py-1 min-w-[90px] text-green-700 bg-green-100/50">Prod. Recup. (BL)</th>
@@ -342,19 +345,22 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
           </thead>
           <tbody className="divide-y divide-gray-100 text-[11px]">
             {paginatedResults.map((r, idx) => (
-              <BacklogDataRow key={`${r.CodMaterial}-${r.mesNombre}-${idx}`} r={r} isMounted={isMounted} format={format} />
+              <BacklogDataRow 
+                key={`${r.CodMaterial}-${r.mesNombre}-${idx}`} 
+                r={r} 
+                isMounted={isMounted} 
+                format={format} 
+                centro={centro}
+              />
             ))}
-            {paginatedResults.length === 0 && (
-              <tr>
-                <td colSpan={14} className="py-10 text-center text-gray-400 italic">No hay resultados que coincidan con los filtros.</td>
-              </tr>
-            )}
           </tbody>
           <tfoot className="sticky bottom-0 z-20 bg-gray-800 text-white font-bold text-[10px]">
             <tr>
               <td colSpan={4} className="px-2 py-2 border-r border-gray-600">TOTALES FILTRADOS (Pág {currentPage})</td>
               <td className="px-2 py-2 text-right font-mono text-blue-300">{format(totals.stockIni)}</td>
-              <td className="px-2 py-2 text-right font-mono text-blue-300 border-r border-gray-600">{format(totals.traslados)}</td>
+              <td className={`px-2 py-2 text-right font-mono border-r border-gray-600 ${centro === '1000' ? 'text-orange-300' : 'text-blue-300'}`}>
+                {centro === '1000' && totals.traslados > 0 ? '-' : ''}{format(totals.traslados)}
+              </td>
               <td className="px-2 py-2 text-right font-mono text-green-300">{format(totals.prodMC)}</td>
               <td className="px-2 py-2 text-right font-mono text-green-400">{format(totals.prodBL)}</td>
               <td className="px-2 py-2 text-right font-mono text-green-300 border-r border-gray-600">{format(totals.viable)}</td>
@@ -368,50 +374,17 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         </table>
       </div>
 
-      {/* Controles de Paginación */}
       <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="text-sm text-gray-600">
           Mostrando <span className="font-semibold">{Math.min(filteredResults.length, (currentPage - 1) * itemsPerPage + 1)}</span> a <span className="font-semibold">{Math.min(filteredResults.length, currentPage * itemsPerPage)}</span> de <span className="font-semibold">{filteredResults.length}</span> registros
         </div>
         
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setCurrentPage(1)}
-            disabled={currentPage === 1}
-            className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Primera página"
-          >
-            <ChevronsLeft className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Página anterior"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          
-          <div className="flex items-center px-4 py-1 bg-white border rounded-md text-sm font-medium">
-            Página {currentPage} de {totalPages}
-          </div>
-          
-          <button
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Página siguiente"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setCurrentPage(totalPages)}
-            disabled={currentPage === totalPages}
-            className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Última página"
-          >
-            <ChevronsRight className="h-4 w-4" />
-          </button>
+          <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-30 transition-colors"><ChevronsLeft className="h-4 w-4" /></button>
+          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-30 transition-colors"><ChevronLeft className="h-4 w-4" /></button>
+          <div className="flex items-center px-4 py-1 bg-white border rounded-md text-sm font-medium">Página {currentPage} de {totalPages}</div>
+          <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-30 transition-colors"><ChevronRight className="h-4 w-4" /></button>
+          <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-30 transition-colors"><ChevronsRight className="h-4 w-4" /></button>
         </div>
       </div>
     </div>
