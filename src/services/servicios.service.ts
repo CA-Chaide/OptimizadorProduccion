@@ -319,5 +319,20 @@ export const serviciosService = {
   },
 
 
+  async VersionesFabricacion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/VersionesFabricacionMateriales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
 
 };
