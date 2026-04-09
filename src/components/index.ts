@@ -22,6 +22,7 @@ export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
 export * from './InventoryNeedsSection';
 export * from './TacticalPlanMueblesSection';
+export * from './TacticalPlanForrosSection';
 export * from './NeedsCalculationC2000Section';
 
 // Widgets y paneles
