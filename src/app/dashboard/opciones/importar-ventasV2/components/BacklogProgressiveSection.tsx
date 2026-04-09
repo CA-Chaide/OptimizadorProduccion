@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, memo } from 'react';
-import { MONTH_NAMES } from './constants';
+import { MONTH_NAMES, MONTH_NUMBERS } from './constants';
 import { safeNumber, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, ViableTransfer } from './types';
 import { Badge } from '@/components/ui/badge';
@@ -64,20 +64,33 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
 
   useEffect(() => setIsMounted(true), []);
 
+  // Helper para normalizar el mes a número (1-12) manejando nombres o strings
+  const getMesNumerico = (mesRaw: any): number => {
+    if (!mesRaw) return 0;
+    const val = String(mesRaw).trim();
+    const asNum = parseInt(val);
+    if (!isNaN(asNum) && asNum >= 1 && asNum <= 12) return asNum;
+    
+    // Buscar por nombre en español
+    return MONTH_NUMBERS[val as keyof typeof MONTH_NUMBERS] || 0;
+  };
+
   // 1. Ejecutar simulación cronológica sobre TODOS los datos (sin filtrar)
   const allSimulationResults = useMemo(() => {
     if (!data || data.length === 0) return [];
 
-    // Obtener meses ordenados
+    // Obtener meses ordenados usando clave base 0 para evitar error en Diciembre
     const timeline = Array.from(new Set(data.map(r => {
       const year = safeNumber(r.Año || r.año || new Date().getFullYear());
-      const mesNum = parseInt(r.mesRef || r.Mes);
-      return (year * 12) + mesNum;
+      const mesNum = getMesNumerico(r.mesRef || r.Mes);
+      return (year * 12) + (mesNum - 1); // mesNum 1-12 -> 0-11
     }))).sort((a, b) => a - b);
 
     const viablesMap = new Map<string, number>();
     trasladosViables.forEach(tr => {
-      viablesMap.set(`${normalizeMaterialCode(tr.CodMaterial)}|${tr.mes}`, tr.cantidad);
+      const code = normalizeMaterialCode(tr.CodMaterial);
+      const mesNum = getMesNumerico(tr.mes);
+      viablesMap.set(`${code}|${mesNum}`, tr.cantidad);
     });
 
     const tcMap = new Map<string, TiempoCanonResult>();
@@ -92,14 +105,20 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
 
     for (const tKey of timeline) {
       const year = Math.floor(tKey / 12);
-      const mesNum = tKey % 12;
+      const mesIndex = tKey % 12;
+      const mesNum = mesIndex + 1;
       const mesKey = String(mesNum);
+      
       const tc = tcMap.get(mesKey);
-      if (!tc) continue;
+      if (!tc) {
+        console.warn(`[BacklogProgressive] No se encontró Tiempo Canon para Mes: ${mesNum}, Año: ${year}`);
+        continue;
+      }
 
+      // Filtrar filas del mes actual normalizando el campo mes
       const filasMes = data.filter(r => {
         const rYear = safeNumber(r.Año || r.año || new Date().getFullYear());
-        const rMes = parseInt(r.mesRef || r.Mes);
+        const rMes = getMesNumerico(r.mesRef || r.Mes);
         return rYear === year && rMes === mesNum;
       });
 
@@ -139,8 +158,8 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         const initialStock = stockTracker.get(code) ?? safeNumber(r._stockInitial);
         const backlogAnterior = backlogBag.get(code) || 0;
         
-        const trKey = `${code}|${mesKey}`;
-        const trasladosIn = centro === '2000' ? (viablesMap.get(trKey) || 0) : 0;
+        // Buscar traslado viable para este mes
+        const trasladosIn = centro === '2000' ? (viablesMap.get(`${code}|${mesNum}`) || 0) : 0;
         
         const prodMC = safeNumber(r._prodViable);
         const totalDisponibleParaMC = initialStock + prodMC + trasladosIn;
@@ -150,7 +169,11 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         const sobraDespuesMC = Math.max(0, totalDisponibleParaMC - dispatchMC);
 
         let prodBL = 0;
-        if (backlogAnterior > 0 && tupp > 0 && (idleTimeByLine.get(linea) || 0) > 0) {
+        // Solo fabricar recuperación si la clase NO es 'F' (Quito fabrica Clase F)
+        const clase = String(r.ClaseAprovisionam || '').trim().toUpperCase();
+        const puedeFabricarAqui = centro === '1000' ? true : clase !== 'F';
+
+        if (backlogAnterior > 0 && tupp > 0 && puedeFabricarAqui && (idleTimeByLine.get(linea) || 0) > 0) {
           const timeAvailable = idleTimeByLine.get(linea)!;
           const unitsPossible = Math.floor(timeAvailable / tupp);
           prodBL = Math.min(backlogAnterior, unitsPossible);
@@ -287,7 +310,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
       <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-100 text-[10px] uppercase font-bold text-gray-600">
-            <tr className="border-b border-gray-300">
+            <tr className="border-b border-300">
               <th colSpan={4} className="px-2 py-2 bg-gray-200 border-r">Producto</th>
               <th colSpan={2} className="px-2 py-2 bg-blue-50 text-blue-800 border-r">Entradas</th>
               <th colSpan={3} className="px-2 py-2 bg-green-50 text-green-800 border-r">Producción</th>
