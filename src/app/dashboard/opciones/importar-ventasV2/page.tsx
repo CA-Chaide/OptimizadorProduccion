@@ -21,6 +21,7 @@ import {
   BottleneckMaterialAnalysisSection,
   BottleneckMonthlySummaryC2000Section,
   BottleneckMonthlySummaryC1000Section,
+  BacklogProgressiveSection,
   TiempoCanonResult,
   TransferNeed,
   ViableTransfer,
@@ -215,7 +216,6 @@ export default function ImportarVentasPage() {
     setComputedResultsC1000(results);
     
     // CAPTURAR TRASLADOS REALES (VIABLES) PARA GUAYAQUIL
-    // Cada vez que Quito calcula su capacidad, extraemos lo que REALMENTE va a enviar
     const viableTransfers = results
       .filter(row => (row._envioC2000 || 0) > 0)
       .map(row => ({
@@ -224,8 +224,7 @@ export default function ImportarVentasPage() {
         cantidad: Number(row._envioC2000)
       }));
     
-    if (viableTransfers.length > 0) {
-      console.log(`[Cerebro] Capturados ${viableTransfers.length} traslados viables desde Quito para el Resumen de Guayaquil.`);
+    if (viableTransfers.length >= 0) {
       setTrasladosViablesHaciaC2000(viableTransfers);
     }
   }, []);
@@ -238,6 +237,8 @@ export default function ImportarVentasPage() {
     { id: 5, label: 'Análisis Centro 1000', color: 'teal' },
     { id: 8, label: 'Resumen Mensual C1000', color: 'teal' },
     { id: 7, label: 'Resumen Mensual C2000', color: 'indigo' },
+    { id: 9, label: 'Backlog Progresivo C1000', color: 'teal' },
+    { id: 10, label: 'Backlog Progresivo C2000', color: 'indigo' },
     { id: 6, label: 'Bottleneck por Material', color: 'indigo' }
   ];
 
@@ -299,8 +300,8 @@ export default function ImportarVentasPage() {
 
       {/* Tabs Navigation */}
       <div className="bg-white border-b border-gray-200">
-        <div className="px-6">
-          <nav className="flex space-x-1" aria-label="Tabs">
+        <div className="px-6 overflow-x-auto">
+          <nav className="flex space-x-1 whitespace-nowrap" aria-label="Tabs">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -394,6 +395,31 @@ export default function ImportarVentasPage() {
             numMaximoSabados={numMaximoSabados}
             maxExtrasHoras={maxExtrasHoras}
             horasTrabajo={horasTrabajo}
+            horasExtrasFin={horasExtrasFin}
+            trasladosViables={trasladosViablesHaciaC2000}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 9 ? 'block' : 'none' }}>
+          <BacklogProgressiveSection 
+            data={computedResultsC1000}
+            tiemposCanon={tiemposCanonResults}
+            centro="1000"
+            titulo="Backlog Progresivo Centro 1000"
+            numMaximoSabados={numMaximoSabados}
+            maxExtrasHoras={maxExtrasHoras}
+            horasExtrasFin={horasExtrasFin}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 10 ? 'block' : 'none' }}>
+          <BacklogProgressiveSection 
+            data={computedResultsC2000}
+            tiemposCanon={tiemposCanonResults}
+            centro="2000"
+            titulo="Backlog Progresivo Centro 2000"
+            numMaximoSabados={numMaximoSabados}
+            maxExtrasHoras={maxExtrasHoras}
             horasExtrasFin={horasExtrasFin}
             trasladosViables={trasladosViablesHaciaC2000}
           />
