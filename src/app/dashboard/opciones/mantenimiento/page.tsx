@@ -1,17 +1,11 @@
 'use client';
 
-import { MaintenanceSection } from '@/components';
-import { useAppContext } from '@/context/AppProvider';
+import { MantenimientoProgramadoSection } from '@/components';
 
 export default function MantenimientoPage() {
-  const { maintenanceEvents, setMaintenanceEvents, constraints, setConstraints, addNotification } = useAppContext();
   return (
-    <MaintenanceSection 
-      events={maintenanceEvents} 
-      setEvents={setMaintenanceEvents} 
-      constraints={constraints} 
-      onConstraintsUpdate={setConstraints} 
-      addNotification={addNotification} 
-    />
+    <div className="container mx-auto py-6">
+      <MantenimientoProgramadoSection />
+    </div>
   );
 }
