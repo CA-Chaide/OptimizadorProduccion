@@ -1,10 +1,10 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { MONTH_NAMES } from './constants';
 import { safeNumber, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, ViableTransfer } from './types';
+import { Badge } from '@/components/ui/badge';
 
 interface BacklogProgressiveSectionProps {
   data: any[];
