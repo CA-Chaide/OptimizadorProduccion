@@ -4,10 +4,14 @@
  */
 
 export * from './AbsenteeismSection';
+export * from './CalificacionTecnicaSection';
 export * from './ConstraintConfigurationSection';
 export * from './DataImportSection';
 export * from './DashboardSection';
 export * from './MaintenanceSection';
+export * from './MantenimientoProgramadoSection';
+export * from './MaestroMaterialesBrutosSection';
+export * from './VersionesFabricacionSection';
 export * from './PersonnelManagementSection';
 export * from './ProductionPlanSection';
 export * from './ProductionCapacitySection';

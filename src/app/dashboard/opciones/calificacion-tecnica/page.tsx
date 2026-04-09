@@ -1,17 +1,11 @@
 'use client';
 
-import { PersonnelManagementSection } from '@/components';
-import { useAppContext } from '@/context/AppProvider';
+import { CalificacionTecnicaSection } from '@/components';
 
 export default function CalificacionTecnicaPage() {
-  const { employees, setEmployees, employeeSkills, setSkills, constraints } = useAppContext();
   return (
-    <PersonnelManagementSection 
-      employees={employees} 
-      setEmployees={setEmployees} 
-      skills={employeeSkills} 
-      setSkills={setSkills} 
-      constraints={constraints} 
-    />
+    <div className="container mx-auto py-6">
+      <CalificacionTecnicaSection />
+    </div>
   );
 }

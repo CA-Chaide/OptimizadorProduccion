@@ -273,10 +273,11 @@ export const serviciosService = {
     return response.json();
   },
 
-  async getMMaterialesBrutosPorMaterialMateriaPrima(): Promise<BodyResponse<any>> {
+  async getMMaterialesBrutosPorMaterialMateriaPrima(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/MaterialesBrutosPorMaterialMateriaPrima", {
-      method: "GET",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
     });
     if (!response.ok) {
       const errorBody = await response
