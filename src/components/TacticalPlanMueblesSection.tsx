@@ -8,6 +8,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Loader2 } from 'lucide-react';
 
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
+import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -164,10 +165,11 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="ordenes" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="grupos">Grupos</TabsTrigger>
             <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
             <TabsTrigger value="ordenes">Órdenes Previsionales</TabsTrigger>
+            <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
         </TabsList>
         <TabsContent value="grupos" className="mt-4">
             <GruposTab />
@@ -180,11 +182,24 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                 <CardHeader>
                     <CardTitle>Datos de Órdenes Previsionales</CardTitle>
                     <CardDescription>
-                        Visualización y exploración de todas las órdenes previsionales disponibles en el sistema.
+                        Visualización y exploración de todas las órdenes previsionales disponibles en el sistema, filtrado para almacenes 1011 y 1015.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <ProvisionalOrdersTabSection />
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="ordenesFert" className="mt-4">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Datos de Órdenes Fert</CardTitle>
+                    <CardDescription>
+                        Visualización de las órdenes de fabricación (FERT).
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <OrdenesFertTabSection />
                 </CardContent>
             </Card>
         </TabsContent>
