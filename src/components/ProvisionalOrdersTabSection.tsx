@@ -138,38 +138,71 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center space-x-3">
-        <Package className="w-6 h-6 text-gray-700" />
-        <h3 className="text-xl font-semibold text-gray-700">Datos de Órdenes Previsionales</h3>
-      </div>
+    <div className="space-y-4">
+      {/* Pagination Controls */}
+      {!isLoading && orders.length > 0 && (
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-4">
+                    <span className="text-sm text-gray-600">
+                        Mostrando {startIndex + 1} a {Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} órdenes.
+                    </span>
+                    <label className="text-sm font-semibold text-gray-700">Filas por página:</label>
+                    <select
+                    value={pagination.rowsPerPage}
+                    onChange={(e) => handleRowsPerPageChange(Number(e.target.value))}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value={5}>5</option>
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                </div>
 
-      {/* Info Card */}
-      {pagination.totalRegistros > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-sm text-blue-800">
-            <span className="font-semibold">Total de registros (1011, 1015):</span> {filteredOrders.length.toLocaleString()} de {pagination.totalRegistros.toLocaleString()} |
-            <span className="font-semibold ml-4">Total de páginas:</span> {totalPagesLocal}
-          </p>
-        </div>
-      )}
+                <div className="flex items-center space-x-4">
+                    <button
+                    onClick={handlePrevious}
+                    disabled={pagination.currentPage === 1 || isLoading}
+                    className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                    >
+                    ← Anterior
+                    </button>
 
-      {/* Error Message */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-sm text-red-800">
-            <span className="font-semibold">Error:</span> {error}
-          </p>
-        </div>
-      )}
+                    <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600">
+                        Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
+                    </span>
+                    <div className="flex space-x-1 ml-4">
+                        {Array.from({ length: Math.min(5, totalPagesLocal) }, (_, i) => {
+                        const page = i + 1;
+                        return (
+                            <button
+                            key={page}
+                            onClick={() => handleLoadPage(page)}
+                            disabled={isLoading}
+                            className={`px-3 py-1 rounded ${
+                                pagination.currentPage === page
+                                ? 'bg-indigo-600 text-white font-semibold'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                            >
+                            {page}
+                            </button>
+                        );
+                        })}
+                    </div>
+                    </div>
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="flex justify-center items-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-          <span className="ml-3 text-gray-600">Cargando...</span>
-        </div>
+                    <button
+                    onClick={handleNext}
+                    disabled={pagination.currentPage === totalPagesLocal || isLoading}
+                    className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                    >
+                    Siguiente →
+                    </button>
+                </div>
+            </div>
       )}
 
       {/* Table */}
@@ -179,34 +212,34 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Orden Previsional
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Material
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Nombre
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Categoría
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Cantidad
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Unidad
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Fecha Inicio
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Fecha Fin
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300">
                     Centro
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">
                     Almacén
                   </th>
                 </tr>
@@ -214,103 +247,40 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               <tbody className="divide-y divide-gray-200">
                 {displayedOrders.map((order, index) => (
                   <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">
                       {order.ORDENPREVISIONAL}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
                       {order.MATERIAL}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate text-center border-r border-dashed border-gray-300">
                       {order.NOMBRE}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
                       {order.CATEGORIA}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 text-center border-r border-dashed border-gray-300">
                       {order.CANTIDAD}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
                       {order.UNIDAD}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
                       {order.FECHAINICIO}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
                       {order.FECHAFIN}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
                       {order.Centro}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center">
                       {order.Almacen}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* Pagination Controls */}
-      {!isLoading && orders.length > 0 && (
-        <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-lg">
-          <div className="flex items-center space-x-4">
-            <label className="text-sm font-semibold text-gray-700">Filas por página:</label>
-            <select
-              value={pagination.rowsPerPage}
-              onChange={(e) => handleRowsPerPageChange(Number(e.target.value))}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-          </div>
-
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={handlePrevious}
-              disabled={pagination.currentPage === 1 || isLoading}
-              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-            >
-              ← Anterior
-            </button>
-
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600">
-                Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
-              </span>
-              <div className="flex space-x-1 ml-4">
-                {Array.from({ length: Math.min(5, totalPagesLocal) }, (_, i) => {
-                  const page = i + 1;
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => handleLoadPage(page)}
-                      disabled={isLoading}
-                      className={`px-3 py-1 rounded ${
-                        pagination.currentPage === page
-                          ? 'bg-indigo-600 text-white font-semibold'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <button
-              onClick={handleNext}
-              disabled={pagination.currentPage === totalPagesLocal || isLoading}
-              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-            >
-              Siguiente →
-            </button>
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2 } from 'lucide-react';
+import { Package } from 'lucide-react';
 
 interface OrdenFert {
   [key: string]: any;
@@ -65,7 +65,7 @@ export const OrdenesFertTabSection: React.FC = () => {
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
-  
+
   const handleRowsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setRowsPerPage(Number(e.target.value));
     setCurrentPage(1); // Reset to first page
@@ -168,10 +168,10 @@ export const OrdenesFertTabSection: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
                 <tr>
-                  {columns.map((col) => (
+                  {columns.map((col, index) => (
                     <th
                       key={col}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider"
+                      className={`px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider ${index < columns.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}
                     >
                       {col}
                     </th>
@@ -181,8 +181,8 @@ export const OrdenesFertTabSection: React.FC = () => {
               <tbody className="divide-y divide-gray-200">
                 {paginatedOrders.map((order, index) => (
                   <tr key={`${order.ORDEN_PRODUCCION}-${index}`} className="hover:bg-gray-50">
-                    {columns.map((col) => (
-                         <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    {columns.map((col, colIndex) => (
+                         <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < columns.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
                            {String(order[col] ?? '-')}
                          </td>
                     ))}

@@ -53,19 +53,19 @@ const GruposTab: React.FC = () => {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Código</TableHead>
-                                <TableHead>Nombre</TableHead>
-                                <TableHead>Centro</TableHead>
-                                <TableHead>Estado</TableHead>
+                                <TableHead className="text-center border-r border-dashed border-gray-300">Código</TableHead>
+                                <TableHead className="text-center border-r border-dashed border-gray-300">Nombre</TableHead>
+                                <TableHead className="text-center border-r border-dashed border-gray-300">Centro</TableHead>
+                                <TableHead className="text-center">Estado</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {grupos.map(grupo => (
                                 <TableRow key={grupo.codigo_grupo}>
-                                    <TableCell>{grupo.codigo_grupo}</TableCell>
-                                    <TableCell>{grupo.nombre_grupo}</TableCell>
-                                    <TableCell>{grupo.centro}</TableCell>
-                                    <TableCell>{grupo.estado === 'A' ? 'Activo' : 'Inactivo'}</TableCell>
+                                    <TableCell className="text-center border-r border-dashed border-gray-300">{grupo.codigo_grupo}</TableCell>
+                                    <TableCell className="text-center border-r border-dashed border-gray-300">{grupo.nombre_grupo}</TableCell>
+                                    <TableCell className="text-center border-r border-dashed border-gray-300">{grupo.centro}</TableCell>
+                                    <TableCell className="text-center">{grupo.estado === 'A' ? 'Activo' : 'Inactivo'}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -132,19 +132,19 @@ const RestriccionesTab: React.FC = () => {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Grupo</TableHead>
-                                <TableHead>Nombre Restricción</TableHead>
-                                <TableHead>Valor</TableHead>
-                                <TableHead>Descripción</TableHead>
+                                <TableHead className="text-center border-r border-dashed border-gray-300">Grupo</TableHead>
+                                <TableHead className="text-center border-r border-dashed border-gray-300">Nombre Restricción</TableHead>
+                                <TableHead className="text-center border-r border-dashed border-gray-300">Valor</TableHead>
+                                <TableHead className="text-center">Descripción</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {restricciones.map(restriccion => (
                                 <TableRow key={restriccion.codigo_restriccion}>
-                                    <TableCell>{restriccion.grupo?.nombre_grupo || restriccion.codigo_grupo}</TableCell>
-                                    <TableCell>{restriccion.nombre_restriccion}</TableCell>
-                                    <TableCell>{restriccion.valor_restriccion}</TableCell>
-                                    <TableCell>{restriccion.descripcion}</TableCell>
+                                    <TableCell className="text-center border-r border-dashed border-gray-300">{restriccion.grupo?.nombre_grupo || restriccion.codigo_grupo}</TableCell>
+                                    <TableCell className="text-center border-r border-dashed border-gray-300">{restriccion.nombre_restriccion}</TableCell>
+                                    <TableCell className="text-center border-r border-dashed border-gray-300">{restriccion.valor_restriccion}</TableCell>
+                                    <TableCell className="text-center">{restriccion.descripcion}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
