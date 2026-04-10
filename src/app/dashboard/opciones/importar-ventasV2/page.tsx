@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -21,6 +22,7 @@ import {
   BottleneckMonthlySummaryC2000Section,
   BottleneckMonthlySummaryC1000Section,
   BacklogProgressiveSection,
+  BacklogRegressiveSection,
   TiempoCanonResult,
   TransferNeed,
   ViableTransfer,
@@ -238,6 +240,8 @@ export default function ImportarVentasPage() {
     { id: 7, label: 'Resumen Mensual C2000', color: 'indigo' },
     { id: 9, label: 'Backlog Progresivo C1000', color: 'teal' },
     { id: 10, label: 'Backlog Progresivo C2000', color: 'indigo' },
+    { id: 11, label: 'Backlog Regresivo C1000', color: 'teal' },
+    { id: 12, label: 'Backlog Regresivo C2000', color: 'indigo' },
     { id: 6, label: 'Bottleneck por Material', color: 'indigo' }
   ];
 
@@ -420,6 +424,34 @@ export default function ImportarVentasPage() {
             titulo="Backlog Progresivo Centro 2000"
             numMaximoSabados={numMaximoSabados}
             maxExtrasHoras={maxExtrasHoras}
+            horasExtrasFin={horasExtrasFin}
+            trasladosViables={trasladosViablesHaciaC2000}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 11 ? 'block' : 'none' }}>
+          <BacklogRegressiveSection 
+            data={computedResultsC1000}
+            tiemposCanon={tiemposCanonResults}
+            centro="1000"
+            titulo="Backlog Regresivo Centro 1000"
+            numMaximoSabados={numMaximoSabados}
+            maxExtrasHoras={maxExtrasHoras}
+            horasTrabajo={horasTrabajo}
+            horasExtrasFin={horasExtrasFin}
+            trasladosViables={trasladosViablesHaciaC2000}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 12 ? 'block' : 'none' }}>
+          <BacklogRegressiveSection 
+            data={computedResultsC2000}
+            tiemposCanon={tiemposCanonResults}
+            centro="2000"
+            titulo="Backlog Regresivo Centro 2000"
+            numMaximoSabados={numMaximoSabados}
+            maxExtrasHoras={maxExtrasHoras}
+            horasTrabajo={horasTrabajo}
             horasExtrasFin={horasExtrasFin}
             trasladosViables={trasladosViablesHaciaC2000}
           />

@@ -26,3 +26,4 @@ export { RawBackendDataTable, type RawBackendDataTableHandle } from './RawBacken
 export { BottleneckMonthlySummaryC2000Section } from './BottleneckMonthlySummaryC2000Section';
 export { BottleneckMonthlySummaryC1000Section } from './BottleneckMonthlySummaryC1000Section';
 export { BacklogProgressiveSection } from './BacklogProgressiveSection';
+export { BacklogRegressiveSection } from './BacklogRegressiveSection';
