@@ -334,7 +334,7 @@ export const serviciosService = {
     }
     return response.json();
   },
-
+  
 
   async getOrdenesFert(): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/OrdenesFert", {
@@ -349,6 +349,7 @@ export const serviciosService = {
     }
     return response.json();
   },
+
 
 
 };

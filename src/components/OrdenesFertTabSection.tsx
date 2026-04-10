@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
@@ -65,6 +65,14 @@ export const OrdenesFertTabSection: React.FC = () => {
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
+  
+  const handleRowsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setRowsPerPage(Number(e.target.value));
+    setCurrentPage(1); // Reset to first page
+  };
+
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
 
   if (isLoading) {
     return (
@@ -96,7 +104,67 @@ export const OrdenesFertTabSection: React.FC = () => {
 
   return (
     <div className="space-y-4">
-        <div className="overflow-x-auto border rounded-lg">
+      {/* Pagination Controls */}
+      {!isLoading && orders.length > 0 && (
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-4">
+                    <span className="text-sm text-gray-600">
+                        Mostrando {startIndex + 1} a {Math.min(endIndex, orders.length)} de {orders.length} órdenes.
+                    </span>
+                    <label className="text-sm font-semibold text-gray-700">Filas por página:</label>
+                    <select
+                    value={rowsPerPage}
+                    onChange={handleRowsPerPageChange}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                    {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
+                    </select>
+                </div>
+
+                <div className="flex items-center space-x-4">
+                    <button
+                    onClick={() => goToPage(1)}
+                    disabled={currentPage === 1 || isLoading}
+                    className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                    >
+                    Primera
+                    </button>
+                    <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 1 || isLoading}
+                    className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                    >
+                    ← Anterior
+                    </button>
+
+                    <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600">
+                        Página <span className="font-bold">{currentPage}</span> de <span className="font-bold">{totalPages}</span>
+                    </span>
+                    </div>
+
+                    <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage === totalPages || isLoading}
+                    className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                    >
+                    Siguiente →
+                    </button>
+                    <button
+                    onClick={() => goToPage(totalPages)}
+                    disabled={currentPage === totalPages || isLoading}
+                    className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                    >
+                    Última
+                    </button>
+                </div>
+            </div>
+      )}
+
+      {/* Table */}
+      {!isLoading && orders.length > 0 && (
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
                 <tr>
@@ -112,7 +180,7 @@ export const OrdenesFertTabSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {paginatedOrders.map((order, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
+                  <tr key={`${order.ORDEN_PRODUCCION}-${index}`} className="hover:bg-gray-50">
                     {columns.map((col) => (
                          <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                            {String(order[col] ?? '-')}
@@ -122,47 +190,9 @@ export const OrdenesFertTabSection: React.FC = () => {
                 ))}
               </tbody>
             </table>
-        </div>
-
-        {/* Pagination Controls */}
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            Mostrando {paginatedOrders.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0} a {Math.min(currentPage * rowsPerPage, orders.length)} de {orders.length} órdenes.
-          </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => goToPage(1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Primera
-            </button>
-            <button
-              onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Anterior
-            </button>
-            <span className="text-sm">
-              Página {currentPage} de {totalPages}
-            </span>
-            <button
-              onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Siguiente
-            </button>
-             <button
-              onClick={() => goToPage(totalPages)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Última
-            </button>
           </div>
         </div>
+      )}
     </div>
   );
 };
