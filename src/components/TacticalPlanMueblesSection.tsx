@@ -23,7 +23,11 @@ const GruposTab: React.FC = () => {
         const fetchGrupos = async () => {
             try {
                 const response = await grupoService.getAll();
-                setGrupos(response.data || []);
+                // Filter for groups with "muebles" in the name
+                const mueblesGrupos = (response.data || []).filter(g => 
+                    g.nombre_grupo.toLowerCase().includes('muebles')
+                );
+                setGrupos(mueblesGrupos);
             } catch (error) {
                 addNotification('error', `Error al cargar grupos: ${(error as Error).message}`);
             } finally {
@@ -40,8 +44,8 @@ const GruposTab: React.FC = () => {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Listado de Grupos</CardTitle>
-                <CardDescription>Grupos operativos registrados en el sistema.</CardDescription>
+                <CardTitle>Listado de Grupos de Muebles</CardTitle>
+                <CardDescription>Grupos operativos para la fabricación de muebles.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="border rounded-lg overflow-auto max-h-[60vh]">
@@ -80,8 +84,29 @@ const RestriccionesTab: React.FC = () => {
     useEffect(() => {
         const fetchRestricciones = async () => {
             try {
-                const response = await restriccionService.getAll();
-                setRestricciones(response.data || []);
+                const [restriccionesRes, gruposRes] = await Promise.all([
+                    restriccionService.getAll(),
+                    grupoService.getAll()
+                ]);
+
+                const allRestricciones = restriccionesRes.data || [];
+                const allGrupos = gruposRes.data || [];
+
+                // Find the group "Muebles"
+                const mueblesGrupo = allGrupos.find(g => g.nombre_grupo.toLowerCase().includes('muebles'));
+
+                if (mueblesGrupo) {
+                    const filteredRestricciones = allRestricciones.filter(r => r.codigo_grupo === mueblesGrupo.codigo_grupo);
+                    // Add group name to restrictions for display
+                    const restriccionesConGrupo = filteredRestricciones.map(r => ({
+                        ...r,
+                        grupo: mueblesGrupo
+                    }));
+                    setRestricciones(restriccionesConGrupo);
+                } else {
+                    addNotification('warning', 'No se encontró el grupo "Muebles" para filtrar las restricciones.');
+                    setRestricciones([]);
+                }
             } catch (error) {
                 addNotification('error', `Error al cargar restricciones: ${(error as Error).message}`);
             } finally {
@@ -98,8 +123,8 @@ const RestriccionesTab: React.FC = () => {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Listado de Restricciones</CardTitle>
-                <CardDescription>Restricciones de producción para los diferentes grupos.</CardDescription>
+                <CardTitle>Listado de Restricciones para Muebles</CardTitle>
+                <CardDescription>Restricciones de producción para el grupo de Muebles.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="border rounded-lg overflow-auto max-h-[60vh]">
@@ -115,7 +140,7 @@ const RestriccionesTab: React.FC = () => {
                         <TableBody>
                             {restricciones.map(restriccion => (
                                 <TableRow key={restriccion.codigo_restriccion}>
-                                    <TableCell>{restriccion.codigo_grupo}</TableCell>
+                                    <TableCell>{restriccion.grupo?.nombre_grupo || restriccion.codigo_grupo}</TableCell>
                                     <TableCell>{restriccion.nombre_restriccion}</TableCell>
                                     <TableCell>{restriccion.valor_restriccion}</TableCell>
                                     <TableCell>{restriccion.descripcion}</TableCell>
