@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
@@ -40,7 +41,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
     totalRegistros: 0,
-    pageSize: 1,
+    pageSize: 20000,
     isExploring: true,
     rowsPerPage: 20,
   });
@@ -65,7 +66,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           setPagination(prev => ({
             ...prev,
             totalRegistros: total,
-            pageSize: 20000,
             isExploring: false,
           }));
 
@@ -73,7 +73,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           
           // Cargar la primera página después de la exploración
           setIsLoading(true);
-          const pageResponse = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
+          const pageResponse = await serviciosService.OrdenesProvisionalesPaginados(1, pagination.pageSize);
           if (pageResponse.data) {
             setOrders(pageResponse.data);
             logger.log(`[ProvisionalOrdersTab] Primera página cargada con ${pageResponse.data.length} registros`);
@@ -92,44 +92,17 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     };
 
     performExploration();
-  }, [addNotification]);
+  }, [addNotification, inspector, pagination.pageSize]);
 
-  // Load orders for current page
-  const loadOrdersForPage = useCallback(async (page: number) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      logger.log(`[ProvisionalOrdersTab] Cargando página ${page} con ${pagination.pageSize} registros por página...`);
-
-      const response = await serviciosService.OrdenesProvisionalesPaginados(page, pagination.pageSize);
-      
-      if (response.data) {
-        setOrders(response.data);
-        setPagination(prev => ({
-          ...prev,
-          currentPage: page,
-        }));
-        logger.log(`[ProvisionalOrdersTab] Página ${page} cargada con ${response.data.length} registros`);
-        inspector.captureVariable('loadedOrders', response.data.length);
-      } else {
-        throw new Error('No se obtuvieron datos');
-      }
-    } catch (err) {
-      const errorMessage = (err as Error).message;
-      logger.error(`[ProvisionalOrdersTab] Error al cargar página: ${errorMessage}`);
-      setError(errorMessage);
-      addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [pagination.pageSize, addNotification]);
-
-  const totalPages = Math.ceil(pagination.totalRegistros / pagination.pageSize);
-  const totalPagesLocal = Math.ceil(orders.length / pagination.rowsPerPage);
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => order.Almacen === '1011' || order.Almacen === '1015');
+  }, [orders]);
+  
+  const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
   
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
   const endIndex = startIndex + pagination.rowsPerPage;
-  const displayedOrders = orders.slice(startIndex, endIndex);
+  const displayedOrders = filteredOrders.slice(startIndex, endIndex);
 
   const handlePrevious = () => {
     if (pagination.currentPage > 1) {
@@ -176,9 +149,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       {pagination.totalRegistros > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-800">
-            <span className="font-semibold">Total de registros:</span> {pagination.totalRegistros.toLocaleString()} | 
-            <span className="font-semibold ml-4">Registros por página:</span> {pagination.pageSize.toLocaleString()} | 
-            <span className="font-semibold ml-4">Total de páginas:</span> {totalPages}
+            <span className="font-semibold">Total de registros (1011, 1015):</span> {filteredOrders.length.toLocaleString()} de {pagination.totalRegistros.toLocaleString()} |
+            <span className="font-semibold ml-4">Total de páginas:</span> {totalPagesLocal}
           </p>
         </div>
       )}
