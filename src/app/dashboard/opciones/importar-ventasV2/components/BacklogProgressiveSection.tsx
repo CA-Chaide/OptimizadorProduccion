@@ -37,10 +37,10 @@ const BacklogDataRow = memo(({ r, isMounted, format, centro }: { r: any, isMount
       <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50">{format(r._prodBL)}</td>
       <td className="px-2 py-2 text-right font-mono text-green-800 font-bold border-r">{format(r._viableTotal)}</td>
       
-      <td className="px-2 py-2 text-right font-mono text-purple-600">{format(r._dispatchSales)}</td>
+      <td className="px-2 py-2 text-right font-mono text-purple-600 font-bold">{format(r._dispatchSales)}</td>
       <td className="px-2 py-2 text-right font-mono text-purple-600 border-r">{format(r._dispatchBL)}</td>
       
-      <td className="px-2 py-2 text-right font-mono text-red-500">{format(r._backlogMC)}</td>
+      <td className="px-2 py-2 text-right font-mono text-red-500 font-bold">{format(r._backlogMC)}</td>
       <td className={`px-2 py-2 text-right font-mono font-bold border-r ${r._backlogAcum > 0 ? 'text-red-700 bg-red-50' : 'text-gray-400'}`}>{format(r._backlogAcum)}</td>
       
       <td className={`px-2 py-2 text-right font-mono font-bold ${r._saldoFinal > 0 ? 'text-emerald-700 bg-emerald-50' : 'text-gray-400'}`}>{format(r._saldoFinal)}</td>
@@ -81,15 +81,9 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
     const timeline = Array.from(new Set(data.map(r => {
       const year = safeNumber(r.Año || r.año || new Date().getFullYear());
       const mesNum = getMesNumerico(r.mesRef || r.Mes);
+      // Usar base 0 para evitar error en Diciembre (mes 12 % 12 = 0)
       return (year * 12) + (mesNum - 1);
     }))).sort((a, b) => a - b);
-
-    const viablesMap = new Map<string, number>();
-    trasladosViables.forEach(tr => {
-      const code = normalizeMaterialCode(tr.CodMaterial);
-      const mesNum = getMesNumerico(tr.mes);
-      viablesMap.set(`${code}|${mesNum}`, tr.cantidad);
-    });
 
     const tcMap = new Map<string, TiempoCanonResult>();
     tiemposCanon.forEach(tc => {
@@ -119,13 +113,15 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
       const timeUsedByLineMC = new Map<string, number>();
       const totalTimeByLine = new Map<string, number>();
 
+      // Primero calcular tiempo base consumido en Jornada Normal/Extras/Sábados (del Resumen)
       filasMes.forEach(r => {
         const linea = String(r.lineaRef || r.LineaFabricacion || 'Sin línea');
         const tupp = safeNumber(r.tiempoUnitarioPorPuesto);
-        const timeMC = (safeNumber(r.necesidadMaximaProducirJornadaNormal) + 
-                        safeNumber(r.necesidadMaximaProducirHorasExtras) + 
-                        safeNumber(r.necesidadMaximaProducirSabados)) * tupp;
+        const unitsProducedMC = safeNumber(r._prodViable || (safeNumber(r.necesidadMaximaProducirJornadaNormal) + 
+                                safeNumber(r.necesidadMaximaProducirHorasExtras) + 
+                                safeNumber(r.necesidadMaximaProducirSabados)));
         
+        const timeMC = unitsProducedMC * tupp;
         timeUsedByLineMC.set(linea, (timeUsedByLineMC.get(linea) || 0) + timeMC);
 
         if (!totalTimeByLine.has(linea)) {
@@ -150,37 +146,20 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
         const linea = String(r.lineaRef || r.LineaFabricacion || 'Sin línea');
         const tupp = safeNumber(r.tiempoUnitarioPorPuesto);
         const isC1000 = centro === '1000';
-        const isC2000 = centro === '2000';
         
-        const initialStock = stockTracker.get(code) ?? safeNumber(r.StockActual);
+        // --- 1. DATOS BASE DEL RESUMEN (REQUERIMIENTO DEL USUARIO) ---
+        // Usar los valores exactos calculados en el tab de Resumen
+        const dispatchSales = safeNumber(r._demandaCubierta);
+        const backlogMC = safeNumber(r._backlogVentas);
+        const actualTransfer = isC1000 ? safeNumber(r._envioC2000) : safeNumber(r._trValorAMostrar);
+        const prodMC = safeNumber(r._prodViable);
+        
+        // El stock inicial se arrastra de la simulación progresiva
+        const initialStock = stockTracker.get(code) ?? safeNumber(r._stockInitial);
         const backlogAnterior = backlogBag.get(code) || 0;
-        const prodMC = safeNumber(r.necesidadMaximaProducirJornadaNormal) + 
-                       safeNumber(r.necesidadMaximaProducirHorasExtras) + 
-                       safeNumber(r.necesidadMaximaProducirSabados);
-        
-        // --- 1. ENTRADAS ---
-        const trVal = viablesMap.get(`${code}|${mesNum}`) || 0;
-        const trIn = isC2000 ? trVal : 0;
-        const totalDisponibleFisico = initialStock + prodMC + trIn;
 
-        // --- 2. PRIORIDAD 1: VENTA DEL MES ---
-        const demandLocalSales = safeNumber(r.UnidadesProyectado);
-        const dispatchSales = Math.min(demandLocalSales, totalDisponibleFisico);
-        let inventarioRestante = Math.max(0, totalDisponibleFisico - dispatchSales);
-
-        // --- 3. TRASLADOS (SALIDA PARA C1000) ---
-        let actualTransferSent = 0;
-        if (isC1000) {
-          actualTransferSent = Math.min(trVal, inventarioRestante);
-          inventarioRestante -= actualTransferSent;
-        }
-
-        // --- 4. BACKLOG GENERADO ESTE MES ---
-        const demandTotalMC = isC1000 ? (demandLocalSales + trVal) : demandLocalSales;
-        const actualSentMC = isC1000 ? (dispatchSales + actualTransferSent) : dispatchSales;
-        const backlogMC = Math.max(0, demandTotalMC - actualSentMC);
-
-        // --- 5. PRIORIDAD 2: RECUPERACIÓN DE DEUDA ---
+        // --- 2. PRIORIDAD 2: RECUPERACIÓN DE DEUDA (PROGRESIVO) ---
+        // Intentar pagar deuda antigua usando la capacidad libre calculada en el paso anterior
         let prodBL = 0;
         const clase = String(r.ClaseAprovisionam || '').trim().toUpperCase();
         const puedeFabricarAqui = isC1000 ? true : clase !== 'F';
@@ -192,14 +171,19 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
           idleTimeByLine.set(linea, timeAvailable - (prodBL * tupp));
         }
 
-        const totalDisponibleParaBL = inventarioRestante + prodBL;
+        // El saldo final "técnico" del mes antes de pagar deuda antigua
+        const saldoFinalPreRecovery = safeNumber(r._saldoFinal);
+        
+        // Pagar deuda antigua con excedentes + producción extra
+        const totalDisponibleParaBL = saldoFinalPreRecovery + prodBL;
         const dispatchBL = Math.min(backlogAnterior, totalDisponibleParaBL);
+        
         const finalStock = Math.max(0, totalDisponibleParaBL - dispatchBL);
         
-        // El Backlog Acumulado solo baja si despachamos BL
+        // Backlog acumulado = Lo que quedaba - lo pagado hoy + lo que falló hoy
         const backlogAcumulado = Math.max(0, (backlogAnterior - dispatchBL) + backlogMC);
         
-        // Corregir Saldo Final: Si hay deuda, no puede haber saldo (a menos que el saldo sea de un lote mínimo incompatible, pero aquí simplificamos a 0)
+        // Si hay deuda acumulada, no puede sobrar producto
         const saldoFinalCorregido = backlogAcumulado > 0 ? 0 : finalStock;
 
         stockTracker.set(code, saldoFinalCorregido);
@@ -209,7 +193,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
           ...r,
           mesNombre: MONTH_NAMES[mesNum],
           _stockInitial: initialStock,
-          _traslado: isC1000 ? actualTransferSent : trVal, 
+          _traslado: actualTransfer,
           _prodMC: prodMC,
           _prodBL: prodBL,
           _viableTotal: prodMC + prodBL,
@@ -225,7 +209,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
     }
 
     return todasLasFilas;
-  }, [data, tiemposCanon, centro, trasladosViables, maxExtrasHoras, horasExtrasFin]);
+  }, [data, tiemposCanon, centro, maxExtrasHoras, horasExtrasFin]);
 
   const filteredResults = useMemo(() => {
     let results = allSimulationResults;
@@ -286,7 +270,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
       <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h3 className="text-lg font-bold text-gray-800 uppercase">{titulo}</h3>
-          <p className="text-xs text-gray-500 mt-1">Simulación cronológica con balance de inventario real</p>
+          <p className="text-xs text-gray-500 mt-1">Simulación sincronizada con Resultados Consolidados del Resumen Mensual</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
