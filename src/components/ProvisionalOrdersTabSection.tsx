@@ -143,29 +143,29 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     let ignoreTable = false;
 
     const handleTopScroll = () => {
-        if (ignoreTop) {
-            ignoreTop = false;
-            return;
-        }
-        ignoreTable = true;
-        tableDiv.scrollLeft = topDiv.scrollLeft;
+      if (ignoreTop) {
+        ignoreTop = false;
+        return;
+      }
+      ignoreTable = true;
+      tableDiv.scrollLeft = topDiv.scrollLeft;
     };
 
     const handleTableScroll = () => {
-        if (ignoreTable) {
-            ignoreTable = false;
-            return;
-        }
-        ignoreTop = true;
-        topDiv.scrollLeft = tableDiv.scrollLeft;
+      if (ignoreTable) {
+        ignoreTable = false;
+        return;
+      }
+      ignoreTop = true;
+      topDiv.scrollLeft = tableDiv.scrollLeft;
     };
 
     topDiv.addEventListener('scroll', handleTopScroll);
     tableDiv.addEventListener('scroll', handleTableScroll);
 
     return () => {
-        if (topDiv) topDiv.removeEventListener('scroll', handleTopScroll);
-        if (tableDiv) tableDiv.removeEventListener('scroll', handleTableScroll);
+      if (topDiv) topDiv.removeEventListener('scroll', handleTopScroll);
+      if (tableDiv) tableDiv.removeEventListener('scroll', handleTableScroll);
     };
   }, []);
 
