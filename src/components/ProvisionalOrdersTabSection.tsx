@@ -42,7 +42,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
     totalRegistros: 0,
-    pageSize: 5000, // Ajustado a un tamaño más seguro para evitar timeouts
+    pageSize: 5000, 
     isExploring: true,
     rowsPerPage: 20,
   });
@@ -58,7 +58,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       setError(null);
       logger.log('[ProvisionalOrdersTab] Iniciando exploración inicial...');
       
-      // 1. Obtener el total de registros con una llamada mínima
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 1);
       
       if (response && response.data) {
@@ -71,7 +70,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           isExploring: false,
         }));
 
-        // 2. Cargar un bloque razonable para filtrar
         addNotification('info', `Cargando órdenes para filtrar por Almacén 1001 y 2001...`);
         
         const fetchSize = 5000;
@@ -80,7 +78,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         if (pageResponse && pageResponse.data) {
           const allItems = Array.isArray(pageResponse.data) ? pageResponse.data : [];
           
-          // FILTRO: Solo Almacén 1001 y 2001
           const filtered = allItems.filter((order: ProvisionalOrder) => 
             String(order.Almacen).trim() === '1001' || String(order.Almacen).trim() === '2001'
           );
@@ -149,7 +146,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Info Card */}
       {!isLoading && orders.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-800">
@@ -158,7 +154,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         </div>
       )}
 
-      {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-sm text-red-800">
@@ -178,7 +173,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         </div>
       )}
 
-      {/* Loading State */}
       {isLoading && (
         <div className="flex flex-col justify-center items-center py-12 bg-white rounded-lg border border-dashed border-gray-300">
           <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
@@ -197,6 +191,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                       Orden Previsional
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      CodMaterial
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                       Material
@@ -219,8 +216,20 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                       F. Fin
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Centro
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/50">
                       Almacén
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Resp. Ctrl. Prod.
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Máquina
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Clase Orden
                     </th>
                   </tr>
                 </thead>
@@ -229,6 +238,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 font-mono">
                         {order.ORDENPREVISIONAL}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
+                        {order.CodMaterial}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
                         {order.MATERIAL}
@@ -251,8 +263,20 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {order.FECHAFIN}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.Centro}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700 bg-indigo-50/20">
                         {order.Almacen}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.RESPCONTROLPROD}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.Maquina || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.ClaseOrden}
                       </td>
                     </tr>
                   ))}
