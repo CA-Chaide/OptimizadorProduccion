@@ -11,15 +11,15 @@ import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 
-export function TacticalPlanForrosSection() {
+export const TacticalPlanForrosSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
-  const [loadingGrupos, setLoadingGrupos] = useState(true);
-  const [loadingRestricciones, setLoadingRestricciones] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
+        setIsLoading(true);
         const [gRes, rRes] = await Promise.all([
           grupoService.getAll(),
           restriccionService.getAll()
@@ -27,37 +27,52 @@ export function TacticalPlanForrosSection() {
         setGrupos(gRes.data || []);
         setRestricciones(rRes.data || []);
       } catch (error) {
-        console.error('Error fetching tactical plan forros data:', error);
+        console.error('Error fetching forros data:', error);
       } finally {
-        setLoadingGrupos(false);
-        setLoadingRestricciones(false);
+        setIsLoading(false);
       }
     }
     fetchData();
   }, []);
 
-  // Filtrar restricciones para el grupo "FORROS"
-  const forrosRestricciones = useMemo(() => {
-    const groupForros = grupos.find(g => g.nombre_grupo.toUpperCase().includes('FORROS'));
-    if (!groupForros) return [];
-    return restricciones.filter(r => r.codigo_grupo === groupForros.codigo_grupo);
-  }, [grupos, restricciones]);
+  // 1. Identificar el grupo de FORROS
+  const forrosGroup = useMemo(() => {
+    return grupos.find(g => g.nombre_grupo.toUpperCase().includes('FORROS'));
+  }, [grupos]);
 
-  // Generar objeto de filtros basado en restricciones específicas (RespCtrlProd y ALMACÉN)
-  const forrosFilters = useMemo(() => {
+  // 2. Filtrar restricciones específicas del grupo FORROS
+  const forrosRestricciones = useMemo(() => {
+    if (!forrosGroup) return [];
+    return restricciones.filter(r => r.codigo_grupo === forrosGroup.codigo_grupo);
+  }, [forrosGroup, restricciones]);
+
+  // 3. Extraer filtros para la tabla de órdenes (RespCtrlProd y ALMACÉN)
+  const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
+    
     forrosRestricciones.forEach(r => {
-      const name = r.nombre_restriccion;
-      // Normalizamos nombres para identificar los filtros solicitados
-      const upperName = name.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      
-      if (upperName === 'RESPCTRLPROD' || upperName === 'ALMACEN') {
-        if (!filters[name]) filters[name] = [];
-        filters[name].push(r.valor_restriccion.trim());
+      const name = r.nombre_restriccion.trim().toUpperCase();
+      // Mapeamos los nombres técnicos que esperamos en la tabla de órdenes
+      if (name === 'RESPCTRLPROD' || name === 'ALMACEN' || name === 'ALMACÉN') {
+        const key = name === 'ALMACÉN' ? 'ALMACEN' : name;
+        if (!filters[key]) filters[key] = [];
+        filters[key].push(r.valor_restriccion.trim());
       }
     });
+    
     return filters;
   }, [forrosRestricciones]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+          <p className="text-gray-500 font-medium">Cargando datos de Programación Táctica...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -75,134 +90,109 @@ export function TacticalPlanForrosSection() {
             <Lock className="w-4 h-4" /> Restricciones
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
-            <Package className="w-4 h-4" /> Ordenes Previsionales
+            <Package className="w-4 h-4" /> Órdenes Previsionales
           </TabsTrigger>
         </TabsList>
 
+        {/* Pestaña de Grupos */}
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
-              <CardTitle>Grupos de Trabajo</CardTitle>
-              <CardDescription>Listado de grupos operativos configurados en el sistema.</CardDescription>
+              <CardTitle>Listado de Grupos</CardTitle>
+              <CardDescription>Grupos operativos registrados en el sistema.</CardDescription>
             </CardHeader>
             <CardContent>
-              {loadingGrupos ? (
-                <div className="flex justify-center p-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                </div>
-              ) : (
-                <div className="border rounded-md overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Código</TableHead>
-                        <TableHead>Centro</TableHead>
-                        <TableHead>Nombre</TableHead>
-                        <TableHead>Estado</TableHead>
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead className="w-[100px]">Código</TableHead>
+                      <TableHead>Centro</TableHead>
+                      <TableHead>Nombre del Grupo</TableHead>
+                      <TableHead className="text-center">Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {grupos.map((g) => (
+                      <TableRow key={g.codigo_grupo}>
+                        <TableCell className="font-mono text-xs">{g.codigo_grupo}</TableCell>
+                        <TableCell>{g.centro}</TableCell>
+                        <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
+                            {g.estado === 'A' ? 'Activo' : 'Inactivo'}
+                          </Badge>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {grupos.map((g) => (
-                        <TableRow key={g.codigo_grupo}>
-                          <TableCell className="font-mono">{g.codigo_grupo}</TableCell>
-                          <TableCell>{g.centro}</TableCell>
-                          <TableCell>{g.nombre_grupo}</TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={g.estado === 'A' ? 'default' : 'secondary'} 
-                              className={g.estado === 'A' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
-                            >
-                              {g.estado === 'A' ? 'Activo' : 'Inactivo'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {grupos.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={4} className="text-center py-8 text-gray-500">
-                            No hay grupos disponibles
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* Pestaña de Restricciones */}
         <TabsContent value="restricciones">
           <Card>
             <CardHeader>
-              <CardTitle>Restricciones de Producción (Forros)</CardTitle>
-              <CardDescription>Parámetros y límites técnicos definidos específicamente para el grupo de Forros.</CardDescription>
+              <CardTitle>Restricciones Grupo: {forrosGroup?.nombre_grupo || 'FORROS'}</CardTitle>
+              <CardDescription>Configuración técnica y operativa para el área de forros.</CardDescription>
             </CardHeader>
             <CardContent>
-              {loadingRestricciones ? (
-                <div className="flex justify-center p-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                </div>
-              ) : (
-                <div className="border rounded-md overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Código</TableHead>
-                        <TableHead>Nombre</TableHead>
-                        <TableHead>Valor</TableHead>
-                        <TableHead>Descripción</TableHead>
-                        <TableHead>Estado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {forrosRestricciones.map((r) => (
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead>Nombre Restricción</TableHead>
+                      <TableHead>Valor</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead className="text-center">Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {forrosRestricciones.length > 0 ? (
+                      forrosRestricciones.map((r) => (
                         <TableRow key={r.codigo_restriccion}>
-                          <TableCell className="font-mono">{r.codigo_restriccion}</TableCell>
-                          <TableCell className="font-medium">{r.nombre_restriccion}</TableCell>
-                          <TableCell>{r.valor_restriccion}</TableCell>
-                          <TableCell className="max-w-xs truncate" title={r.descripcion}>
+                          <TableCell className="font-semibold text-indigo-700">{r.nombre_restriccion}</TableCell>
+                          <TableCell className="font-mono">{r.valor_restriccion}</TableCell>
+                          <TableCell className="text-gray-500 text-xs max-w-xs truncate" title={r.descripcion}>
                             {r.descripcion || '-'}
                           </TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={r.estado === 'A' ? 'default' : 'secondary'} 
-                              className={r.estado === 'A' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
-                            >
+                          <TableCell className="text-center">
+                            <Badge variant={r.estado === 'A' ? 'default' : 'secondary'} className={r.estado === 'A' ? 'bg-green-600' : ''}>
                               {r.estado === 'A' ? 'Activo' : 'Inactivo'}
                             </Badge>
                           </TableCell>
                         </TableRow>
-                      ))}
-                      {forrosRestricciones.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-gray-500">
-                            No se encontraron restricciones para el grupo "FORROS"
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
+                          No hay restricciones configuradas para el grupo de forros.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* Pestaña de Órdenes Previsionales */}
         <TabsContent value="ordenes">
           <Card>
             <CardHeader>
-              <CardTitle>Datos de Órdenes Previsionales (Forros)</CardTitle>
-              <CardDescription>
-                Visualización y exploración de las órdenes previsionales filtradas por RespCtrlProd y ALMACÉN según las restricciones vigentes.
-              </CardDescription>
+              <CardTitle>Explorador de Órdenes Previsionales</CardTitle>
+              <CardDescription>Visualización dinámica de órdenes filtradas por los criterios del grupo.</CardDescription>
             </CardHeader>
             <CardContent>
-              <ProvisionalOrdersTabSection externalFilters={forrosFilters} />
+              <ProvisionalOrdersTabSection externalFilters={externalFilters} />
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
     </div>
   );
-}
+};
