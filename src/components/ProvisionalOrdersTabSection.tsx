@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -137,7 +138,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentCenterOrders.length / pagination.rowsPerPage));
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
-  const endIndex = startIndex + pagination.rowsPerPage; // Declaración de endIndex
+  const endIndex = startIndex + pagination.rowsPerPage;
   const displayedOrders = currentCenterOrders.slice(startIndex, endIndex);
 
   const handlePrevious = () => {
@@ -160,6 +161,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     setSelectedCenter(center);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
+
+  const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
   if (isLoading && availableCenters.length === 0) {
     return (
@@ -216,7 +219,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             <TabsContent key={center} value={center} className="mt-0">
               {currentCenterOrders.length > 0 ? (
                 <div className="space-y-4">
-                  {/* Table with top scrollbar */}
                   <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
                     <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
                       <div style={{ transform: 'rotateX(180deg)' }}>
@@ -242,8 +244,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                             {displayedOrders.map((order, idx) => (
                               <tr key={`${order.ORDENPREVISIONAL}-${idx}`} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{order.CodMaterial}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{order.MATERIAL}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{formatMaterial(order.CodMaterial)}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{formatMaterial(order.MATERIAL)}</td>
                                 <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.CATEGORIA}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{Number(order.CANTIDAD || 0).toLocaleString()}</td>
@@ -261,7 +263,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Pagination for current center */}
                     <div className="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <span className="text-xs font-medium text-gray-500 uppercase">Mostrar:</span>

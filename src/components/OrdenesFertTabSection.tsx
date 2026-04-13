@@ -176,6 +176,8 @@ export const OrdenesFertTabSection: React.FC = () => {
   const startIndex = (currentPage - 1) * rowsPerPage;
   const displayedOrders = currentViewOrders.slice(startIndex, startIndex + rowsPerPage);
 
+  const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -269,7 +271,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                         {displayedOrders.map((order, idx) => (
                           <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold text-indigo-600">{order.ORDEN}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{order.MATERIAL}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
                             <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
                               {Number(order.CANTPROGRAMADA || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
