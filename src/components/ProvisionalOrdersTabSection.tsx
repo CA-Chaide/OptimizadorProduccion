@@ -6,23 +6,8 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
 import { Package } from 'lucide-react';
+import type { ProvisionalOrder } from '@/types/interfaces';
 
-interface ProvisionalOrder {
-  ORDENPREVISIONAL: string;
-  MATERIAL: string;
-  NOMBRE: string;
-  CATEGORIA: string;
-  CANTIDAD: number;
-  UNIDAD: string;
-  FECHAINICIO: string;
-  FECHAFIN: string;
-  RESPCONTROLPROD: string;
-  Centro: string;
-  Almacen: string;
-  Maquina: string | null;
-  ClaseOrden: string;
-  CodMaterial: string;
-}
 
 interface PaginationState {
   currentPage: number;
@@ -179,8 +164,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     tableDiv.addEventListener('scroll', handleTableScroll);
 
     return () => {
-        topDiv.removeEventListener('scroll', handleTopScroll);
-        tableDiv.removeEventListener('scroll', handleTableScroll);
+        if (topDiv) topDiv.removeEventListener('scroll', handleTopScroll);
+        if (tableDiv) tableDiv.removeEventListener('scroll', handleTableScroll);
     };
   }, []);
 
@@ -192,11 +177,15 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           }
       };
       calculateWidth();
+      window.addEventListener('resize', calculateWidth);
+      
       const resizeObserver = new ResizeObserver(calculateWidth);
       if (tableRef.current) {
           resizeObserver.observe(tableRef.current);
       }
+
       return () => {
+          window.removeEventListener('resize', calculateWidth);
           if (tableRef.current) {
               resizeObserver.unobserve(tableRef.current);
           }
@@ -221,7 +210,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       </div>
     );
   }
-
+  
   if (orders.length === 0) {
     return (
         <div className="flex flex-col items-center justify-center py-12 text-gray-500 border-2 border-dashed rounded-lg">

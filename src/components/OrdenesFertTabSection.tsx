@@ -129,8 +129,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     tableDiv.addEventListener('scroll', handleTableScroll);
 
     return () => {
-        topDiv.removeEventListener('scroll', handleTopScroll);
-        tableDiv.removeEventListener('scroll', handleTableScroll);
+        if (topDiv) topDiv.removeEventListener('scroll', handleTopScroll);
+        if (tableDiv) tableDiv.removeEventListener('scroll', handleTableScroll);
     };
   }, []);
 
@@ -142,11 +142,15 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           }
       };
       calculateWidth();
+      window.addEventListener('resize', calculateWidth);
+      
       const resizeObserver = new ResizeObserver(calculateWidth);
       if (tableRef.current) {
           resizeObserver.observe(tableRef.current);
       }
+
       return () => {
+          window.removeEventListener('resize', calculateWidth);
           if (tableRef.current) {
               resizeObserver.unobserve(tableRef.current);
           }
