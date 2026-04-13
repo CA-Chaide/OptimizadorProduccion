@@ -46,13 +46,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return restricciones.filter(r => r.codigo_grupo === forrosGroup.codigo_grupo);
   }, [forrosGroup, restricciones]);
 
-  // 3. Extraer filtros para la tabla de órdenes (RespCtrlProd y ALMACÉN)
+  // 3. Extraer filtros para la tabla de órdenes (RespCtrlProd y ALMACEN)
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
     
     forrosRestricciones.forEach(r => {
       const name = r.nombre_restriccion.trim().toUpperCase();
-      // Mapeamos los nombres técnicos que esperamos en la tabla de órdenes
       if (name === 'RESPCTRLPROD' || name === 'ALMACEN' || name === 'ALMACÉN') {
         const key = name === 'ALMACÉN' ? 'ALMACEN' : name;
         if (!filters[key]) filters[key] = [];
@@ -137,7 +136,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Restricciones Grupo: {forrosGroup?.nombre_grupo || 'FORROS'}</CardTitle>
-              <CardDescription>Configuración técnica y operativa para el área de forros.</CardDescription>
+              <CardDescription>Configuración técnica y operativa para el área seleccionada.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-x-auto">
@@ -169,7 +168,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
-                          No hay restricciones configuradas para el grupo de forros.
+                          No hay restricciones configuradas para este grupo.
                         </TableCell>
                       </TableRow>
                     )}
@@ -184,8 +183,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="ordenes">
           <Card>
             <CardHeader>
-              <CardTitle>Explorador de Órdenes Previsionales</CardTitle>
-              <CardDescription>Visualización dinámica de órdenes filtradas por los criterios del grupo.</CardDescription>
+              <CardTitle>Órdenes Previsionales Filtradas</CardTitle>
+              <CardDescription>Visualización dinámica de órdenes para el grupo Forros.</CardDescription>
             </CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection externalFilters={externalFilters} />

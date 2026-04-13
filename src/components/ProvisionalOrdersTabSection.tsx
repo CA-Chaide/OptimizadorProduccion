@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
-import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Filter, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2 } from 'lucide-react';
+import { Filter, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 interface ProvisionalOrder {
   [key: string]: any;
@@ -33,17 +33,13 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     rowsPerPage: 20,
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Carga inicial de datos
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        setError(null);
-        
-        // Consultamos un lote representativo para filtrado local (MVP: 10k registros)
-        // Esto evita múltiples llamadas lentas a la API mientras se navega localmente
+        // Consultamos un lote grande para permitir el filtrado dinámico local
         const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
         
         if (response && response.data) {
@@ -57,7 +53,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
         }
       } catch (err) {
         const errorMessage = (err as Error).message;
-        setError(errorMessage);
         addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
       } finally {
         setIsLoading(false);
@@ -75,7 +70,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       return Object.entries(externalFilters).every(([filterKey, allowedValues]) => {
         if (!allowedValues || allowedValues.length === 0) return true;
 
-        // Normalización básica para búsqueda de columnas
+        // Normalización para búsqueda de columnas (insensible a mayúsculas/minúsculas y espacios)
         const normFilterKey = filterKey.toUpperCase().trim();
         
         // Buscamos la columna en la orden que coincida con el nombre de la restricción
@@ -84,7 +79,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
         const orderValue = String(order[orderKey] ?? '').trim().toUpperCase();
         
-        // El valor de la celda debe estar en la lista de valores de la restricción
+        // El valor de la celda debe estar en la lista de valores permitidos
         return allowedValues.some(val => val.trim().toUpperCase() === orderValue);
       });
     });
@@ -93,11 +88,10 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   // Columnas dinámicas basadas en los datos filtrados
   const columns = useMemo(() => {
     if (filteredOrders.length === 0) return [];
-    // Obtenemos todas las llaves del primer objeto para las cabeceras
     return Object.keys(filteredOrders[0]);
   }, [filteredOrders]);
 
-  // Paginación local sobre datos filtrados
+  // Paginación local
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pagination.rowsPerPage));
   const displayedOrders = useMemo(() => {
     const start = (pagination.currentPage - 1) * pagination.rowsPerPage;
@@ -120,12 +114,12 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
   return (
     <div className="space-y-4">
-      {/* Resumen de Filtros Aplicados */}
+      {/* Resumen de Filtros Aplicados (Solo si existen) */}
       {externalFilters && Object.keys(externalFilters).length > 0 && (
         <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <Filter className="w-4 h-4 text-amber-600" />
           <div className="flex flex-wrap gap-2">
-            <span className="text-xs font-semibold text-amber-800 uppercase">Filtros Activos:</span>
+            <span className="text-xs font-semibold text-amber-800 uppercase">Filtros por Restricción:</span>
             {Object.entries(externalFilters).map(([key, values]) => (
               <Badge key={key} variant="outline" className="bg-white border-amber-300 text-amber-700 text-[10px]">
                 {key}: {values.join(', ')}
@@ -138,7 +132,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
         </div>
       )}
 
-      {/* Tabla con scroll y cabecera pegajosa */}
+      {/* Tabla Dinámica */}
       <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[65vh]">
           <table className="min-w-full divide-y divide-gray-200 border-collapse">
@@ -171,7 +165,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
               ) : (
                 <tr>
                   <td colSpan={columns.length || 1} className="py-20 text-center text-gray-400 italic">
-                    No se encontraron órdenes que coincidan con los criterios.
+                    No se encontraron órdenes que coincidan con los criterios de filtrado.
                   </td>
                 </tr>
               )}
@@ -180,11 +174,11 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
         </div>
       </div>
 
-      {/* Controles de Paginación */}
+      {/* Paginación */}
       {filteredOrders.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-medium">Filas por página:</span>
+            <span className="text-xs text-gray-500 font-medium">Filas:</span>
             <select
               value={pagination.rowsPerPage}
               onChange={(e) => setPagination(prev => ({ ...prev, rowsPerPage: Number(e.target.value), currentPage: 1 }))}
