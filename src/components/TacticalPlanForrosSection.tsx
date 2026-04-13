@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CalendarClock, Loader2, Users, Lock, Package } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
@@ -11,38 +11,37 @@ import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 
-export const TacticalPlanForrosSection: React.FC = () => {
+export function TacticalPlanForrosSection() {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [loadingGrupos, setLoadingGrupos] = useState(true);
   const [loadingRestricciones, setLoadingRestricciones] = useState(true);
 
   useEffect(() => {
-    const fetchGrupos = async () => {
+    async function fetchData() {
       try {
-        const res = await grupoService.getAll();
-        setGrupos(res.data || []);
+        const [gRes, rRes] = await Promise.all([
+          grupoService.getAll(),
+          restriccionService.getAll()
+        ]);
+        setGrupos(gRes.data || []);
+        setRestricciones(rRes.data || []);
       } catch (error) {
-        console.error('Error fetching groups:', error);
+        console.error('Error fetching tactical plan forros data:', error);
       } finally {
         setLoadingGrupos(false);
-      }
-    };
-
-    const fetchRestricciones = async () => {
-      try {
-        const res = await restriccionService.getAll();
-        setRestricciones(res.data || []);
-      } catch (error) {
-        console.error('Error fetching restrictions:', error);
-      } finally {
         setLoadingRestricciones(false);
       }
-    };
-
-    fetchGrupos();
-    fetchRestricciones();
+    }
+    fetchData();
   }, []);
+
+  // Filtrar restricciones para el grupo "FORROS"
+  const forrosRestricciones = useMemo(() => {
+    const groupForros = grupos.find(g => g.nombre_grupo.toUpperCase().includes('FORROS'));
+    if (!groupForros) return [];
+    return restricciones.filter(r => r.codigo_grupo === groupForros.codigo_grupo);
+  }, [grupos, restricciones]);
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -72,9 +71,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </CardHeader>
             <CardContent>
               {loadingGrupos ? (
-                <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+                <div className="flex justify-center p-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
               ) : (
-                <div className="border rounded-md">
+                <div className="border rounded-md overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -91,7 +92,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <TableCell>{g.centro}</TableCell>
                           <TableCell>{g.nombre_grupo}</TableCell>
                           <TableCell>
-                            <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600 hover:bg-green-700' : ''}>
+                            <Badge 
+                              variant={g.estado === 'A' ? 'default' : 'secondary'} 
+                              className={g.estado === 'A' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+                            >
                               {g.estado === 'A' ? 'Activo' : 'Inactivo'}
                             </Badge>
                           </TableCell>
@@ -99,7 +103,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       ))}
                       {grupos.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={4} className="text-center py-8 text-gray-500">No hay grupos disponibles</TableCell>
+                          <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                            No hay grupos disponibles
+                          </TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -113,14 +119,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="restricciones">
           <Card>
             <CardHeader>
-              <CardTitle>Restricciones de Producción</CardTitle>
-              <CardDescription>Parámetros y límites técnicos definidos por grupo.</CardDescription>
+              <CardTitle>Restricciones de Producción (Forros)</CardTitle>
+              <CardDescription>Parámetros y límites técnicos definidos específicamente para el grupo de Forros.</CardDescription>
             </CardHeader>
             <CardContent>
               {loadingRestricciones ? (
-                <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+                <div className="flex justify-center p-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
               ) : (
-                <div className="border rounded-md">
+                <div className="border rounded-md overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -132,22 +140,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {restricciones.map((r) => (
+                      {forrosRestricciones.map((r) => (
                         <TableRow key={r.codigo_restriccion}>
                           <TableCell className="font-mono">{r.codigo_restriccion}</TableCell>
                           <TableCell className="font-medium">{r.nombre_restriccion}</TableCell>
                           <TableCell>{r.valor_restriccion}</TableCell>
-                          <TableCell className="max-w-xs truncate" title={r.description}>{r.descripcion || '-'}</TableCell>
+                          <TableCell className="max-w-xs truncate" title={r.descripcion}>
+                            {r.descripcion || '-'}
+                          </TableCell>
                           <TableCell>
-                            <Badge variant={r.estado === 'A' ? 'default' : 'secondary'} className={r.estado === 'A' ? 'bg-green-600 hover:bg-green-700' : ''}>
+                            <Badge 
+                              variant={r.estado === 'A' ? 'default' : 'secondary'} 
+                              className={r.estado === 'A' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+                            >
                               {r.estado === 'A' ? 'Activo' : 'Inactivo'}
                             </Badge>
                           </TableCell>
                         </TableRow>
                       ))}
-                      {restricciones.length === 0 && (
+                      {forrosRestricciones.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-gray-500">No hay restricciones disponibles</TableCell>
+                          <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                            No se encontraron restricciones para el grupo "FORROS"
+                          </TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -174,4 +189,4 @@ export const TacticalPlanForrosSection: React.FC = () => {
       </Tabs>
     </div>
   );
-};
+}
