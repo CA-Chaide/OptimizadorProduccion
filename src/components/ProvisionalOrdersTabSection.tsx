@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
@@ -37,103 +37,75 @@ interface PaginationState {
 export const ProvisionalOrdersTabSection: React.FC = () => {
   const inspector = useRuntimeInspector('ProvisionalOrdersTab');
   const { addNotification } = useAppContext();
+  const hasStarted = useRef(false);
 
   const [orders, setOrders] = useState<ProvisionalOrder[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
     totalRegistros: 0,
-    pageSize: 1,
+    pageSize: 5000, // Ajustado a un tamaño más seguro para evitar timeouts
     isExploring: true,
     rowsPerPage: 20,
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initial exploration to know the total records
-  useEffect(() => {
-    const performExploration = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        logger.log('[ProvisionalOrdersTab] Iniciando exploración inicial con 1 fila...');
-        
-        const response = await serviciosService.OrdenesProvisionalesPaginados(1, 1);
-        
-        if (response.data && response.data.length > 0) {
-          const total = response.totalRegistros || 0;
-          logger.log(`[ProvisionalOrdersTab] Exploración completada. Total de registros: ${total}`);
-          
-          setPagination(prev => ({
-            ...prev,
-            totalRegistros: total,
-            pageSize: 20000,
-            isExploring: false,
-          }));
+  const performExploration = useCallback(async () => {
+    if (hasStarted.current) return;
+    hasStarted.current = true;
 
-          addNotification('info', `Filtrando órdenes para Almacén 1001 y 2001...`);
-          
-          // Cargar la primera página grande después de la exploración
-          setIsLoading(true);
-          const pageResponse = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
-          if (pageResponse.data) {
-            // APLICAR FILTRO: Solo Almacén 1001 y 2001
-            const filtered = (pageResponse.data || []).filter((order: ProvisionalOrder) => 
-              String(order.Almacen).trim() === '1001' || String(order.Almacen).trim() === '2001'
-            );
-            
-            setOrders(filtered);
-            logger.log(`[ProvisionalOrdersTab] Cargados ${pageResponse.data.length} registros. Se muestran ${filtered.length} tras filtrar por Almacén 1001/2001.`);
-            inspector.captureVariable('filteredOrdersCount', filtered.length);
-          }
-        } else {
-          throw new Error('No se obtuvieron datos en la exploración');
-        }
-      } catch (err) {
-        const errorMessage = (err as Error).message;
-        logger.error(`[ProvisionalOrdersTab] Error en exploración: ${errorMessage}`);
-        setError(errorMessage);
-        addNotification('error', `Error al explorar órdenes: ${errorMessage}`);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    performExploration();
-  }, [addNotification, inspector]);
-
-  // Load orders for current page
-  const loadOrdersForPage = useCallback(async (page: number) => {
     try {
       setIsLoading(true);
       setError(null);
-      logger.log(`[ProvisionalOrdersTab] Cargando página ${page}...`);
-
-      const response = await serviciosService.OrdenesProvisionalesPaginados(page, pagination.pageSize);
+      logger.log('[ProvisionalOrdersTab] Iniciando exploración inicial...');
       
-      if (response.data) {
-        // APLICAR FILTRO: Solo Almacén 1001 y 2001
-        const filtered = (response.data || []).filter((order: ProvisionalOrder) => 
-          String(order.Almacen).trim() === '1001' || String(order.Almacen).trim() === '2001'
-        );
-
-        setOrders(filtered);
+      // 1. Obtener el total de registros con una llamada mínima
+      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 1);
+      
+      if (response && response.data) {
+        const total = response.totalRegistros || 0;
+        logger.log(`[ProvisionalOrdersTab] Total de registros en backend: ${total}`);
+        
         setPagination(prev => ({
           ...prev,
-          currentPage: page,
+          totalRegistros: total,
+          isExploring: false,
         }));
-        logger.log(`[ProvisionalOrdersTab] Página ${page} cargada. Se muestran ${filtered.length} tras filtrar.`);
+
+        // 2. Cargar un bloque razonable para filtrar
+        addNotification('info', `Cargando órdenes para filtrar por Almacén 1001 y 2001...`);
+        
+        const fetchSize = 5000;
+        const pageResponse = await serviciosService.OrdenesProvisionalesPaginados(1, fetchSize);
+        
+        if (pageResponse && pageResponse.data) {
+          const allItems = Array.isArray(pageResponse.data) ? pageResponse.data : [];
+          
+          // FILTRO: Solo Almacén 1001 y 2001
+          const filtered = allItems.filter((order: ProvisionalOrder) => 
+            String(order.Almacen).trim() === '1001' || String(order.Almacen).trim() === '2001'
+          );
+          
+          setOrders(filtered);
+          logger.log(`[ProvisionalOrdersTab] Cargados ${allItems.length} registros. Se muestran ${filtered.length} tras filtrar.`);
+          inspector.captureVariable('filteredOrdersCount', filtered.length);
+        }
       } else {
-        throw new Error('No se obtuvieron datos');
+        throw new Error('No se pudo conectar con el servicio de órdenes');
       }
     } catch (err) {
       const errorMessage = (err as Error).message;
-      logger.error(`[ProvisionalOrdersTab] Error al cargar página: ${errorMessage}`);
+      logger.error(`[ProvisionalOrdersTab] Error: ${errorMessage}`);
       setError(errorMessage);
       addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.pageSize, addNotification]);
+  }, [addNotification, inspector]);
+
+  useEffect(() => {
+    performExploration();
+  }, [performExploration]);
 
   const totalPagesLocal = Math.max(1, Math.ceil(orders.length / pagination.rowsPerPage));
   
@@ -159,13 +131,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     }
   };
 
-  const handleLoadPage = (page: number) => {
-    setPagination(prev => ({
-      ...prev,
-      currentPage: page,
-    }));
-  };
-
   const handleRowsPerPageChange = (newRowsPerPage: number) => {
     setPagination(prev => ({
       ...prev,
@@ -186,10 +151,10 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       </div>
 
       {/* Info Card */}
-      {orders.length > 0 && (
+      {!isLoading && orders.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-800">
-            <span className="font-semibold">Mostrando:</span> {orders.length.toLocaleString()} registros filtrados de un total de {pagination.totalRegistros.toLocaleString()} disponibles en el backend.
+            <span className="font-semibold">Mostrando:</span> {orders.length.toLocaleString()} registros encontrados en el bloque actual de búsqueda.
           </p>
         </div>
       )}
@@ -200,14 +165,26 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           <p className="text-sm text-red-800">
             <span className="font-semibold">Error:</span> {error}
           </p>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="mt-2" 
+            onClick={() => {
+              hasStarted.current = false;
+              performExploration();
+            }}
+          >
+            Reintentar Carga
+          </Button>
         </div>
       )}
 
       {/* Loading State */}
       {isLoading && (
-        <div className="flex justify-center items-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-          <span className="ml-3 text-gray-600">Cargando y filtrando datos...</span>
+        <div className="flex flex-col justify-center items-center py-12 bg-white rounded-lg border border-dashed border-gray-300">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500"></div>
+          <span className="mt-4 text-gray-600 font-medium">Cargando y filtrando órdenes previsionales...</span>
+          <p className="text-xs text-gray-400 mt-2">Esto puede tomar unos segundos debido al volumen de datos.</p>
         </div>
       )}
 
@@ -263,7 +240,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                       {order.CATEGORIA}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">
-                      {order.CANTIDAD.toLocaleString()}
+                      {Number(order.CANTIDAD || 0).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {order.UNIDAD}
@@ -331,11 +308,24 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       )}
 
       {/* Empty State */}
-      {!isLoading && orders.length === 0 && (
+      {!isLoading && orders.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-16 text-gray-500 border-2 border-dashed rounded-lg bg-gray-50">
           <Package className="w-12 h-12 mb-4 text-gray-300" />
-          <p className="font-medium">No hay órdenes previsionales para los almacenes 1001 o 2001</p>
-          <p className="text-sm mt-1">Verifica la conexión con el servidor o los filtros aplicados.</p>
+          <p className="font-medium text-lg text-gray-700">No se encontraron órdenes para procesar</p>
+          <p className="text-sm mt-1 max-w-md text-center">
+            No se han encontrado órdenes en los almacenes 1001 o 2001 dentro del bloque de datos consultado. 
+            Verifica la conexión o intenta reintentar la carga.
+          </p>
+          <Button 
+            className="mt-6" 
+            variant="indigo" 
+            onClick={() => {
+              hasStarted.current = false;
+              performExploration();
+            }}
+          >
+            Reintentar Carga de Datos
+          </Button>
         </div>
       )}
     </div>
