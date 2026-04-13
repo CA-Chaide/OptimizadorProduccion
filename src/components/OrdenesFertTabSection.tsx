@@ -15,19 +15,28 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface OrdenFert {
+  CENTRO: string;
   ORDEN: string;
   MATERIAL: string;
-  TEXTO_BREVE: string;
-  CANTIDAD: number;
+  SECTORDESC: string;
+  CATEGORIA: string;
+  NOMBRE: string;
+  CANTPROGRAMADA: number;
+  CANTENTREGADA: number;
+  CANTNOTIFICADA: number;
+  CANTRECHAZO: number;
   UNIDAD: string;
-  FECHA_ENTREGA: string;
-  FECHA_LIBERACION: string;
-  ESTADO: string;
-  CENTRO: string;
-  ALMACEN: string;
-  SECTOR?: string;
-  RESP_CTRL_PROD?: string;
-  RESPCONTROLPROD?: string;
+  FECHA: string;
+  ANIO: number;
+  MES: number;
+  DIA: number;
+  SEMANA: number;
+  RESPCTRLPROD: string;
+  PRIORIDAD: number;
+  ENLINEA: number;
+  MAQUINA: string;
+  PEDIDO: string;
+  CANTPROGPESONETO: number;
   [key: string]: any;
 }
 
@@ -43,13 +52,11 @@ export const OrdenesFertTabSection: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Filtros extraídos de las restricciones de Ensamblado
   const [appliedFilters, setAppliedFilters] = useState<{ sectors: string[], resps: string[] }>({
     sectors: [],
     resps: []
   });
 
-  // Paginación local
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
@@ -62,7 +69,6 @@ export const OrdenesFertTabSection: React.FC = () => {
       setError(null);
       logger.log('[OrdenesFertTab] Cargando datos y configuraciones...');
       
-      // 1. Cargar datos en paralelo
       const [centersRes, groupsRes, restRes, fertRes] = await Promise.all([
         serviciosService.getCentros(),
         grupoService.getAll(),
@@ -72,9 +78,8 @@ export const OrdenesFertTabSection: React.FC = () => {
 
       const rawData = Array.isArray(fertRes?.data) ? fertRes.data : [];
       setAllRawOrders(rawData);
-      logger.log(`[OrdenesFertTab] Órdenes brutas: ${rawData.length}`);
+      logger.log(`[OrdenesFertTab] Órdenes recibidas: ${rawData.length}`);
 
-      // 2. Extraer restricciones del grupo "Ensamblado"
       const ensambladoGroups = (groupsRes?.data || []).filter((g: any) => 
         String(g.nombre_grupo || '').toLowerCase().includes('ensamblado')
       );
@@ -85,23 +90,20 @@ export const OrdenesFertTabSection: React.FC = () => {
         groupIds.includes(r.codigo_grupo) && r.estado === 'A'
       );
 
-      // Buscar nombres de restricciones flexibles (singular o plural)
       const sectorRest = ensambladoRestrictions.find((r: any) => 
         ['SECTORES', 'SECTOR'].includes(String(r.nombre_restriccion).toUpperCase())
       );
       const respRest = ensambladoRestrictions.find((r: any) => 
-        ['RESP_CTRL_PROD', 'RESP_CONTROL_PROD', 'RESPCONTROLPROD'].includes(String(r.nombre_restriccion).toUpperCase())
+        ['RESP_CTRL_PROD', 'RESP_CONTROL_PROD', 'RESPCTRLPROD'].includes(String(r.nombre_restriccion).toUpperCase())
       );
 
-      const sectors = sectorRest ? sectorRest.valor_restriccion.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+      const sectors = sectorRest ? sectorRest.valor_restriccion.split(',').map((s: string) => s.trim().toUpperCase()).filter(Boolean) : [];
       const resps = respRest ? respRest.valor_restriccion.split(',').map((r: string) => r.trim()).filter(Boolean) : [];
 
       setAppliedFilters({ sectors, resps });
       
-      // 3. Procesar Centros Disponibles
       const officialCenters = (centersRes?.data || []).map((c: any) => String(c.Centro || c).trim()).filter(Boolean);
-      // Incluir también cualquier centro que aparezca en la data bruta
-      const dataCenters = [...new Set(rawData.map(o => String(o.CENTRO || o.Centro || '').trim()))].filter(Boolean);
+      const dataCenters = [...new Set(rawData.map(o => String(o.CENTRO || '').trim()))].filter(Boolean);
       const finalCentersList = [...new Set([...officialCenters, ...dataCenters])].sort();
       
       setAvailableCenters(finalCentersList);
@@ -119,18 +121,15 @@ export const OrdenesFertTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // LÓGICA DE FILTRADO REACTIVA
   const filteredOrders = useMemo(() => {
     return allRawOrders.filter(order => {
-      // 1. Filtro por Sectores (si existen en restricciones)
       if (appliedFilters.sectors.length > 0) {
-        const s = String(order.SECTOR || '').trim();
+        const s = String(order.SECTORDESC || '').trim().toUpperCase();
         if (!appliedFilters.sectors.includes(s)) return false;
       }
 
-      // 2. Filtro por Responsables (si existen en restricciones)
       if (appliedFilters.resps.length > 0) {
-        const r = String(order.RESP_CTRL_PROD || order.RESPCONTROLPROD || '').trim();
+        const r = String(order.RESPCTRLPROD || '').trim();
         if (!appliedFilters.resps.includes(r)) return false;
       }
 
@@ -138,13 +137,12 @@ export const OrdenesFertTabSection: React.FC = () => {
     });
   }, [allRawOrders, appliedFilters]);
 
-  // AGRUPACIÓN POR CENTRO BASADA EN DATA FILTRADA
   const ordersGroupedByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     availableCenters.forEach(c => grouped[c] = []);
     
     filteredOrders.forEach(order => {
-      const c = String(order.CENTRO || order.Centro || '').trim();
+      const c = String(order.CENTRO || '').trim();
       if (grouped[c]) {
         grouped[c].push(order);
       } else if (c) {
@@ -155,7 +153,6 @@ export const OrdenesFertTabSection: React.FC = () => {
     return grouped;
   }, [filteredOrders, availableCenters]);
 
-  // VISTA ACTUAL (Bruta o Centro Específico)
   const currentViewOrders = useMemo(() => {
     let base = [];
     if (selectedCenter === "raw_view") {
@@ -170,11 +167,11 @@ export const OrdenesFertTabSection: React.FC = () => {
     return base.filter(o => 
       String(o.ORDEN || '').toLowerCase().includes(term) ||
       String(o.MATERIAL || '').toLowerCase().includes(term) ||
-      String(o.TEXTO_BREVE || '').toLowerCase().includes(term)
+      String(o.NOMBRE || '').toLowerCase().includes(term) ||
+      String(o.SECTORDESC || '').toLowerCase().includes(term)
     );
   }, [allRawOrders, ordersGroupedByCenter, selectedCenter, searchTerm]);
 
-  // PAGINACIÓN
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
   const displayedOrders = currentViewOrders.slice(startIndex, startIndex + rowsPerPage);
@@ -258,14 +255,14 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Orden</th>
                           <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Material</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Descripción</th>
-                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cantidad</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Nombre</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cant. Programada</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cant. Entregada</th>
                           <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Centro</th>
                           <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Sector</th>
-                          <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Almacén</th>
                           <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Resp. Ctrl.</th>
-                          <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Entrega</th>
-                          <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Estado</th>
+                          <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Fecha</th>
+                          <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Máquina</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -273,20 +270,18 @@ export const OrdenesFertTabSection: React.FC = () => {
                           <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold text-indigo-600">{order.ORDEN}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{order.MATERIAL}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">{order.TEXTO_BREVE}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
-                              {Number(order.CANTIDAD || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
+                              {Number(order.CANTPROGRAMADA || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-bold text-gray-500">{order.CENTRO || order.Centro || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-medium text-amber-700 bg-amber-50/20">{order.SECTOR || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.ALMACEN}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.RESP_CTRL_PROD || order.RESPCONTROLPROD || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.FECHA_ENTREGA || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <Badge variant="outline" className="text-[10px] uppercase font-bold">
-                                {order.ESTADO || 'LIB.'}
-                              </Badge>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-green-600">
+                              {Number(order.CANTENTREGADA || 0).toLocaleString()}
                             </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-bold text-gray-500">{order.CENTRO || '-'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-medium text-amber-700 bg-amber-50/20">{order.SECTORDESC || '-'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.RESPCTRLPROD || '-'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.FECHA || '-'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-mono text-indigo-500">{order.MAQUINA || '-'}</td>
                           </tr>
                         ))}
                       </tbody>
