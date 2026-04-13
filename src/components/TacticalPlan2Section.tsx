@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,6 +53,21 @@ export const TacticalPlan2Section: React.FC = () => {
     loadRestricciones();
   }, []);
 
+  // Filtrar grupos que contengan "Ensamblado"
+  const gruposFiltrados = useMemo(() => {
+    return grupos.filter(g => 
+      g.nombre_grupo.toLowerCase().includes('ensamblado')
+    );
+  }, [grupos]);
+
+  // Filtrar restricciones que pertenezcan a un grupo llamado "Ensamblado"
+  const restriccionesFiltradas = useMemo(() => {
+    return restricciones.filter(r => {
+      const grupoAsociado = grupos.find(g => g.codigo_grupo === r.codigo_grupo);
+      return grupoAsociado && grupoAsociado.nombre_grupo.toLowerCase().includes('ensamblado');
+    });
+  }, [restricciones, grupos]);
+
   const resolveCentro = (codigoOrValue?: any) => {
     if (codigoOrValue == null) return null;
     const codigo = Number(codigoOrValue);
@@ -88,8 +103,8 @@ export const TacticalPlan2Section: React.FC = () => {
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
-              <CardTitle>Grupos Operativos</CardTitle>
-              <CardDescription>Listado de grupos y centros configurados en el sistema.</CardDescription>
+              <CardTitle>Grupos Operativos (Ensamblado)</CardTitle>
+              <CardDescription>Mostrando únicamente los grupos relacionados con el área de Ensamblado.</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoadingGrupos ? (
@@ -106,7 +121,7 @@ export const TacticalPlan2Section: React.FC = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {grupos.length > 0 ? grupos.map((g) => {
+                      {gruposFiltrados.length > 0 ? gruposFiltrados.map((g) => {
                         const centro = resolveCentro(g.centro);
                         const Icon = centro?.Icon;
                         return (
@@ -129,7 +144,7 @@ export const TacticalPlan2Section: React.FC = () => {
                           </TableRow>
                         );
                       }) : (
-                        <TableRow><TableCell colSpan={4} className="text-center py-8 text-gray-500">No hay grupos registrados</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={4} className="text-center py-8 text-gray-500">No se encontraron grupos de "Ensamblado"</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -143,8 +158,8 @@ export const TacticalPlan2Section: React.FC = () => {
         <TabsContent value="restricciones">
           <Card>
             <CardHeader>
-              <CardTitle>Restricciones de Producción</CardTitle>
-              <CardDescription>Parámetros y límites operativos globales por grupo.</CardDescription>
+              <CardTitle>Restricciones de Producción (Ensamblado)</CardTitle>
+              <CardDescription>Parámetros y límites operativos filtrados para el área de Ensamblado.</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoadingRestricciones ? (
@@ -162,7 +177,7 @@ export const TacticalPlan2Section: React.FC = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {restricciones.length > 0 ? restricciones.map((r) => {
+                      {restriccionesFiltradas.length > 0 ? restriccionesFiltradas.map((r) => {
                         const grupo = grupos.find(g => g.codigo_grupo === r.codigo_grupo);
                         return (
                           <TableRow key={r.codigo_restriccion}>
@@ -185,7 +200,7 @@ export const TacticalPlan2Section: React.FC = () => {
                           </TableRow>
                         );
                       }) : (
-                        <TableRow><TableCell colSpan={5} className="text-center py-8 text-gray-500">No hay restricciones registradas</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={5} className="text-center py-8 text-gray-500">No hay restricciones para el área de Ensamblado</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
