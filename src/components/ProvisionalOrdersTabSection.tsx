@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -60,7 +61,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         if (response.data && response.data.length > 0) {
           const total = response.totalRegistros || 0;
           logger.log(`[ProvisionalOrdersTab] Exploración completada. Total de registros: ${total}`);
-          inspector.captureVariable('totalRegistros', total);
           
           setPagination(prev => ({
             ...prev,
@@ -69,14 +69,20 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             isExploring: false,
           }));
 
-          addNotification('success', `Se encontraron ${total} órdenes previsionales. Cargando tabla...`);
+          addNotification('info', `Filtrando órdenes para Almacén 1001 y 2001...`);
           
-          // Cargar la primera página después de la exploración
+          // Cargar la primera página grande después de la exploración
           setIsLoading(true);
           const pageResponse = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
           if (pageResponse.data) {
-            setOrders(pageResponse.data);
-            logger.log(`[ProvisionalOrdersTab] Primera página cargada con ${pageResponse.data.length} registros`);
+            // APLICAR FILTRO: Solo Almacén 1001 y 2001
+            const filtered = (pageResponse.data || []).filter((order: ProvisionalOrder) => 
+              String(order.Almacen).trim() === '1001' || String(order.Almacen).trim() === '2001'
+            );
+            
+            setOrders(filtered);
+            logger.log(`[ProvisionalOrdersTab] Cargados ${pageResponse.data.length} registros. Se muestran ${filtered.length} tras filtrar por Almacén 1001/2001.`);
+            inspector.captureVariable('filteredOrdersCount', filtered.length);
           }
         } else {
           throw new Error('No se obtuvieron datos en la exploración');
@@ -92,25 +98,29 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     };
 
     performExploration();
-  }, [addNotification]);
+  }, [addNotification, inspector]);
 
   // Load orders for current page
   const loadOrdersForPage = useCallback(async (page: number) => {
     try {
       setIsLoading(true);
       setError(null);
-      logger.log(`[ProvisionalOrdersTab] Cargando página ${page} con ${pagination.pageSize} registros por página...`);
+      logger.log(`[ProvisionalOrdersTab] Cargando página ${page}...`);
 
       const response = await serviciosService.OrdenesProvisionalesPaginados(page, pagination.pageSize);
       
       if (response.data) {
-        setOrders(response.data);
+        // APLICAR FILTRO: Solo Almacén 1001 y 2001
+        const filtered = (response.data || []).filter((order: ProvisionalOrder) => 
+          String(order.Almacen).trim() === '1001' || String(order.Almacen).trim() === '2001'
+        );
+
+        setOrders(filtered);
         setPagination(prev => ({
           ...prev,
           currentPage: page,
         }));
-        logger.log(`[ProvisionalOrdersTab] Página ${page} cargada con ${response.data.length} registros`);
-        inspector.captureVariable('loadedOrders', response.data.length);
+        logger.log(`[ProvisionalOrdersTab] Página ${page} cargada. Se muestran ${filtered.length} tras filtrar.`);
       } else {
         throw new Error('No se obtuvieron datos');
       }
@@ -124,8 +134,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     }
   }, [pagination.pageSize, addNotification]);
 
-  const totalPages = Math.ceil(pagination.totalRegistros / pagination.pageSize);
-  const totalPagesLocal = Math.ceil(orders.length / pagination.rowsPerPage);
+  const totalPagesLocal = Math.max(1, Math.ceil(orders.length / pagination.rowsPerPage));
   
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
   const endIndex = startIndex + pagination.rowsPerPage;
@@ -169,16 +178,17 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       {/* Header */}
       <div className="flex items-center space-x-3">
         <Package className="w-6 h-6 text-gray-700" />
-        <h3 className="text-xl font-semibold text-gray-700">Datos de Órdenes Previsionales</h3>
+        <div className="flex flex-col">
+          <h3 className="text-xl font-semibold text-gray-700">Datos de Órdenes Previsionales</h3>
+          <p className="text-xs text-indigo-600 font-medium italic">Filtrado por Almacén 1001 y 2001</p>
+        </div>
       </div>
 
       {/* Info Card */}
-      {pagination.totalRegistros > 0 && (
+      {orders.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-800">
-            <span className="font-semibold">Total de registros:</span> {pagination.totalRegistros.toLocaleString()} | 
-            <span className="font-semibold ml-4">Registros por página:</span> {pagination.pageSize.toLocaleString()} | 
-            <span className="font-semibold ml-4">Total de páginas:</span> {totalPages}
+            <span className="font-semibold">Mostrando:</span> {orders.length.toLocaleString()} registros filtrados de un total de {pagination.totalRegistros.toLocaleString()} disponibles en el backend.
           </p>
         </div>
       )}
@@ -196,66 +206,63 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       {isLoading && (
         <div className="flex justify-center items-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-          <span className="ml-3 text-gray-600">Cargando...</span>
+          <span className="ml-3 text-gray-600">Cargando y filtrando datos...</span>
         </div>
       )}
 
       {/* Table */}
       {!isLoading && orders.length > 0 && (
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden border">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Orden Previsional
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Material
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Nombre
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Categoría
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Cantidad
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Unidad
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Fecha Inicio
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    F. Inicio
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Fecha Fin
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    F. Fin
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Centro
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/50">
                     Almacén
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {displayedOrders.map((order, index) => (
-                  <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 font-mono">
                       {order.ORDENPREVISIONAL}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
                       {order.MATERIAL}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>
                       {order.NOMBRE}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {order.CATEGORIA}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                      {order.CANTIDAD}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">
+                      {order.CANTIDAD.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {order.UNIDAD}
@@ -266,10 +273,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {order.FECHAFIN}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {order.Centro}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700 bg-indigo-50/20">
                       {order.Almacen}
                     </td>
                   </tr>
@@ -282,15 +286,14 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
       {/* Pagination Controls */}
       {!isLoading && orders.length > 0 && (
-        <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-lg">
+        <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow border">
           <div className="flex items-center space-x-4">
-            <label className="text-sm font-semibold text-gray-700">Filas por página:</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Filas por página:</label>
             <select
               value={pagination.rowsPerPage}
               onChange={(e) => handleRowsPerPageChange(Number(e.target.value))}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="px-2 py-1 border border-gray-300 rounded text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value={5}>5</option>
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
@@ -299,55 +302,39 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-4">
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handlePrevious}
-              disabled={pagination.currentPage === 1 || isLoading}
-              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+              disabled={pagination.currentPage === 1}
             >
               ← Anterior
-            </button>
+            </Button>
 
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-600">
-                Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
+                Página <span className="font-bold text-indigo-600">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
               </span>
-              <div className="flex space-x-1 ml-4">
-                {Array.from({ length: Math.min(5, totalPagesLocal) }, (_, i) => {
-                  const page = i + 1;
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => handleLoadPage(page)}
-                      disabled={isLoading}
-                      className={`px-3 py-1 rounded ${
-                        pagination.currentPage === page
-                          ? 'bg-indigo-600 text-white font-semibold'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleNext}
-              disabled={pagination.currentPage === totalPagesLocal || isLoading}
-              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+              disabled={pagination.currentPage === totalPagesLocal}
             >
               Siguiente →
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {/* Empty State */}
-      {!isLoading && orders.length === 0 && pagination.totalRegistros === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-500 border-2 border-dashed rounded-lg">
+      {!isLoading && orders.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-500 border-2 border-dashed rounded-lg bg-gray-50">
           <Package className="w-12 h-12 mb-4 text-gray-300" />
-          <p>No hay órdenes previsionales disponibles</p>
+          <p className="font-medium">No hay órdenes previsionales para los almacenes 1001 o 2001</p>
+          <p className="text-sm mt-1">Verifica la conexión con el servidor o los filtros aplicados.</p>
         </div>
       )}
     </div>
