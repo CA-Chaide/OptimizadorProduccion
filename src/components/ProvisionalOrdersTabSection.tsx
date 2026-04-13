@@ -7,6 +7,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
 import { Package } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface ProvisionalOrder {
   ORDENPREVISIONAL: string;
