@@ -43,6 +43,22 @@ export function TacticalPlanForrosSection() {
     return restricciones.filter(r => r.codigo_grupo === groupForros.codigo_grupo);
   }, [grupos, restricciones]);
 
+  // Generar objeto de filtros basado en restricciones específicas (RespCtrlProd y ALMACÉN)
+  const forrosFilters = useMemo(() => {
+    const filters: Record<string, string[]> = {};
+    forrosRestricciones.forEach(r => {
+      const name = r.nombre_restriccion;
+      // Normalizamos nombres para identificar los filtros solicitados
+      const upperName = name.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
+      if (upperName === 'RESPCTRLPROD' || upperName === 'ALMACEN') {
+        if (!filters[name]) filters[name] = [];
+        filters[name].push(r.valor_restriccion.trim());
+      }
+    });
+    return filters;
+  }, [forrosRestricciones]);
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-3">
@@ -178,11 +194,11 @@ export function TacticalPlanForrosSection() {
             <CardHeader>
               <CardTitle>Datos de Órdenes Previsionales (Forros)</CardTitle>
               <CardDescription>
-                Visualización y exploración de las órdenes previsionales disponibles para el área de forros.
+                Visualización y exploración de las órdenes previsionales filtradas por RespCtrlProd y ALMACÉN según las restricciones vigentes.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <ProvisionalOrdersTabSection />
+              <ProvisionalOrdersTabSection externalFilters={forrosFilters} />
             </CardContent>
           </Card>
         </TabsContent>
