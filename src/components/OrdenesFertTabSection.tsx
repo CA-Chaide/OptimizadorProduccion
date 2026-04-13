@@ -1,14 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
+import { grupoService } from '@/services/grupo.service';
+import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, Search, Download } from 'lucide-react';
+import { ClipboardList, Loader2, Search, Download, Home, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface OrdenFert {
   ORDEN: string;
@@ -21,6 +24,8 @@ interface OrdenFert {
   ESTADO: string;
   CENTRO: string;
   ALMACEN: string;
+  SECTOR?: string;
+  RESP_CTRL_PROD?: string;
   [key: string]: any;
 }
 
@@ -30,11 +35,18 @@ export const OrdenesFertTabSection: React.FC = () => {
   const hasStarted = useRef(false);
 
   const [orders, setOrders] = useState<OrdenFert[]>([]);
-  const [filteredOrders, setFilteredOrders] = useState<OrdenFert[]>([]);
+  const [availableCenters, setAvailableCenters] = useState<string[]>([]);
+  const [selectedCenter, setSelectedCenter] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Estados de restricciones
+  const [appliedFilters, setAppliedFilters] = useState<{ sectors: string[], resps: string[] }>({
+    sectors: [],
+    resps: []
+  });
+
   // Paginación local
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
@@ -46,19 +58,54 @@ export const OrdenesFertTabSection: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      logger.log('[OrdenesFertTab] Cargando órdenes FERT...');
+      logger.log('[OrdenesFertTab] Iniciando carga de datos y filtros...');
       
-      const response = await serviciosService.getOrdenesFert();
+      // 1. Cargar Centros, Grupos y Restricciones en paralelo
+      const [centersRes, groupsRes, restRes, fertRes] = await Promise.all([
+        serviciosService.getCentros(),
+        grupoService.getAll(),
+        restriccionService.getAll(),
+        serviciosService.getOrdenesFert()
+      ]);
+
+      // 2. Identificar filtros del grupo "Ensamblado"
+      const ensambladoGroups = (groupsRes.data || []).filter((g: any) => 
+        g.nombre_grupo.toLowerCase().includes('ensamblado')
+      );
+      const groupIds = ensambladoGroups.map((g: any) => g.codigo_grupo);
       
-      if (response && response.data) {
-        const allData = Array.isArray(response.data) ? response.data : [];
-        setOrders(allData);
-        setFilteredOrders(allData);
-        logger.log(`[OrdenesFertTab] Se recuperaron ${allData.length} órdenes FERT.`);
-        inspector.captureVariable('fertOrdersCount', allData.length);
-      } else {
-        throw new Error('No se recibió información válida del servidor');
+      const ensambladoRestrictions = (restRes.data || []).filter((r: any) => 
+        groupIds.includes(r.codigo_grupo) && r.estado === 'A'
+      );
+
+      // Extraer sectores (ej: "01,02,03")
+      const sectorRest = ensambladoRestrictions.find((r: any) => r.nombre_restriccion === 'SECTORES');
+      const respRest = ensambladoRestrictions.find((r: any) => r.nombre_restriccion === 'RESP_CTRL_PROD');
+
+      const sectors = sectorRest ? sectorRest.valor_restriccion.split(',').map((s: string) => s.trim()) : [];
+      const resps = respRest ? respRest.valor_restriccion.split(',').map((r: string) => r.trim()) : [];
+
+      setAppliedFilters({ sectors, resps });
+      logger.log(`[OrdenesFertTab] Filtros detectados - Sectores: [${sectors.join(', ')}], Resps: [${resps.join(', ')}]`);
+
+      // 3. Procesar Centros
+      const centersList = (centersRes.data || []).map((c: any) => String(c.Centro || c).trim()).sort();
+      setAvailableCenters(centersList);
+      if (centersList.length > 0) setSelectedCenter(centersList[0]);
+
+      // 4. Filtrar Órdenes FERT por restricciones
+      let allOrders = Array.isArray(fertRes.data) ? fertRes.data : [];
+      
+      if (sectors.length > 0) {
+        allOrders = allOrders.filter((o: any) => sectors.includes(String(o.SECTOR || '').trim()));
       }
+      if (resps.length > 0) {
+        allOrders = allOrders.filter((o: any) => resps.includes(String(o.RESP_CTRL_PROD || o.RESPCONTROLPROD || '').trim()));
+      }
+
+      setOrders(allOrders);
+      inspector.captureVariable('fertOrdersFilteredCount', allOrders.length);
+      
     } catch (err) {
       const msg = (err as Error).message;
       logger.error(`[OrdenesFertTab] Error: ${msg}`);
@@ -73,42 +120,61 @@ export const OrdenesFertTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Manejar búsqueda
-  useEffect(() => {
+  // Agrupación por centro
+  const ordersGroupedByCenter = useMemo(() => {
+    const grouped: Record<string, OrdenFert[]> = {};
+    availableCenters.forEach(c => grouped[c] = []);
+    
+    orders.forEach(order => {
+      const c = String(order.CENTRO || order.Centro || '').trim();
+      if (grouped[c]) {
+        grouped[c].push(order);
+      } else if (c) {
+        if (!grouped[c]) grouped[c] = [];
+        grouped[c].push(order);
+      }
+    });
+    return grouped;
+  }, [orders, availableCenters]);
+
+  // Búsqueda y filtrado final para el centro seleccionado
+  const currentCenterOrders = useMemo(() => {
+    const base = ordersGroupedByCenter[selectedCenter] || [];
     const term = searchTerm.toLowerCase().trim();
-    if (!term) {
-      setFilteredOrders(orders);
-    } else {
-      const filtered = orders.filter(o => 
-        String(o.ORDEN || '').toLowerCase().includes(term) ||
-        String(o.MATERIAL || '').toLowerCase().includes(term) ||
-        String(o.TEXTO_BREVE || '').toLowerCase().includes(term) ||
-        String(o.ALMACEN || '').toLowerCase().includes(term)
-      );
-      setFilteredOrders(filtered);
-    }
-    setCurrentPage(1);
-  }, [searchTerm, orders]);
+    if (!term) return base;
+    
+    return base.filter(o => 
+      String(o.ORDEN || '').toLowerCase().includes(term) ||
+      String(o.MATERIAL || '').toLowerCase().includes(term) ||
+      String(o.TEXTO_BREVE || '').toLowerCase().includes(term)
+    );
+  }, [ordersGroupedByCenter, selectedCenter, searchTerm]);
 
   // Cálculos de paginación
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / rowsPerPage));
+  const totalPagesLocal = Math.max(1, Math.ceil(currentCenterOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const displayedOrders = filteredOrders.slice(startIndex, startIndex + rowsPerPage);
-
-  const handleExport = () => {
-    addNotification('info', 'Preparando exportación de órdenes FERT...');
-    // Aquí se podría implementar exportToXLSX si fuera necesario
-  };
+  const endIndex = startIndex + rowsPerPage;
+  const displayedOrders = currentCenterOrders.slice(startIndex, endIndex);
 
   return (
     <div className="space-y-6">
-      {/* Cabecera y Controles */}
+      {/* Cabecera y Filtros Informativos */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
-            <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT (Productos Terminados)</h3>
-            <p className="text-xs text-gray-500">Visualización de órdenes de fabricación liberadas</p>
+            <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT por Centro</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <Badge variant="secondary" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-100">
+                <Filter className="w-3 h-3 mr-1" />
+                Sectores: {appliedFilters.sectors.length > 0 ? appliedFilters.sectors.join(', ') : 'Todos'}
+              </Badge>
+              {appliedFilters.resps.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] bg-amber-50 text-amber-700 border-amber-100">
+                  Resps: {appliedFilters.resps.join(', ')}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
         
@@ -117,134 +183,116 @@ export const OrdenesFertTabSection: React.FC = () => {
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input
               type="search"
-              placeholder="Buscar por orden, material..."
-              className="pl-9"
+              placeholder="Buscar en este centro..."
+              className="pl-9 h-9"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
           </div>
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={filteredOrders.length === 0}>
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
-          </Button>
         </div>
       </div>
 
-      {/* Estado de Carga */}
-      {isLoading && (
+      {isLoading && availableCenters.length === 0 ? (
         <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
           <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-          <span className="mt-4 text-gray-600 font-medium">Recuperando órdenes del sistema...</span>
+          <span className="mt-4 text-gray-600 font-medium">Aplicando restricciones y cargando centros...</span>
         </div>
-      )}
-
-      {/* Tabla de Resultados with top scrollbar hack */}
-      {!isLoading && filteredOrders.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
-            <div style={{ transform: 'rotateX(180deg)' }}>
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Orden</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Material</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Descripción</th>
-                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cantidad</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Entrega</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Centro</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {displayedOrders.map((order, idx) => (
-                    <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold text-indigo-600">{order.ORDEN}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{order.MATERIAL}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.TEXTO_BREVE}>{order.TEXTO_BREVE}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
-                        {Number(order.CANTIDAD || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.FECHA_ENTREGA || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.CENTRO}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.ALMACEN}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <Badge variant="outline" className="text-[10px] uppercase font-bold">
-                          {order.ESTADO || 'LIB.'}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Paginación */}
-          <div className="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="text-xs font-medium text-gray-500 uppercase">Mostrar:</span>
-              <select
-                value={rowsPerPage}
-                onChange={(e) => {
-                  setRowsPerPage(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="text-sm border rounded p-1 bg-white"
+      ) : (
+        <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); }} className="w-full">
+          <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
+            {availableCenters.map(center => (
+              <TabsTrigger 
+                key={center} 
+                value={center}
+                className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-4 py-2 text-xs font-bold uppercase tracking-wider"
               >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-              <span className="text-xs text-gray-400">
-                Total: {filteredOrders.length.toLocaleString()} registros
-              </span>
-            </div>
+                <Home className="w-3 h-3 mr-2" />
+                Centro {center} ({ordersGroupedByCenter[center]?.length || 0})
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-              >
-                Anterior
-              </Button>
-              <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600">
-                {currentPage} / {totalPages}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Siguiente
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+          {availableCenters.map(center => (
+            <TabsContent key={center} value={center} className="mt-0">
+              {currentCenterOrders.length > 0 ? (
+                <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+                  {/* Table with top scrollbar hack */}
+                  <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
+                    <div style={{ transform: 'rotateX(180deg)' }}>
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Orden</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Material</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Descripción</th>
+                            <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cantidad</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Sector</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Almacén</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Resp. Ctrl.</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Entrega</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {displayedOrders.map((order, idx) => (
+                            <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold text-indigo-600">{order.ORDEN}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{order.MATERIAL}</td>
+                              <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.TEXTO_BREVE}>{order.TEXTO_BREVE}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
+                                {Number(order.CANTIDAD || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-medium text-amber-700 bg-amber-50/20">{order.SECTOR || '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.ALMACEN}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.RESP_CTRL_PROD || order.RESPCONTROLPROD || '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.FECHA_ENTREGA || '-'}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-center">
+                                <Badge variant="outline" className="text-[10px] uppercase font-bold">
+                                  {order.ESTADO || 'LIB.'}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
-      {/* Estado Vacío o Error */}
-      {!isLoading && filteredOrders.length === 0 && (
-        <div className="text-center py-20 bg-gray-50 border-2 border-dashed rounded-lg">
-          <ClipboardList className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-600 font-medium">No se encontraron órdenes FERT</p>
-          <p className="text-sm text-gray-400 mt-1">Intenta ajustar los criterios de búsqueda o recargar los datos.</p>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="mt-4" 
-            onClick={() => {
-              hasStarted.current = false;
-              loadData();
-            }}
-          >
-            Recargar Datos
-          </Button>
-        </div>
+                  {/* Paginación */}
+                  <div className="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Mostrar:</span>
+                      <select
+                        value={rowsPerPage}
+                        onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                        className="text-sm border rounded p-1 bg-white"
+                      >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <span className="text-xs text-gray-400">
+                        Mostrando {startIndex + 1}-{Math.min(endIndex, currentCenterOrders.length)} de {currentCenterOrders.length} para Centro {center}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Anterior</Button>
+                      <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600">{currentPage} / {totalPagesLocal}</div>
+                      <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} disabled={currentPage === totalPagesLocal}>Siguiente</Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-20 bg-gray-50 border-2 border-dashed rounded-lg text-gray-400">
+                  <ClipboardList className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p className="font-medium">No se encontraron órdenes Fert para el Centro {center} con los filtros de Ensamblado aplicados</p>
+                </div>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
       )}
     </div>
   );
