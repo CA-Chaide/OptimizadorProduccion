@@ -125,56 +125,55 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   return (
     <div className="space-y-4">
       {/* Pagination Controls */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-4">
-          <span className="text-sm text-gray-600">
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-sm text-gray-600">
             Mostrando {startIndex + 1} a {Math.min(endIndex, orders.length)} de {orders.length} órdenes.
-          </span>
-          <label className="text-sm font-semibold text-gray-700">Filas por página:</label>
-          <select
-            value={rowsPerPage}
-            onChange={handleRowsPerPageChange}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
-          </select>
-        </div>
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => goToPage(1)}
-            disabled={currentPage === 1 || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            Primera
-          </button>
-          <button
-            onClick={() => goToPage(currentPage - 1)}
-            disabled={currentPage === 1 || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            ← Anterior
-          </button>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">
-              Página <span className="font-bold">{currentPage}</span> de <span className="font-bold">{totalPages}</span>
-            </span>
           </div>
-          <button
-            onClick={() => goToPage(currentPage + 1)}
-            disabled={currentPage === totalPages || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            Siguiente →
-          </button>
-           <button
-            onClick={() => goToPage(totalPages)}
-            disabled={currentPage === totalPages || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            Última
-          </button>
+          <div className="flex items-center space-x-4">
+            <select
+              value={rowsPerPage}
+              onChange={handleRowsPerPageChange}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
+            </select>
+            <button
+              onClick={() => goToPage(1)}
+              disabled={currentPage === 1 || isLoading}
+              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+            >
+              Primera
+            </button>
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1 || isLoading}
+              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+            >
+              ← Anterior
+            </button>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">
+                Página <span className="font-bold">{currentPage}</span> de <span className="font-bold">{totalPages}</span>
+              </span>
+            </div>
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages || isLoading}
+              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+            >
+              Siguiente →
+            </button>
+            <button
+              onClick={() => goToPage(totalPages)}
+              disabled={currentPage === totalPages || isLoading}
+              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+            >
+              Última
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -196,7 +195,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               {paginatedOrders.map((order, index) => (
                 <tr key={`${order.ORDEN_PRODUCCION}-${index}`} className="hover:bg-gray-50">
                   {COLUMNS_TO_DISPLAY.map((col, colIndex) => (
-                       <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
+                       <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
                          {String((order as any)[col] ?? '-')}
                        </td>
                   ))}
