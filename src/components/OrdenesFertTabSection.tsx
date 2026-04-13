@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -7,7 +8,7 @@ import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, Search, Download, Home, Filter } from 'lucide-react';
+import { ClipboardList, Loader2, Search, Home, Filter, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -26,6 +27,7 @@ interface OrdenFert {
   ALMACEN: string;
   SECTOR?: string;
   RESP_CTRL_PROD?: string;
+  RESPCONTROLPROD?: string;
   [key: string]: any;
 }
 
@@ -69,12 +71,13 @@ export const OrdenesFertTabSection: React.FC = () => {
       ]);
 
       // 2. Identificar filtros del grupo "Ensamblado"
-      const ensambladoGroups = (groupsRes.data || []).filter((g: any) => 
-        g.nombre_grupo.toLowerCase().includes('ensamblado')
+      const ensambladoGroups = (groupsRes?.data || []).filter((g: any) => 
+        String(g.nombre_grupo || '').toLowerCase().includes('ensamblado')
       );
+      
       const groupIds = ensambladoGroups.map((g: any) => g.codigo_grupo);
       
-      const ensambladoRestrictions = (restRes.data || []).filter((r: any) => 
+      const ensambladoRestrictions = (restRes?.data || []).filter((r: any) => 
         groupIds.includes(r.codigo_grupo) && r.estado === 'A'
       );
 
@@ -82,33 +85,51 @@ export const OrdenesFertTabSection: React.FC = () => {
       const sectorRest = ensambladoRestrictions.find((r: any) => r.nombre_restriccion === 'SECTORES');
       const respRest = ensambladoRestrictions.find((r: any) => r.nombre_restriccion === 'RESP_CTRL_PROD');
 
-      const sectors = sectorRest ? sectorRest.valor_restriccion.split(',').map((s: string) => s.trim()) : [];
-      const resps = respRest ? respRest.valor_restriccion.split(',').map((r: string) => r.trim()) : [];
+      const sectors = sectorRest ? sectorRest.valor_restriccion.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+      const resps = respRest ? respRest.valor_restriccion.split(',').map((r: string) => r.trim()).filter(Boolean) : [];
 
       setAppliedFilters({ sectors, resps });
       logger.log(`[OrdenesFertTab] Filtros detectados - Sectores: [${sectors.join(', ')}], Resps: [${resps.join(', ')}]`);
 
-      // 3. Procesar Centros
-      const centersList = (centersRes.data || []).map((c: any) => String(c.Centro || c).trim()).sort();
-      setAvailableCenters(centersList);
-      if (centersList.length > 0) setSelectedCenter(centersList[0]);
+      // 3. Procesar Órdenes FERT y Filtrar
+      let rawOrders = Array.isArray(fertRes?.data) ? fertRes.data : [];
+      logger.log(`[OrdenesFertTab] Órdenes brutas recibidas: ${rawOrders.length}`);
 
-      // 4. Filtrar Órdenes FERT por restricciones
-      let allOrders = Array.isArray(fertRes.data) ? fertRes.data : [];
-      
+      // Filtrar por restricciones SOLO si existen restricciones definidas
+      let filteredOrders = rawOrders;
       if (sectors.length > 0) {
-        allOrders = allOrders.filter((o: any) => sectors.includes(String(o.SECTOR || '').trim()));
+        filteredOrders = filteredOrders.filter((o: any) => {
+          const s = String(o.SECTOR || '').trim();
+          return sectors.includes(s);
+        });
+        logger.log(`[OrdenesFertTab] Órdenes tras filtro SECTORES: ${filteredOrders.length}`);
       }
+      
       if (resps.length > 0) {
-        allOrders = allOrders.filter((o: any) => resps.includes(String(o.RESP_CTRL_PROD || o.RESPCONTROLPROD || '').trim()));
+        filteredOrders = filteredOrders.filter((o: any) => {
+          const r = String(o.RESP_CTRL_PROD || o.RESPCONTROLPROD || '').trim();
+          return resps.includes(r);
+        });
+        logger.log(`[OrdenesFertTab] Órdenes tras filtro RESP_CTRL_PROD: ${filteredOrders.length}`);
       }
 
-      setOrders(allOrders);
-      inspector.captureVariable('fertOrdersFilteredCount', allOrders.length);
+      setOrders(filteredOrders);
+      inspector.captureVariable('fertOrdersFilteredCount', filteredOrders.length);
+
+      // 4. Procesar Centros - Combinar oficiales con centros encontrados en las órdenes
+      const officialCenters = (centersRes?.data || []).map((c: any) => String(c.Centro || c).trim()).filter(Boolean);
+      const dataCenters = [...new Set(filteredOrders.map(o => String(o.CENTRO || o.Centro || '').trim()))].filter(Boolean);
+      
+      const finalCentersList = [...new Set([...officialCenters, ...dataCenters])].sort();
+      
+      setAvailableCenters(finalCentersList);
+      if (finalCentersList.length > 0) {
+        setSelectedCenter(finalCentersList[0]);
+      }
       
     } catch (err) {
       const msg = (err as Error).message;
-      logger.error(`[OrdenesFertTab] Error: ${msg}`);
+      logger.error(`[OrdenesFertTab] Error crítico: ${msg}`);
       setError(msg);
       addNotification('error', `Error al cargar órdenes FERT: ${msg}`);
     } finally {
@@ -130,6 +151,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       if (grouped[c]) {
         grouped[c].push(order);
       } else if (c) {
+        // Centro no listado pero presente en data
         if (!grouped[c]) grouped[c] = [];
         grouped[c].push(order);
       }
@@ -189,15 +211,18 @@ export const OrdenesFertTabSection: React.FC = () => {
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
           </div>
+          <Button variant="outline" size="sm" onClick={() => { hasStarted.current = false; loadData(); }}>
+            Actualizar
+          </Button>
         </div>
       </div>
 
-      {isLoading && availableCenters.length === 0 ? (
+      {isLoading ? (
         <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
           <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-          <span className="mt-4 text-gray-600 font-medium">Aplicando restricciones y cargando centros...</span>
+          <span className="mt-4 text-gray-600 font-medium">Cargando y aplicando filtros de Ensamblado...</span>
         </div>
-      ) : (
+      ) : availableCenters.length > 0 ? (
         <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); }} className="w-full">
           <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
             {availableCenters.map(center => (
@@ -213,7 +238,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           </TabsList>
 
           {availableCenters.map(center => (
-            <TabsContent key={center} value={center} className="mt-0">
+            <TabsContent key={center} value={center} className="mt-0 outline-none focus:ring-0">
               {currentCenterOrders.length > 0 ? (
                 <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
                   {/* Table with top scrollbar hack */}
@@ -259,7 +284,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                   </div>
 
                   {/* Paginación */}
-                  <div className="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
+                  <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                       <span className="text-xs font-medium text-gray-500 uppercase">Mostrar:</span>
                       <select
@@ -273,26 +298,35 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <option value={100}>100</option>
                       </select>
                       <span className="text-xs text-gray-400">
-                        Mostrando {startIndex + 1}-{Math.min(endIndex, currentCenterOrders.length)} de {currentCenterOrders.length} para Centro {center}
+                        {startIndex + 1}-{Math.min(endIndex, currentCenterOrders.length)} de {currentCenterOrders.length} registros
                       </span>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Anterior</Button>
-                      <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600">{currentPage} / {totalPagesLocal}</div>
+                      <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600 min-w-[80px] text-center">{currentPage} / {totalPagesLocal}</div>
                       <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} disabled={currentPage === totalPagesLocal}>Siguiente</Button>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-20 bg-gray-50 border-2 border-dashed rounded-lg text-gray-400">
-                  <ClipboardList className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                  <p className="font-medium">No se encontraron órdenes Fert para el Centro {center} con los filtros de Ensamblado aplicados</p>
+                  <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p className="font-medium">No se encontraron órdenes para el Centro {center} con los filtros actuales</p>
+                  <p className="text-xs mt-1">Intenta realizar una búsqueda diferente o actualiza los datos.</p>
                 </div>
               )}
             </TabsContent>
           ))}
         </Tabs>
+      ) : (
+        <div className="text-center py-20 bg-white border rounded-lg">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-amber-500 opacity-50" />
+          <p className="text-gray-600 font-medium">No se encontraron órdenes Fert cargadas.</p>
+          <Button variant="link" onClick={() => { hasStarted.current = false; loadData(); }}>
+            Click aquí para reintentar carga
+          </Button>
+        </div>
       )}
     </div>
   );
