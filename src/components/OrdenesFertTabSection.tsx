@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
@@ -31,6 +31,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[1]);
 
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [tableWidth, setTableWidth] = useState(0);
+
   useEffect(() => {
     const fetchOrders = async () => {
       setIsLoading(true);
@@ -41,7 +46,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         
         let dataArray = (ordersResponse.data && Array.isArray(ordersResponse.data)) ? ordersResponse.data : [];
         
-        // Use the passed restrictions prop
         const sectoresRestriction = restricciones.find(r => r.nombre_restriccion === 'SECTORES');
 
         if (sectoresRestriction && sectoresRestriction.valor_restriccion) {
@@ -50,7 +54,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           
           if (sectoresToFilter.length > 0) {
             dataArray = dataArray.filter(order => order.SECTORDESC && sectoresToFilter.includes(order.SECTORDESC));
-            addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT, aplicando el filtro 'SECTORES' del grupo de Muebles con los valores: ${sectoresToFilter.join(', ')}.`);
+            addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT, aplicando filtro 'SECTORES' desde restricciones: ${sectoresToFilter.join(', ')}.`);
           } else {
              addNotification('warning', `La restricción 'SECTORES' para el grupo Muebles está vacía. Mostrando todas las órdenes FERT.`);
           }
@@ -94,6 +98,61 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
 
+  // Sync scrollbars
+  useEffect(() => {
+    const topDiv = topScrollRef.current;
+    const tableDiv = tableScrollRef.current;
+    if (!topDiv || !tableDiv) return;
+
+    let ignoreTop = false;
+    let ignoreTable = false;
+
+    const handleTopScroll = () => {
+        if (ignoreTop) {
+            ignoreTop = false;
+            return;
+        }
+        ignoreTable = true;
+        tableDiv.scrollLeft = topDiv.scrollLeft;
+    };
+
+    const handleTableScroll = () => {
+        if (ignoreTable) {
+            ignoreTable = false;
+            return;
+        }
+        ignoreTop = true;
+        topDiv.scrollLeft = tableDiv.scrollLeft;
+    };
+
+    topDiv.addEventListener('scroll', handleTopScroll);
+    tableDiv.addEventListener('scroll', handleTableScroll);
+
+    return () => {
+        topDiv.removeEventListener('scroll', handleTopScroll);
+        tableDiv.removeEventListener('scroll', handleTableScroll);
+    };
+  }, []);
+
+  // Update table width for the top scrollbar sizer
+  useEffect(() => {
+      const calculateWidth = () => {
+          if (tableRef.current) {
+              setTableWidth(tableRef.current.offsetWidth);
+          }
+      };
+      calculateWidth();
+      const resizeObserver = new ResizeObserver(calculateWidth);
+      if (tableRef.current) {
+          resizeObserver.observe(tableRef.current);
+      }
+      return () => {
+          if (tableRef.current) {
+              resizeObserver.unobserve(tableRef.current);
+          }
+      };
+  }, [paginatedOrders]);
+
   if (isLoading && orders.length === 0) {
     return (
       <div className="flex justify-center items-center py-8">
@@ -127,10 +186,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       {/* Pagination Controls */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between mb-4">
-          <div className="text-sm text-gray-600">
-            Mostrando {startIndex + 1} a {Math.min(endIndex, orders.length)} de {orders.length} órdenes.
-          </div>
           <div className="flex items-center space-x-4">
+            <span className="text-sm text-gray-600">
+              Mostrando {startIndex + 1} a {Math.min(endIndex, orders.length)} de {orders.length} órdenes.
+            </span>
+            <label className="text-sm font-semibold text-gray-700">Filas por página:</label>
             <select
               value={rowsPerPage}
               onChange={handleRowsPerPageChange}
@@ -138,6 +198,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             >
               {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
             </select>
+          </div>
+          <div className="flex items-center space-x-4">
             <button
               onClick={() => goToPage(1)}
               disabled={currentPage === 1 || isLoading}
@@ -175,16 +237,21 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         </div>
       )}
 
+      {/* Top Scrollbar */}
+      <div ref={topScrollRef} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
+          <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
+      </div>
+
       {/* Table */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+        <div ref={tableScrollRef} className="overflow-x-auto">
+          <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
                 {COLUMNS_TO_DISPLAY.map((col, index) => (
                   <th
                     key={col}
-                    className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300"
+                    className={`px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider ${index < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}
                   >
                     {col.replace(/_/g, ' ')}
                   </th>

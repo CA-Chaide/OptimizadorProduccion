@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
@@ -46,6 +46,11 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [tableWidth, setTableWidth] = useState(0);
 
   // Define static columns to ensure order and completeness
   const columns = [
@@ -143,6 +148,61 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     }));
   };
 
+  // Sync scrollbars
+  useEffect(() => {
+    const topDiv = topScrollRef.current;
+    const tableDiv = tableScrollRef.current;
+    if (!topDiv || !tableDiv) return;
+
+    let ignoreTop = false;
+    let ignoreTable = false;
+
+    const handleTopScroll = () => {
+        if (ignoreTop) {
+            ignoreTop = false;
+            return;
+        }
+        ignoreTable = true;
+        tableDiv.scrollLeft = topDiv.scrollLeft;
+    };
+
+    const handleTableScroll = () => {
+        if (ignoreTable) {
+            ignoreTable = false;
+            return;
+        }
+        ignoreTop = true;
+        topDiv.scrollLeft = tableDiv.scrollLeft;
+    };
+
+    topDiv.addEventListener('scroll', handleTopScroll);
+    tableDiv.addEventListener('scroll', handleTableScroll);
+
+    return () => {
+        topDiv.removeEventListener('scroll', handleTopScroll);
+        tableDiv.removeEventListener('scroll', handleTableScroll);
+    };
+  }, []);
+
+  // Update table width for the top scrollbar sizer
+  useEffect(() => {
+      const calculateWidth = () => {
+          if (tableRef.current) {
+              setTableWidth(tableRef.current.offsetWidth);
+          }
+      };
+      calculateWidth();
+      const resizeObserver = new ResizeObserver(calculateWidth);
+      if (tableRef.current) {
+          resizeObserver.observe(tableRef.current);
+      }
+      return () => {
+          if (tableRef.current) {
+              resizeObserver.unobserve(tableRef.current);
+          }
+      };
+  }, [displayedOrders]);
+
   if (isLoading && orders.length === 0) {
     return (
       <div className="flex justify-center items-center py-8">
@@ -215,10 +275,15 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         </div>
       </div>
 
+      {/* Top Scrollbar */}
+      <div ref={topScrollRef} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
+          <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
+      </div>
+
       {/* Table */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+        <div ref={tableScrollRef} className="overflow-x-auto">
+          <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
                 {columns.map((col, index) => (
@@ -226,7 +291,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     key={col}
                     className={`px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider ${index < columns.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}
                   >
-                    {col}
+                    {col.replace(/_/g, ' ')}
                   </th>
                 ))}
               </tr>
