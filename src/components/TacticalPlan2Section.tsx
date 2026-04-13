@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2 } from 'lucide-react';
+import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2, ClipboardList } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
+import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -90,7 +91,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
+        <TabsList className="grid w-full grid-cols-4 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -102,6 +103,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
             Ordenes Previsionales
+          </TabsTrigger>
+          <TabsTrigger value="fert" className="flex items-center gap-2">
+            <ClipboardList className="w-4 h-4" />
+            Órdenes Fert
           </TabsTrigger>
         </TabsList>
 
@@ -227,6 +232,21 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 4: ORDENES FERT */}
+        <TabsContent value="fert">
+          <Card>
+            <CardHeader>
+              <CardTitle>Órdenes FERT</CardTitle>
+              <CardDescription>
+                Listado detallado de órdenes de fabricación de producto terminado.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OrdenesFertTabSection />
             </CardContent>
           </Card>
         </TabsContent>
