@@ -37,14 +37,13 @@ export const OrdenesFertTabSection: React.FC = () => {
   const hasStarted = useRef(false);
 
   const [allRawOrders, setAllRawOrders] = useState<OrdenFert[]>([]);
-  const [orders, setOrders] = useState<OrdenFert[]>([]);
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("raw_view");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Estados de restricciones
+  // Filtros extraídos de las restricciones de Ensamblado
   const [appliedFilters, setAppliedFilters] = useState<{ sectors: string[], resps: string[] }>({
     sectors: [],
     resps: []
@@ -61,9 +60,9 @@ export const OrdenesFertTabSection: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      logger.log('[OrdenesFertTab] Iniciando carga de datos y filtros...');
+      logger.log('[OrdenesFertTab] Cargando datos y configuraciones...');
       
-      // 1. Cargar Centros, Grupos y Restricciones en paralelo
+      // 1. Cargar datos en paralelo
       const [centersRes, groupsRes, restRes, fertRes] = await Promise.all([
         serviciosService.getCentros(),
         grupoService.getAll(),
@@ -71,12 +70,11 @@ export const OrdenesFertTabSection: React.FC = () => {
         serviciosService.getOrdenesFert()
       ]);
 
-      // Guardar todo lo que viene de la API para la vista de depuración
       const rawData = Array.isArray(fertRes?.data) ? fertRes.data : [];
       setAllRawOrders(rawData);
-      logger.log(`[OrdenesFertTab] Órdenes brutas recibidas: ${rawData.length}`);
+      logger.log(`[OrdenesFertTab] Órdenes brutas: ${rawData.length}`);
 
-      // 2. Identificar filtros del grupo "Ensamblado"
+      // 2. Extraer restricciones del grupo "Ensamblado"
       const ensambladoGroups = (groupsRes?.data || []).filter((g: any) => 
         String(g.nombre_grupo || '').toLowerCase().includes('ensamblado')
       );
@@ -87,68 +85,65 @@ export const OrdenesFertTabSection: React.FC = () => {
         groupIds.includes(r.codigo_grupo) && r.estado === 'A'
       );
 
-      // Extraer sectores (ej: "01,02,03")
-      const sectorRest = ensambladoRestrictions.find((r: any) => r.nombre_restriccion === 'SECTORES');
-      const respRest = ensambladoRestrictions.find((r: any) => r.nombre_restriccion === 'RESP_CTRL_PROD');
+      // Buscar nombres de restricciones flexibles (singular o plural)
+      const sectorRest = ensambladoRestrictions.find((r: any) => 
+        ['SECTORES', 'SECTOR'].includes(String(r.nombre_restriccion).toUpperCase())
+      );
+      const respRest = ensambladoRestrictions.find((r: any) => 
+        ['RESP_CTRL_PROD', 'RESP_CONTROL_PROD', 'RESPCONTROLPROD'].includes(String(r.nombre_restriccion).toUpperCase())
+      );
 
       const sectors = sectorRest ? sectorRest.valor_restriccion.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
       const resps = respRest ? respRest.valor_restriccion.split(',').map((r: string) => r.trim()).filter(Boolean) : [];
 
       setAppliedFilters({ sectors, resps });
-      logger.log(`[OrdenesFertTab] Filtros detectados - Sectores: [${sectors.join(', ')}], Resps: [${resps.join(', ')}]`);
-
-      // 3. Procesar Órdenes FERT y Filtrar
-      let filteredOrders = rawData;
-      if (sectors.length > 0) {
-        filteredOrders = filteredOrders.filter((o: any) => {
-          const s = String(o.SECTOR || '').trim();
-          return sectors.includes(s);
-        });
-        logger.log(`[OrdenesFertTab] Órdenes tras filtro SECTORES: ${filteredOrders.length}`);
-      }
       
-      if (resps.length > 0) {
-        filteredOrders = filteredOrders.filter((o: any) => {
-          const r = String(o.RESP_CTRL_PROD || o.RESPCONTROLPROD || '').trim();
-          return resps.includes(r);
-        });
-        logger.log(`[OrdenesFertTab] Órdenes tras filtro RESP_CTRL_PROD: ${filteredOrders.length}`);
-      }
-
-      setOrders(filteredOrders);
-      inspector.captureVariable('fertOrdersFilteredCount', filteredOrders.length);
-
-      // 4. Procesar Centros - Combinar oficiales con centros encontrados en las órdenes
+      // 3. Procesar Centros Disponibles
       const officialCenters = (centersRes?.data || []).map((c: any) => String(c.Centro || c).trim()).filter(Boolean);
-      const dataCenters = [...new Set(filteredOrders.map(o => String(o.CENTRO || o.Centro || '').trim()))].filter(Boolean);
-      
+      // Incluir también cualquier centro que aparezca en la data bruta
+      const dataCenters = [...new Set(rawData.map(o => String(o.CENTRO || o.Centro || '').trim()))].filter(Boolean);
       const finalCentersList = [...new Set([...officialCenters, ...dataCenters])].sort();
       
       setAvailableCenters(finalCentersList);
       
-      // Por defecto ir a la vista bruta para comparar
-      setSelectedCenter("raw_view");
-      
     } catch (err) {
       const msg = (err as Error).message;
-      logger.error(`[OrdenesFertTab] Error crítico: ${msg}`);
       setError(msg);
       addNotification('error', `Error al cargar órdenes FERT: ${msg}`);
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, inspector]);
+  }, [addNotification]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Agrupación por centro
+  // LÓGICA DE FILTRADO REACTIVA
+  const filteredOrders = useMemo(() => {
+    return allRawOrders.filter(order => {
+      // 1. Filtro por Sectores (si existen en restricciones)
+      if (appliedFilters.sectors.length > 0) {
+        const s = String(order.SECTOR || '').trim();
+        if (!appliedFilters.sectors.includes(s)) return false;
+      }
+
+      // 2. Filtro por Responsables (si existen en restricciones)
+      if (appliedFilters.resps.length > 0) {
+        const r = String(order.RESP_CTRL_PROD || order.RESPCONTROLPROD || '').trim();
+        if (!appliedFilters.resps.includes(r)) return false;
+      }
+
+      return true;
+    });
+  }, [allRawOrders, appliedFilters]);
+
+  // AGRUPACIÓN POR CENTRO BASADA EN DATA FILTRADA
   const ordersGroupedByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     availableCenters.forEach(c => grouped[c] = []);
     
-    orders.forEach(order => {
+    filteredOrders.forEach(order => {
       const c = String(order.CENTRO || order.Centro || '').trim();
       if (grouped[c]) {
         grouped[c].push(order);
@@ -158,9 +153,9 @@ export const OrdenesFertTabSection: React.FC = () => {
       }
     });
     return grouped;
-  }, [orders, availableCenters]);
+  }, [filteredOrders, availableCenters]);
 
-  // Búsqueda y filtrado final para el centro seleccionado
+  // VISTA ACTUAL (Bruta o Centro Específico)
   const currentViewOrders = useMemo(() => {
     let base = [];
     if (selectedCenter === "raw_view") {
@@ -179,15 +174,13 @@ export const OrdenesFertTabSection: React.FC = () => {
     );
   }, [allRawOrders, ordersGroupedByCenter, selectedCenter, searchTerm]);
 
-  // Cálculos de paginación
+  // PAGINACIÓN
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const endIndex = startIndex + rowsPerPage;
-  const displayedOrders = currentViewOrders.slice(startIndex, endIndex);
+  const displayedOrders = currentViewOrders.slice(startIndex, startIndex + rowsPerPage);
 
   return (
     <div className="space-y-6">
-      {/* Cabecera y Filtros Informativos */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <ClipboardList className="w-6 h-6 text-indigo-600" />
@@ -196,12 +189,10 @@ export const OrdenesFertTabSection: React.FC = () => {
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="secondary" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-100">
                 <Filter className="w-3 h-3 mr-1" />
-                Sectores: {appliedFilters.sectors.length > 0 ? appliedFilters.sectors.join(', ') : 'Todos'}
+                Filtro Activo: {appliedFilters.sectors.length > 0 || appliedFilters.resps.length > 0 ? 'Restricciones Ensamblado' : 'Ninguno'}
               </Badge>
-              {appliedFilters.resps.length > 0 && (
-                <Badge variant="secondary" className="text-[10px] bg-amber-50 text-amber-700 border-amber-100">
-                  Resps: {appliedFilters.resps.join(', ')}
-                </Badge>
+              {appliedFilters.sectors.length > 0 && (
+                <span className="text-[10px] text-gray-500">Sectores: {appliedFilters.sectors.join(', ')}</span>
               )}
             </div>
           </div>
@@ -212,7 +203,7 @@ export const OrdenesFertTabSection: React.FC = () => {
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input
               type="search"
-              placeholder="Buscar en esta vista..."
+              placeholder="Buscar..."
               className="pl-9 h-9"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
@@ -227,7 +218,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       {isLoading ? (
         <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
           <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-          <span className="mt-4 text-gray-600 font-medium">Cargando y aplicando filtros de Ensamblado...</span>
+          <span className="mt-4 text-gray-600 font-medium">Procesando Órdenes Fert...</span>
         </div>
       ) : (
         <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); }} className="w-full">
@@ -254,13 +245,12 @@ export const OrdenesFertTabSection: React.FC = () => {
 
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <div className="p-2 bg-indigo-50/30 border-b flex items-center justify-between text-[10px] font-bold text-indigo-600 uppercase px-4">
-              <span>{selectedCenter === 'raw_view' ? 'Mostrando todos los datos del backend' : `Mostrando datos filtrados para Centro ${selectedCenter}`}</span>
-              <span>{currentViewOrders.length} registros encontrados</span>
+              <span>{selectedCenter === 'raw_view' ? 'Todos los datos sin filtrar' : `Filtrado por Centro ${selectedCenter} + Restricciones`}</span>
+              <span>{currentViewOrders.length} registros</span>
             </div>
 
             {currentViewOrders.length > 0 ? (
               <div className="flex flex-col">
-                {/* Table with top scrollbar hack */}
                 <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
                   <div style={{ transform: 'rotateX(180deg)' }}>
                     <table className="min-w-full divide-y divide-gray-200">
@@ -283,7 +273,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                           <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold text-indigo-600">{order.ORDEN}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{order.MATERIAL}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.TEXTO_BREVE}>{order.TEXTO_BREVE}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">{order.TEXTO_BREVE}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
                               {Number(order.CANTIDAD || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
                             </td>
@@ -304,7 +294,6 @@ export const OrdenesFertTabSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Paginación */}
                 <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <span className="text-xs font-medium text-gray-500 uppercase">Mostrar:</span>
@@ -319,7 +308,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <option value={100}>100</option>
                     </select>
                     <span className="text-xs text-gray-400">
-                      {startIndex + 1}-{Math.min(startIndex + rowsPerPage, currentViewOrders.length)} de {currentViewOrders.length} registros
+                      Registros {startIndex + 1}-{Math.min(startIndex + rowsPerPage, currentViewOrders.length)} de {currentViewOrders.length}
                     </span>
                   </div>
 
@@ -333,8 +322,8 @@ export const OrdenesFertTabSection: React.FC = () => {
             ) : (
               <div className="text-center py-20 bg-gray-50 border-2 border-dashed rounded-lg text-gray-400 m-4">
                 <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p className="font-medium">No se encontraron órdenes para esta vista</p>
-                <p className="text-xs mt-1">Intenta realizar una búsqueda diferente o revisa la pestaña "Vista Bruta".</p>
+                <p className="font-medium">No hay órdenes que coincidan con los filtros de Ensamblado en este centro</p>
+                <p className="text-xs mt-1">Revisa la pestaña "Vista Bruta" para verificar la carga total.</p>
               </div>
             )}
           </div>
