@@ -137,7 +137,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentCenterOrders.length / pagination.rowsPerPage));
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
-  const displayedOrders = currentCenterOrders.slice(startIndex, startIndex + pagination.rowsPerPage);
+  const endIndex = startIndex + pagination.rowsPerPage; // Declaración de endIndex
+  const displayedOrders = currentCenterOrders.slice(startIndex, endIndex);
 
   const handlePrevious = () => {
     if (pagination.currentPage > 1) {
