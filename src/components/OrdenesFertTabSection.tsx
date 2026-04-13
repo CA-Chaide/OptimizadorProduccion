@@ -14,6 +14,13 @@ interface OrdenFert {
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100];
 
+// Define static columns to ensure order and completeness
+const COLUMNS_TO_DISPLAY = [
+  'ORDEN_PRODUCCION', 'FECHA_ORDEN', 'HORA_ORDEN', 'CLASE_ORDEN', 'CENTRO', 
+  'MATERIAL', 'CANT_PRODUCIR', 'UNIDAD_MEDIDA', 'RESP_CONTROL_PROD', 
+  'FECHA_INICIO_PROG', 'FECHA_FIN_PROG', 'SECTOR', 'SECTORDESC'
+];
+
 export const OrdenesFertTabSection: React.FC = () => {
   const inspector = useRuntimeInspector('OrdenesFertTab');
   const { addNotification } = useAppContext();
@@ -21,7 +28,6 @@ export const OrdenesFertTabSection: React.FC = () => {
   const [orders, setOrders] = useState<OrdenFert[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [columns, setColumns] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[1]);
 
@@ -47,7 +53,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           
           if (sectoresToFilter.length > 0) {
             dataArray = dataArray.filter(order => order.SECTORDESC && sectoresToFilter.includes(order.SECTORDESC));
-            addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT, filtradas por los sectores: ${sectoresToFilter.join(', ')}.`);
+            addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT, aplicando el filtro de la restricción 'SECTORES' con los valores: ${sectoresToFilter.join(', ')}.`);
           } else {
              addNotification('warning', `La restricción 'SECTORES' está vacía. Mostrando todas las órdenes FERT.`);
           }
@@ -57,9 +63,6 @@ export const OrdenesFertTabSection: React.FC = () => {
 
         setOrders(dataArray);
         logger.log(`[OrdenesFertTab] Loaded ${dataArray.length} FERT orders.`);
-        if (dataArray.length > 0) {
-          setColumns(Object.keys(dataArray[0]));
-        }
 
       } catch (err) {
         const errorMessage = (err as Error).message;
@@ -92,7 +95,7 @@ export const OrdenesFertTabSection: React.FC = () => {
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
 
-  if (isLoading) {
+  if (isLoading && orders.length === 0) {
     return (
       <div className="flex justify-center items-center py-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
@@ -180,12 +183,12 @@ export const OrdenesFertTabSection: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
-                {columns.map((col, index) => (
+                {COLUMNS_TO_DISPLAY.map((col, index) => (
                   <th
                     key={col}
                     className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed border-gray-300"
                   >
-                    {col}
+                    {col.replace(/_/g, ' ')}
                   </th>
                 ))}
               </tr>
@@ -193,9 +196,9 @@ export const OrdenesFertTabSection: React.FC = () => {
             <tbody className="divide-y divide-gray-200">
               {paginatedOrders.map((order, index) => (
                 <tr key={`${order.ORDEN_PRODUCCION}-${index}`} className="hover:bg-gray-50">
-                  {columns.map((col, colIndex) => (
+                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => (
                        <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
-                         {String(order[col] ?? '-')}
+                         {String((order as any)[col] ?? '-')}
                        </td>
                   ))}
                 </tr>
