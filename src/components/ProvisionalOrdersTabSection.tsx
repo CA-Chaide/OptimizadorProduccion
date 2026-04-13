@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
@@ -33,34 +33,39 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     rowsPerPage: 20,
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
 
-  // Carga inicial de datos
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        // Consultamos un lote grande para permitir el filtrado dinámico local
-        const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
+  // Carga inicial de datos envuelta en useCallback para estabilidad
+  const fetchData = useCallback(async () => {
+    if (isLoading || hasInitialLoaded) return;
+    
+    try {
+      setIsLoading(true);
+      // Consultamos un lote grande para permitir el filtrado dinámico local
+      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
+      
+      if (response && response.data) {
+        setOrders(response.data);
+        setPagination(prev => ({
+          ...prev,
+          totalRegistros: response.totalRegistros || response.data.length,
+        }));
         
-        if (response && response.data) {
-          setOrders(response.data);
-          setPagination(prev => ({
-            ...prev,
-            totalRegistros: response.totalRegistros || response.data.length,
-          }));
-          
-          inspector.captureVariable('loadedOrdersCount', response.data.length);
-        }
-      } catch (err) {
-        const errorMessage = (err as Error).message;
-        addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
-      } finally {
-        setIsLoading(false);
+        inspector.captureVariable('loadedOrdersCount', response.data.length);
+        setHasInitialLoaded(true);
       }
-    };
+    } catch (err) {
+      const errorMessage = (err as Error).message;
+      addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, hasInitialLoaded, addNotification, inspector]);
 
+  // Ejecutar carga solo al montar
+  useEffect(() => {
     fetchData();
-  }, [addNotification, inspector]);
+  }, [fetchData]);
 
   // Lógica de filtrado basada en restricciones externas (RespCtrlProd y ALMACEN)
   const filteredOrders = useMemo(() => {
