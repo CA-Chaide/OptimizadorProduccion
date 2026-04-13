@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -6,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { Package } from 'lucide-react';
+import { Package, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface ProvisionalOrder {
@@ -182,82 +181,84 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       {/* Loading State */}
       {isLoading && (
         <div className="flex flex-col justify-center items-center py-12 bg-white rounded-lg border border-dashed border-gray-300">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500"></div>
+          <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
           <span className="mt-4 text-gray-600 font-medium">Cargando y filtrando órdenes previsionales...</span>
           <p className="text-xs text-gray-400 mt-2">Esto puede tomar unos segundos debido al volumen de datos.</p>
         </div>
       )}
 
-      {/* Table */}
+      {/* Table with top scrollbar hack */}
       {!isLoading && orders.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg overflow-hidden border">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Orden Previsional
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Material
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Nombre
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Categoría
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Cantidad
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Unidad
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    F. Inicio
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    F. Fin
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/50">
-                    Almacén
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {displayedOrders.map((order, index) => (
-                  <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 font-mono">
-                      {order.ORDENPREVISIONAL}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
-                      {order.MATERIAL}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>
-                      {order.NOMBRE}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {order.CATEGORIA}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">
-                      {Number(order.CANTIDAD || 0).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {order.UNIDAD}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {order.FECHAINICIO}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {order.FECHAFIN}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700 bg-indigo-50/20">
-                      {order.Almacen}
-                    </td>
+          <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
+            <div style={{ transform: 'rotateX(180deg)' }}>
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Orden Previsional
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Material
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Nombre
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Categoría
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Cantidad
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Unidad
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      F. Inicio
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      F. Fin
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/50">
+                      Almacén
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {displayedOrders.map((order, index) => (
+                    <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 font-mono">
+                        {order.ORDENPREVISIONAL}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
+                        {order.MATERIAL}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>
+                        {order.NOMBRE}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.CATEGORIA}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">
+                        {Number(order.CANTIDAD || 0).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.UNIDAD}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.FECHAINICIO}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {order.FECHAFIN}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700 bg-indigo-50/20">
+                        {order.Almacen}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -318,7 +319,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           </p>
           <Button 
             className="mt-6" 
-            variant="indigo" 
             onClick={() => {
               hasStarted.current = false;
               performExploration();

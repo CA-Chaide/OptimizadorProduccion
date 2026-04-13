@@ -122,43 +122,47 @@ export const TacticalPlan2Section: React.FC = () => {
                 <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
               ) : (
                 <div className="rounded-md border overflow-hidden">
-                  <Table>
-                    <TableHeader className="bg-gray-50">
-                      <TableRow>
-                        <TableHead className="w-24">Código</TableHead>
-                        <TableHead>Centro</TableHead>
-                        <TableHead>Nombre del Grupo</TableHead>
-                        <TableHead className="text-center">Estado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {gruposFiltrados.length > 0 ? gruposFiltrados.map((g) => {
-                        const centro = resolveCentro(g.centro);
-                        const Icon = centro?.Icon;
-                        return (
-                          <TableRow key={g.codigo_grupo}>
-                            <TableCell className="font-mono font-bold text-indigo-600">{g.codigo_grupo}</TableCell>
-                            <TableCell>
-                              {centro ? (
-                                <div className="flex items-center gap-2">
-                                  {Icon && <Icon className="w-4 h-4 text-gray-500" />}
-                                  <span>{centro.nombre}</span>
-                                </div>
-                              ) : '-'}
-                            </TableCell>
-                            <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant={g.estado === 'A' ? 'default' : 'destructive'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
-                                {g.estado === 'A' ? 'Activo' : 'Inactivo'}
-                              </Badge>
-                            </TableCell>
+                  <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
+                    <div style={{ transform: 'rotateX(180deg)' }}>
+                      <Table>
+                        <TableHeader className="bg-gray-50">
+                          <TableRow>
+                            <TableHead className="w-24">Código</TableHead>
+                            <TableHead>Centro</TableHead>
+                            <TableHead>Nombre del Grupo</TableHead>
+                            <TableHead className="text-center">Estado</TableHead>
                           </TableRow>
-                        );
-                      }) : (
-                        <TableRow><TableCell colSpan={4} className="text-center py-8 text-gray-500">No se encontraron grupos de "Ensamblado"</TableCell></TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {gruposFiltrados.length > 0 ? gruposFiltrados.map((g) => {
+                            const centro = resolveCentro(g.centro);
+                            const Icon = centro?.Icon;
+                            return (
+                              <TableRow key={g.codigo_grupo}>
+                                <TableCell className="font-mono font-bold text-indigo-600">{g.codigo_grupo}</TableCell>
+                                <TableCell>
+                                  {centro ? (
+                                    <div className="flex items-center gap-2">
+                                      {Icon && <Icon className="w-4 h-4 text-gray-500" />}
+                                      <span>{centro.nombre}</span>
+                                    </div>
+                                  ) : '-'}
+                                </TableCell>
+                                <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant={g.estado === 'A' ? 'default' : 'destructive'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
+                                    {g.estado === 'A' ? 'Activo' : 'Inactivo'}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }) : (
+                            <TableRow><TableCell colSpan={4} className="text-center py-8 text-gray-500">No se encontraron grupos de "Ensamblado"</TableCell></TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -177,44 +181,48 @@ export const TacticalPlan2Section: React.FC = () => {
                 <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
               ) : (
                 <div className="rounded-md border overflow-hidden">
-                  <Table>
-                    <TableHeader className="bg-gray-50">
-                      <TableRow>
-                        <TableHead>Nombre Restricción</TableHead>
-                        <TableHead className="text-center">Valor</TableHead>
-                        <TableHead>Grupo Asociado</TableHead>
-                        <TableHead>Descripción</TableHead>
-                        <TableHead className="text-center">Estado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {restriccionesFiltradas.length > 0 ? restriccionesFiltradas.map((r) => {
-                        const grupo = grupos.find(g => g.codigo_grupo === r.codigo_grupo);
-                        return (
-                          <TableRow key={r.codigo_restriccion}>
-                            <TableCell className="font-semibold text-gray-700">{r.nombre_restriccion}</TableCell>
-                            <TableCell className="text-center font-mono bg-blue-50/50">{r.valor_restriccion}</TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium text-xs text-indigo-700">{grupo?.nombre_grupo || 'N/A'}</span>
-                                <span className="text-[10px] text-gray-500">Centro: {grupo?.centro || '-'}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="max-w-xs truncate text-xs text-gray-600" title={r.descripcion}>
-                              {r.descripcion || '-'}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant={r.estado === 'A' ? 'default' : 'destructive'} className={r.estado === 'A' ? 'bg-green-600 text-[10px]' : 'text-[10px]'}>
-                                {r.estado === 'A' ? 'Activo' : 'Inactivo'}
-                              </Badge>
-                            </TableCell>
+                  <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
+                    <div style={{ transform: 'rotateX(180deg)' }}>
+                      <Table>
+                        <TableHeader className="bg-gray-50">
+                          <TableRow>
+                            <TableHead>Nombre Restricción</TableHead>
+                            <TableHead className="text-center">Valor</TableHead>
+                            <TableHead>Grupo Asociado</TableHead>
+                            <TableHead>Descripción</TableHead>
+                            <TableHead className="text-center">Estado</TableHead>
                           </TableRow>
-                        );
-                      }) : (
-                        <TableRow><TableCell colSpan={5} className="text-center py-8 text-gray-500">No hay restricciones para el área de Ensamblado</TableCell></TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {restriccionesFiltradas.length > 0 ? restriccionesFiltradas.map((r) => {
+                            const grupo = grupos.find(g => g.codigo_grupo === r.codigo_grupo);
+                            return (
+                              <TableRow key={r.codigo_restriccion}>
+                                <TableCell className="font-semibold text-gray-700">{r.nombre_restriccion}</TableCell>
+                                <TableCell className="text-center font-mono bg-blue-50/50">{r.valor_restriccion}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <span className="font-medium text-xs text-indigo-700">{grupo?.nombre_grupo || 'N/A'}</span>
+                                    <span className="text-[10px] text-gray-500">Centro: {grupo?.centro || '-'}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="max-w-xs truncate text-xs text-gray-600" title={r.descripcion}>
+                                  {r.descripcion || '-'}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant={r.estado === 'A' ? 'default' : 'destructive'} className={r.estado === 'A' ? 'bg-green-600 text-[10px]' : 'text-[10px]'}>
+                                    {r.estado === 'A' ? 'Activo' : 'Inactivo'}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }) : (
+                            <TableRow><TableCell colSpan={5} className="text-center py-8 text-gray-500">No hay restricciones para el área de Ensamblado</TableCell></TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>

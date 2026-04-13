@@ -138,44 +138,46 @@ export const OrdenesFertTabSection: React.FC = () => {
         </div>
       )}
 
-      {/* Tabla de Resultados */}
+      {/* Tabla de Resultados with top scrollbar hack */}
       {!isLoading && filteredOrders.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Orden</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Material</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Descripción</th>
-                  <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cantidad</th>
-                  <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Entrega</th>
-                  <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Centro</th>
-                  <th className="px-6 py-3 text-center text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
-                  <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Estado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {displayedOrders.map((order, idx) => (
-                  <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold text-indigo-600">{order.ORDEN}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{order.MATERIAL}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.TEXTO_BREVE}>{order.TEXTO_BREVE}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
-                      {Number(order.CANTIDAD || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.FECHA_ENTREGA || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.CENTRO}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.ALMACEN}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <Badge variant="outline" className="text-[10px] uppercase font-bold">
-                        {order.ESTADO || 'LIB.'}
-                      </Badge>
-                    </td>
+          <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
+            <div style={{ transform: 'rotateX(180deg)' }}>
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Orden</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Material</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Descripción</th>
+                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cantidad</th>
+                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Entrega</th>
+                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Centro</th>
+                    <th className="px-6 py-3 text-center text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
+                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Estado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {displayedOrders.map((order, idx) => (
+                    <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold text-indigo-600">{order.ORDEN}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{order.MATERIAL}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.TEXTO_BREVE}>{order.TEXTO_BREVE}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
+                        {Number(order.CANTIDAD || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.FECHA_ENTREGA || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.CENTRO}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.ALMACEN}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <Badge variant="outline" className="text-[10px] uppercase font-bold">
+                          {order.ESTADO || 'LIB.'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Paginación */}
