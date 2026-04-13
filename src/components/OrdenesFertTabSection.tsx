@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
-import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
 import { Package } from 'lucide-react';
+import type { OrdenFert, Restriccion } from '@/types/interfaces';
 
-interface OrdenFert {
-  [key: string]: any;
+interface OrdenesFertTabSectionProps {
+  restricciones: Restriccion[];
 }
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100];
@@ -21,7 +21,7 @@ const COLUMNS_TO_DISPLAY = [
   'FECHA_INICIO_PROG', 'FECHA_FIN_PROG', 'SECTOR', 'SECTORDESC'
 ];
 
-export const OrdenesFertTabSection: React.FC = () => {
+export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones }) => {
   const inspector = useRuntimeInspector('OrdenesFertTab');
   const { addNotification } = useAppContext();
 
@@ -35,17 +35,14 @@ export const OrdenesFertTabSection: React.FC = () => {
     const fetchOrders = async () => {
       setIsLoading(true);
       setError(null);
-      logger.log('[OrdenesFertTab] Fetching FERT orders and restrictions...');
+      logger.log('[OrdenesFertTab] Fetching FERT orders...');
       try {
-        const [ordersResponse, restrictionsResponse] = await Promise.all([
-          serviciosService.getOrdenesFert(),
-          restriccionService.getAll()
-        ]);
+        const ordersResponse = await serviciosService.getOrdenesFert();
         
         let dataArray = (ordersResponse.data && Array.isArray(ordersResponse.data)) ? ordersResponse.data : [];
-        const restrictions = (restrictionsResponse.data && Array.isArray(restrictionsResponse.data)) ? restrictionsResponse.data : [];
         
-        const sectoresRestriction = restrictions.find(r => r.nombre_restriccion === 'SECTORES');
+        // Use the passed restrictions prop
+        const sectoresRestriction = restricciones.find(r => r.nombre_restriccion === 'SECTORES');
 
         if (sectoresRestriction && sectoresRestriction.valor_restriccion) {
           const separator = sectoresRestriction.valor_restriccion.includes('&') ? '&' : ',';
@@ -53,12 +50,12 @@ export const OrdenesFertTabSection: React.FC = () => {
           
           if (sectoresToFilter.length > 0) {
             dataArray = dataArray.filter(order => order.SECTORDESC && sectoresToFilter.includes(order.SECTORDESC));
-            addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT, aplicando el filtro de la restricción 'SECTORES' con los valores: ${sectoresToFilter.join(', ')}.`);
+            addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT, aplicando el filtro 'SECTORES' del grupo de Muebles con los valores: ${sectoresToFilter.join(', ')}.`);
           } else {
-             addNotification('warning', `La restricción 'SECTORES' está vacía. Mostrando todas las órdenes FERT.`);
+             addNotification('warning', `La restricción 'SECTORES' para el grupo Muebles está vacía. Mostrando todas las órdenes FERT.`);
           }
         } else {
-          addNotification('info', `No se encontró la restricción 'SECTORES'. Mostrando todas las órdenes FERT.`);
+          addNotification('info', `No se encontró la restricción 'SECTORES' para el grupo Muebles. Mostrando todas las órdenes FERT.`);
         }
 
         setOrders(dataArray);
@@ -74,8 +71,10 @@ export const OrdenesFertTabSection: React.FC = () => {
       }
     };
 
-    fetchOrders();
-  }, [addNotification]);
+    if (restricciones) {
+      fetchOrders();
+    }
+  }, [addNotification, restricciones]);
 
   const totalPages = Math.ceil(orders.length / rowsPerPage);
   const paginatedOrders = useMemo(() => {

@@ -15,29 +15,7 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { useAppContext } from '@/context/AppProvider';
 
 // Componente para la tabla de Grupos
-const GruposTab: React.FC = () => {
-    const [grupos, setGrupos] = useState<Grupo[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const { addNotification } = useAppContext();
-
-    useEffect(() => {
-        const fetchGrupos = async () => {
-            try {
-                const response = await grupoService.getAll();
-                // Filter for groups with "muebles" in the name
-                const mueblesGrupos = (response.data || []).filter(g => 
-                    g.nombre_grupo.toLowerCase().includes('muebles')
-                );
-                setGrupos(mueblesGrupos);
-            } catch (error) {
-                addNotification('error', `Error al cargar grupos: ${(error as Error).message}`);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchGrupos();
-    }, [addNotification]);
-
+const GruposTab: React.FC<{ grupos: Grupo[]; isLoading: boolean }> = ({ grupos, isLoading }) => {
     if (isLoading) {
         return <div className="flex justify-center items-center p-8"><Loader2 className="w-8 h-8 animate-spin" /></div>;
     }
@@ -77,46 +55,7 @@ const GruposTab: React.FC = () => {
 };
 
 // Componente para la tabla de Restricciones
-const RestriccionesTab: React.FC = () => {
-    const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const { addNotification } = useAppContext();
-
-    useEffect(() => {
-        const fetchRestricciones = async () => {
-            try {
-                const [restriccionesRes, gruposRes] = await Promise.all([
-                    restriccionService.getAll(),
-                    grupoService.getAll()
-                ]);
-
-                const allRestricciones = restriccionesRes.data || [];
-                const allGrupos = gruposRes.data || [];
-
-                // Find the group "Muebles"
-                const mueblesGrupo = allGrupos.find(g => g.nombre_grupo.toLowerCase().includes('muebles'));
-
-                if (mueblesGrupo) {
-                    const filteredRestricciones = allRestricciones.filter(r => r.codigo_grupo === mueblesGrupo.codigo_grupo);
-                    // Add group name to restrictions for display
-                    const restriccionesConGrupo = filteredRestricciones.map(r => ({
-                        ...r,
-                        grupo: mueblesGrupo
-                    }));
-                    setRestricciones(restriccionesConGrupo);
-                } else {
-                    addNotification('warning', 'No se encontró el grupo "Muebles" para filtrar las restricciones.');
-                    setRestricciones([]);
-                }
-            } catch (error) {
-                addNotification('error', `Error al cargar restricciones: ${(error as Error).message}`);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchRestricciones();
-    }, [addNotification]);
-
+const RestriccionesTab: React.FC<{ restricciones: (Restriccion & { grupo?: Grupo })[]; isLoading: boolean }> = ({ restricciones, isLoading }) => {
     if (isLoading) {
         return <div className="flex justify-center items-center p-8"><Loader2 className="w-8 h-8 animate-spin" /></div>;
     }
@@ -157,6 +96,56 @@ const RestriccionesTab: React.FC = () => {
 
 
 export const TacticalPlanMueblesSection: React.FC = () => {
+    const { addNotification } = useAppContext();
+    const [gruposMuebles, setGruposMuebles] = useState<Grupo[]>([]);
+    const [restriccionesMuebles, setRestriccionesMuebles] = useState<Restriccion[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchInitialData = async () => {
+            setIsLoading(true);
+            try {
+                const [gruposRes, restriccionesRes] = await Promise.all([
+                    grupoService.getAll(),
+                    restriccionService.getAll()
+                ]);
+
+                const allGrupos = gruposRes.data || [];
+                const allRestricciones = restriccionesRes.data || [];
+
+                // Filter for "Muebles" group
+                const mueblesGrupos = allGrupos.filter(g => 
+                    g.nombre_grupo.toLowerCase().includes('muebles')
+                );
+                setGruposMuebles(mueblesGrupos);
+
+                // Filter restrictions for "Muebles" groups
+                if (mueblesGrupos.length > 0) {
+                    const mueblesGrupoIds = new Set(mueblesGrupos.map(g => g.codigo_grupo));
+                    const filteredRestricciones = allRestricciones.filter(r => 
+                        mueblesGrupoIds.has(r.codigo_grupo)
+                    );
+                    
+                    // Add group name to restrictions for display
+                    const restriccionesConGrupo = filteredRestricciones.map(r => {
+                        const grupo = allGrupos.find(g => g.codigo_grupo === r.codigo_grupo);
+                        return { ...r, grupo };
+                    });
+                    setRestriccionesMuebles(restriccionesConGrupo);
+                } else {
+                    addNotification('warning', 'No se encontró ningún grupo "Muebles" para filtrar las restricciones.');
+                    setRestriccionesMuebles([]);
+                }
+
+            } catch (error) {
+                addNotification('error', `Error al cargar datos iniciales: ${(error as Error).message}`);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchInitialData();
+    }, [addNotification]);
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-3">
@@ -172,10 +161,10 @@ export const TacticalPlanMueblesSection: React.FC = () => {
             <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
         </TabsList>
         <TabsContent value="grupos" className="mt-4">
-            <GruposTab />
+            <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
         </TabsContent>
         <TabsContent value="restricciones" className="mt-4">
-            <RestriccionesTab />
+            <RestriccionesTab restricciones={restriccionesMuebles} isLoading={isLoading} />
         </TabsContent>
         <TabsContent value="ordenes" className="mt-4">
             <Card>
@@ -199,7 +188,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <OrdenesFertTabSection />
+                    <OrdenesFertTabSection restricciones={restriccionesMuebles} />
                 </CardContent>
             </Card>
         </TabsContent>

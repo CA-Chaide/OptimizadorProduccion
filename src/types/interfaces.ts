@@ -207,3 +207,19 @@ export interface Turno {
     fecha_modificacion: Date;
     usuario_modificacion: string;
 }
+
+export interface OrdenFert {
+  ORDEN_PRODUCCION: string;
+  FECHA_ORDEN: string;
+  HORA_ORDEN: string;
+  CLASE_ORDEN: string;
+  CENTRO: string;
+  MATERIAL: string;
+  CANT_PRODUCIR: number;
+  UNIDAD_MEDIDA: string;
+  RESP_CONTROL_PROD: string;
+  FECHA_INICIO_PROG: string;
+  FECHA_FIN_PROG: string;
+  SECTOR: string;
+  SECTORDESC: string;
+}
