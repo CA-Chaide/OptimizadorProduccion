@@ -18,11 +18,18 @@ const CENTROS = [
 ];
 
 export const TacticalPlan2Section: React.FC = () => {
+  const [mounted, setMounted] = useState(false);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [isLoadingGrupos, setIsLoadingGrupos] = useState(false);
   const [isLoadingRestricciones, setIsLoadingRestricciones] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    setMounted(true);
+    loadGrupos();
+    loadRestricciones();
+  }, []);
 
   const loadGrupos = async () => {
     setIsLoadingGrupos(true);
@@ -30,7 +37,7 @@ export const TacticalPlan2Section: React.FC = () => {
       const res = await grupoService.getAll();
       setGrupos(res.data || []);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudieron cargar los grupos', variant: 'destructive' });
+      console.error('Error loading groups:', error);
     } finally {
       setIsLoadingGrupos(false);
     }
@@ -42,16 +49,11 @@ export const TacticalPlan2Section: React.FC = () => {
       const res = await restriccionService.getAll();
       setRestricciones(res.data || []);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudieron cargar las restricciones', variant: 'destructive' });
+      console.error('Error loading restrictions:', error);
     } finally {
       setIsLoadingRestricciones(false);
     }
   };
-
-  useEffect(() => {
-    loadGrupos();
-    loadRestricciones();
-  }, []);
 
   // Filtrar grupos que contengan "Ensamblado"
   const gruposFiltrados = useMemo(() => {
@@ -74,12 +76,16 @@ export const TacticalPlan2Section: React.FC = () => {
     return CENTROS.find(x => x.codigo === codigo) || null;
   };
 
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <CalendarClock className="w-6 h-6 text-indigo-600" />
-          <h2 className="text-2xl font-bold text-gray-800">Programación Táctica Colchones</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Programación Táctica colchones</h2>
         </div>
       </div>
       
