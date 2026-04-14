@@ -18,6 +18,9 @@ import {
     Activity,
     ClipboardList,
     Link2,
+    Wind,
+    ShoppingCart,
+    Scissors
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -40,6 +43,9 @@ export enum ActiveView {
   TACTICAL_SCHEDULING = 'TACTICAL_SCHEDULING',
   TACTICAL_SCHEDULING_2 = 'TACTICAL_SCHEDULING_2',
   TACTICAL_SCHEDULING_MUEBLES = 'TACTICAL_SCHEDULING_MUEBLES',
+  TACTICAL_SCHEDULING_ESPUMAS = 'TACTICAL_SCHEDULING_ESPUMAS',
+  TACTICAL_SCHEDULING_VENTA_EXTERNA = 'TACTICAL_SCHEDULING_VENTA_EXTERNA',
+  TACTICAL_SCHEDULING_CORTE_LAMINADO = 'TACTICAL_SCHEDULING_CORTE_LAMINADO',
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
   PARAMETROS = 'PARAMETROS',
@@ -115,6 +121,9 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica' },
   { id: ActiveView.TACTICAL_SCHEDULING_2, label: 'Programación Táctica colchones', icon: <CalendarClock className="w-5 h-5" />, href: '/dashboard/opciones/programacion-tactica-2' },
   { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica-muebles' },
+  { id: ActiveView.TACTICAL_SCHEDULING_ESPUMAS, label: 'Programación Táctica Espumas', icon: <Wind className="w-5 h-5" />, href: '/dashboard/opciones/tactica-espumas' },
+  { id: ActiveView.TACTICAL_SCHEDULING_VENTA_EXTERNA, label: 'Programación Táctica Venta Externa', icon: <ShoppingCart className="w-5 h-5" />, href: '/dashboard/opciones/tactica-venta-externa' },
+  { id: ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO, label: 'Programación Táctica Corte y Laminado', icon: <Scissors className="w-5 h-5" />, href: '/dashboard/opciones/tactica-corte-laminado' },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
   { id: ActiveView.PARAMETROS, label: 'Parámetros', icon: <ClipboardList />, href: '/dashboard/parametros' },
@@ -138,6 +147,9 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.TACTICAL_SCHEDULING,
   ActiveView.TACTICAL_SCHEDULING_2,
   ActiveView.TACTICAL_SCHEDULING_MUEBLES,
+  ActiveView.TACTICAL_SCHEDULING_ESPUMAS,
+  ActiveView.TACTICAL_SCHEDULING_VENTA_EXTERNA,
+  ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO,
   ActiveView.WORK_SHIFT_PLANNING,
   ActiveView.DICTIONARY,
 ];
