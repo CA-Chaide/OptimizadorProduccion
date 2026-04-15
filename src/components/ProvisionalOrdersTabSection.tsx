@@ -38,10 +38,10 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const [tableWidth, setTableWidth] = useState(0);
 
   // Define static columns to ensure order and completeness
-  const columns = [
-    'ORDENPREVISIONAL', 'MATERIAL', 'NOMBRE', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 
+  const COLUMNS_TO_DISPLAY = [
+    'ORDENPREVISIONAL', 'MATERIAL', 'NOMBRE', 'CANTIDAD', 'UNIDAD', 
     'FECHAINICIO', 'FECHAFIN', 'RESPCONTROLPROD', 'Centro', 'Almacen', 
-    'Maquina', 'ClaseOrden', 'CodMaterial'
+    'Maquina', 'ClaseOrden', 'CodMaterial', 'CATEGORIA'
   ];
 
   useEffect(() => {
@@ -275,10 +275,10 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
-                {columns.map((col, index) => (
+                {COLUMNS_TO_DISPLAY.map((col, index) => (
                   <th
                     key={col}
-                    className={`px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider ${index < columns.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}
+                    className={`px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider ${index < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}
                   >
                     {col.replace(/_/g, ' ')}
                   </th>
@@ -288,8 +288,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             <tbody className="divide-y divide-gray-200">
               {displayedOrders.map((order, index) => (
                 <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50">
-                  {columns.map((col, colIndex) => (
-                       <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < columns.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
+                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => (
+                       <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
                          {String((order as any)[col] ?? '-')}
                        </td>
                   ))}
