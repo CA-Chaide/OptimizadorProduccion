@@ -349,7 +349,21 @@ export const serviciosService = {
     }
     return response.json();
   },
-
+  
+  async getTiemposEnsambladobyCentroyCodigoGrupo(Centro: string, CodigoGrupo: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/TiemposEnsambladoPorCentroYCodigoGrupo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ Centro: Centro, CodigoGrupo: CodigoGrupo}),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
 
 
 };

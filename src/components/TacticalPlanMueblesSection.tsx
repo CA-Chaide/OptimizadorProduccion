@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { OrdenesFertTabSection } from './OrdenesFertTabSection';
+import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -154,11 +155,12 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="ordenes" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="grupos">Grupos</TabsTrigger>
             <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
             <TabsTrigger value="ordenes">Órdenes Previsionales</TabsTrigger>
             <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
+            <TabsTrigger value="tiemposEnsamblado">Tiempos Ensamblado</TabsTrigger>
         </TabsList>
         <TabsContent value="grupos" className="mt-4">
             <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
@@ -191,6 +193,9 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                     <OrdenesFertTabSection restricciones={restriccionesMuebles} />
                 </CardContent>
             </Card>
+        </TabsContent>
+        <TabsContent value="tiemposEnsamblado" className="mt-4">
+            <TiemposEnsambladoTab grupos={gruposMuebles} />
         </TabsContent>
       </Tabs>
     </div>
