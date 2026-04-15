@@ -125,7 +125,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         <div className="flex items-center space-x-3">
           <Wind className="w-8 h-8 text-blue-600" />
           <div>
-            <h2 className="text-2xl font-bold text-gray-800">Programación Táctica Espumas</h2>
+            <h2 className="text-2xl font-bold text-gray-800">Programación Táctica Corte Espuma</h2>
             <p className="text-sm text-gray-500">Gestión de producción basada en restricciones de planta</p>
           </div>
         </div>
