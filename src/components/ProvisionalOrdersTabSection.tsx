@@ -31,12 +31,12 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
+  
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [tableWidth, setTableWidth] = useState(0);
-  const isSyncing = useRef(false);
+  const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
   // Define static columns to ensure order and completeness
   const COLUMNS_TO_DISPLAY = [
@@ -127,40 +127,30 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     }));
   };
 
-  // Sync scrollbars
-  useEffect(() => {
-    const topDiv = topScrollRef.current;
-    const tableDiv = tableScrollRef.current;
-    if (!topDiv || !tableDiv) return;
+  // Scroll sync handlers
+  const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      if (lastScrolledRef.current === 'table') {
+          lastScrolledRef.current = null;
+          return;
+      }
+      if (tableScrollRef.current) {
+          lastScrolledRef.current = 'top';
+          tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+      }
+  };
 
-    const handleTopScroll = () => {
-      if (isSyncing.current) return;
-      isSyncing.current = true;
-      tableDiv.scrollLeft = topDiv.scrollLeft;
-      requestAnimationFrame(() => {
-          isSyncing.current = false;
-      });
-    };
+  const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      if (lastScrolledRef.current === 'top') {
+          lastScrolledRef.current = null;
+          return;
+      }
+      if (topScrollRef.current) {
+          lastScrolledRef.current = 'table';
+          topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+      }
+  };
 
-    const handleTableScroll = () => {
-      if (isSyncing.current) return;
-      isSyncing.current = true;
-      topDiv.scrollLeft = tableDiv.scrollLeft;
-      requestAnimationFrame(() => {
-          isSyncing.current = false;
-      });
-    };
-
-    topDiv.addEventListener('scroll', handleTopScroll);
-    tableDiv.addEventListener('scroll', handleTableScroll);
-
-    return () => {
-      if (topDiv) topDiv.removeEventListener('scroll', handleTopScroll);
-      if (tableDiv) tableDiv.removeEventListener('scroll', handleTableScroll);
-    };
-  }, []);
-
-  // Update table width for the top scrollbar sizer
+  // Effect to update table width for the top sizer div
   useEffect(() => {
       const calculateWidth = () => {
           if (tableRef.current) {
@@ -257,13 +247,13 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       </div>
 
       {/* Top Scrollbar */}
-      <div ref={topScrollRef} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
+      <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
           <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div ref={tableScrollRef} className="overflow-x-auto">
+        <div ref={tableScrollRef} onScroll={handleTableScroll} className="overflow-x-auto">
           <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
