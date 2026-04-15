@@ -160,7 +160,14 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grup
                                     <TableBody>
                                         {data.map((row, idx) => (
                                             <TableRow key={idx}>
-                                                {columns.map(col => <TableCell key={`${idx}-${col}`}>{String(row[col] ?? '-')}</TableCell>)}
+                                                {columns.map(col => {
+                                                    const value = row[col];
+                                                    let displayValue = String(value ?? '-');
+                                                    if ((col === 'Tiempo_Min' || col === 'Tiempo') && typeof value === 'number') {
+                                                        displayValue = value.toFixed(2);
+                                                    }
+                                                    return <TableCell key={`${idx}-${col}`}>{displayValue}</TableCell>;
+                                                })}
                                             </TableRow>
                                         ))}
                                     </TableBody>
