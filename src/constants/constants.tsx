@@ -123,7 +123,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica-muebles' },
   { id: ActiveView.TACTICAL_SCHEDULING_ESPUMAS, label: 'Programación Táctica Corte Espuma', icon: <Wind className="w-5 h-5" />, href: '/dashboard/opciones/tactica-espumas' },
   { id: ActiveView.TACTICAL_SCHEDULING_VENTA_EXTERNA, label: 'Programación Táctica Venta Externa', icon: <ShoppingCart className="w-5 h-5" />, href: '/dashboard/opciones/tactica-venta-externa' },
-  { id: ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO, label: 'Programación Táctica Corte y Laminado', icon: <Scissors className="w-5 h-5" />, href: '/dashboard/opciones/tactica-corte-laminado' },
+  { id: ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO, label: 'Programación Táctica Laminado', icon: <Scissors className="w-5 h-5" />, href: '/dashboard/opciones/tactica-corte-laminado' },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
   { id: ActiveView.PARAMETROS, label: 'Parámetros', icon: <ClipboardList />, href: '/dashboard/parametros' },
