@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -40,9 +41,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
   // Define static columns to ensure order and completeness
   const COLUMNS_TO_DISPLAY = [
-    'ORDENPREVISIONAL', 'MATERIAL', 'NOMBRE', 'CANTIDAD', 'UNIDAD', 
+    'Maquina', 'ORDENPREVISIONAL', 'MATERIAL', 'NOMBRE', 'CANTIDAD', 'UNIDAD', 
     'FECHAINICIO', 'FECHAFIN', 'RESPCONTROLPROD', 'Centro', 'Almacen', 
-    'Maquina', 'ClaseOrden', 'CodMaterial', 'CATEGORIA'
+    'ClaseOrden', 'CodMaterial', 'CATEGORIA'
   ];
 
   useEffect(() => {
@@ -127,30 +128,28 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     }));
   };
 
-  // Scroll sync handlers
   const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
-      if (lastScrolledRef.current === 'table') {
-          lastScrolledRef.current = null;
-          return;
-      }
-      if (tableScrollRef.current) {
-          lastScrolledRef.current = 'top';
-          tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-      }
+    if (lastScrolledRef.current === 'table') {
+      lastScrolledRef.current = null;
+      return;
+    }
+    if (tableScrollRef.current) {
+      lastScrolledRef.current = 'top';
+      tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
   };
 
   const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
-      if (lastScrolledRef.current === 'top') {
-          lastScrolledRef.current = null;
-          return;
-      }
-      if (topScrollRef.current) {
-          lastScrolledRef.current = 'table';
-          topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-      }
+    if (lastScrolledRef.current === 'top') {
+      lastScrolledRef.current = null;
+      return;
+    }
+    if (topScrollRef.current) {
+      lastScrolledRef.current = 'table';
+      topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
   };
-
-  // Effect to update table width for the top sizer div
+  
   useEffect(() => {
       const calculateWidth = () => {
           if (tableRef.current) {
