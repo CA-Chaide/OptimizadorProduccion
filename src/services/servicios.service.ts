@@ -334,6 +334,21 @@ export const serviciosService = {
     }
     return response.json();
   },
+  
+
+  async getOrdenesFert(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/OrdenesFert", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
 
 
 };
