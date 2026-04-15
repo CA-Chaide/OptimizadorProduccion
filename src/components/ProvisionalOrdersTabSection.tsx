@@ -36,6 +36,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [tableWidth, setTableWidth] = useState(0);
+  const isSyncing = useRef(false);
 
   // Define static columns to ensure order and completeness
   const COLUMNS_TO_DISPLAY = [
@@ -118,13 +119,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     }
   };
 
-  const handleLoadPage = (page: number) => {
-    setPagination(prev => ({
-      ...prev,
-      currentPage: page,
-    }));
-  };
-
   const handleRowsPerPageChange = (newRowsPerPage: number) => {
     setPagination(prev => ({
       ...prev,
@@ -139,25 +133,22 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     const tableDiv = tableScrollRef.current;
     if (!topDiv || !tableDiv) return;
 
-    let ignoreTop = false;
-    let ignoreTable = false;
-
     const handleTopScroll = () => {
-      if (ignoreTop) {
-        ignoreTop = false;
-        return;
-      }
-      ignoreTable = true;
+      if (isSyncing.current) return;
+      isSyncing.current = true;
       tableDiv.scrollLeft = topDiv.scrollLeft;
+      requestAnimationFrame(() => {
+          isSyncing.current = false;
+      });
     };
 
     const handleTableScroll = () => {
-      if (ignoreTable) {
-        ignoreTable = false;
-        return;
-      }
-      ignoreTop = true;
+      if (isSyncing.current) return;
+      isSyncing.current = true;
       topDiv.scrollLeft = tableDiv.scrollLeft;
+      requestAnimationFrame(() => {
+          isSyncing.current = false;
+      });
     };
 
     topDiv.addEventListener('scroll', handleTopScroll);
@@ -191,6 +182,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           }
       };
   }, [displayedOrders]);
+
 
   if (isLoading && orders.length === 0) {
     return (
