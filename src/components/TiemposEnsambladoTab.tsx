@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import type { Grupo } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,12 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grup
     const [data, setData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [columns, setColumns] = useState<string[]>([]);
+    
+    const topScrollRef = useRef<HTMLDivElement>(null);
+    const tableScrollRef = useRef<HTMLDivElement>(null);
+    const tableRef = useRef<HTMLTableElement>(null);
+    const [tableWidth, setTableWidth] = useState(0);
+    const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
     const handleFetch = useCallback(async () => {
         if (!selectedCentro || !selectedGrupo) {
@@ -46,6 +52,50 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grup
             setIsLoading(false);
         }
     }, [selectedCentro, selectedGrupo, addNotification]);
+
+    useEffect(() => {
+        const calculateWidth = () => {
+            if (tableRef.current) {
+                setTableWidth(tableRef.current.offsetWidth);
+            }
+        };
+        calculateWidth();
+        window.addEventListener('resize', calculateWidth);
+        
+        const resizeObserver = new ResizeObserver(calculateWidth);
+        if (tableRef.current) {
+            resizeObserver.observe(tableRef.current);
+        }
+
+        return () => {
+            window.removeEventListener('resize', calculateWidth);
+            if (tableRef.current) {
+                resizeObserver.unobserve(tableRef.current);
+            }
+        };
+    }, [data]);
+
+    const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (lastScrolledRef.current === 'table') {
+            lastScrolledRef.current = null;
+            return;
+        }
+        if (tableScrollRef.current) {
+            lastScrolledRef.current = 'top';
+            tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+        }
+    };
+
+    const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (lastScrolledRef.current === 'top') {
+            lastScrolledRef.current = null;
+            return;
+        }
+        if (topScrollRef.current) {
+            lastScrolledRef.current = 'table';
+            topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+        }
+    };
 
     const centros = [...new Set(grupos.map(g => g.centro))].map(c => ({ value: c, label: c }));
     const gruposFiltrados = selectedCentro ? grupos.filter(g => g.centro === selectedCentro) : [];
@@ -96,22 +146,27 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grup
                     <div className="flex justify-center items-center p-8"><Loader2 className="w-8 h-8 animate-spin" /></div>
                 ) : (
                     data.length > 0 && (
-                        <div className="border rounded-lg overflow-auto max-h-[60vh]">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {data.map((row, idx) => (
-                                        <TableRow key={idx}>
-                                            {columns.map(col => <TableCell key={`${idx}-${col}`}>{String(row[col] ?? '-')}</TableCell>)}
+                        <>
+                            <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
+                                <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
+                            </div>
+                            <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh]">
+                                <Table ref={tableRef}>
+                                    <TableHeader>
+                                        <TableRow>
+                                            {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {data.map((row, idx) => (
+                                            <TableRow key={idx}>
+                                                {columns.map(col => <TableCell key={`${idx}-${col}`}>{String(row[col] ?? '-')}</TableCell>)}
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </>
                     )
                 )}
             </CardContent>
