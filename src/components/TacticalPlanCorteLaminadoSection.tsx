@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
  * TacticalPlanCorteLaminadoSection
  * 
  * Reestructurado para mostrar 3 pestañas siguiendo la lógica de Espumas:
- * 1. Grupos: Filtrados por "Laminado"
+ * 1. Grupos: Filtrados por "Laminado" o "Corte"
  * 2. Restricciones: Pertenecientes a esos grupos
  * 3. Órdenes Provisionales: Filtradas por RespCtrlProd y ALMACEN de las restricciones
  */
@@ -30,12 +30,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [ordenes, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 1. Cargar Grupos de Laminado
+  // 1. Cargar Grupos de Corte y Laminado (Quito y Guayaquil)
   const fetchGruposLaminado = async () => {
     try {
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => 
-        g.nombre_grupo.toLowerCase().includes('laminado')
+        g.nombre_grupo.toLowerCase().includes('laminado') || 
+        g.nombre_grupo.toLowerCase().includes('corte')
       );
       setGrupos(filtered);
       inspector.captureVariable('gruposLaminado', filtered);
@@ -67,7 +68,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // 3. Cargar Órdenes Provisionales
   const fetchOrdenes = async () => {
     try {
-      // Cargamos un bloque para filtrar localmente
+      // Cargamos un bloque grande para filtrar localmente
       const res = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
       setOrders(res.data || []);
       inspector.captureVariable('totalOrdenesRaw', res.data?.length || 0);
@@ -124,7 +125,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <Scissors className="w-8 h-8 text-red-600" />
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Programación Táctica Laminado</h2>
-            <p className="text-sm text-gray-500">Gestión de procesos de laminación y corte secundario</p>
+            <p className="text-sm text-gray-500">Gestión de procesos de laminación y corte (Quito y Guayaquil)</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -153,13 +154,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
-              <CardTitle>Áreas de Laminado</CardTitle>
-              <CardDescription>Grupos operativos involucrados en procesos de laminación.</CardDescription>
+              <CardTitle>Áreas de Corte y Laminado</CardTitle>
+              <CardDescription>Grupos operativos involucrados en procesos de laminación en todas las plantas.</CardDescription>
             </CardHeader>
             <CardContent>
               {grupos.length === 0 ? (
                 <div className="text-center py-12 text-gray-400 border-2 border-dashed rounded-lg">
-                  No se encontraron grupos con el nombre "Laminado".
+                  No se encontraron grupos de "Corte" o "Laminado".
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
