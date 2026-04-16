@@ -67,8 +67,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     try {
       setIsLoading(true);
       
-      const [centersRes, groupsRes, restRes, fertRes] = await Promise.all([
-        serviciosService.getCentros(),
+      const [groupsRes, restRes, fertRes] = await Promise.all([
         grupoService.getAll(),
         restriccionService.getAll(),
         serviciosService.getOrdenesFert()
@@ -79,13 +78,12 @@ export const OrdenesFertTabSection: React.FC = () => {
       setAllGroups(groupsRes?.data || []);
       setAllRestrictions(restRes?.data || []);
 
-      // Detección dinámica de centros desde la data
-      const dataCenters = [...new Set(rawData.map(o => String(o.CENTRO || '').trim()))].filter(Boolean);
-      const officialCenters = (centersRes?.data || []).map((c: any) => String(c.Centro || c).trim()).filter(Boolean);
-      const finalCentersList = [...new Set([...officialCenters, ...dataCenters])].sort();
+      // Los centros se recuperan de los GRUPOS registrados
+      const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
+      setAvailableCenters(centersFromGroups);
       
-      setAvailableCenters(finalCentersList);
       inspector.captureVariable('fert_raw_count', rawData.length);
+      inspector.captureVariable('centers_from_groups', centersFromGroups);
       
     } catch (err) {
       const msg = (err as Error).message;
@@ -133,7 +131,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       const centerFilters = getFiltersForCenter(centerId);
       
       grouped[centerId] = allRawOrders.filter(order => {
-        // 1. Validar Centro
+        // 1. Validar Centro (CRITICO: Compara contra el centro del grupo)
         if (String(order.CENTRO).trim() !== centerId) return false;
 
         // 2. Filtrar por Sectores de la restricción del centro
@@ -155,7 +153,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     return grouped;
   }, [allRawOrders, availableCenters, getFiltersForCenter]);
 
-  // Opciones de sectores para el combo (basado en la vista actual)
+  // Opciones de sectores para el combo (basado en la pestaña activa)
   const availableSectors = useMemo(() => {
     const baseOrders = selectedCenter === "raw_view" 
       ? allRawOrders 
@@ -205,17 +203,16 @@ export const OrdenesFertTabSection: React.FC = () => {
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT</h3>
-            <p className="text-xs text-gray-500 mt-1">Filtrado por restricciones específicas de cada planta</p>
+            <p className="text-xs text-gray-500 mt-1">Sincronizado con centros de grupos de ensamblado</p>
           </div>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Combo de Sectores dinámico desde SECTORDESC */}
           <div className="w-56">
             <Select value={selectedSector} onValueChange={(val) => { setSelectedSector(val); setCurrentPage(1); }}>
               <SelectTrigger className="h-9 bg-white">
                 <LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" />
-                <SelectValue placeholder="Filtrar por Sector..." />
+                <SelectValue placeholder="Filtrar por SECTORDESC..." />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los Sectores</SelectItem>
@@ -265,7 +262,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                 className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-4 py-2 text-xs font-bold uppercase tracking-wider"
               >
                 <Home className="w-3 h-3 mr-2" />
-                Planta {center} ({ordersGroupedByCenter[center]?.length || 0})
+                Centro {center} ({ordersGroupedByCenter[center]?.length || 0})
               </TabsTrigger>
             ))}
           </TabsList>
@@ -273,13 +270,11 @@ export const OrdenesFertTabSection: React.FC = () => {
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <div className="p-2 bg-indigo-50/30 border-b flex items-center justify-between text-[10px] font-bold text-indigo-600 uppercase px-4">
               <span>
-                {selectedCenter === 'raw_view' ? 'Todos los registros (Sin Filtros)' : `Centro ${selectedCenter} (Filtrado por restricciones planta)`}
-                {selectedSector !== "ALL" && ` • Sector: ${selectedSector}`}
+                {selectedCenter === 'raw_view' ? 'Todos los registros' : `Centro ${selectedCenter} (Filtrado por centro de grupo)`}
               </span>
-              <span>{currentViewOrders.length} registros encontrados</span>
+              <span>{currentViewOrders.length} registros</span>
             </div>
 
-            {/* Doble inversión para Scroll Superior */}
             <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
               <div style={{ transform: 'rotateX(180deg)' }}>
                 <table className="min-w-full divide-y divide-gray-200">
@@ -316,7 +311,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                     )) : (
                       <tr>
                         <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
-                          No se encontraron órdenes con los filtros aplicados.
+                          No hay órdenes para este centro.
                         </td>
                       </tr>
                     )}
@@ -327,7 +322,7 @@ export const OrdenesFertTabSection: React.FC = () => {
 
             <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <span className="text-xs font-medium text-gray-500 uppercase">Filas por página:</span>
+                <span className="text-xs font-medium text-gray-500 uppercase">Filas:</span>
                 <select
                   value={rowsPerPage}
                   onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
@@ -336,10 +331,9 @@ export const OrdenesFertTabSection: React.FC = () => {
                   <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
-                  <option value={100}>100</option>
                 </select>
                 <span className="text-xs text-gray-400 font-medium uppercase">
-                  Viendo {startIndex + 1} - {Math.min(startIndex + rowsPerPage, currentViewOrders.length)} de {currentViewOrders.length}
+                  Viendo {startIndex + 1} - {Math.min(startIndex + rowsPerPage, currentViewOrders.length)}
                 </span>
               </div>
 
