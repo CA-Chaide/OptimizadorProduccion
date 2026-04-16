@@ -4,9 +4,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
+import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid } from 'lucide-react';
+import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, UserCheck, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -47,6 +48,8 @@ export const OrdenesFertTabSection: React.FC = () => {
   // Estados de Datos
   const [allRawOrders, setAllRawOrders] = useState<OrdenFert[]>([]);
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
+  const [restrictions, setRestrictions] = useState<any[]>([]);
   
   // Estados de UI
   const [selectedTab, setSelectedTab] = useState<string>("raw_view");
@@ -61,20 +64,22 @@ export const OrdenesFertTabSection: React.FC = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [groupsRes, fertRes] = await Promise.all([
+      const [groupsRes, restRes, fertRes] = await Promise.all([
         grupoService.getAll(),
+        restriccionService.getAll(),
         serviciosService.getOrdenesFert()
       ]);
 
       const rawData = Array.isArray(fertRes?.data) ? fertRes.data : [];
       setAllRawOrders(rawData);
+      setGroups(groupsRes?.data || []);
+      setRestrictions(restRes?.data || []);
 
-      // Los centros los recuperamos de los grupos operativos
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
       
       inspector.captureVariable('fert_raw_count', rawData.length);
-      inspector.captureVariable('available_centers', centersFromGroups);
+      inspector.captureVariable('restrictions_count', (restRes?.data || []).length);
       
     } catch (err) {
       addNotification('error', `Error al cargar órdenes FERT: ${(err as Error).message}`);
@@ -90,45 +95,71 @@ export const OrdenesFertTabSection: React.FC = () => {
     }
   }, [loadData]);
 
-  // AGRUPACIÓN PRINCIPAL POR CENTRO (Filtrado ÚNICAMENTE por columna CENTRO)
-  const ordersGroupedByCenter = useMemo(() => {
+  // Helper para parsear responsables (separados por , o &)
+  const parseResponsables = (value: string): string[] => {
+    if (!value) return [];
+    return value.split(/[,&]/).map(v => v.trim()).filter(Boolean);
+  };
+
+  // Obtener responsables configurados para un centro específico
+  const getResponsablesPorCentro = (centerId: string) => {
+    const groupForCenter = groups.find(g => String(g.centro).trim() === centerId);
+    if (!groupForCenter) return [];
+    
+    const restriction = restrictions.find(r => 
+      r.codigo_grupo === groupForCenter.codigo_grupo && 
+      r.nombre_restriccion === 'RespCtrlProd'
+    );
+    
+    return parseResponsables(restriction?.valor_restriccion || '');
+  };
+
+  // AGRUPACIÓN Y FILTRADO PRINCIPAL
+  const filteredDataByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     
     availableCenters.forEach(centerId => {
-      grouped[centerId] = allRawOrders.filter(order => {
+      // 1. Filtrar por Centro
+      let centerOrders = allRawOrders.filter(order => {
         const orderCenter = String(order.CENTRO || order.Centro || order.centro || '').trim();
         return orderCenter === centerId;
       });
+
+      // 2. Filtrar por Responsables (RespCtrlProd) configurados en restricciones
+      const allowedResps = getResponsablesPorCentro(centerId);
+      if (allowedResps.length > 0) {
+        centerOrders = centerOrders.filter(order => 
+          allowedResps.includes(String(order.RESPCTRLPROD).trim())
+        );
+      }
+
+      grouped[centerId] = centerOrders;
     });
 
     return grouped;
-  }, [allRawOrders, availableCenters]);
+  }, [allRawOrders, availableCenters, groups, restrictions]);
 
-  // Sectores disponibles en la vista actual (vienen de SECTORDESC)
+  // Sectores disponibles en la vista actual
   const availableSectors = useMemo(() => {
     const baseOrders = selectedTab === "raw_view" 
       ? allRawOrders 
-      : (ordersGroupedByCenter[selectedTab] || []);
+      : (filteredDataByCenter[selectedTab] || []);
     
-    const sectors = [...new Set(baseOrders.map(o => String(o.SECTORDESC || 'SIN SECTOR').trim().toUpperCase()))].sort();
-    return sectors;
-  }, [allRawOrders, ordersGroupedByCenter, selectedTab]);
+    return [...new Set(baseOrders.map(o => String(o.SECTORDESC || 'SIN SECTOR').trim().toUpperCase()))].sort();
+  }, [allRawOrders, filteredDataByCenter, selectedTab]);
 
   // Aplicación de filtros de UI (Búsqueda y Combo de Sectores)
   const currentViewOrders = useMemo(() => {
     let base = selectedTab === "raw_view" 
       ? allRawOrders 
-      : (ordersGroupedByCenter[selectedTab] || []);
+      : (filteredDataByCenter[selectedTab] || []);
 
     const term = searchTerm.toLowerCase().trim();
     
     return base.filter(o => {
-      // Filtro por Sector (Combo)
       if (selectedSector !== "ALL") {
         if (String(o.SECTORDESC || 'SIN SECTOR').trim().toUpperCase() !== selectedSector) return false;
       }
-
-      // Filtro por Búsqueda Manual
       if (term) {
         return (
           String(o.ORDEN || '').toLowerCase().includes(term) ||
@@ -137,10 +168,9 @@ export const OrdenesFertTabSection: React.FC = () => {
           String(o.PEDIDO || '').toLowerCase().includes(term)
         );
       }
-
       return true;
     });
-  }, [allRawOrders, ordersGroupedByCenter, selectedTab, searchTerm, selectedSector]);
+  }, [allRawOrders, filteredDataByCenter, selectedTab, searchTerm, selectedSector]);
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -155,7 +185,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT (Detalle Completo)</h3>
-            <p className="text-xs text-gray-500 mt-1">Filtrado por columna CENTRO</p>
+            <p className="text-xs text-gray-500 mt-1">Filtrado dinámico por Centro y Responsables</p>
           </div>
         </div>
         
@@ -214,10 +244,32 @@ export const OrdenesFertTabSection: React.FC = () => {
                 className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-4 py-2 text-xs font-bold uppercase tracking-wider"
               >
                 <Home className="w-3 h-3 mr-2" />
-                Centro {center} ({ordersGroupedByCenter[center]?.length || 0})
+                Centro {center} ({filteredDataByCenter[center]?.length || 0})
               </TabsTrigger>
             ))}
           </TabsList>
+
+          {/* Label de Responsables Activos para el Centro */}
+          {selectedTab !== "raw_view" && (
+            <div className="mb-4 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center gap-3">
+              <UserCheck className="w-5 h-5 text-indigo-600 shrink-0" />
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs font-bold text-indigo-800 uppercase tracking-tight">Responsables Activos:</span>
+                {(() => {
+                  const resps = getResponsablesPorCentro(selectedTab);
+                  return resps.length > 0 ? (
+                    resps.map(r => (
+                      <Badge key={r} variant="secondary" className="bg-indigo-100 text-indigo-700 text-[10px] font-mono border-indigo-200">
+                        {r}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-indigo-400 italic">Todos los responsables (Sin restricción)</span>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             {/* Contenedor para Scroll Horizontal Superior */}
@@ -235,11 +287,10 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Entreg.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase">Notif.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-red-600 uppercase">Rech.</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Resp.</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Sector</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Pri.</th>
-                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Línea</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Máquina</th>
-                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Pedido</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Fecha</th>
                     </tr>
                   </thead>
@@ -256,26 +307,24 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-red-600 bg-red-50/30">{order.CANTRECHAZO}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-center">
+                          <Badge variant="outline" className="text-[10px] font-mono border-gray-100 bg-gray-50 text-gray-400">{order.RESPCTRLPROD}</Badge>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-center">
                           <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100 text-[10px] font-bold uppercase">
                             {order.SECTORDESC || 'SIN SECTOR'}
                           </span>
                         </td>
                         <td className="px-3 py-4 whitespace-nowrap text-center text-[10px] font-mono">{order.PRIORIDAD}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center">
-                           {order.ENLINEA === 1 ? (
-                             <Badge className="bg-emerald-500 text-white text-[9px] h-4">SI</Badge>
-                           ) : (
-                             <Badge variant="outline" className="text-gray-300 text-[9px] h-4 border-gray-100">NO</Badge>
-                           )}
-                        </td>
                         <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-500 font-mono">{order.MAQUINA || '-'}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-indigo-400 font-mono">{order.PEDIDO || '-'}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-600">{order.FECHA}</td>
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={15} className="px-6 py-12 text-center text-gray-400 italic">
-                          No hay órdenes disponibles para los filtros seleccionados.
+                        <td colSpan={14} className="px-6 py-12 text-center text-gray-400 italic">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <AlertCircle className="w-8 h-8 text-gray-300" />
+                            <span>No hay órdenes para los filtros configurados (Centro + Responsables).</span>
+                          </div>
                         </td>
                       </tr>
                     )}
