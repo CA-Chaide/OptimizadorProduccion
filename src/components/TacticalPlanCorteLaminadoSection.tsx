@@ -15,15 +15,10 @@ import { Badge } from '@/components/ui/badge';
 /**
  * TacticalPlanCorteLaminadoSection
  * 
- * Reestructurado para replicar el comportamiento de Espumas:
- * 1. Grupos: Filtrados por "Laminado" o "Corte"
+ * Reestructurado para mostrar solo el grupo específico "Corte y Laminado"
+ * 1. Grupos: Filtrados exclusivamente por "Corte y Laminado"
  * 2. Restricciones: Pertenecientes a esos grupos
  * 3. Órdenes Provisionales: Filtradas por RespCtrlProd y ALMACEN de las restricciones
- * 
- * Incluye:
- * - Columnas separadas por líneas entrecortadas
- * - Contenido centrado
- * - Doble scroll sincronizado (superior e inferior)
  */
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -45,12 +40,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const fetchGruposLaminado = async () => {
     try {
       const res = await grupoService.getAll();
+      // FILTRO AJUSTADO: Solo grupos que contengan exactamente "corte y laminado"
       const filtered = (res.data || []).filter(g => 
-        g.nombre_grupo.toLowerCase().includes('laminado') || 
-        g.nombre_grupo.toLowerCase().includes('corte')
+        g.nombre_grupo.toLowerCase().includes('corte y laminado')
       );
       setGrupos(filtered);
-      inspector.captureVariable('gruposLaminado', filtered);
+      inspector.captureVariable('gruposLaminadoFiltrados', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando grupos:', error);
@@ -173,7 +168,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <Scissors className="w-8 h-8 text-red-600" />
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Programación Táctica Laminado</h2>
-            <p className="text-sm text-gray-500">Gestión de procesos de laminación y corte (Quito y Guayaquil)</p>
+            <p className="text-sm text-gray-500">Gestión de procesos de laminación para el grupo "Corte y Laminado"</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -202,13 +197,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
-              <CardTitle>Áreas de Corte y Laminado</CardTitle>
-              <CardDescription>Grupos operativos involucrados en procesos de laminación en todas las plantas.</CardDescription>
+              <CardTitle>Grupos: Corte y Laminado</CardTitle>
+              <CardDescription>Mostrando únicamente los grupos operativos de "Corte y Laminado" en las plantas de Quito y Guayaquil.</CardDescription>
             </CardHeader>
             <CardContent>
               {grupos.length === 0 ? (
                 <div className="text-center py-12 text-gray-400 border-2 border-dashed rounded-lg">
-                  No se encontraron grupos de "Corte" o "Laminado".
+                  No se encontró el grupo "Corte y Laminado" en la base de datos.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -234,8 +229,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsContent value="restricciones">
           <Card>
             <CardHeader>
-              <CardTitle>Reglas de Filtrado</CardTitle>
-              <CardDescription>Restricciones que comandan el flujo de órdenes de laminado.</CardDescription>
+              <CardTitle>Reglas de Filtrado para Corte y Laminado</CardTitle>
+              <CardDescription>Restricciones asociadas específicamente al grupo seleccionado.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto border rounded-lg">
@@ -264,7 +259,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     {restricciones.length === 0 && (
                       <tr>
                         <td colSpan={3} className="px-6 py-8 text-center text-gray-400">
-                          Configure restricciones para los grupos de laminado.
+                          Configure restricciones para el grupo de "Corte y Laminado".
                         </td>
                       </tr>
                     )}
@@ -281,7 +276,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center">
                 <div>
                   <CardTitle>Órdenes Previsionales para Laminado</CardTitle>
-                  <CardDescription>Visualización filtrada según Responsable y Almacén.</CardDescription>
+                  <CardDescription>Visualización filtrada según Responsable y Almacén de Corte y Laminado.</CardDescription>
                 </div>
                 <Badge variant="outline" className="bg-green-50 text-green-700">
                   {ordenesFiltradas.length} Órdenes
