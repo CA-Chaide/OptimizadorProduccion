@@ -6,7 +6,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, Filter } from 'lucide-react';
+import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,8 +26,16 @@ interface OrdenFert {
   CANTRECHAZO: number;
   UNIDAD: string;
   FECHA: string;
+  ANIO: number;
+  MES: number;
+  DIA: number;
+  SEMANA: number;
   RESPCTRLPROD: string;
+  PRIORIDAD: number;
+  ENLINEA: number;
   MAQUINA: string;
+  PEDIDO: string;
+  CANTPROGPESONETO: number;
   [key: string]: any;
 }
 
@@ -82,7 +90,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     }
   }, [loadData]);
 
-  // AGRUPACIÓN PRINCIPAL POR CENTRO (Sin filtros adicionales de sectores/responsables)
+  // AGRUPACIÓN PRINCIPAL POR CENTRO (Filtrado ÚNICAMENTE por columna CENTRO)
   const ordersGroupedByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     
@@ -125,7 +133,8 @@ export const OrdenesFertTabSection: React.FC = () => {
         return (
           String(o.ORDEN || '').toLowerCase().includes(term) ||
           String(o.MATERIAL || '').toLowerCase().includes(term) ||
-          String(o.NOMBRE || '').toLowerCase().includes(term)
+          String(o.NOMBRE || '').toLowerCase().includes(term) ||
+          String(o.PEDIDO || '').toLowerCase().includes(term)
         );
       }
 
@@ -145,18 +154,17 @@ export const OrdenesFertTabSection: React.FC = () => {
         <div className="flex items-center space-x-3">
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
-            <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT</h3>
-            <p className="text-xs text-gray-500 mt-1">Filtrado únicamente por columna CENTRO</p>
+            <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT (Detalle Completo)</h3>
+            <p className="text-xs text-gray-500 mt-1">Filtrado por columna CENTRO</p>
           </div>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Combo de Sectores dinámico (basado en SECTORDESC) */}
           <div className="w-56">
             <Select value={selectedSector} onValueChange={(val) => { setSelectedSector(val); setCurrentPage(1); }}>
               <SelectTrigger className="h-9 bg-white">
                 <LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" />
-                <SelectValue placeholder="Sector (SECTORDESC)" />
+                <SelectValue placeholder="Sector" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los Sectores</SelectItem>
@@ -171,7 +179,7 @@ export const OrdenesFertTabSection: React.FC = () => {
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input
               type="search"
-              placeholder="Orden, material o nombre..."
+              placeholder="Orden, material, pedido..."
               className="pl-9 h-9 text-xs"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
@@ -186,7 +194,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       {isLoading ? (
         <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
           <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-          <span className="mt-4 text-gray-600 font-medium">Cargando órdenes FERT...</span>
+          <span className="mt-4 text-gray-600 font-medium">Cargando datos...</span>
         </div>
       ) : (
         <Tabs value={selectedTab} onValueChange={(val) => { setSelectedTab(val); setCurrentPage(1); setSelectedSector("ALL"); }} className="w-full">
@@ -212,57 +220,62 @@ export const OrdenesFertTabSection: React.FC = () => {
           </TabsList>
 
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-            <div className="p-2 bg-indigo-50/30 border-b flex items-center justify-between text-[10px] font-bold text-indigo-600 uppercase px-4">
-              <div className="flex items-center gap-2">
-                {selectedTab === 'raw_view' ? (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">SIN FILTRAR</Badge>
-                ) : (
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 uppercase">FILTRADO CENTRO {selectedTab}</Badge>
-                )}
-                <span>Filas encontradas: {currentViewOrders.length}</span>
-              </div>
-            </div>
-
-            {/* Inversión para scroll horizontal superior */}
+            {/* Contenedor para Scroll Horizontal Superior */}
             <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
               <div style={{ transform: 'rotateX(180deg)' }}>
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Centro</th>
-                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
-                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
-                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre del Producto</th>
-                      <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Programado</th>
-                      <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Entregado</th>
-                      <th className="px-6 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Sector</th>
-                      <th className="px-6 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp. Ctrl.</th>
-                      <th className="px-6 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Fecha</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Centro</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Orden</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Material</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Categoría</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Nombre</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Prog.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Entreg.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase">Notif.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-red-600 uppercase">Rech.</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Sector</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Pri.</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Línea</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Máquina</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Pedido</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Fecha</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => (
                       <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-400">{order.CENTRO || order.Centro || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold text-indigo-600">{order.ORDEN}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
-                        <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
-                          {Number(order.CANTPROGRAMADA || 0).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">{order.UNIDAD}</span>
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{order.CENTRO}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-mono font-bold text-indigo-600">{order.ORDEN}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500">{order.CATEGORIA}</td>
+                        <td className="px-3 py-4 text-xs text-gray-600 max-w-xs truncate font-medium" title={order.NOMBRE}>{order.NOMBRE}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-gray-900">{order.CANTPROGRAMADA}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-red-600 bg-red-50/30">{order.CANTRECHAZO}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-center">
+                          <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100 text-[10px] font-bold uppercase">
+                            {order.SECTORDESC || 'SIN SECTOR'}
+                          </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-green-600">
-                          {Number(order.CANTENTREGADA || 0).toLocaleString()}
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-[10px] font-mono">{order.PRIORIDAD}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-center">
+                           {order.ENLINEA === 1 ? (
+                             <Badge className="bg-emerald-500 text-white text-[9px] h-4">SI</Badge>
+                           ) : (
+                             <Badge variant="outline" className="text-gray-300 text-[9px] h-4 border-gray-100">NO</Badge>
+                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center text-[10px] font-bold text-amber-700">
-                          <span className="bg-amber-50 px-2 py-0.5 rounded border border-amber-100">{order.SECTORDESC || 'SIN SECTOR'}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.RESPCTRLPROD || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600">{order.FECHA || '-'}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-500 font-mono">{order.MAQUINA || '-'}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-indigo-400 font-mono">{order.PEDIDO || '-'}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-600">{order.FECHA}</td>
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
-                          No se encontraron órdenes para el criterio seleccionado.
+                        <td colSpan={15} className="px-6 py-12 text-center text-gray-400 italic">
+                          No hay órdenes disponibles para los filtros seleccionados.
                         </td>
                       </tr>
                     )}
@@ -272,26 +285,26 @@ export const OrdenesFertTabSection: React.FC = () => {
             </div>
 
             <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <span className="text-xs font-medium text-gray-500 uppercase">Ver:</span>
+              <div className="flex items-center gap-4 text-xs">
+                <span className="font-medium text-gray-500 uppercase">Mostrar:</span>
                 <select
                   value={rowsPerPage}
                   onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                  className="text-xs border rounded p-1 bg-white"
+                  className="border rounded p-1 bg-white"
                 >
                   <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
                 </select>
-                <span className="text-xs text-gray-400 font-medium">
-                  Viendo {startIndex + 1} - {Math.min(startIndex + rowsPerPage, currentViewOrders.length)}
+                <span className="text-gray-400">
+                  {startIndex + 1} - {Math.min(startIndex + rowsPerPage, currentViewOrders.length)} de {currentViewOrders.length}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Anterior</Button>
-                <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600 min-w-[80px] text-center">{currentPage} / {totalPagesLocal}</div>
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} disabled={currentPage === totalPagesLocal}>Siguiente</Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Ant.</Button>
+                <div className="px-4 py-1 bg-white border rounded text-xs font-bold text-indigo-600 min-w-[80px] text-center">{currentPage} / {totalPagesLocal}</div>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} disabled={currentPage === totalPagesLocal}>Sig.</Button>
               </div>
             </div>
           </div>
