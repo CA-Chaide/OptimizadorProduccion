@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 /**
  * TacticalPlanEspumasSection
  * 
- * Refactorizado para mostrar 3 pestañas:
+ * Muestra 3 pestañas:
  * 1. Grupos: Filtrados por "Espumas"
  * 2. Restricciones: Pertenecientes a esos grupos
  * 3. Órdenes Provisionales: Filtradas por RespCtrlProd y ALMACEN de las restricciones
@@ -67,7 +67,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // 3. Cargar Órdenes Provisionales
   const fetchOrdenes = async () => {
     try {
-      // Cargamos un bloque grande para filtrar localmente según reglas
       const res = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
       setOrders(res.data || []);
       inspector.captureVariable('totalOrdenesRaw', res.data?.length || 0);
@@ -92,7 +91,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const ordenesFiltradas = useMemo(() => {
     if (ordenes.length === 0) return [];
 
-    // Extraer valores de las restricciones
     const respCtrlProdValues = restricciones
       .filter(r => r.nombre_restriccion === 'RespCtrlProd')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
@@ -195,21 +193,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Restricción</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Valor Configurado</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Descripción</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Restricción</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Valor Configurado</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Descripción</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {restricciones.map(r => (
                       <tr key={r.codigo_restriccion} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-center border-r border-dashed border-gray-300">
                           {r.nombre_restriccion}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
                           <Badge variant="secondary" className="font-mono">{r.valor_restriccion}</Badge>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
+                        <td className="px-6 py-4 text-sm text-gray-500 text-center">
                           {r.descripcion || 'Sin descripción'}
                         </td>
                       </tr>
@@ -253,30 +251,30 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Orden</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Material</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Cant.</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Inicio</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Fin</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Resp.</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Almacén</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Orden</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Cant.</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Inicio</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Fin</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Resp.</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Almacén</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {ordenesFiltradas.map((o, idx) => (
                         <tr key={idx} className="hover:bg-blue-50 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            <div className="font-mono text-xs">{o.MATERIAL}</div>
-                            <div className="truncate max-w-[200px]">{o.NOMBRE}</div>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
+                            <div className="font-mono text-xs mx-auto">{o.MATERIAL}</div>
+                            <div className="truncate max-w-[200px] mx-auto">{o.NOMBRE}</div>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-700">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">{o.FECHAINICIO}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">{o.FECHAFIN}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm">
-                            <Badge variant="outline" className="font-mono">{o.RESPCONTROLPROD}</Badge>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-700 text-center border-r border-dashed border-gray-300">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAINICIO}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAFIN}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
+                            <Badge variant="outline" className="font-mono mx-auto">{o.RESPCONTROLPROD}</Badge>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700">{o.Almacen}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen}</td>
                         </tr>
                       ))}
                     </tbody>
