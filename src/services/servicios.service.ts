@@ -335,5 +335,20 @@ export const serviciosService = {
     return response.json();
   },
 
+  async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Ordenes Fert");
+    }
+    return response.json();
+  },
+
 
 };

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, AlertCircle } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, AlertCircle, FileText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -15,10 +15,8 @@ import { Badge } from '@/components/ui/badge';
 /**
  * TacticalPlanVentaExternaSection
  * 
- * Reestructurado para mostrar solo el grupo específico "Venta Externa"
- * 1. Grupos: Filtrados exclusivamente por "Venta Externa"
- * 2. Restricciones: Pertenecientes a esos grupos
- * 3. Órdenes Provisionales: Filtradas por RespCtrlProd y ALMACEN de las restricciones
+ * Reestructurado para mostrar el grupo específico "Venta Externa"
+ * Pestañas: Grupos, Restricciones, Órdenes Provisionales y Órdenes Fert.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -28,19 +26,25 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
+  const [ordenesFert, setOrdersFert] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para sincronización de scroll
+  // Refs para sincronización de scroll - Órdenes Provisionales
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [tableWidth, setTableWidth] = useState(0);
 
-  // 1. Cargar Grupos de Venta Externa (Quito y Guayaquil)
+  // Refs para sincronización de scroll - Órdenes Fert
+  const topScrollFertRef = useRef<HTMLDivElement>(null);
+  const tableContainerFertRef = useRef<HTMLDivElement>(null);
+  const tableFertRef = useRef<HTMLTableElement>(null);
+  const [tableFertWidth, setTableFertWidth] = useState(0);
+
+  // 1. Cargar Grupos de Venta Externa
   const fetchGruposVentaExterna = async () => {
     try {
       const res = await grupoService.getAll();
-      // FILTRO AJUSTADO: Solo grupos que contengan exactamente "venta externa"
       const filtered = (res.data || []).filter(g => 
         g.nombre_grupo.toLowerCase().includes('venta externa')
       );
@@ -82,23 +86,33 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     }
   };
 
+  // 4. Cargar Órdenes Fert
+  const fetchOrdenesFert = async () => {
+    try {
+      const res = await serviciosService.getOrdenesFert(1, 20000);
+      setOrdersFert(res.data || []);
+      inspector.captureVariable('totalOrdenesFertRaw', res.data?.length || 0);
+    } catch (error) {
+      console.error('Error cargando órdenes Fert:', error);
+    }
+  };
+
   useEffect(() => {
     const initData = async () => {
       setIsLoading(true);
       const filteredGroups = await fetchGruposVentaExterna();
       const groupsIds = filteredGroups.map(g => g.codigo_grupo);
       await fetchRestricciones(groupsIds);
-      await fetchOrdenes();
+      await Promise.all([fetchOrdenes(), fetchOrdenesFert()]);
       setIsLoading(false);
     };
     initData();
   }, []);
 
-  // Lógica de filtrado para Órdenes Provisionales basada en restricciones
-  const ordenesFiltradas = useMemo(() => {
-    if (ordenes.length === 0) return [];
+  // Lógica de filtrado común basada en restricciones
+  const filtrarData = (data: any[]) => {
+    if (data.length === 0) return [];
 
-    // Extraer valores de las restricciones
     const respCtrlProdValues = restricciones
       .filter(r => r.nombre_restriccion === 'RespCtrlProd')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
@@ -107,43 +121,30 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       .filter(r => r.nombre_restriccion === 'ALMACEN')
       .map(r => r.valor_restriccion.trim());
 
-    return ordenes.filter(o => {
-      const matchResp = respCtrlProdValues.length === 0 || respCtrlProdValues.includes(o.RESPCONTROLPROD);
-      const matchAlmacen = almacenValues.length === 0 || almacenValues.includes(o.Almacen);
+    return data.filter(o => {
+      const respVal = String(o.RESPCONTROLPROD || o.RespCtrlProd || '').trim();
+      const almVal = String(o.Almacen || o.ALMACEN || '').trim();
+      const matchResp = respCtrlProdValues.length === 0 || respCtrlProdValues.includes(respVal);
+      const matchAlmacen = almacenValues.length === 0 || almacenValues.includes(almVal);
       return matchResp && matchAlmacen;
     });
-  }, [ordenes, restricciones]);
+  };
 
-  // Efecto para medir el ancho de la tabla y sincronizar scroll
+  const ordenesFiltradas = useMemo(() => filtrarData(ordenes), [ordenes, restricciones]);
+  const ordenesFertFiltradas = useMemo(() => filtrarData(ordenesFert), [ordenesFert, restricciones]);
+
+  // Sincronización de scroll para Órdenes Provisionales
   useEffect(() => {
     if (activeTab === 'ordenes' && tableRef.current) {
-      const updateWidth = () => {
-        if (tableRef.current) {
-          setTableWidth(tableRef.current.offsetWidth);
-        }
-      };
-      
+      const updateWidth = () => { if (tableRef.current) setTableWidth(tableRef.current.offsetWidth); };
       updateWidth();
       window.addEventListener('resize', updateWidth);
-      
       const topScroll = topScrollRef.current;
       const bottomScroll = tableContainerRef.current;
-
-      const syncBottom = () => {
-        if (topScroll && bottomScroll) {
-          bottomScroll.scrollLeft = topScroll.scrollLeft;
-        }
-      };
-
-      const syncTop = () => {
-        if (topScroll && bottomScroll) {
-          topScroll.scrollLeft = bottomScroll.scrollLeft;
-        }
-      };
-
+      const syncBottom = () => { if (topScroll && bottomScroll) bottomScroll.scrollLeft = topScroll.scrollLeft; };
+      const syncTop = () => { if (topScroll && bottomScroll) topScroll.scrollLeft = bottomScroll.scrollLeft; };
       topScroll?.addEventListener('scroll', syncBottom);
       bottomScroll?.addEventListener('scroll', syncTop);
-
       return () => {
         window.removeEventListener('resize', updateWidth);
         topScroll?.removeEventListener('scroll', syncBottom);
@@ -151,6 +152,26 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       };
     }
   }, [activeTab, ordenesFiltradas]);
+
+  // Sincronización de scroll para Órdenes Fert
+  useEffect(() => {
+    if (activeTab === 'ordenesFert' && tableFertRef.current) {
+      const updateWidth = () => { if (tableFertRef.current) setTableFertWidth(tableFertRef.current.offsetWidth); };
+      updateWidth();
+      window.addEventListener('resize', updateWidth);
+      const topScroll = topScrollFertRef.current;
+      const bottomScroll = tableContainerFertRef.current;
+      const syncBottom = () => { if (topScroll && bottomScroll) bottomScroll.scrollLeft = topScroll.scrollLeft; };
+      const syncTop = () => { if (topScroll && bottomScroll) topScroll.scrollLeft = bottomScroll.scrollLeft; };
+      topScroll?.addEventListener('scroll', syncBottom);
+      bottomScroll?.addEventListener('scroll', syncTop);
+      return () => {
+        window.removeEventListener('resize', updateWidth);
+        topScroll?.removeEventListener('scroll', syncBottom);
+        bottomScroll?.removeEventListener('scroll', syncTop);
+      };
+    }
+  }, [activeTab, ordenesFertFiltradas]);
 
   if (isLoading) {
     return (
@@ -182,7 +203,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
+        <TabsList className="grid w-full grid-cols-4 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" /> Grupos
           </TabsTrigger>
@@ -192,13 +213,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
             <Package className="w-4 h-4" /> Órdenes Provisionales
           </TabsTrigger>
+          <TabsTrigger value="ordenesFert" className="flex items-center gap-2">
+            <FileText className="w-4 h-4" /> Órdenes Fert
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
               <CardTitle>Grupos: Venta Externa</CardTitle>
-              <CardDescription>Mostrando los grupos operativos identificados como de "Venta Externa" en las plantas.</CardDescription>
+              <CardDescription>Grupos operativos identificados de "Venta Externa" en las plantas.</CardDescription>
             </CardHeader>
             <CardContent>
               {grupos.length === 0 ? (
@@ -214,10 +238,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <Badge variant="secondary">{g.centro}</Badge>
                       </div>
                       <p className="text-xs text-gray-500">ID: {g.codigo_grupo}</p>
-                      <div className="mt-3 flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${g.estado === 'A' ? 'bg-green-500' : 'bg-red-500'}`} />
-                        <span className="text-xs font-medium">{g.estado === 'A' ? 'Activo' : 'Inactivo'}</span>
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -245,24 +265,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {restricciones.map(r => (
                       <tr key={r.codigo_restriccion} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-center border-r border-dashed border-gray-300">
-                          {r.nombre_restriccion}
-                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-center border-r border-dashed border-gray-300">{r.nombre_restriccion}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
                           <Badge variant="outline" className="font-mono border-green-200 text-green-700">{r.valor_restriccion}</Badge>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500 text-center">
-                          {r.descripcion || '—'}
-                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500 text-center">{r.descripcion || '—'}</td>
                       </tr>
                     ))}
-                    {restricciones.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="px-6 py-8 text-center text-gray-400">
-                          Configure restricciones para el grupo de "Venta Externa".
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -274,13 +283,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Órdenes Previsionales: Venta Externa</CardTitle>
-                  <CardDescription>Visualización filtrada según Responsable y Almacén de venta externa.</CardDescription>
-                </div>
-                <Badge variant="outline" className="bg-green-50 text-green-700">
-                  {ordenesFiltradas.length} Órdenes
-                </Badge>
+                <CardTitle>Órdenes Provisionales: Venta Externa</CardTitle>
+                <Badge variant="outline" className="bg-green-50 text-green-700">{ordenesFiltradas.length} Órdenes</Badge>
               </div>
             </CardHeader>
             <CardContent>
@@ -291,19 +295,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-0">
-                  {/* Scroll superior sincronizado */}
-                  <div 
-                    ref={topScrollRef} 
-                    className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg"
-                    style={{ marginBottom: '-1px' }}
-                  >
+                  <div ref={topScrollRef} className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg" style={{ marginBottom: '-1px' }}>
                     <div style={{ width: tableWidth, height: '1px' }} />
                   </div>
-
-                  <div 
-                    ref={tableContainerRef}
-                    className="overflow-x-auto border rounded-b-lg max-h-[600px]"
-                  >
+                  <div ref={tableContainerRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
                     <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-100 sticky top-0 z-10">
                         <tr>
@@ -311,7 +306,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Cantidad</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Inicio</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Responsable</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Almacén</th>
                         </tr>
                       </thead>
@@ -325,10 +319,61 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-green-700 border-r border-dashed border-gray-300">{o.CANTIDAD}</td>
                             <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAINICIO}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
-                              <Badge variant="outline" className="mx-auto border-green-200 text-green-700">{o.RESPCONTROLPROD}</Badge>
-                            </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ordenesFert">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>Órdenes Fert: Venta Externa</CardTitle>
+                <Badge variant="outline" className="bg-blue-50 text-blue-700">{ordenesFertFiltradas.length} Registros</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {ordenesFertFiltradas.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed">
+                  <FileText className="w-12 h-12 mb-4 text-gray-300" />
+                  <p className="font-medium">No se detectaron órdenes Fert bajo los parámetros actuales.</p>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  <div ref={topScrollFertRef} className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg" style={{ marginBottom: '-1px' }}>
+                    <div style={{ width: tableFertWidth, height: '1px' }} />
+                  </div>
+                  <div ref={tableContainerFertRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
+                    <table ref={tableFertRef} className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Orden Fert</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Cantidad</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Inicio</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Fin</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Almacén</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {ordenesFertFiltradas.map((o, idx) => (
+                          <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL || o.Orden || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
+                              <div className="font-mono text-xs text-blue-600">{o.MATERIAL || o.CodMaterial}</div>
+                              <div className="truncate max-w-[250px] mx-auto">{o.NOMBRE || o.Descripcion}</div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-blue-700 border-r border-dashed border-gray-300">{o.CANTIDAD || o.Cantidad}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAINICIO || o.FechaInicio}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAFIN || o.FechaFin}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen || o.ALMACEN}</td>
                           </tr>
                         ))}
                       </tbody>
