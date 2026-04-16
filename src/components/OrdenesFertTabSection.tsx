@@ -25,6 +25,7 @@ interface OrdenFert {
   CANTENTREGADA: number;
   CANTNOTIFICADA: number;
   CANTRECHAZO: number;
+  CANTPENDIENTE: number;
   UNIDAD: string;
   FECHA: string;
   ANIO: number;
@@ -287,6 +288,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Entreg.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase">Notif.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-red-600 uppercase">Rech.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-amber-600 uppercase">Pend.</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Resp.</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Sector</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Pri.</th>
@@ -306,6 +308,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-red-600 bg-red-50/30">{order.CANTRECHAZO}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-amber-600 bg-amber-50/20">{order.CANTPENDIENTE || 0}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-center">
                           <Badge variant="outline" className="text-[10px] font-mono border-gray-100 bg-gray-50 text-gray-400">{order.RESPCTRLPROD}</Badge>
                         </td>
@@ -320,7 +323,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={14} className="px-6 py-12 text-center text-gray-400 italic">
+                        <td colSpan={15} className="px-6 py-12 text-center text-gray-400 italic">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <AlertCircle className="w-8 h-8 text-gray-300" />
                             <span>No hay órdenes para los filtros configurados (Centro + Responsables).</span>
