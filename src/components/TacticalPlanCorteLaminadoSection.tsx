@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Scissors, Users, Lock, Package, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,10 +15,15 @@ import { Badge } from '@/components/ui/badge';
 /**
  * TacticalPlanCorteLaminadoSection
  * 
- * Reestructurado para mostrar 3 pestañas siguiendo la lógica de Espumas:
+ * Reestructurado para replicar el comportamiento de Espumas:
  * 1. Grupos: Filtrados por "Laminado" o "Corte"
  * 2. Restricciones: Pertenecientes a esos grupos
  * 3. Órdenes Provisionales: Filtradas por RespCtrlProd y ALMACEN de las restricciones
+ * 
+ * Incluye:
+ * - Columnas separadas por líneas entrecortadas
+ * - Contenido centrado
+ * - Doble scroll sincronizado (superior e inferior)
  */
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -29,6 +34,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Refs para sincronización de scroll
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [tableWidth, setTableWidth] = useState(0);
 
   // 1. Cargar Grupos de Corte y Laminado (Quito y Guayaquil)
   const fetchGruposLaminado = async () => {
@@ -68,7 +79,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // 3. Cargar Órdenes Provisionales
   const fetchOrdenes = async () => {
     try {
-      // Cargamos un bloque grande para filtrar localmente
       const res = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
       setOrders(res.data || []);
       inspector.captureVariable('totalOrdenesRaw', res.data?.length || 0);
@@ -108,6 +118,44 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return matchResp && matchAlmacen;
     });
   }, [ordenes, restricciones]);
+
+  // Efecto para medir el ancho de la tabla y sincronizar scroll
+  useEffect(() => {
+    if (activeTab === 'ordenes' && tableRef.current) {
+      const updateWidth = () => {
+        if (tableRef.current) {
+          setTableWidth(tableRef.current.offsetWidth);
+        }
+      };
+      
+      updateWidth();
+      window.addEventListener('resize', updateWidth);
+      
+      const topScroll = topScrollRef.current;
+      const bottomScroll = tableContainerRef.current;
+
+      const syncBottom = () => {
+        if (topScroll && bottomScroll) {
+          bottomScroll.scrollLeft = topScroll.scrollLeft;
+        }
+      };
+
+      const syncTop = () => {
+        if (topScroll && bottomScroll) {
+          topScroll.scrollLeft = bottomScroll.scrollLeft;
+        }
+      };
+
+      topScroll?.addEventListener('scroll', syncBottom);
+      bottomScroll?.addEventListener('scroll', syncTop);
+
+      return () => {
+        window.removeEventListener('resize', updateWidth);
+        topScroll?.removeEventListener('scroll', syncBottom);
+        bottomScroll?.removeEventListener('scroll', syncTop);
+      };
+    }
+  }, [activeTab, ordenesFiltradas]);
 
   if (isLoading) {
     return (
@@ -194,21 +242,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Parámetro</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Valor</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Descripción</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Parámetro</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Valor</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Descripción</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {restricciones.map(r => (
                       <tr key={r.codigo_restriccion} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-center border-r border-dashed border-gray-300">
                           {r.nombre_restriccion}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
                           <Badge variant="outline" className="font-mono border-red-200 text-red-700">{r.valor_restriccion}</Badge>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
+                        <td className="px-6 py-4 text-sm text-gray-500 text-center">
                           {r.descripcion || '—'}
                         </td>
                       </tr>
@@ -247,36 +295,50 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <p className="font-medium">No se detectaron órdenes bajo los parámetros actuales.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto border rounded-lg max-h-[600px]">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Orden</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Material</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase text-right">Cantidad</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Inicio</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Responsable</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Almacén</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {ordenesFiltradas.map((o, idx) => (
-                        <tr key={idx} className="hover:bg-red-50/30 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            <div className="font-mono text-xs text-red-600">{o.MATERIAL}</div>
-                            <div className="truncate max-w-[250px]">{o.NOMBRE}</div>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-right text-red-700">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">{o.FECHAINICIO}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm">
-                            <Badge variant="outline">{o.RESPCONTROLPROD}</Badge>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700">{o.Almacen}</td>
+                <div className="space-y-0">
+                  {/* Scroll superior sincronizado */}
+                  <div 
+                    ref={topScrollRef} 
+                    className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg"
+                    style={{ marginBottom: '-1px' }}
+                  >
+                    <div style={{ width: tableWidth, height: '1px' }} />
+                  </div>
+
+                  <div 
+                    ref={tableContainerRef}
+                    className="overflow-x-auto border rounded-b-lg max-h-[600px]"
+                  >
+                    <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Orden</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Cantidad</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Inicio</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Responsable</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Almacén</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {ordenesFiltradas.map((o, idx) => (
+                          <tr key={idx} className="hover:bg-red-50/30 transition-colors">
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
+                              <div className="font-mono text-xs text-red-600">{o.MATERIAL}</div>
+                              <div className="truncate max-w-[250px] mx-auto">{o.NOMBRE}</div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-red-700 border-r border-dashed border-gray-300">{o.CANTIDAD}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAINICIO}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
+                              <Badge variant="outline" className="mx-auto">{o.RESPCONTROLPROD}</Badge>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </CardContent>
