@@ -3,9 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
-import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Home, Filter, AlertCircle, Search } from 'lucide-react';
+import { Package, Loader2, Home, AlertCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -55,7 +54,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   });
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
   const performExploration = useCallback(async () => {
     if (hasStarted.current) return;
@@ -63,7 +61,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
     try {
       setIsLoading(true);
-      setError(null);
       
       const centersRes = await serviciosService.getCentros();
       const centersList = (centersRes.data || []).map((c: any) => String(c.Centro || c).trim()).sort();
@@ -85,7 +82,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       }
     } catch (err) {
       const errorMessage = (err as Error).message;
-      setError(errorMessage);
       addNotification('error', `Error al cargar datos: ${errorMessage}`);
     } finally {
       setIsLoading(false);
@@ -100,11 +96,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const filteredOrders = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     return orders.filter(order => {
-      // Filtro de Almacenes
       const almacen = String(order.Almacen || '').trim();
       if (almacen !== '1001' && almacen !== '2001') return false;
 
-      // Filtro de búsqueda
       if (term) {
         return (
           String(order.ORDENPREVISIONAL || '').toLowerCase().includes(term) ||
@@ -112,7 +106,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           String(order.NOMBRE || '').toLowerCase().includes(term)
         );
       }
-
       return true;
     });
   }, [orders, searchTerm]);
@@ -151,27 +144,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const endIndex = startIndex + pagination.rowsPerPage;
   const displayedOrders = currentCenterOrders.slice(startIndex, endIndex);
 
-  const handlePrevious = () => {
-    if (pagination.currentPage > 1) {
-      setPagination(prev => ({ ...prev, currentPage: prev.currentPage - 1 }));
-    }
-  };
-
-  const handleNext = () => {
-    if (pagination.currentPage < totalPagesLocal) {
-      setPagination(prev => ({ ...prev, currentPage: prev.currentPage + 1 }));
-    }
-  };
-
-  const handleRowsPerPageChange = (newRowsPerPage: number) => {
-    setPagination(prev => ({ ...prev, rowsPerPage: newRowsPerPage, currentPage: 1 }));
-  };
-
-  const handleCenterChange = (center: string) => {
-    setSelectedCenter(center);
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
-  };
-
   const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
   if (isLoading && orders.length === 0) {
@@ -209,16 +181,11 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               onChange={(e) => { setSearchTerm(e.target.value); setPagination(p => ({...p, currentPage: 1})); }}
             />
           </div>
-          {!isLoading && filteredOrders.length > 0 && (
-            <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold border border-indigo-100">
-              Total: {filteredOrders.length.toLocaleString()}
-            </div>
-          )}
         </div>
       </div>
 
       {centersWithData.length > 0 ? (
-        <Tabs value={selectedCenter} onValueChange={handleCenterChange} className="w-full">
+        <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setPagination(p => ({...p, currentPage: 1})); }} className="w-full">
           <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
             {centersWithData.map(center => (
               <TabsTrigger 
@@ -233,7 +200,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           </TabsList>
 
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-            {/* Contenedor con scroll invertido */}
+            {/* Scroll Superior Invertido */}
             <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
               <div style={{ transform: 'rotateX(180deg)' }}>
                 <table className="min-w-full divide-y divide-gray-200">
@@ -244,7 +211,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Nombre</th>
                       <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cantidad</th>
                       <th className="px-6 py-3 text-center text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Resp. Ctrl. Prod.</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Resp. Ctrl.</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">F. Inicio</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Máquina</th>
                     </tr>
@@ -269,16 +236,15 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
             <div className="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <span className="text-xs font-medium text-gray-500 uppercase">Mostrar:</span>
+                <span className="text-xs font-medium text-gray-500 uppercase">Ver:</span>
                 <select
                   value={pagination.rowsPerPage}
-                  onChange={(e) => handleRowsPerPageChange(Number(e.target.value))}
+                  onChange={(e) => setPagination(prev => ({ ...prev, rowsPerPage: Number(e.target.value), currentPage: 1 }))}
                   className="text-sm border rounded p-1 bg-white"
                 >
                   <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
-                  <option value={100}>100</option>
                 </select>
                 <span className="text-xs text-gray-400 font-medium">
                   Registros {startIndex + 1}-{Math.min(endIndex, currentCenterOrders.length)} de {currentCenterOrders.length}
@@ -286,9 +252,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handlePrevious} disabled={pagination.currentPage === 1}> Anterior </Button>
-                <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600"> {pagination.currentPage} / {totalPagesLocal} </div>
-                <Button variant="outline" size="sm" onClick={handleNext} disabled={pagination.currentPage === totalPagesLocal}> Siguiente </Button>
+                <Button variant="outline" size="sm" onClick={() => setPagination(prev => ({...prev, currentPage: prev.currentPage - 1}))} disabled={pagination.currentPage === 1}> Anterior </Button>
+                <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600 min-w-[80px] text-center"> {pagination.currentPage} / {totalPagesLocal} </div>
+                <Button variant="outline" size="sm" onClick={() => setPagination(prev => ({...prev, currentPage: prev.currentPage + 1}))} disabled={pagination.currentPage === totalPagesLocal}> Siguiente </Button>
               </div>
             </div>
           </div>
@@ -298,9 +264,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           <div className="text-center py-20 bg-white border-2 border-dashed rounded-lg text-gray-400">
             <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-20" />
             <p className="font-medium">No se encontraron órdenes previsionales relevantes</p>
-            <Button variant="ghost" size="sm" className="mt-4" onClick={() => { hasStarted.current = false; performExploration(); }}>
-              Reintentar carga
-            </Button>
           </div>
         )
       )}

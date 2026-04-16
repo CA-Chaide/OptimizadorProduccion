@@ -11,7 +11,6 @@ import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
-import { useToast } from '@/hooks/use-toast';
 
 const CENTROS = [
   { codigo: 1000, nombre: 'Quito', Icon: MountainSnow },
@@ -24,7 +23,6 @@ export const TacticalPlan2Section: React.FC = () => {
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [isLoadingGrupos, setIsLoadingGrupos] = useState(false);
   const [isLoadingRestricciones, setIsLoadingRestricciones] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
     setMounted(true);
@@ -56,14 +54,12 @@ export const TacticalPlan2Section: React.FC = () => {
     }
   };
 
-  // Filtrar grupos que contengan "Ensamblado"
   const gruposFiltrados = useMemo(() => {
     return grupos.filter(g => 
       g.nombre_grupo.toLowerCase().includes('ensamblado')
     );
   }, [grupos]);
 
-  // Filtrar restricciones que pertenezcan a un grupo llamado "Ensamblado"
   const restriccionesFiltradas = useMemo(() => {
     return restricciones.filter(r => {
       const grupoAsociado = grupos.find(g => g.codigo_grupo === r.codigo_grupo);
@@ -77,9 +73,7 @@ export const TacticalPlan2Section: React.FC = () => {
     return CENTROS.find(x => x.codigo === codigo) || null;
   };
 
-  if (!mounted) {
-    return null;
-  }
+  if (!mounted) return null;
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -102,20 +96,18 @@ export const TacticalPlan2Section: React.FC = () => {
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
-            Ordenes Previsionales
+            Previsionales
           </TabsTrigger>
           <TabsTrigger value="fert" className="flex items-center gap-2">
             <ClipboardList className="w-4 h-4" />
-            Órdenes Fert
+            Fert
           </TabsTrigger>
         </TabsList>
 
-        {/* TAB 1: GRUPOS */}
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
               <CardTitle>Grupos Operativos (Ensamblado)</CardTitle>
-              <CardDescription>Mostrando únicamente los grupos relacionados con el área de Ensamblado.</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoadingGrupos ? (
@@ -134,20 +126,12 @@ export const TacticalPlan2Section: React.FC = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {gruposFiltrados.length > 0 ? gruposFiltrados.map((g) => {
+                          {gruposFiltrados.map((g) => {
                             const centro = resolveCentro(g.centro);
-                            const Icon = centro?.Icon;
                             return (
                               <TableRow key={g.codigo_grupo}>
                                 <TableCell className="font-mono font-bold text-indigo-600">{g.codigo_grupo}</TableCell>
-                                <TableCell>
-                                  {centro ? (
-                                    <div className="flex items-center gap-2">
-                                      {Icon && <Icon className="w-4 h-4 text-gray-500" />}
-                                      <span>{centro.nombre}</span>
-                                    </div>
-                                  ) : '-'}
-                                </TableCell>
+                                <TableCell>{centro?.nombre || '-'}</TableCell>
                                 <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
                                 <TableCell className="text-center">
                                   <Badge variant={g.estado === 'A' ? 'default' : 'destructive'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
@@ -156,9 +140,7 @@ export const TacticalPlan2Section: React.FC = () => {
                                 </TableCell>
                               </TableRow>
                             );
-                          }) : (
-                            <TableRow><TableCell colSpan={4} className="text-center py-8 text-gray-500">No se encontraron grupos de "Ensamblado"</TableCell></TableRow>
-                          )}
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -169,12 +151,10 @@ export const TacticalPlan2Section: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* TAB 2: RESTRICCIONES */}
         <TabsContent value="restricciones">
           <Card>
             <CardHeader>
               <CardTitle>Restricciones de Producción (Ensamblado)</CardTitle>
-              <CardDescription>Parámetros y límites operativos filtrados para el área de Ensamblado.</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoadingRestricciones ? (
@@ -189,36 +169,25 @@ export const TacticalPlan2Section: React.FC = () => {
                             <TableHead>Nombre Restricción</TableHead>
                             <TableHead className="text-center">Valor</TableHead>
                             <TableHead>Grupo Asociado</TableHead>
-                            <TableHead>Descripción</TableHead>
                             <TableHead className="text-center">Estado</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {restriccionesFiltradas.length > 0 ? restriccionesFiltradas.map((r) => {
+                          {restriccionesFiltradas.map((r) => {
                             const grupo = grupos.find(g => g.codigo_grupo === r.codigo_grupo);
                             return (
                               <TableRow key={r.codigo_restriccion}>
                                 <TableCell className="font-semibold text-gray-700">{r.nombre_restriccion}</TableCell>
                                 <TableCell className="text-center font-mono bg-blue-50/50">{r.valor_restriccion}</TableCell>
-                                <TableCell>
-                                  <div className="flex flex-col">
-                                    <span className="font-medium text-xs text-indigo-700">{grupo?.nombre_grupo || 'N/A'}</span>
-                                    <span className="text-[10px] text-gray-500">Centro: {grupo?.centro || '-'}</span>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="max-w-xs truncate text-xs text-gray-600" title={r.descripcion}>
-                                  {r.descripcion || '-'}
-                                </TableCell>
+                                <TableCell>{grupo?.nombre_grupo} ({grupo?.centro})</TableCell>
                                 <TableCell className="text-center">
-                                  <Badge variant={r.estado === 'A' ? 'default' : 'destructive'} className={r.estado === 'A' ? 'bg-green-600 text-[10px]' : 'text-[10px]'}>
+                                  <Badge variant={r.estado === 'A' ? 'default' : 'destructive'} className={r.estado === 'A' ? 'bg-green-600' : ''}>
                                     {r.estado === 'A' ? 'Activo' : 'Inactivo'}
                                   </Badge>
                                 </TableCell>
                               </TableRow>
                             );
-                          }) : (
-                            <TableRow><TableCell colSpan={5} className="text-center py-8 text-gray-500">No hay restricciones para el área de Ensamblado</TableCell></TableRow>
-                          )}
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -229,14 +198,10 @@ export const TacticalPlan2Section: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* TAB 3: ORDENES PREVISIONALES */}
         <TabsContent value="ordenes">
           <Card>
             <CardHeader>
-              <CardTitle>Backend Previsionales</CardTitle>
-              <CardDescription>
-                Visualización y exploración de todas las órdenes previsionales disponibles en el sistema.
-              </CardDescription>
+              <CardTitle>Órdenes Previsionales</CardTitle>
             </CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection />
@@ -244,14 +209,10 @@ export const TacticalPlan2Section: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* TAB 4: ORDENES FERT */}
         <TabsContent value="fert">
           <Card>
             <CardHeader>
-              <CardTitle>Órdenes FERT</CardTitle>
-              <CardDescription>
-                Listado detallado de órdenes de fabricación de producto terminado.
-              </CardDescription>
+              <CardTitle>Órdenes Fert</CardTitle>
             </CardHeader>
             <CardContent>
               <OrdenesFertTabSection />
