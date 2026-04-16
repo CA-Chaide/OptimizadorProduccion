@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Wind, Users, Lock, Package, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,6 +19,8 @@ import { Badge } from '@/components/ui/badge';
  * 1. Grupos: Filtrados por "Espumas"
  * 2. Restricciones: Pertenecientes a esos grupos
  * 3. Órdenes Provisionales: Filtradas por RespCtrlProd y ALMACEN de las restricciones
+ * 
+ * Actualización: Se añadió scroll superior sincronizado para las órdenes previsionales.
  */
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
@@ -29,6 +31,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Refs para sincronización de scroll
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [tableWidth, setTableWidth] = useState(0);
 
   // 1. Cargar Grupos de Espumas
   const fetchGruposEspumas = async () => {
@@ -107,6 +115,45 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       return matchResp && matchAlmacen;
     });
   }, [ordenes, restricciones, inspector]);
+
+  // Efecto para medir el ancho de la tabla y sincronizar scroll
+  useEffect(() => {
+    if (activeTab === 'ordenes' && tableRef.current) {
+      const updateWidth = () => {
+        if (tableRef.current) {
+          setTableWidth(tableRef.current.offsetWidth);
+        }
+      };
+      
+      updateWidth();
+      window.addEventListener('resize', updateWidth);
+      
+      // Sincronización de scroll
+      const topScroll = topScrollRef.current;
+      const bottomScroll = tableContainerRef.current;
+
+      const syncBottom = () => {
+        if (topScroll && bottomScroll) {
+          bottomScroll.scrollLeft = topScroll.scrollLeft;
+        }
+      };
+
+      const syncTop = () => {
+        if (topScroll && bottomScroll) {
+          topScroll.scrollLeft = bottomScroll.scrollLeft;
+        }
+      };
+
+      topScroll?.addEventListener('scroll', syncBottom);
+      bottomScroll?.addEventListener('scroll', syncTop);
+
+      return () => {
+        window.removeEventListener('resize', updateWidth);
+        topScroll?.removeEventListener('scroll', syncBottom);
+        bottomScroll?.removeEventListener('scroll', syncTop);
+      };
+    }
+  }, [activeTab, ordenesFiltradas]);
 
   if (isLoading) {
     return (
@@ -247,38 +294,52 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <p className="text-sm">Verifique las restricciones de 'RespCtrlProd' y 'ALMACEN'.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto border rounded-lg max-h-[600px]">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                      <tr>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Orden</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Cant.</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Inicio</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Fin</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Resp.</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Almacén</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {ordenesFiltradas.map((o, idx) => (
-                        <tr key={idx} className="hover:bg-blue-50 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
-                            <div className="font-mono text-xs mx-auto">{o.MATERIAL}</div>
-                            <div className="truncate max-w-[200px] mx-auto">{o.NOMBRE}</div>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-700 text-center border-r border-dashed border-gray-300">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAINICIO}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAFIN}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
-                            <Badge variant="outline" className="font-mono mx-auto">{o.RESPCONTROLPROD}</Badge>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen}</td>
+                <div className="space-y-0">
+                  {/* Scroll superior sincronizado */}
+                  <div 
+                    ref={topScrollRef} 
+                    className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg"
+                    style={{ marginBottom: '-1px' }}
+                  >
+                    <div style={{ width: tableWidth, height: '1px' }} />
+                  </div>
+
+                  <div 
+                    ref={tableContainerRef}
+                    className="overflow-x-auto border rounded-b-lg max-h-[600px]"
+                  >
+                    <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Orden</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Cant.</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Inicio</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Fin</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Resp.</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Almacén</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {ordenesFiltradas.map((o, idx) => (
+                          <tr key={idx} className="hover:bg-blue-50 transition-colors">
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
+                              <div className="font-mono text-xs mx-auto">{o.MATERIAL}</div>
+                              <div className="truncate max-w-[200px] mx-auto">{o.NOMBRE}</div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-700 text-center border-r border-dashed border-gray-300">{o.CANTIDAD}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAINICIO}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAFIN}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
+                              <Badge variant="outline" className="font-mono mx-auto">{o.RESPCONTROLPROD}</Badge>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </CardContent>
