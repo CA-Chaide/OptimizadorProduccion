@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -5,7 +6,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Home, AlertCircle, Search } from 'lucide-react';
+import { Package, Loader2, Home, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -54,7 +55,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         serviciosService.OrdenesProvisionalesPaginados(1, 10000)
       ]);
 
-      // Los centros se recuperan de los GRUPOS registrados
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
@@ -76,18 +76,14 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Filtrado reactivo por Centro (de Grupo) y Búsqueda
   const currentCenterOrders = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     return orders.filter(order => {
-      // 1. Validar Almacén
       const almacen = String(order.Almacen || '').trim();
       if (almacen !== '1001' && almacen !== '2001') return false;
 
-      // 2. Validar Centro (CRITICO: Compara contra el centro seleccionado de los grupos)
       if (String(order.Centro || '').trim() !== selectedCenter) return false;
 
-      // 3. Validar búsqueda
       if (term) {
         return (
           String(order.ORDENPREVISIONAL || '').toLowerCase().includes(term) ||
@@ -101,7 +97,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentCenterOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const displayedOrders = currentCenterOrders.slice(startIndex, startIndex + rowsPerPage);
+  const endIndex = startIndex + rowsPerPage;
+  const displayedOrders = currentCenterOrders.slice(startIndex, endIndex);
 
   const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
@@ -121,7 +118,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           <Package className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-700">Órdenes Previsionales</h3>
-            <p className="text-xs text-gray-500">Filtrado por centros operativos definidos en grupos</p>
+            <p className="text-xs text-gray-500">Centros operativos oficiales</p>
           </div>
         </div>
         
@@ -131,7 +128,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             <Input
               type="search"
               placeholder="Buscar..."
-              className="pl-9 h-9"
+              className="pl-9 h-9 text-xs"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
@@ -159,14 +156,14 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Orden</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Material</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Nombre</th>
-                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Cantidad</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Resp. Ctrl.</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">F. Inicio</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Máquina</th>
+                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
+                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
+                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
+                    <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
+                    <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
+                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp. Ctrl.</th>
+                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">F. Inicio</th>
+                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Máquina</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -206,7 +203,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                 <option value={50}>50</option>
               </select>
               <span className="text-xs text-gray-400 font-medium">
-                Viendo {startIndex + 1} - {Math.min(startIndex + rowsPerPage, currentCenterOrders.length)} de {currentCenterOrders.length}
+                Viendo {startIndex + 1} - {Math.min(endIndex, currentCenterOrders.length)} de {currentCenterOrders.length}
               </span>
             </div>
 

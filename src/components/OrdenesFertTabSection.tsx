@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
 interface OrdenFert {
   CENTRO: string;
@@ -66,6 +67,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       setAllGroups(groupsRes?.data || []);
       setAllRestrictions(restRes?.data || []);
 
+      // Los centros se recuperan de los GRUPOS registrados
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
       
@@ -85,7 +87,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     }
   }, [loadData]);
 
-  // Helper para obtener restricciones de un centro
+  // Helper para obtener restricciones de un centro específico
   const getFiltersForCenter = useCallback((centerId: string) => {
     // Buscar grupo que contenga "ensamblado" para este centro
     const ensambladoGroup = allGroups.find(g => 
@@ -112,7 +114,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     };
   }, [allGroups, allRestrictions]);
 
-  // AGRUPACIÓN PRINCIPAL POR CENTRO
+  // AGRUPACIÓN PRINCIPAL POR CENTRO (Filtrado estricto por pestaña)
   const ordersGroupedByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     
@@ -120,19 +122,17 @@ export const OrdenesFertTabSection: React.FC = () => {
       const centerFilters = getFiltersForCenter(centerId);
       
       grouped[centerId] = allRawOrders.filter(order => {
-        // 1. Validar Centro (Chequeo multi-campo por si acaso)
+        // 1. Validar Centro (Compara contra el centro de la pestaña)
         const orderCenter = String(order.CENTRO || order.Centro || order.centro || '').trim();
         if (orderCenter !== centerId) return false;
 
-        // 2. Filtrar por Sectores de la restricción (SOLO si la restricción existe)
+        // 2. Aplicar filtros de restricciones si existen
         if (centerFilters.sectors.length > 0) {
           const s = String(order.SECTORDESC || 'SIN SECTOR').trim().toUpperCase();
-          // Permitir que si la restricción tiene un código como "01", haga match parcial con "01 COLCHONES"
           const hasMatch = centerFilters.sectors.some(filterSec => s.includes(filterSec));
           if (!hasMatch) return false;
         }
 
-        // 3. Filtrar por Responsables (SOLO si la restricción existe)
         if (centerFilters.resps.length > 0) {
           const r = String(order.RESPCTRLPROD || '').trim();
           if (!centerFilters.resps.includes(r)) return false;
@@ -155,7 +155,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     return sectors;
   }, [allRawOrders, ordersGroupedByCenter, selectedTab]);
 
-  // Aplicar búsqueda y filtro de sector del combo
+  // Aplicar búsqueda y filtro de sector del combo sobre la vista actual
   const currentViewOrders = useMemo(() => {
     let base = selectedTab === "raw_view" 
       ? allRawOrders 
@@ -195,7 +195,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT</h3>
-            <p className="text-xs text-gray-500 mt-1">Sincronizado con centros de grupos de ensamblado</p>
+            <p className="text-xs text-gray-500 mt-1">Sincronizado con centros de grupos operativos</p>
           </div>
         </div>
         
@@ -204,7 +204,7 @@ export const OrdenesFertTabSection: React.FC = () => {
             <Select value={selectedSector} onValueChange={(val) => { setSelectedSector(val); setCurrentPage(1); }}>
               <SelectTrigger className="h-9 bg-white">
                 <LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" />
-                <SelectValue placeholder="Todos los Sectores" />
+                <SelectValue placeholder="Filtrar por Sector" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los Sectores</SelectItem>
@@ -220,7 +220,7 @@ export const OrdenesFertTabSection: React.FC = () => {
             <Input
               type="search"
               placeholder="Orden, material o nombre..."
-              className="pl-9 h-9"
+              className="pl-9 h-9 text-xs"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
@@ -265,13 +265,13 @@ export const OrdenesFertTabSection: React.FC = () => {
                 {selectedTab === 'raw_view' ? (
                   <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">DATOS SIN FILTRAR</Badge>
                 ) : (
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">CENTRO {selectedTab}</Badge>
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 uppercase">FILTRADO CENTRO {selectedTab}</Badge>
                 )}
-                <span>Filas totales: {currentViewOrders.length}</span>
+                <span>Filas: {currentViewOrders.length}</span>
               </div>
               <div className="flex items-center gap-2">
                  <AlertCircle className="w-3 h-3" />
-                 <span>Mostrando registros compatibles con "Ensamblado"</span>
+                 <span>Filtrado dinámico por restricciones "Ensamblado"</span>
               </div>
             </div>
 
@@ -280,15 +280,15 @@ export const OrdenesFertTabSection: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Centro</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Orden</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Material</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Nombre del Producto</th>
-                      <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Programado</th>
-                      <th className="px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Entregado</th>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Sector</th>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Resp. Ctrl.</th>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Fecha</th>
+                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Centro</th>
+                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
+                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
+                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre del Producto</th>
+                      <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Programado</th>
+                      <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Entregado</th>
+                      <th className="px-6 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Sector</th>
+                      <th className="px-6 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp. Ctrl.</th>
+                      <th className="px-6 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Fecha</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -328,7 +328,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                 <select
                   value={rowsPerPage}
                   onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                  className="text-sm border rounded p-1 bg-white"
+                  className="text-xs border rounded p-1 bg-white"
                 >
                   <option value={10}>10</option>
                   <option value={20}>20</option>
