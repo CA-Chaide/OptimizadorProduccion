@@ -15,6 +15,7 @@ import {
   TacticalPlanEspumasSection,
   TacticalPlanVentaExternaSection,
   TacticalPlanCorteLaminadoSection,
+  TacticalPlanFormulacionSection,
   WorkShiftPlanningSection,
   RealDataSection,
   InventoryNeedsSection,
@@ -92,6 +93,8 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <TacticalPlanVentaExternaSection />;
             case ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO:
                 return <TacticalPlanCorteLaminadoSection />;
+            case ActiveView.TACTICAL_SCHEDULING_FORMULACION:
+                return <TacticalPlanFormulacionSection />;
             case ActiveView.WORK_SHIFT_PLANNING:
                 return <WorkShiftPlanningSection shifts={workShifts} setShifts={setWorkShifts} constraints={constraints} employees={employees} absenteeismEvents={absenteeismEvents} employeeSkills={employeeSkills} />;
             case ActiveView.DICTIONARY:

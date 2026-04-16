@@ -20,7 +20,8 @@ import {
     Link2,
     Wind,
     ShoppingCart,
-    Scissors
+    Scissors,
+    FlaskConical
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -46,6 +47,7 @@ export enum ActiveView {
   TACTICAL_SCHEDULING_ESPUMAS = 'TACTICAL_SCHEDULING_ESPUMAS',
   TACTICAL_SCHEDULING_VENTA_EXTERNA = 'TACTICAL_SCHEDULING_VENTA_EXTERNA',
   TACTICAL_SCHEDULING_CORTE_LAMINADO = 'TACTICAL_SCHEDULING_CORTE_LAMINADO',
+  TACTICAL_SCHEDULING_FORMULACION = 'TACTICAL_SCHEDULING_FORMULACION',
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
   PARAMETROS = 'PARAMETROS',
@@ -124,6 +126,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING_ESPUMAS, label: 'Programación Táctica Corte Espuma', icon: <Wind className="w-5 h-5" />, href: '/dashboard/opciones/tactica-espumas' },
   { id: ActiveView.TACTICAL_SCHEDULING_VENTA_EXTERNA, label: 'Programación Táctica Venta Externa', icon: <ShoppingCart className="w-5 h-5" />, href: '/dashboard/opciones/tactica-venta-externa' },
   { id: ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO, label: 'Programación Táctica Laminado', icon: <Scissors className="w-5 h-5" />, href: '/dashboard/opciones/tactica-corte-laminado' },
+  { id: ActiveView.TACTICAL_SCHEDULING_FORMULACION, label: 'Planificación táctica Formulación', icon: <FlaskConical className="w-5 h-5" />, href: '/dashboard/opciones/tactica-formulacion' },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
   { id: ActiveView.PARAMETROS, label: 'Parámetros', icon: <ClipboardList />, href: '/dashboard/parametros' },
@@ -150,6 +153,7 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.TACTICAL_SCHEDULING_ESPUMAS,
   ActiveView.TACTICAL_SCHEDULING_VENTA_EXTERNA,
   ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO,
+  ActiveView.TACTICAL_SCHEDULING_FORMULACION,
   ActiveView.WORK_SHIFT_PLANNING,
   ActiveView.DICTIONARY,
 ];
