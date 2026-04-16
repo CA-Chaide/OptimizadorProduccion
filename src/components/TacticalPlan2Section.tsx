@@ -209,7 +209,7 @@ export const TacticalPlan2Section: React.FC = () => {
               <CardTitle>Habilidades OP</CardTitle>
             </CardHeader>
             <CardContent>
-              <HabilidadesOpTabSection />
+              <HabilidadesOpTabSection groups={grupos} restrictions={restricciones} />
             </CardContent>
           </Card>
         </TabsContent>
