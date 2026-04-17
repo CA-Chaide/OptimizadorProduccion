@@ -109,29 +109,49 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     initData();
   }, []);
 
-  // Lógica de filtrado común basada en restricciones
-  const filtrarData = (data: any[]) => {
+  // Lógica de filtrado robusta basada en restricciones
+  const filtrarData = (data: any[], typeLabel: string) => {
     if (data.length === 0) return [];
 
+    // Extraer valores de las restricciones configuradas
     const respCtrlProdValues = restricciones
       .filter(r => r.nombre_restriccion === 'RespCtrlProd')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
     
     const almacenValues = restricciones
       .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .map(r => r.valor_restriccion.trim());
+      .map(r => r.valor_restriccion.trim())
+      .filter(v => v !== '');
 
-    return data.filter(o => {
-      const respVal = String(o.RESPCONTROLPROD || o.RespCtrlProd || '').trim();
-      const almVal = String(o.Almacen || o.ALMACEN || '').trim();
+    console.log(`[Venta Externa - Diagnóstico ${typeLabel}]`, {
+      restriccionesResp: respCtrlProdValues,
+      restriccionesAlmacen: almacenValues,
+      totalRegistrosEntrada: data.length
+    });
+
+    return data.filter((o, index) => {
+      // Manejar múltiples posibles nombres de campos que la API podría devolver
+      const respVal = String(o.RESPCONTROLPROD || o.RespCtrlProd || o.Resp_Ctrl_Prod || o.RESP_CTRL_PROD || '').trim();
+      const almVal = String(o.Almacen || o.ALMACEN || o.Centro_Almacen || '').trim();
+
+      // Un registro pasa si no hay restricciones definidas para ese campo O si el valor está en la lista permitida
       const matchResp = respCtrlProdValues.length === 0 || respCtrlProdValues.includes(respVal);
       const matchAlmacen = almacenValues.length === 0 || almacenValues.includes(almVal);
-      return matchResp && matchAlmacen;
+
+      const isIncluded = matchResp && matchAlmacen;
+
+      // Loguear solo los primeros registros para diagnóstico si no se incluye nada
+      if (index < 5 && !isIncluded) {
+        console.log(`Fila descartada: Resp=${respVal}, Alm=${almVal}`);
+      }
+
+      return isIncluded;
     });
   };
 
-  const ordenesFiltradas = useMemo(() => filtrarData(ordenes), [ordenes, restricciones]);
-  const ordenesFertFiltradas = useMemo(() => filtrarData(ordenesFert), [ordenesFert, restricciones]);
+  const ordenesFiltradas = useMemo(() => filtrarData(ordenes, 'Provisionales'), [ordenes, restricciones]);
+  const ordenesFertFiltradas = useMemo(() => filtrarData(ordenesFert, 'Fert'), [ordenesFert, restricciones]);
 
   // Sincronización de scroll para Órdenes Provisionales
   useEffect(() => {
@@ -344,6 +364,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div className="flex flex-col items-center justify-center py-16 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed">
                   <FileText className="w-12 h-12 mb-4 text-gray-300" />
                   <p className="font-medium">No se detectaron órdenes Fert bajo los parámetros actuales.</p>
+                  <p className="text-xs text-gray-400 mt-2">Verifique las restricciones de RespCtrlProd y ALMACEN en la pestaña anterior.</p>
                 </div>
               ) : (
                 <div className="space-y-0">
@@ -365,15 +386,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {ordenesFertFiltradas.map((o, idx) => (
                           <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL || o.Orden || '-'}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL || o.Orden || o.OrdenPrevisional || '-'}</td>
                             <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
-                              <div className="font-mono text-xs text-blue-600">{o.MATERIAL || o.CodMaterial}</div>
-                              <div className="truncate max-w-[250px] mx-auto">{o.NOMBRE || o.Descripcion}</div>
+                              <div className="font-mono text-xs text-blue-600">{o.MATERIAL || o.CodMaterial || o.Material}</div>
+                              <div className="truncate max-w-[250px] mx-auto">{o.NOMBRE || o.Descripcion || o.DescMaterial}</div>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-blue-700 border-r border-dashed border-gray-300">{o.CANTIDAD || o.Cantidad}</td>
                             <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAINICIO || o.FechaInicio}</td>
                             <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 text-center border-r border-dashed border-gray-300">{o.FECHAFIN || o.FechaFin}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen || o.ALMACEN}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen || o.ALMACEN || o.Centro_Almacen}</td>
                           </tr>
                         ))}
                       </tbody>
