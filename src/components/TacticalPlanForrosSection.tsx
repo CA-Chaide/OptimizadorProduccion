@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw } from 'lucide-react';
+import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -20,6 +20,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [tiemposProduccion, setTiemposProduccion] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
+
+  // Estado para paginación de Tiempos de Producción
+  const [tiemposPage, setTiemposPage] = useState(1);
+  const [tiemposRowsPerPage, setTiemposRowsPerPage] = useState(20);
 
   const fetchData = useCallback(async () => {
     try {
@@ -43,7 +47,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   // 1. Filtrar los grupos que contienen "FORROS" en el nombre
   const forrosGruposList = useMemo(() => {
-    return grupos.filter(g => g.nombre_grupo.toUpperCase().includes('FORROS'));
+    return grupos.filter(g => (g.nombre_grupo || '').toUpperCase().includes('FORROS'));
   }, [grupos]);
 
   // 2. Filtrar restricciones de los grupos de forros
@@ -57,7 +61,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const filters: Record<string, string[]> = {};
     
     forrosRestricciones.forEach(r => {
-      const name = r.nombre_restriccion.trim().toUpperCase();
+      const name = (r.nombre_restriccion || '').trim().toUpperCase();
       if (name === 'RESPCTRLPROD' || name === 'ALMACEN' || name === 'ALMACÉN') {
         const key = name === 'ALMACÉN' ? 'ALMACEN' : name;
         if (!filters[key]) filters[key] = [];
@@ -81,6 +85,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const responses = await Promise.all(promises);
       const allTiempos = responses.flatMap(res => res.data || []);
       setTiemposProduccion(allTiempos);
+      setTiemposPage(1); // Reset a primera página al cargar nuevos datos
     } catch (error) {
       console.error('Error al cargar tiempos de producción:', error);
     } finally {
@@ -88,18 +93,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
-  // Ejecutar carga de tiempos cuando la lista de grupos esté lista
   useEffect(() => {
     if (forrosGruposList.length > 0) {
       fetchTiemposProduccion();
     }
   }, [forrosGruposList, fetchTiemposProduccion]);
 
-  // Detectar columnas dinámicamente para la tabla de Tiempos de Producción
+  // Lógica de Paginación para Tiempos
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
     return Object.keys(tiemposProduccion[0]);
   }, [tiemposProduccion]);
+
+  const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
+  
+  const paginatedTiemposData = useMemo(() => {
+    const start = (tiemposPage - 1) * tiemposRowsPerPage;
+    return tiemposProduccion.slice(start, start + tiemposRowsPerPage);
+  }, [tiemposProduccion, tiemposPage, tiemposRowsPerPage]);
 
   if (isLoading) {
     return (
@@ -165,6 +176,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     ))}
+                    {forrosGruposList.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
+                          No se encontraron grupos relacionados con Forros.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -196,59 +214,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <TableCell className="text-gray-500 text-xs">{r.descripcion || '-'}</TableCell>
                       </TableRow>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="tiempos">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Tiempos de Producción</CardTitle>
-                <CardDescription>Detalle dinámico de tiempos de ensamble.</CardDescription>
-              </div>
-              <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos}>
-                <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingTiempos && "animate-spin")} />
-                Recargar
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border overflow-x-auto max-h-[60vh]">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                      {tiemposColumns.map(col => (
-                        <TableHead key={col} className="text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap">
-                          {col}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isLoadingTiempos ? (
+                    {forrosRestricciones.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-20">
-                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-2" />
-                          <span className="text-gray-500">Consultando tiempos...</span>
-                        </TableCell>
-                      </TableRow>
-                    ) : tiemposProduccion.length > 0 ? (
-                      tiemposProduccion.map((t, idx) => (
-                        <TableRow key={`tiempo-${idx}`} className="hover:bg-blue-50/30 transition-colors">
-                          {tiemposColumns.map(col => (
-                            <TableCell key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
-                              {t[col] !== null && t[col] !== undefined ? String(t[col]) : '—'}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-10 text-gray-400 italic">
-                          No se encontraron registros.
+                        <TableCell colSpan={3} className="text-center py-10 text-gray-400 italic">
+                          No hay restricciones configuradas para los grupos de Forros.
                         </TableCell>
                       </TableRow>
                     )}
@@ -259,11 +228,133 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="tiempos">
+          <Card>
+            <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle>Tiempos de Producción</CardTitle>
+                <CardDescription>Detalle dinámico de tiempos de ensamble ({tiemposProduccion.length} registros).</CardDescription>
+              </div>
+              
+              {/* Controles de Paginación Superiores */}
+              {!isLoadingTiempos && tiemposProduccion.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 mr-4">
+                    <span className="text-xs text-gray-500 font-medium">Ver:</span>
+                    <select
+                      value={tiemposRowsPerPage}
+                      onChange={(e) => {
+                        setTiemposRowsPerPage(Number(e.target.value));
+                        setTiemposPage(1);
+                      }}
+                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                    >
+                      {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setTiemposPage(1)}
+                      disabled={tiemposPage === 1}
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setTiemposPage(p => Math.max(1, p - 1))}
+                      disabled={tiemposPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    
+                    <span className="px-3 text-xs font-semibold text-gray-700 min-w-[100px] text-center">
+                      Página {tiemposPage} de {totalTiemposPages}
+                    </span>
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setTiemposPage(p => Math.min(totalTiemposPages, p + 1))}
+                      disabled={tiemposPage === totalTiemposPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setTiemposPage(totalTiemposPages)}
+                      disabled={tiemposPage === totalTiemposPages}
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos}>
+                    <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingTiempos && "animate-spin")} />
+                    Recargar
+                  </Button>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border overflow-hidden shadow-sm">
+                <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
+                  <Table className="min-w-full divide-y divide-gray-200 border-collapse">
+                    <TableHeader>
+                      <TableRow className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                        {tiemposColumns.map(col => (
+                          <TableHead key={col} className="px-4 py-3 text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b">
+                            {col}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody className="divide-y divide-gray-200 bg-white">
+                      {isLoadingTiempos ? (
+                        <TableRow>
+                          <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-24">
+                            <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary mb-3" />
+                            <span className="text-gray-500 font-medium">Consultando tiempos de producción...</span>
+                          </TableCell>
+                        </TableRow>
+                      ) : paginatedTiemposData.length > 0 ? (
+                        paginatedTiemposData.map((t, idx) => (
+                          <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/30 transition-colors">
+                            {tiemposColumns.map(col => (
+                              <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono border-b">
+                                {t[col] !== null && t[col] !== undefined ? String(t[col]) : '—'}
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-20 text-gray-400 italic">
+                            No se encontraron registros de tiempos para estos grupos.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="ordenes">
           <Card>
             <CardHeader>
               <CardTitle>Órdenes Previsionales Filtradas</CardTitle>
-              <CardDescription>Órdenes que cumplen con RespCtrlProd y ALMACEN.</CardDescription>
+              <CardDescription>Órdenes que cumplen con RespCtrlProd y ALMACEN del grupo de Forros.</CardDescription>
             </CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection externalFilters={externalFilters} />
