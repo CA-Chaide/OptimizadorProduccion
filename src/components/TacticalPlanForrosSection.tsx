@@ -1,42 +1,47 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarClock, Loader2, Users, Lock, Package } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
+import { serviciosService } from '@/services/servicios.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 
 export const TacticalPlanForrosSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
+  const [tiemposProduccion, setTiemposProduccion] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setIsLoading(true);
-        const [gRes, rRes] = await Promise.all([
-          grupoService.getAll(),
-          restriccionService.getAll()
-        ]);
-        setGrupos(gRes.data || []);
-        setRestricciones(rRes.data || []);
-      } catch (error) {
-        console.error('Error fetching forros data:', error);
-      } finally {
-        setIsLoading(false);
-      }
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const [gRes, rRes] = await Promise.all([
+        grupoService.getAll(),
+        restriccionService.getAll()
+      ]);
+      setGrupos(gRes.data || []);
+      setRestricciones(rRes.data || []);
+    } catch (error) {
+      console.error('Error fetching forros data:', error);
+    } finally {
+      setIsLoading(false);
     }
-    fetchData();
   }, []);
 
-  // 1. Filtrar los grupos que contienen "FORROS" en el nombre (insensible a mayúsculas/minúsculas)
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // 1. Filtrar los grupos que contienen "FORROS" en el nombre
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => g.nombre_grupo.toUpperCase().includes('FORROS'));
   }, [grupos]);
@@ -63,6 +68,33 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filters;
   }, [forrosRestricciones]);
 
+  // 4. Cargar Tiempos de Producción usando el método específico para cada grupo filtrado
+  const fetchTiemposProduccion = useCallback(async () => {
+    if (forrosGruposList.length === 0) return;
+    
+    setIsLoadingTiempos(true);
+    try {
+      const promises = forrosGruposList.map(g => 
+        serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo)
+      );
+      
+      const responses = await Promise.all(promises);
+      const allTiempos = responses.flatMap(res => res.data || []);
+      setTiemposProduccion(allTiempos);
+    } catch (error) {
+      console.error('Error al cargar tiempos de producción:', error);
+    } finally {
+      setIsLoadingTiempos(false);
+    }
+  }, [forrosGruposList]);
+
+  // Ejecutar carga de tiempos cuando la lista de grupos esté lista
+  useEffect(() => {
+    if (forrosGruposList.length > 0) {
+      fetchTiemposProduccion();
+    }
+  }, [forrosGruposList, fetchTiemposProduccion]);
+
   if (isLoading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -82,12 +114,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
+        <TabsList className="grid w-full grid-cols-4 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" /> Grupos
           </TabsTrigger>
           <TabsTrigger value="restricciones" className="flex items-center gap-2">
             <Lock className="w-4 h-4" /> Restricciones
+          </TabsTrigger>
+          <TabsTrigger value="tiempos" className="flex items-center gap-2">
+            <Timer className="w-4 h-4" /> Tiempos de Producción
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
             <Package className="w-4 h-4" /> Órdenes Previsionales
@@ -164,7 +199,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <TableRow key={r.codigo_restriccion}>
                           <TableCell className="font-semibold text-indigo-700">{r.nombre_restriccion}</TableCell>
                           <TableCell className="font-mono">{r.valor_restriccion}</TableCell>
-                          <TableCell className="text-gray-500 text-xs max-w-xs truncate" title={r.description}>
+                          <TableCell className="text-gray-500 text-xs max-w-xs truncate" title={r.descripcion}>
                             {r.descripcion || '-'}
                           </TableCell>
                           <TableCell className="text-center">
@@ -178,6 +213,68 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <TableRow>
                         <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
                           No hay restricciones configuradas para el área de Forros.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Pestaña de Tiempos de Producción */}
+        <TabsContent value="tiempos">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Tiempos de Producción</CardTitle>
+                <CardDescription>Tiempos de ensamble por material y estación para Forros.</CardDescription>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={fetchTiemposProduccion}
+                disabled={isLoadingTiempos}
+              >
+                <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingTiempos && "animate-spin")} />
+                Recargar
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border overflow-x-auto max-h-[60vh]">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                      <TableHead>Material</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead>Línea</TableHead>
+                      <TableHead>Puesto</TableHead>
+                      <TableHead className="text-right">Tiempo (min)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoadingTiempos ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-20">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-2" />
+                          <span className="text-gray-500">Consultando tiempos de ensamble...</span>
+                        </TableCell>
+                      </TableRow>
+                    ) : tiemposProduccion.length > 0 ? (
+                      tiemposProduccion.map((t, idx) => (
+                        <TableRow key={`tiempo-${idx}`}>
+                          <TableCell className="font-mono text-xs font-semibold">{t.CodMaterial}</TableCell>
+                          <TableCell className="text-xs max-w-xs truncate" title={t.Material}>{t.Material}</TableCell>
+                          <TableCell className="text-xs">{t.Linea}</TableCell>
+                          <TableCell className="text-xs">{t.PuestoTrabajo}</TableCell>
+                          <TableCell className="text-right font-mono text-indigo-600 font-bold">{t.Tiempo}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-10 text-gray-400 italic">
+                          No se encontraron tiempos de producción para los grupos seleccionados.
                         </TableCell>
                       </TableRow>
                     )}
