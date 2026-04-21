@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -35,16 +36,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
     fetchData();
   }, []);
 
-  // 1. Identificar el grupo de FORROS
-  const forrosGroup = useMemo(() => {
-    return grupos.find(g => g.nombre_grupo.toUpperCase().includes('FORROS'));
+  // 1. Filtrar los grupos que contienen "FORROS" en el nombre (insensible a mayúsculas/minúsculas)
+  const forrosGruposList = useMemo(() => {
+    return grupos.filter(g => g.nombre_grupo.toUpperCase().includes('FORROS'));
   }, [grupos]);
 
-  // 2. Filtrar restricciones específicas del grupo FORROS
+  // 2. Filtrar restricciones de TODOS los grupos que coincidan con "FORROS"
   const forrosRestricciones = useMemo(() => {
-    if (!forrosGroup) return [];
-    return restricciones.filter(r => r.codigo_grupo === forrosGroup.codigo_grupo);
-  }, [forrosGroup, restricciones]);
+    const forrosGroupIds = new Set(forrosGruposList.map(g => g.codigo_grupo));
+    return restricciones.filter(r => forrosGroupIds.has(r.codigo_grupo));
+  }, [forrosGruposList, restricciones]);
 
   // 3. Extraer filtros para la tabla de órdenes (RespCtrlProd y ALMACEN)
   const externalFilters = useMemo(() => {
@@ -97,8 +98,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
-              <CardTitle>Listado de Grupos</CardTitle>
-              <CardDescription>Grupos operativos registrados en el sistema.</CardDescription>
+              <CardTitle>Listado de Grupos (Forros)</CardTitle>
+              <CardDescription>Grupos operativos que corresponden al área de Forros.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-x-auto">
@@ -112,18 +113,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {grupos.map((g) => (
-                      <TableRow key={g.codigo_grupo}>
-                        <TableCell className="font-mono text-xs">{g.codigo_grupo}</TableCell>
-                        <TableCell>{g.centro}</TableCell>
-                        <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
-                            {g.estado === 'A' ? 'Activo' : 'Inactivo'}
-                          </Badge>
+                    {forrosGruposList.length > 0 ? (
+                      forrosGruposList.map((g) => (
+                        <TableRow key={g.codigo_grupo}>
+                          <TableCell className="font-mono text-xs">{g.codigo_grupo}</TableCell>
+                          <TableCell>{g.centro}</TableCell>
+                          <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
+                              {g.estado === 'A' ? 'Activo' : 'Inactivo'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
+                          No se encontraron grupos con el nombre "Forros".
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -135,8 +144,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="restricciones">
           <Card>
             <CardHeader>
-              <CardTitle>Restricciones Grupo: {forrosGroup?.nombre_grupo || 'FORROS'}</CardTitle>
-              <CardDescription>Configuración técnica y operativa para el área seleccionada.</CardDescription>
+              <CardTitle>Restricciones de Forros</CardTitle>
+              <CardDescription>Configuración técnica y operativa filtrada para el área de Forros.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-x-auto">
@@ -155,7 +164,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <TableRow key={r.codigo_restriccion}>
                           <TableCell className="font-semibold text-indigo-700">{r.nombre_restriccion}</TableCell>
                           <TableCell className="font-mono">{r.valor_restriccion}</TableCell>
-                          <TableCell className="text-gray-500 text-xs max-w-xs truncate" title={r.descripcion}>
+                          <TableCell className="text-gray-500 text-xs max-w-xs truncate" title={r.description}>
                             {r.descripcion || '-'}
                           </TableCell>
                           <TableCell className="text-center">
@@ -168,7 +177,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
-                          No hay restricciones configuradas para este grupo.
+                          No hay restricciones configuradas para el área de Forros.
                         </TableCell>
                       </TableRow>
                     )}
