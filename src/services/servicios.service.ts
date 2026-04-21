@@ -351,5 +351,19 @@ export const serviciosService = {
     return response.json();
   },
 
+  async getTiemposEnsambladobyCentroyCodigoGrupo(centro: string, codigoGrupo: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/TiemposEnsambladoPorCentroYCodigoGrupo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ Centro: centro, CodigoGrupo: codigoGrupo }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Ensamblado");
+    }
+    return response.json();
+  },
+
+
 
 };

@@ -4,9 +4,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Filter, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 
 interface ProvisionalOrder {
   [key: string]: any;
@@ -119,24 +118,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
   return (
     <div className="space-y-4">
-      {/* Resumen de Filtros Aplicados (Solo si existen) */}
-      {externalFilters && Object.keys(externalFilters).length > 0 && (
-        <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <Filter className="w-4 h-4 text-amber-600" />
-          <div className="flex flex-wrap gap-2">
-            <span className="text-xs font-semibold text-amber-800 uppercase">Filtros por Restricción:</span>
-            {Object.entries(externalFilters).map(([key, values]) => (
-              <Badge key={key} variant="outline" className="bg-white border-amber-300 text-amber-700 text-[10px]">
-                {key}: {values.join(', ')}
-              </Badge>
-            ))}
-          </div>
-          <span className="ml-auto text-xs font-bold text-amber-700">
-            {filteredOrders.length.toLocaleString()} resultados
-          </span>
-        </div>
-      )}
-
       {/* Tabla Dinámica */}
       <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[65vh]">
