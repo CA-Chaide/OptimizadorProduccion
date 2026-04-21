@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -35,13 +35,27 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const isMounted = useRef(false);
 
+  // Estado para filtros por columna específicos
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({
+    MATERIAL: '',
+    CATEGORIA: '',
+    FECHAINICIO: '',
+    RESPCONTROLPROD: '',
+    MAQUINA: '',
+  });
+
+  const handleColumnFilterChange = (column: string, value: string) => {
+    setColumnFilters(prev => ({ ...prev, [column.toUpperCase()]: value }));
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+  };
+
   // Carga de datos estable
   const fetchData = useCallback(async () => {
     if (isLoading) return;
     
     try {
       setIsLoading(true);
-      // Consultamos un lote grande para permitir el filtrado dinámico local en esta fase MVP
+      // Consultamos un lote grande para permitir el filtrado dinámico local
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       
       if (response && response.data) {
@@ -70,24 +84,40 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     }
   }, [fetchData]);
 
-  // Lógica de filtrado basada en restricciones externas (RespCtrlProd y ALMACEN)
+  // Lógica de filtrado combinada (Externos + Locales por columna)
   const filteredOrders = useMemo(() => {
-    if (!externalFilters || Object.keys(externalFilters).length === 0) return orders;
+    let result = orders;
 
-    return orders.filter(order => {
-      return Object.entries(externalFilters).every(([filterKey, allowedValues]) => {
-        if (!allowedValues || allowedValues.length === 0) return true;
+    // 1. Filtros Externos (de Restricciones)
+    if (externalFilters && Object.keys(externalFilters).length > 0) {
+      result = result.filter(order => {
+        return Object.entries(externalFilters).every(([filterKey, allowedValues]) => {
+          if (!allowedValues || allowedValues.length === 0) return true;
+          const normFilterKey = filterKey.toUpperCase().trim();
+          const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === normFilterKey);
+          if (!orderKey) return true;
+          const orderValue = String(order[orderKey] ?? '').trim().toUpperCase();
+          return allowedValues.some(val => val.trim().toUpperCase() === orderValue);
+        });
+      });
+    }
 
-        const normFilterKey = filterKey.toUpperCase().trim();
-        const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === normFilterKey);
+    // 2. Filtros Locales por Columna (MATERIAL, CATEGORIA, FECHAINICIO, RESPCONTROLPROD, MAQUINA)
+    result = result.filter(order => {
+      return Object.entries(columnFilters).every(([filterKey, filterValue]) => {
+        if (!filterValue) return true;
         
+        // Encontrar la clave real en el objeto (case-insensitive)
+        const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === filterKey);
         if (!orderKey) return true;
 
-        const orderValue = String(order[orderKey] ?? '').trim().toUpperCase();
-        return allowedValues.some(val => val.trim().toUpperCase() === orderValue);
+        const orderValue = String(order[orderKey] ?? '').toLowerCase();
+        return orderValue.includes(filterValue.toLowerCase());
       });
     });
-  }, [orders, externalFilters]);
+
+    return result;
+  }, [orders, externalFilters, columnFilters]);
 
   // Columnas dinámicas
   const columns = useMemo(() => {
@@ -102,7 +132,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     return filteredOrders.slice(start, start + pagination.rowsPerPage);
   }, [filteredOrders, pagination.currentPage, pagination.rowsPerPage]);
 
-  // Resetear a página 1 si cambian los filtros
+  // Resetear a página 1 si cambian los filtros externos
   useEffect(() => {
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   }, [externalFilters]);
@@ -173,7 +203,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
         </div>
       </div>
 
-      {/* Tabla Dinámica con Scroll Doble */}
+      {/* Tabla Dinámica con Scroll Doble y Filtros por Columna */}
       <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
           <table className="min-w-full divide-y divide-gray-200 border-collapse">
@@ -187,6 +217,31 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                     {col}
                   </th>
                 ))}
+              </tr>
+              {/* Fila de Filtros Locales */}
+              <tr className="bg-gray-50/50">
+                {columns.map((col) => {
+                  const upperCol = col.toUpperCase().trim();
+                  // Determinar si esta columna debe tener un filtro local (MATERIAL, CATEGORIA, FECHAINICIO, RESPCONTROLPROD, MAQUINA)
+                  const isFilterable = ['MATERIAL', 'CATEGORIA', 'FECHAINICIO', 'RESPCONTROLPROD', 'MAQUINA'].includes(upperCol);
+                  
+                  return (
+                    <th key={`filter-${col}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
+                      {isFilterable ? (
+                        <div className="relative">
+                          <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder={`Filtrar...`}
+                            value={columnFilters[upperCol] || ''}
+                            onChange={(e) => handleColumnFilterChange(upperCol, e.target.value)}
+                            className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white"
+                          />
+                        </div>
+                      ) : null}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
