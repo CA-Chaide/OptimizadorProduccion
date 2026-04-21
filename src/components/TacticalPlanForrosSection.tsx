@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
@@ -85,7 +84,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const responses = await Promise.all(promises);
       const allTiempos = responses.flatMap(res => res.data || []);
       setTiemposProduccion(allTiempos);
-      setTiemposPage(1); // Reset a primera página al cargar nuevos datos
+      setTiemposPage(1); 
     } catch (error) {
       console.error('Error al cargar tiempos de producción:', error);
     } finally {
@@ -150,41 +149,43 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Grupos de Forros</CardTitle>
-              <CardDescription>Grupos operativos filtrados.</CardDescription>
+              <CardDescription>Grupos operativos filtrados que contienen "Forros" en su nombre.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50">
-                      <TableHead>Código</TableHead>
-                      <TableHead>Centro</TableHead>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead className="text-center">Estado</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {forrosGruposList.map((g) => (
-                      <TableRow key={g.codigo_grupo}>
-                        <TableCell className="font-mono text-xs">{g.codigo_grupo}</TableCell>
-                        <TableCell>{g.centro}</TableCell>
-                        <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
-                            {g.estado === 'A' ? 'Activo' : 'Inactivo'}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {forrosGruposList.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
-                          No se encontraron grupos relacionados con Forros.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+              <div className="rounded-md border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Código</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Centro</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Nombre</th>
+                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {forrosGruposList.map((g) => (
+                        <tr key={g.codigo_grupo} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{g.codigo_grupo}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">{g.centro}</td>
+                          <td className="px-6 py-4 whitespace-nowrap font-medium">{g.nombre_grupo}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
+                              {g.estado === 'A' ? 'Activo' : 'Inactivo'}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                      {forrosGruposList.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-10 text-center text-gray-400 italic">
+                            No se encontraron grupos relacionados con Forros.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -194,35 +195,37 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Restricciones de Forros</CardTitle>
-              <CardDescription>Configuración técnica del grupo.</CardDescription>
+              <CardDescription>Configuración técnica específica del grupo de Forros.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50">
-                      <TableHead>Nombre Restricción</TableHead>
-                      <TableHead>Valor</TableHead>
-                      <TableHead>Descripción</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {forrosRestricciones.map((r) => (
-                      <TableRow key={r.codigo_restriccion}>
-                        <TableCell className="font-semibold text-indigo-700">{r.nombre_restriccion}</TableCell>
-                        <TableCell className="font-mono">{r.valor_restriccion}</TableCell>
-                        <TableCell className="text-gray-500 text-xs">{r.descripcion || '-'}</TableCell>
-                      </TableRow>
-                    ))}
-                    {forrosRestricciones.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-center py-10 text-gray-400 italic">
-                          No hay restricciones configuradas para los grupos de Forros.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+              <div className="rounded-md border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Nombre Restricción</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Valor</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Descripción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {forrosRestricciones.map((r) => (
+                        <tr key={r.codigo_restriccion} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap font-semibold text-indigo-700">{r.nombre_restriccion}</td>
+                          <td className="px-6 py-4 whitespace-nowrap font-mono">{r.valor_restriccion}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-gray-500 text-xs">{r.descripcion || '-'}</td>
+                        </tr>
+                      ))}
+                      {forrosRestricciones.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-10 text-center text-gray-400 italic">
+                            No hay restricciones configuradas para los grupos de Forros.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -236,7 +239,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <CardDescription>Detalle dinámico de tiempos de ensamble ({tiemposProduccion.length} registros).</CardDescription>
               </div>
               
-              {/* Controles de Paginación Superiores */}
               {!isLoadingTiempos && tiemposProduccion.length > 0 && (
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-2 mr-4 border-r pr-4">
@@ -305,32 +307,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
               )}
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border overflow-hidden shadow-sm bg-white">
-                {/* Scroll Area: Horizontal y Vertical con altura máxima */}
-                <div className="overflow-x-auto overflow-y-auto max-h-[60vh] scrollbar-thin">
-                  <Table className="min-w-full divide-y divide-gray-200 border-collapse">
-                    <TableHeader className="bg-gray-50 sticky top-0 z-10">
-                      <TableRow className="shadow-sm">
+              <div className="rounded-md border bg-white shadow-sm">
+                <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
+                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
+                      <tr>
                         {tiemposColumns.map(col => (
-                          <TableHead key={col} className="px-4 py-3 text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b bg-gray-50">
+                          <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b bg-gray-50">
                             {col}
-                          </TableHead>
+                          </th>
                         ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody className="divide-y divide-gray-200">
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
                       {isLoadingTiempos ? (
-                        <TableRow>
-                          <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-24">
+                        <tr>
+                          <td colSpan={tiemposColumns.length || 1} className="py-24 text-center">
                             <div className="flex flex-col items-center gap-3">
                               <Loader2 className="h-10 w-10 animate-spin text-primary" />
                               <span className="text-gray-500 font-medium">Consultando tiempos de producción...</span>
                             </div>
-                          </TableCell>
-                        </TableRow>
+                          </td>
+                        </tr>
                       ) : paginatedTiemposData.length > 0 ? (
                         paginatedTiemposData.map((t, idx) => (
-                          <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors border-b last:border-0">
+                          <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">
                             {tiemposColumns.map(col => (
                               <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
                                 {t[col] !== null && t[col] !== undefined ? String(t[col]) : '—'}
@@ -339,14 +340,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           </tr>
                         ))
                       ) : (
-                        <TableRow>
-                          <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-20 text-gray-400 italic bg-gray-50/50">
+                        <tr>
+                          <td colSpan={tiemposColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
                             No se encontraron registros de tiempos para estos grupos.
-                          </TableCell>
-                        </TableRow>
+                          </td>
+                        </tr>
                       )}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                  </table>
                 </div>
               </div>
               
@@ -363,7 +364,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Órdenes Previsionales Filtradas</CardTitle>
-              <CardDescription>Órdenes que cumplen con RespCtrlProd y ALMACEN del grupo de Forros.</CardDescription>
+              <CardDescription>Visualización de órdenes que cumplen con RespCtrlProd y ALMACEN del grupo de Forros.</CardDescription>
             </CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection externalFilters={externalFilters} />
