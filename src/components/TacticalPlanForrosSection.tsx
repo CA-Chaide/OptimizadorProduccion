@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -13,6 +12,7 @@ import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
+import { cn } from '@/lib/utils';
 
 export const TacticalPlanForrosSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
