@@ -231,7 +231,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="tiempos">
           <Card>
             <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div>
+              <div className="flex-1">
                 <CardTitle>Tiempos de Producción</CardTitle>
                 <CardDescription>Detalle dinámico de tiempos de ensamble ({tiemposProduccion.length} registros).</CardDescription>
               </div>
@@ -239,15 +239,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
               {/* Controles de Paginación Superiores */}
               {!isLoadingTiempos && tiemposProduccion.length > 0 && (
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 mr-4">
-                    <span className="text-xs text-gray-500 font-medium">Ver:</span>
+                  <div className="flex items-center gap-2 mr-4 border-r pr-4">
+                    <span className="text-xs text-gray-500 font-medium">Filas:</span>
                     <select
                       value={tiemposRowsPerPage}
                       onChange={(e) => {
                         setTiemposRowsPerPage(Number(e.target.value));
                         setTiemposPage(1);
                       }}
-                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-primary"
                     >
                       {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
@@ -273,7 +273,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
                     
-                    <span className="px-3 text-xs font-semibold text-gray-700 min-w-[100px] text-center">
+                    <span className="px-3 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-gray-50 rounded">
                       Página {tiemposPage} de {totalTiemposPages}
                     </span>
 
@@ -297,7 +297,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </Button>
                   </div>
 
-                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos}>
+                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos} className="ml-2">
                     <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingTiempos && "animate-spin")} />
                     Recargar
                   </Button>
@@ -305,31 +305,34 @@ export const TacticalPlanForrosSection: React.FC = () => {
               )}
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border overflow-hidden shadow-sm">
-                <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
+              <div className="rounded-md border overflow-hidden shadow-sm bg-white">
+                {/* Scroll Area: Horizontal y Vertical con altura máxima */}
+                <div className="overflow-x-auto overflow-y-auto max-h-[60vh] scrollbar-thin">
                   <Table className="min-w-full divide-y divide-gray-200 border-collapse">
-                    <TableHeader>
-                      <TableRow className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                    <TableHeader className="bg-gray-50 sticky top-0 z-10">
+                      <TableRow className="shadow-sm">
                         {tiemposColumns.map(col => (
-                          <TableHead key={col} className="px-4 py-3 text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b">
+                          <TableHead key={col} className="px-4 py-3 text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b bg-gray-50">
                             {col}
                           </TableHead>
                         ))}
                       </TableRow>
                     </TableHeader>
-                    <TableBody className="divide-y divide-gray-200 bg-white">
+                    <TableBody className="divide-y divide-gray-200">
                       {isLoadingTiempos ? (
                         <TableRow>
                           <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-24">
-                            <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary mb-3" />
-                            <span className="text-gray-500 font-medium">Consultando tiempos de producción...</span>
+                            <div className="flex flex-col items-center gap-3">
+                              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                              <span className="text-gray-500 font-medium">Consultando tiempos de producción...</span>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ) : paginatedTiemposData.length > 0 ? (
                         paginatedTiemposData.map((t, idx) => (
-                          <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/30 transition-colors">
+                          <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors border-b last:border-0">
                             {tiemposColumns.map(col => (
-                              <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono border-b">
+                              <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
                                 {t[col] !== null && t[col] !== undefined ? String(t[col]) : '—'}
                               </td>
                             ))}
@@ -337,7 +340,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-20 text-gray-400 italic">
+                          <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-20 text-gray-400 italic bg-gray-50/50">
                             No se encontraron registros de tiempos para estos grupos.
                           </TableCell>
                         </TableRow>
@@ -346,6 +349,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Table>
                 </div>
               </div>
+              
+              {!isLoadingTiempos && tiemposProduccion.length > 0 && (
+                <div className="mt-4 flex justify-end text-[10px] text-gray-400 uppercase font-bold tracking-widest">
+                  Total {tiemposProduccion.length} registros cargados
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
