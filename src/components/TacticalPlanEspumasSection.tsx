@@ -31,6 +31,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [tiemposCurrentPage, setTiemposCurrentPage] = useState(1);
+  const [tiemposItemsPerPage, setTiemposItemsPerPage] = useState(10);
+  const [materialSearch, setMaterialSearch] = useState('');
+  const [selectedResponsible, setSelectedResponsible] = useState('');
 
   // Refs para sincronización de scroll
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -101,6 +105,32 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       console.error('Error cargando órdenes:', error);
     }
   };
+
+  // Filtrar tiempos por búsqueda y responsable
+  const filteredTiempos = useMemo(() => {
+    return tiemposEnsamblado.filter(t => {
+      const matchMaterial = !materialSearch || 
+        t.CodMaterial.toLowerCase().includes(materialSearch.toLowerCase()) ||
+        (t.Linea && t.Linea.toLowerCase().includes(materialSearch.toLowerCase())) ||
+        (t.Centro && t.Centro.toLowerCase().includes(materialSearch.toLowerCase()));
+      
+      const matchResponsible = !selectedResponsible || 
+        (t.NombRespControlProd && t.NombRespControlProd.toLowerCase().includes(selectedResponsible.toLowerCase())) ||
+        (t.RespCtrlProd && t.RespCtrlProd.toLowerCase().includes(selectedResponsible.toLowerCase()));
+      
+      return matchMaterial && matchResponsible;
+    });
+  }, [tiemposEnsamblado, materialSearch, selectedResponsible]);
+
+  // Obtener lista única de responsables
+  const responsibleOptions = useMemo(() => {
+    const unique = new Set(
+      tiemposEnsamblado
+        .map(t => t.NombRespControlProd || t.RespCtrlProd)
+        .filter(Boolean)
+    );
+    return Array.from(unique).sort();
+  }, [tiemposEnsamblado]);
 
   useEffect(() => {
     const initData = async () => {
@@ -296,37 +326,114 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Tiempos de Ensamblado</CardTitle>
-                <Badge variant="outline" className="bg-purple-50 text-purple-700">{tiemposEnsamblado.length} Registros</Badge>
+                <Badge variant="outline" className="bg-purple-50 text-purple-700">{filteredTiempos.length} Registros</Badge>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-0">
-                <div ref={topScrollTiemposRef} className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg" style={{ marginBottom: '-1px' }}>
-                  <div style={{ width: tableTiemposWidth, height: '1px' }} />
-                </div>
-                <div ref={tableContainerTiemposRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
-                  <table ref={tableTiemposRef} className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                      <tr>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Material</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Descripción</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Línea</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Puesto</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Tiempo (min)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {tiemposEnsamblado.map((t, idx) => (
-                        <tr key={idx} className="hover:bg-blue-50/20 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{t.CodMaterial}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300 truncate max-w-[300px]">{t.Material || t.Descripcion}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">{t.Linea}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">{t.PuestoTrabajo}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-blue-600">{t.Tiempo}</td>
-                        </tr>
+              <div className="space-y-4">
+                {/* Filtros */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Buscar por Material, Línea o Centro</label>
+                    <input
+                      type="text"
+                      placeholder="Código material, línea o centro..."
+                      value={materialSearch}
+                      onChange={(e) => {
+                        setMaterialSearch(e.target.value);
+                        setTiemposCurrentPage(1);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Filtrar por Responsable</label>
+                    <select
+                      value={selectedResponsible}
+                      onChange={(e) => {
+                        setSelectedResponsible(e.target.value);
+                        setTiemposCurrentPage(1);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Todos los responsables</option>
+                      {responsibleOptions.map(resp => (
+                        <option key={resp} value={resp}>{resp}</option>
                       ))}
-                    </tbody>
-                  </table>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Tabla */}
+                <div className="space-y-0">
+                  <div ref={topScrollTiemposRef} className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg" style={{ marginBottom: '-1px' }}>
+                    <div style={{ width: tableTiemposWidth, height: '1px' }} />
+                  </div>
+                  <div ref={tableContainerTiemposRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
+                    <table ref={tableTiemposRef} className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Centro</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Material</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Línea</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Puesto</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Stock</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Responsable</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Tiempo (min)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredTiempos.slice((tiemposCurrentPage - 1) * tiemposItemsPerPage, tiemposCurrentPage * tiemposItemsPerPage).map((t, idx) => (
+                          <tr key={idx} className="hover:bg-blue-50/20 transition-colors">
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{t.Centro}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{t.CodMaterial}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300 truncate max-w-[200px]">{t.Linea}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">{t.PuestoTrabajo}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300 font-mono text-sm">{t.StockActual}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300 truncate max-w-[200px]">{t.NombRespControlProd || t.RespCtrlProd}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-blue-600">{t.Tiempo_Min ? t.Tiempo_Min.toFixed(4) : 'N/A'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700">Registros por página:</label>
+                    <select 
+                      value={tiemposItemsPerPage} 
+                      onChange={(e) => {
+                        setTiemposItemsPerPage(Number(e.target.value));
+                        setTiemposCurrentPage(1);
+                      }}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                    >
+                      <option value={5}>5</option>
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Página {tiemposCurrentPage} de {Math.ceil(filteredTiempos.length / tiemposItemsPerPage) || 1}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setTiemposCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={tiemposCurrentPage === 1}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      onClick={() => setTiemposCurrentPage(prev => Math.min(Math.ceil(filteredTiempos.length / tiemposItemsPerPage), prev + 1))}
+                      disabled={tiemposCurrentPage >= Math.ceil(filteredTiempos.length / tiemposItemsPerPage)}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Siguiente
+                    </button>
+                  </div>
                 </div>
               </div>
             </CardContent>

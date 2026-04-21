@@ -351,10 +351,10 @@ export const serviciosService = {
   },
 
   async getTiemposEnsambladobyCentroyCodigoGrupo(centro: string, codigoGrupo: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/TiemposEnsambladoByCentroYGrupo", {
+    const response = await fetch(API_URL + "/TiemposEnsambladoPorCentroYCodigoGrupo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ centro, CodigoGrupo: codigoGrupo }),
+      body: JSON.stringify({ Centro: centro, CodigoGrupo: codigoGrupo }),
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
