@@ -46,7 +46,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return grupos.filter(g => g.nombre_grupo.toUpperCase().includes('FORROS'));
   }, [grupos]);
 
-  // 2. Filtrar restricciones de TODOS los grupos que coincidan con "FORROS"
+  // 2. Filtrar restricciones de los grupos de forros
   const forrosRestricciones = useMemo(() => {
     const forrosGroupIds = new Set(forrosGruposList.map(g => g.codigo_grupo));
     return restricciones.filter(r => forrosGroupIds.has(r.codigo_grupo));
@@ -68,7 +68,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filters;
   }, [forrosRestricciones]);
 
-  // 4. Cargar Tiempos de Producción usando el método específico para cada grupo filtrado
+  // 4. Cargar Tiempos de Producción dinámicamente
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
     
@@ -94,6 +94,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
       fetchTiemposProduccion();
     }
   }, [forrosGruposList, fetchTiemposProduccion]);
+
+  // Detectar columnas dinámicamente para la tabla de Tiempos de Producción
+  const tiemposColumns = useMemo(() => {
+    if (tiemposProduccion.length === 0) return [];
+    return Object.keys(tiemposProduccion[0]);
+  }, [tiemposProduccion]);
 
   if (isLoading) {
     return (
@@ -129,45 +135,36 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
         </TabsList>
 
-        {/* Pestaña de Grupos */}
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
-              <CardTitle>Listado de Grupos (Forros)</CardTitle>
-              <CardDescription>Grupos operativos que corresponden al área de Forros.</CardDescription>
+              <CardTitle>Grupos de Forros</CardTitle>
+              <CardDescription>Grupos operativos filtrados.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-gray-50">
-                      <TableHead className="w-[100px]">Código</TableHead>
+                      <TableHead>Código</TableHead>
                       <TableHead>Centro</TableHead>
-                      <TableHead>Nombre del Grupo</TableHead>
+                      <TableHead>Nombre</TableHead>
                       <TableHead className="text-center">Estado</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {forrosGruposList.length > 0 ? (
-                      forrosGruposList.map((g) => (
-                        <TableRow key={g.codigo_grupo}>
-                          <TableCell className="font-mono text-xs">{g.codigo_grupo}</TableCell>
-                          <TableCell>{g.centro}</TableCell>
-                          <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
-                              {g.estado === 'A' ? 'Activo' : 'Inactivo'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
-                          No se encontraron grupos con el nombre "Forros".
+                    {forrosGruposList.map((g) => (
+                      <TableRow key={g.codigo_grupo}>
+                        <TableCell className="font-mono text-xs">{g.codigo_grupo}</TableCell>
+                        <TableCell>{g.centro}</TableCell>
+                        <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
+                            {g.estado === 'A' ? 'Activo' : 'Inactivo'}
+                          </Badge>
                         </TableCell>
                       </TableRow>
-                    )}
+                    ))}
                   </TableBody>
                 </Table>
               </div>
@@ -175,12 +172,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Pestaña de Restricciones */}
         <TabsContent value="restricciones">
           <Card>
             <CardHeader>
               <CardTitle>Restricciones de Forros</CardTitle>
-              <CardDescription>Configuración técnica y operativa filtrada para el área de Forros.</CardDescription>
+              <CardDescription>Configuración técnica del grupo.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-x-auto">
@@ -190,32 +186,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <TableHead>Nombre Restricción</TableHead>
                       <TableHead>Valor</TableHead>
                       <TableHead>Descripción</TableHead>
-                      <TableHead className="text-center">Estado</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {forrosRestricciones.length > 0 ? (
-                      forrosRestricciones.map((r) => (
-                        <TableRow key={r.codigo_restriccion}>
-                          <TableCell className="font-semibold text-indigo-700">{r.nombre_restriccion}</TableCell>
-                          <TableCell className="font-mono">{r.valor_restriccion}</TableCell>
-                          <TableCell className="text-gray-500 text-xs max-w-xs truncate" title={r.descripcion}>
-                            {r.descripcion || '-'}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant={r.estado === 'A' ? 'default' : 'secondary'} className={r.estado === 'A' ? 'bg-green-600' : ''}>
-                              {r.estado === 'A' ? 'Activo' : 'Inactivo'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-10 text-gray-400 italic">
-                          No hay restricciones configuradas para el área de Forros.
-                        </TableCell>
+                    {forrosRestricciones.map((r) => (
+                      <TableRow key={r.codigo_restriccion}>
+                        <TableCell className="font-semibold text-indigo-700">{r.nombre_restriccion}</TableCell>
+                        <TableCell className="font-mono">{r.valor_restriccion}</TableCell>
+                        <TableCell className="text-gray-500 text-xs">{r.descripcion || '-'}</TableCell>
                       </TableRow>
-                    )}
+                    ))}
                   </TableBody>
                 </Table>
               </div>
@@ -223,20 +203,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Pestaña de Tiempos de Producción */}
         <TabsContent value="tiempos">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Tiempos de Producción</CardTitle>
-                <CardDescription>Tiempos de ensamble por material y estación para Forros.</CardDescription>
+                <CardDescription>Detalle dinámico de tiempos de ensamble.</CardDescription>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={fetchTiemposProduccion}
-                disabled={isLoadingTiempos}
-              >
+              <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos}>
                 <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingTiempos && "animate-spin")} />
                 Recargar
               </Button>
@@ -246,35 +220,35 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                      <TableHead>Material</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Línea</TableHead>
-                      <TableHead>Puesto</TableHead>
-                      <TableHead className="text-right">Tiempo (min)</TableHead>
+                      {tiemposColumns.map(col => (
+                        <TableHead key={col} className="text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                          {col}
+                        </TableHead>
+                      ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isLoadingTiempos ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-20">
+                        <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-20">
                           <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-2" />
-                          <span className="text-gray-500">Consultando tiempos de ensamble...</span>
+                          <span className="text-gray-500">Consultando tiempos...</span>
                         </TableCell>
                       </TableRow>
                     ) : tiemposProduccion.length > 0 ? (
                       tiemposProduccion.map((t, idx) => (
-                        <TableRow key={`tiempo-${idx}`}>
-                          <TableCell className="font-mono text-xs font-semibold">{t.CodMaterial}</TableCell>
-                          <TableCell className="text-xs max-w-xs truncate" title={t.Material}>{t.Material}</TableCell>
-                          <TableCell className="text-xs">{t.Linea}</TableCell>
-                          <TableCell className="text-xs">{t.PuestoTrabajo}</TableCell>
-                          <TableCell className="text-right font-mono text-indigo-600 font-bold">{t.Tiempo}</TableCell>
+                        <TableRow key={`tiempo-${idx}`} className="hover:bg-blue-50/30 transition-colors">
+                          {tiemposColumns.map(col => (
+                            <TableCell key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
+                              {t[col] !== null && t[col] !== undefined ? String(t[col]) : '—'}
+                            </TableCell>
+                          ))}
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-10 text-gray-400 italic">
-                          No se encontraron tiempos de producción para los grupos seleccionados.
+                        <TableCell colSpan={tiemposColumns.length || 1} className="text-center py-10 text-gray-400 italic">
+                          No se encontraron registros.
                         </TableCell>
                       </TableRow>
                     )}
@@ -285,12 +259,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Pestaña de Órdenes Previsionales */}
         <TabsContent value="ordenes">
           <Card>
             <CardHeader>
               <CardTitle>Órdenes Previsionales Filtradas</CardTitle>
-              <CardDescription>Visualización dinámica de órdenes para el grupo Forros.</CardDescription>
+              <CardDescription>Órdenes que cumplen con RespCtrlProd y ALMACEN.</CardDescription>
             </CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection externalFilters={externalFilters} />
