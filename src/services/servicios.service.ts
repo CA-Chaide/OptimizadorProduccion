@@ -337,7 +337,7 @@ export const serviciosService = {
   
 
   async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/OrdenesFert", {
+    const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
