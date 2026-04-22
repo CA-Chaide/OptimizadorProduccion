@@ -16,7 +16,8 @@ import { Badge } from '@/components/ui/badge';
  * TacticalPlanVentaExternaSection
  * 
  * Implementa la Segmentación Inteligente para Venta Externa.
- * - ÓRDENES PROVISIONALES, ÓRDENES FERT y TIEMPOS: Aplica filtrado técnico riguroso por RESPCTRLPROD, ALMACEN y SECTOR.
+ * - ÓRDENES PROVISIONALES y TIEMPOS: Filtro por restricciones (RESP, ALM, SECTOR).
+ * - ÓRDENES FERT: Data completa de getOrdenesFert, segmentada por planta, sin filtros técnicos.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -69,28 +70,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      // 1. Órdenes Provisionales
-      serviciosService.OrdenesProvisionalesPaginados(1, 20000).then(res => {
-        const data = res.data?.data || res.data || [];
-        setOrders(Array.isArray(data) ? data : []);
-      });
+      // Carga paralela pero capturando errores individuales
+      const pProv = serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] }));
+      const pFert = serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] }));
+      
+      const [resProv, resFert] = await Promise.all([pProv, pFert]);
+      
+      setOrders(resProv.data || []);
+      setOrdersFert(resFert.data || []);
 
-      // 2. Órdenes FERT
-      serviciosService.getOrdenesFert(1, 20000).then(res => {
-        const data = res.data?.data || res.data || [];
-        setOrdersFert(Array.isArray(data) ? data : []);
-      });
-
-      // 3. Tiempos de Ensamblado
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
         try {
           const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-          const actualData = res.data?.data || res.data || [];
-          if (Array.isArray(actualData)) {
-            allTiempos.push(...actualData);
-          }
+          const data = res.data?.data || res.data || [];
+          if (Array.isArray(data)) allTiempos.push(...data);
         } catch (e) {
           console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`);
         }
@@ -114,6 +109,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
+  // Filtrado para Provisionales y Tiempos
   const getFilterCriteria = (centro: string) => {
     const group = grupos.find(g => String(g.centro) === centro);
     if (!group) return { resp: [], alm: [], sector: [] };
@@ -125,13 +121,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     };
   };
 
-  const filterData = (data: any[], centro: string, criteria: any) => {
+  const filterWithCriteria = (data: any[], centro: string, criteria: any) => {
     if (!data || data.length === 0) return [];
-    
-    // Si no hay criterios configurados para el centro, no mostrar nada para evitar fuga de datos
-    if (criteria.resp.length === 0 && criteria.alm.length === 0 && criteria.sector.length === 0) {
-      return [];
-    }
+    if (criteria.resp.length === 0 && criteria.alm.length === 0 && criteria.sector.length === 0) return [];
 
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
@@ -150,365 +142,184 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     });
   };
 
-  const criteria1000 = useMemo(() => getFilterCriteria('1000'), [grupos, restricciones]);
-  const criteria2000 = useMemo(() => getFilterCriteria('2000'), [grupos, restricciones]);
+  // Segmentación para Provisionales y Tiempos (CON Filtros)
+  const crit1000 = useMemo(() => getFilterCriteria('1000'), [grupos, restricciones]);
+  const crit2000 = useMemo(() => getFilterCriteria('2000'), [grupos, restricciones]);
 
-  // Segmentación Independiente por Planta
-  const provC1000 = useMemo(() => filterData(ordenes, '1000', criteria1000), [ordenes, criteria1000]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000', criteria2000), [ordenes, criteria2000]);
-  
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', criteria1000), [ordenesFert, criteria1000]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', criteria2000), [ordenesFert, criteria2000]);
-  
-  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000), [tiemposEnsamblado, criteria1000]);
-  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000), [tiemposEnsamblado, criteria2000]);
+  const provC1000 = useMemo(() => filterWithCriteria(ordenes, '1000', crit1000), [ordenes, crit1000]);
+  const provC2000 = useMemo(() => filterWithCriteria(ordenes, '2000', crit2000), [ordenes, crit2000]);
+  const tiemposC1000 = useMemo(() => filterWithCriteria(tiemposEnsamblado, '1000', crit1000), [tiemposEnsamblado, crit1000]);
+  const tiemposC2000 = useMemo(() => filterWithCriteria(tiemposEnsamblado, '2000', crit2000), [tiemposEnsamblado, crit2000]);
 
+  // Segmentación para Órdenes FERT (SIN Filtros, solo por planta)
+  const fertC1000 = useMemo(() => ordenesFert.filter(o => String(o.Centro || o.CENTRO || '').trim() === '1000'), [ordenesFert]);
+  const fertC2000 = useMemo(() => ordenesFert.filter(o => String(o.Centro || o.CENTRO || '').trim() === '2000'), [ordenesFert]);
+
+  // Auxiliar para separar material y descripción
   const extractMaterialInfo = (item: any) => {
-    const materialStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
-    const match = materialStr.match(/^(\d+)\s+(.*)$/);
-    let code = '—';
-    let description = '—';
-    
-    if (match) {
-      code = match[1].slice(-8);
-      description = match[2].trim();
-    } else {
-      const isPurelyNumeric = /^\d+$/.test(materialStr);
-      if (isPurelyNumeric && materialStr.length > 0) {
-        code = materialStr.slice(-8);
-        description = item.NOMBRE || item.NombreMaterial || item.Descripcion || item.descripcion || '—';
-      } else if (materialStr.length > 0) {
-        description = materialStr;
-        const fallbackCode = String(item.CodMaterial || item.MATERIAL || item.Material || '').trim();
-        if (/^\d+$/.test(fallbackCode)) code = fallbackCode.slice(-8);
-      }
-    }
-    return { code, description };
+    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    const match = matStr.match(/^(\d+)\s+(.*)$/);
+    if (match) return { code: match[1].slice(-8), desc: match[2].trim() };
+    if (/^\d+$/.test(matStr)) return { code: matStr.slice(-8), desc: item.NOMBRE || item.NombreMaterial || item.Descripcion || '—' };
+    return { code: '—', desc: matStr || '—' };
   };
 
-  const setupScrollSync = (group: any) => {
+  // Scroll Sync
+  const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
     const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
-    return () => {
-      group.top.current?.removeEventListener('scroll', syncB);
-      group.bottom.current?.removeEventListener('scroll', syncT);
-    };
+    return () => { group.top.current?.removeEventListener('scroll', syncB); group.bottom.current?.removeEventListener('scroll', syncT); };
   };
 
   useEffect(() => {
     if (!mounted) return;
-    const cleaners = [
-      setupScrollSync(scrollProv1000), setupScrollSync(scrollProv2000),
-      setupScrollSync(scrollFert1000), setupScrollSync(scrollFert2000),
-      setupScrollSync(scrollTiempos1000), setupScrollSync(scrollTiempos2000)
-    ];
-    setTimeout(() => {
-      [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000].forEach(s => {
-        if (s.table.current) s.width[1](s.table.current.offsetWidth);
-      });
-    }, 400);
+    const items = [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000];
+    const cleaners = items.map(setupScroll);
+    setTimeout(() => items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }), 400);
     return () => cleaners.forEach(c => c?.());
   }, [activeTab, ordenes, ordenesFert, tiemposEnsamblado, mounted]);
 
-  if (!mounted || isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-        <Loader2 className="w-12 h-12 animate-spin text-green-600" />
-        <p className="text-gray-500 font-black uppercase tracking-widest animate-pulse">Sincronizando Venta Externa...</p>
-      </div>
-    );
-  }
+  if (!mounted || isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-green-600" /></div>;
 
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-4 mb-4">
-        <div className="bg-green-600 p-3 rounded-2xl shadow-xl shadow-green-100">
-          <ShoppingCart className="w-8 h-8 text-white" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Planificación Táctica Venta Externa</h2>
-          <p className="text-sm text-gray-400 font-medium">Segmentación Inteligente por Planta</p>
-        </div>
+        <ShoppingCart className="w-8 h-8 text-green-600" />
+        <h2 className="text-2xl font-bold text-gray-800 uppercase">Planificación Táctica Venta Externa</h2>
       </div>
-      
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-12 bg-gray-100/50 border rounded-xl p-1 mb-8">
-          <TabsTrigger value="grupos" className="rounded-lg font-bold uppercase text-[10px]">Grupos</TabsTrigger>
-          <TabsTrigger value="restricciones" className="rounded-lg font-bold uppercase text-[10px]">Restricciones</TabsTrigger>
-          <TabsTrigger value="ordenes" className="rounded-lg font-bold uppercase text-[10px]">ÓRDENES PROVISIONALES</TabsTrigger>
-          <TabsTrigger value="ordenesFert" className="rounded-lg font-bold uppercase text-[10px]">ÓRDENES FERT / TIEMPOS</TabsTrigger>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-5 mb-8">
+          <TabsTrigger value="grupos">Grupos</TabsTrigger>
+          <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
+          <TabsTrigger value="ordenes">ÓRDENES PROVISIONALES</TabsTrigger>
+          <TabsTrigger value="ordenesFert">ÓRDENES FERT</TabsTrigger>
+          <TabsTrigger value="tiempos">TIEMPOS ENSAMBLADO</TabsTrigger>
         </TabsList>
 
         <TabsContent value="grupos">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {grupos.map(g => (
-              <Card key={g.codigo_grupo} className="p-6 border-2 border-dashed rounded-3xl bg-gray-50/30 text-center">
-                <Badge className="bg-green-600 mb-3">Planta {g.centro}</Badge>
-                <h4 className="font-black text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
+              <Card key={g.codigo_grupo} className="p-6 border-2 border-dashed">
+                <Badge className="bg-green-600 mb-2">Centro {g.centro}</Badge>
+                <h4 className="font-bold uppercase">{g.nombre_grupo}</h4>
               </Card>
             ))}
           </div>
         </TabsContent>
 
         <TabsContent value="restricciones">
-          <Card className="rounded-3xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto border rounded-3xl">
-              <table className="w-full text-center border-collapse">
-                <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
-                  <tr>
-                    <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
-                    <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
-                    <th className="px-6 py-5">Descripción</th>
+          <Card className="overflow-hidden border rounded-xl">
+            <table className="w-full text-center">
+              <thead className="bg-gray-50 text-xs font-bold uppercase text-gray-400">
+                <tr><th className="py-4 border-r">Parámetro</th><th className="py-4 border-r">Valor</th><th className="py-4">Descripción</th></tr>
+              </thead>
+              <tbody className="divide-y text-xs">
+                {restricciones.map(r => (
+                  <tr key={r.codigo_restriccion}>
+                    <td className="py-4 font-bold border-r">{r.nombre_restriccion}</td>
+                    <td className="py-4 border-r"><Badge variant="outline">{r.valor_restriccion}</Badge></td>
+                    <td className="py-4 text-gray-400 italic">{r.descripcion}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {restricciones.map(r => (
-                    <tr key={r.codigo_restriccion} className="hover:bg-green-50/20 transition-colors">
-                      <td className="px-6 py-4 font-black text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
-                      <td className="px-6 py-4 border-r border-dashed border-gray-200">
-                        <Badge variant="outline" className="font-mono text-green-700 border-green-200">{r.valor_restriccion}</Badge>
-                      </td>
-                      <td className="px-6 py-4 text-gray-400 italic">{r.descripcion || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-12">
-          {/* C1000 - Quito */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({provC1000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollProv1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollProv1000.width[0], height: '1px' }} /></div>
-              <div ref={scrollProv1000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollProv1000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3">Almacén</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {provC1000.map((o, i) => {
-                      const { code, description } = extractMaterialInfo(o);
-                      return (
-                        <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
-          {/* C2000 - Guayaquil */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({provC2000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollProv2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollProv2000.width[0], height: '1px' }} /></div>
-              <div ref={scrollProv2000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollProv2000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3">Almacén</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {provC2000.map((o, i) => {
-                      const { code, description } = extractMaterialInfo(o);
-                      return (
-                        <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+        <TabsContent value="ordenes" className="space-y-8">
+          {[ { title: 'Quito - 1000', data: provC1000, scroll: scrollProv1000 }, { title: 'Guayaquil - 2000', data: provC2000, scroll: scrollProv2000 } ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
+              <h3 className="text-sm font-bold uppercase text-green-700 px-2">{center.title} ({center.data.length})</h3>
+              <Card className="overflow-hidden border rounded-xl shadow-sm">
+                <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
+                <div ref={center.scroll.bottom} className="overflow-x-auto border-t max-h-[400px]">
+                  <table ref={center.scroll.table} className="w-full text-center border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 text-[10px] font-bold text-gray-500 uppercase">
+                      <tr><th className="px-4 py-3 border-r">Orden</th><th className="px-4 py-3 border-r">Material</th><th className="px-4 py-3 border-r">Descripción</th><th className="px-4 py-3 border-r">Cantidad</th><th>Almacén</th></tr>
+                    </thead>
+                    <tbody className="divide-y text-[11px]">
+                      {center.data.map((o, i) => {
+                        const info = extractMaterialInfo(o);
+                        return (
+                          <tr key={i} className="hover:bg-green-50/30">
+                            <td className="px-4 py-3 border-r font-medium">{o.ORDENPREVISIONAL}</td>
+                            <td className="px-4 py-3 border-r font-mono text-green-600 font-bold">{info.code}</td>
+                            <td className="px-4 py-3 border-r text-left truncate max-w-[250px] uppercase font-bold text-gray-500">{info.desc}</td>
+                            <td className="px-4 py-3 border-r font-bold">{o.CANTIDAD}</td>
+                            <td className="px-4 py-3 font-medium text-gray-400">{o.Almacen}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
         </TabsContent>
 
-        <TabsContent value="ordenesFert" className="space-y-12">
-          {/* Órdenes FERT - Quito */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Órdenes FERT 1000 ({fertC1000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollFert1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert1000.width[0], height: '1px' }} /></div>
-              <div ref={scrollFert1000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollFert1000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3">Almacén</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {fertC1000.map((o, i) => {
-                      const { code, description } = extractMaterialInfo(o);
-                      return (
-                        <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || o.ALMACEN}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
-          {/* Órdenes FERT - Guayaquil */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Órdenes FERT 2000 ({fertC2000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollFert2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert2000.width[0], height: '1px' }} /></div>
-              <div ref={scrollFert2000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollFert2000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3">Almacén</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {fertC2000.map((o, i) => {
-                      const { code, description } = extractMaterialInfo(o);
-                      return (
+        <TabsContent value="ordenesFert" className="space-y-8">
+          {[ { title: 'Quito - 1000', data: fertC1000, scroll: scrollFert1000 }, { title: 'Guayaquil - 2000', data: fertC2000, scroll: scrollFert2000 } ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
+              <h3 className="text-sm font-bold uppercase text-blue-700 px-2">{center.title} ({center.data.length})</h3>
+              <Card className="overflow-hidden border rounded-xl shadow-sm">
+                <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
+                <div ref={center.scroll.bottom} className="overflow-x-auto border-t max-h-[400px]">
+                  <table ref={center.scroll.table} className="w-full border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 text-[10px] font-bold text-gray-500 uppercase">
+                      <tr><th className="px-4 py-3 border-r">Orden FERT</th><th className="px-4 py-3 border-r">Material (Crudo)</th><th className="px-4 py-3 border-r">Cantidad</th><th>Almacén</th></tr>
+                    </thead>
+                    <tbody className="divide-y text-[11px]">
+                      {center.data.map((o, i) => (
                         <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || o.ALMACEN}</td>
+                          <td className="px-4 py-3 border-r text-center font-medium">{o.ORDENFERT || o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-3 border-r text-left font-bold text-gray-600">{o.MATERIAL || o.Material || o.CodMaterial}</td>
+                          <td className="px-4 py-3 border-r text-center font-bold">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 text-center text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
         </TabsContent>
 
-        <TabsContent value="tiempos" className="space-y-12">
-          {/* Tiempos C1000 */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <Clock className="w-4 h-4" /> Quito - Tiempos Ensamblado 1000 ({tiemposC1000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollTiempos1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos1000.width[0], height: '1px' }} /></div>
-              <div ref={scrollTiempos1000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollTiempos1000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea Técnica</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
-                      <th className="px-4 py-3">Stock / Seg.</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {tiemposC1000.map((t, i) => {
-                      const { code, description } = extractMaterialInfo(t);
-                      return (
-                        <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[250px]">{description}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                            <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
-                            <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
-          {/* Tiempos C2000 */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-               <Clock className="w-4 h-4" /> Guayaquil - Tiempos Ensamblado 2000 ({tiemposC2000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollTiempos2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos2000.width[0], height: '1px' }} /></div>
-              <div ref={scrollTiempos2000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollTiempos2000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea Técnica</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
-                      <th className="px-4 py-3">Stock / Seg.</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {tiemposC2000.map((t, i) => {
-                      const { code, description } = extractMaterialInfo(t);
-                      return (
-                        <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[250px]">{description}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                            <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
-                            <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+        <TabsContent value="tiempos" className="space-y-8">
+          {[ { title: 'Catálogo Quito', data: tiemposC1000, scroll: scrollTiempos1000 }, { title: 'Catálogo Guayaquil', data: tiemposC2000, scroll: scrollTiempos2000 } ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
+              <h3 className="text-sm font-bold uppercase text-indigo-700 px-2">{center.title} ({center.data.length})</h3>
+              <Card className="overflow-hidden border rounded-xl shadow-sm">
+                <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
+                <div ref={center.scroll.bottom} className="overflow-x-auto border-t max-h-[400px]">
+                  <table ref={center.scroll.table} className="w-full text-center border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 text-[10px] font-bold text-gray-500 uppercase">
+                      <tr><th className="px-4 py-3 border-r">Material</th><th className="px-4 py-3 border-r">Descripción</th><th className="px-4 py-3 border-r">Línea Técnica</th><th className="px-4 py-3 border-r">T. Estándar</th><th>Stock/Seg.</th></tr>
+                    </thead>
+                    <tbody className="divide-y text-[11px]">
+                      {center.data.map((t, i) => {
+                        const info = extractMaterialInfo(t);
+                        return (
+                          <tr key={i} className="hover:bg-indigo-50/30">
+                            <td className="px-4 py-3 border-r font-mono font-bold">{info.code}</td>
+                            <td className="px-4 py-3 border-r text-left uppercase font-bold text-gray-500 truncate max-w-[200px]">{info.desc}</td>
+                            <td className="px-4 py-3 border-r font-medium text-gray-700">{t.Linea}</td>
+                            <td className="px-4 py-3 border-r font-bold text-indigo-600">{t.Tiempo_Min?.toFixed(4)}</td>
+                            <td className="px-4 py-3 text-gray-400 font-medium">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
         </TabsContent>
       </Tabs>
     </div>
