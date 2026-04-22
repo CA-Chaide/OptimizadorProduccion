@@ -1,9 +1,9 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { Line } from "recharts";
 
-const API_URL = `${environment.apiURL}/api/servicios`;
+// Utilizamos la ruta relativa que coincide con el proxy en next.config.ts para evitar errores de CORS
+const API_URL = `/Aplicativos/ApiOptimizadorProduccion/api/servicios`;
 
 export const serviciosService = {
   async getCuboHabilidadesOP(): Promise<BodyResponse<any>> {
@@ -152,8 +152,6 @@ export const serviciosService = {
     return response.json();
   },
 
-
-
   async getPresupuestoPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/presupuestoPorMesesYAnio", {
       method: "POST",
@@ -169,8 +167,6 @@ export const serviciosService = {
     return response.json();
   },
 
-
-  //////Consultas a la tabla unificada
   async getMaestroPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/MaestroPorMesesYAnio", {
       method: "POST",
@@ -186,7 +182,6 @@ export const serviciosService = {
     return response.json();
   },
 
-
   async getMaestroPorCentroYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/MaestroPorCentroYAnio", {
       method: "POST",
@@ -201,10 +196,6 @@ export const serviciosService = {
     }
     return response.json();
   },
-
-
-
-  /////////Metodos para el Plan de Mediano Plazo
 
   async getTiempoMaximoDeFabricacionMaterial(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
@@ -236,7 +227,6 @@ export const serviciosService = {
     return response.json();
   },
 
-
   async getTiempoCanonicoEnFuncionDelCuelloCanonico(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
       method: "POST",
@@ -251,13 +241,6 @@ export const serviciosService = {
     }
     return response.json();
   },
-
-
-
-
-
-
-  ////////////////////endpoints para el plan a corto plazo
 
   async getHabilidadesOperadorPorEstacion(): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/HabilidadesOperadorPorEstacion", {
@@ -288,7 +271,6 @@ export const serviciosService = {
     return response.json();
   },
 
-
   async ListarMantenimientoPreventivosProgramados(): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/ListarMantenimientosPreventivos", {
       method: "GET",
@@ -302,7 +284,6 @@ export const serviciosService = {
     }
     return response.json();
   },
-
 
   async OrdenesProvisionalesPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/OrdenesProvisionalesPaginadas", {
@@ -318,7 +299,6 @@ export const serviciosService = {
     }
     return response.json();
   },
-
 
   async VersionesFabricacion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/VersionesFabricacionMateriales", {
@@ -362,6 +342,4 @@ export const serviciosService = {
     }
     return response.json();
   },
-
-
 };
