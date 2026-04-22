@@ -1,3 +1,4 @@
+
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
@@ -12,10 +13,8 @@ export const serviciosService = {
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Habilidades OP");
     }
     return response.json();
   },
@@ -26,10 +25,8 @@ export const serviciosService = {
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Cubo Inventarios");
     }
     return response.json();
   },
@@ -41,28 +38,21 @@ export const serviciosService = {
       body: JSON.stringify({ page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto");
     }
     return response.json();
   },
 
-  async getTiemposEnsamblado(
-    page: number,
-    rows: number,
-  ): Promise<BodyResponse<any>> {
+  async getTiemposEnsamblado(page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/tiemposEnsamblado", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Ensamblado");
     }
     return response.json();
   },
@@ -73,10 +63,8 @@ export const serviciosService = {
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Diccionario");
     }
     return response.json();
   },
@@ -87,10 +75,8 @@ export const serviciosService = {
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Fuentes");
     }
     return response.json();
   },
@@ -101,10 +87,8 @@ export const serviciosService = {
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Centros");
     }
     return response.json();
   },
@@ -115,10 +99,8 @@ export const serviciosService = {
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Meses");
     }
     return response.json();
   },
@@ -129,10 +111,8 @@ export const serviciosService = {
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Years");
     }
     return response.json();
   },
@@ -144,10 +124,8 @@ export const serviciosService = {
       body: JSON.stringify({ anio: anio, centro: centro, meses: meses, page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto");
     }
     return response.json();
   },
@@ -159,10 +137,8 @@ export const serviciosService = {
       body: JSON.stringify({ anio: anio, centro: centro, meses: meses, page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto");
     }
     return response.json();
   },
@@ -174,10 +150,8 @@ export const serviciosService = {
       body: JSON.stringify({ anio: anio, centro: centro, meses: meses, page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Maestro");
     }
     return response.json();
   },
@@ -189,10 +163,8 @@ export const serviciosService = {
       body: JSON.stringify({ anio: anio, centro: centro, page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Maestro");
     }
     return response.json();
   },
@@ -204,10 +176,8 @@ export const serviciosService = {
       body: JSON.stringify({ CodigoMaterial: CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Tiempos");
     }
     return response.json();
   },
@@ -219,113 +189,8 @@ export const serviciosService = {
       body: JSON.stringify({ dias_laborales: dias_laborales, dias_sabados: dias_sabados }),
     });
     if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
-    }
-    return response.json();
-  },
-
-  async getTiempoCanonicoEnFuncionDelCuelloCanonico(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ CodigoMaterial: CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
-    });
-    if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
-    }
-    return response.json();
-  },
-
-  async getHabilidadesOperadorPorEstacion(): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/HabilidadesOperadorPorEstacion", {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
-    }
-    return response.json();
-  },
-
-  async getMMaterialesBrutosPorMaterialMateriaPrima(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/MaterialesBrutosPorMaterialMateriaPrima", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
-    });
-    if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
-    }
-    return response.json();
-  },
-
-  async ListarMantenimientoPreventivosProgramados(): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/ListarMantenimientosPreventivos", {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
-    }
-    return response.json();
-  },
-
-  async OrdenesProvisionalesPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/OrdenesProvisionalesPaginadas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
-    });
-    if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
-    }
-    return response.json();
-  },
-
-  async VersionesFabricacion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/VersionesFabricacionMateriales", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
-    });
-    if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
-    }
-    return response.json();
-  },
-
-  async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
-    });
-    if (!response.ok) {
-      const errorBody = await response
-        .json()
-        .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fetch Ordenes Fert");
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Canon");
     }
     return response.json();
   },
@@ -339,6 +204,82 @@ export const serviciosService = {
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
       throw new Error(errorBody.message || "Failed to fetch Tiempos Ensamblado");
+    }
+    return response.json();
+  },
+
+  async getHabilidadesOperadorPorEstacion(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/HabilidadesOperadorPorEstacion", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Habilidades");
+    }
+    return response.json();
+  },
+
+  async getMMaterialesBrutosPorMaterialMateriaPrima(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/MaterialesBrutosPorMaterialMateriaPrima", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Materiales Brutos");
+    }
+    return response.json();
+  },
+
+  async ListarMantenimientoPreventivosProgramados(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/ListarMantenimientosPreventivos", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Mantenimientos");
+    }
+    return response.json();
+  },
+
+  async OrdenesProvisionalesPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/OrdenesProvisionalesPaginadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Ordenes Provisionales");
+    }
+    return response.json();
+  },
+
+  async VersionesFabricacion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/VersionesFabricacionMateriales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Versiones");
+    }
+    return response.json();
+  },
+
+  async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Ordenes Fert");
     }
     return response.json();
   },

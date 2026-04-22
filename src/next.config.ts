@@ -22,8 +22,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        // Proxy para redirigir peticiones locales a la API de Chaide evitando CORS
         source: '/Aplicativos/ApiOptimizadorProduccion/:path*',
-        destination: 'https://intranet.chaide.com/Aplicativos/ApiOptimizadorProduccion/:path*',
+        destination: 'https://apps.chaide.com/ProductionOptimizer/:path*',
       },
     ]
   },

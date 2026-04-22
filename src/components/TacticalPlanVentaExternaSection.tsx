@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -63,6 +64,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('venta externa')
       );
       setGrupos(filtered);
+      inspector.captureVariable('gruposVentaExternaDetectados', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando grupos:', error);
@@ -77,6 +79,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const res = await restriccionService.getAll();
       const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
       setRestricciones(filtered);
+      inspector.captureVariable('restriccionesVentaExterna', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando restricciones:', error);
@@ -99,12 +102,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
+        console.log(`[Venta Externa] Consultando tiempos para Centro: ${g.centro}, Grupo: ${g.codigo_grupo}`);
         const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo);
-        if (res.data && Array.isArray(res.data)) {
-          allTiempos.push(...res.data);
+        
+        // Manejar estructura { data: [], length }
+        const dataArray = res.data ? (Array.isArray(res.data) ? res.data : [res.data]) : [];
+        if (dataArray.length > 0) {
+          allTiempos.push(...dataArray);
         }
       }
       setTiemposEnsamblado(allTiempos);
+      console.log(`[Venta Externa - Tiempos] Total registros cargados: ${allTiempos.length}`);
+      inspector.captureVariable('tiemposEnsambladoVentaExterna', allTiempos);
     } catch (error) {
       console.error('Error cargando datos operativos:', error);
       addNotification('error', 'Error al recuperar datos de la API');
@@ -134,7 +143,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     // 2. Aplicar filtros
     return data.filter(item => {
       const itemResp = extractValue(item, ['RESPCTRLPROD', 'RESPCONTROLPROD', 'RespCtrlProd', 'respCtrlProd', 'NombRespControlProd']);
-      const itemAlm = extractValue(item, ['Almacen', 'ALMACEN', 'almacen']);
       const itemMat = extractValue(item, ['CodMaterial', 'MATERIAL', 'Material', 'NOMBRE', 'Nombre', 'Descripcion']).toLowerCase();
       const itemNameResp = extractValue(item, ['NombRespControlProd', 'RespCtrlProd', 'RESPCTRLPROD']).toLowerCase();
 
@@ -143,7 +151,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       
       // Coincidencia con buscador de usuario
       const matchesSearch = !searchQuery || itemMat.includes(searchQuery.toLowerCase());
-      const matchesRespFilter = !selectedRespFilter || itemNameResp === selectedRespFilter.toLowerCase();
+      const matchesRespFilter = !selectedRespFilter || itemNameResp === selectedRespFilter.toLowerCase() || itemResp === selectedRespFilter;
 
       return matchesRestriccion && matchesSearch && matchesRespFilter;
     });
@@ -156,8 +164,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const uniqueResponsibles = useMemo(() => {
     const resps = new Set<string>();
     [...ordenes, ...ordenesFert, ...tiemposEnsamblado].forEach(o => {
-      const val = extractValue(o, ['NombRespControlProd', 'RespCtrlProd', 'RESPCTRLPROD']);
-      if (val) resps.add(val);
+      const name = extractValue(o, ['NombRespControlProd']);
+      const code = extractValue(o, ['RespCtrlProd', 'RESPCTRLPROD']);
+      if (name) resps.add(name);
+      else if (code) resps.add(code);
     });
     return Array.from(resps).sort();
   }, [ordenes, ordenesFert, tiemposEnsamblado]);
@@ -265,23 +275,29 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         <TabsContent value="grupos">
           <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
             <CardHeader className="bg-gray-50/50 border-b">
-              <CardTitle>Grupos Operativos</CardTitle>
-              <CardDescription>Configuración de áreas para Venta Externa</CardDescription>
+              <CardTitle>Grupos Operativos Detectados</CardTitle>
+              <CardDescription>Áreas asignadas para Venta Externa</CardDescription>
             </CardHeader>
             <CardContent className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {grupos.map(g => (
-                  <div key={g.codigo_grupo} className="p-6 border-2 border-dashed border-gray-200 rounded-2xl bg-white hover:border-green-400 hover:shadow-xl transition-all group">
-                    <div className="flex justify-between items-start mb-4">
-                      <span className="font-bold text-xl text-gray-800 group-hover:text-green-700 transition-colors">{g.nombre_grupo}</span>
-                      <Badge className="bg-green-100 text-green-800 border-green-200 font-bold px-3 py-1">CENTRO {g.centro}</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-400 font-mono">
-                      <span className="px-3 py-1 bg-gray-50 rounded-lg border">ID: {g.codigo_grupo}</span>
-                      <span className="px-3 py-1 bg-gray-50 rounded-lg border text-green-600 font-bold">Activo</span>
-                    </div>
+                {grupos.length === 0 ? (
+                  <div className="col-span-full p-8 text-center text-gray-500 border-2 border-dashed rounded-2xl">
+                    No se detectaron grupos con el nombre "Venta Externa"
                   </div>
-                ))}
+                ) : (
+                  grupos.map(g => (
+                    <div key={g.codigo_grupo} className="p-6 border-2 border-dashed border-gray-200 rounded-2xl bg-white hover:border-green-400 hover:shadow-xl transition-all group">
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="font-bold text-xl text-gray-800 group-hover:text-green-700 transition-colors">{g.nombre_grupo}</span>
+                        <Badge className="bg-green-100 text-green-800 border-green-200 font-bold px-3 py-1">CENTRO {g.centro}</Badge>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-400 font-mono">
+                        <span className="px-3 py-1 bg-gray-50 rounded-lg border">ID: {g.codigo_grupo}</span>
+                        <span className="px-3 py-1 bg-gray-50 rounded-lg border text-green-600 font-bold">Activo</span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
@@ -291,7 +307,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
             <CardHeader className="bg-gray-50/50 border-b">
               <CardTitle>Configuración de Restricciones</CardTitle>
-              <CardDescription>Parámetros técnicos que definen el filtrado operativo</CardDescription>
+              <CardDescription>Parámetros técnicos de filtrado (RESPCTRLPROD)</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <table className="w-full border-collapse">
@@ -302,16 +318,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     <th className="px-6 py-4 text-center">Propósito Técnico</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {restricciones.map(r => (
-                    <tr key={r.codigo_restriccion} className="hover:bg-green-50/30 transition-colors">
-                      <td className="px-6 py-5 text-center font-bold text-gray-900 border-r border-dashed border-gray-200">{r.nombre_restriccion}</td>
-                      <td className="px-6 py-5 text-center border-r border-dashed border-gray-200">
-                        <Badge variant="outline" className="font-mono border-green-200 text-green-700 bg-green-50 px-4 py-1 text-sm shadow-sm">{r.valor_restriccion}</Badge>
-                      </td>
-                      <td className="px-6 py-5 text-sm text-gray-500 text-center italic">{r.descripcion || 'Configuración estándar para filtrado de órdenes.'}</td>
+                <tbody className="divide-y divide-gray-100 bg-white text-center">
+                  {restricciones.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-12 text-gray-400 italic">No hay restricciones configuradas para los grupos detectados</td>
                     </tr>
-                  ))}
+                  ) : (
+                    restricciones.map(r => (
+                      <tr key={r.codigo_restriccion} className="hover:bg-green-50/30 transition-colors">
+                        <td className="px-6 py-5 font-bold text-gray-900 border-r border-dashed border-gray-200">{r.nombre_restriccion}</td>
+                        <td className="px-6 py-5 border-r border-dashed border-gray-200">
+                          <Badge variant="outline" className="font-mono border-green-200 text-green-700 bg-green-50 px-4 py-1 text-sm shadow-sm">{r.valor_restriccion}</Badge>
+                        </td>
+                        <td className="px-6 py-5 text-sm text-gray-500 italic">{r.descripcion || 'Configuración estándar para filtrado operativo.'}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </CardContent>
@@ -323,8 +345,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between bg-gray-50/50 border-b">
               <div>
-                <CardTitle>Listado de Órdenes Provisionales</CardTitle>
-                <CardDescription>Pedidos pendientes de programación táctica</CardDescription>
+                <CardTitle>Órdenes Provisionales</CardTitle>
+                <CardDescription>Pedidos pendientes según restricciones</CardDescription>
               </div>
               <Badge className="bg-green-600 text-white px-4 py-1 rounded-full font-bold">{filteredOrders.length} Registros</Badge>
             </CardHeader>
@@ -334,28 +356,34 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
               <div ref={syncRefs.ordenes.bottom} className="overflow-x-auto max-h-[600px] bg-white">
                 <table ref={syncRefs.ordenes.table} className="w-full border-collapse">
-                  <thead className="bg-gray-50 sticky top-0 shadow-sm z-10">
+                  <thead className="bg-gray-50 sticky top-0 shadow-sm z-10 text-center">
                     <tr className="text-gray-500 text-[10px] font-bold uppercase">
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Orden</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Material / Descripción</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Almacén</th>
-                      <th className="px-4 py-3 text-center">Responsable</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material / Descripción</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Almacén</th>
+                      <th className="px-4 py-3">Responsable</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredOrders.map((o, idx) => (
-                      <tr key={idx} className="hover:bg-green-50/40 transition-colors">
-                        <td className="px-4 py-4 text-center text-sm font-bold text-gray-900 border-r border-dashed border-gray-200">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-4 text-center border-r border-dashed border-gray-200">
-                          <div className="font-mono text-xs text-green-700 font-bold mb-1">{o.MATERIAL}</div>
-                          <div className="text-[11px] text-gray-500 truncate max-w-[300px] mx-auto uppercase">{o.NOMBRE}</div>
-                        </td>
-                        <td className="px-4 py-4 text-center text-sm font-bold text-gray-800 border-r border-dashed border-gray-200">{o.CANTIDAD}</td>
-                        <td className="px-4 py-4 text-center text-sm text-gray-600 border-r border-dashed border-gray-200 font-medium">{o.Almacen || o.ALMACEN}</td>
-                        <td className="px-4 py-4 text-center text-[11px] text-gray-400 font-medium">{o.NombRespControlProd || o.RespCtrlProd || o.RESPCTRLPROD}</td>
+                  <tbody className="divide-y divide-gray-100 text-center">
+                    {filteredOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-12 text-gray-400">No se encontraron órdenes que coincidan con los filtros</td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredOrders.map((o, idx) => (
+                        <tr key={idx} className="hover:bg-green-50/40 transition-colors">
+                          <td className="px-4 py-4 text-sm font-bold text-gray-900 border-r border-dashed border-gray-200">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-200">
+                            <div className="font-mono text-xs text-green-700 font-bold mb-1">{o.MATERIAL}</div>
+                            <div className="text-[11px] text-gray-500 truncate max-w-[300px] mx-auto uppercase">{o.NOMBRE}</div>
+                          </td>
+                          <td className="px-4 py-4 text-sm font-bold text-gray-800 border-r border-dashed border-gray-200">{o.CANTIDAD}</td>
+                          <td className="px-4 py-4 text-sm text-gray-600 border-r border-dashed border-gray-200 font-medium">{o.Almacen || o.ALMACEN}</td>
+                          <td className="px-4 py-4 text-[11px] text-gray-400 font-medium">{o.NombRespControlProd || o.RespCtrlProd || o.RESPCTRLPROD}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -368,8 +396,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between bg-gray-50/50 border-b">
               <div>
-                <CardTitle>Listado de Órdenes Fert</CardTitle>
-                <CardDescription>Órdenes de producto terminado filtradas por el grupo</CardDescription>
+                <CardTitle>Órdenes Fert (Producto Terminado)</CardTitle>
+                <CardDescription>Carga operativa del grupo</CardDescription>
               </div>
               <Badge className="bg-blue-600 text-white px-4 py-1 rounded-full font-bold">{filteredFert.length} Registros</Badge>
             </CardHeader>
@@ -379,28 +407,34 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
               <div ref={syncRefs.fert.bottom} className="overflow-x-auto max-h-[600px] bg-white">
                 <table ref={syncRefs.fert.table} className="w-full border-collapse">
-                  <thead className="bg-gray-50 sticky top-0 shadow-sm z-10">
+                  <thead className="bg-gray-50 sticky top-0 shadow-sm z-10 text-center">
                     <tr className="text-gray-500 text-[10px] font-bold uppercase">
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Orden Fert</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Material / Descripción</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Almacén</th>
-                      <th className="px-4 py-3 text-center">Responsable</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material / Descripción</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Almacén</th>
+                      <th className="px-4 py-3">Responsable</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredFert.map((o, idx) => (
-                      <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
-                        <td className="px-4 py-4 text-center text-sm font-bold text-gray-900 border-r border-dashed border-gray-200">{o.Orden || o.ORDENFERT}</td>
-                        <td className="px-4 py-4 text-center border-r border-dashed border-gray-200">
-                          <div className="font-mono text-xs text-blue-700 font-bold mb-1">{o.CodMaterial || o.MATERIAL}</div>
-                          <div className="text-[11px] text-gray-500 truncate max-w-[300px] mx-auto uppercase">{o.Descripcion || o.NOMBRE}</div>
-                        </td>
-                        <td className="px-4 py-4 text-center text-sm font-bold text-blue-800 border-r border-dashed border-gray-200">{o.Cantidad || o.CANTIDAD}</td>
-                        <td className="px-4 py-4 text-center text-sm text-gray-600 border-r border-dashed border-gray-200 font-medium">{o.Almacen || o.ALMACEN}</td>
-                        <td className="px-4 py-4 text-center text-[11px] text-gray-400 font-medium">{o.NombRespControlProd || o.RespCtrlProd || o.RESPCTRLPROD}</td>
+                  <tbody className="divide-y divide-gray-100 text-center">
+                    {filteredFert.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-12 text-gray-400">No se encontraron órdenes Fert</td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredFert.map((o, idx) => (
+                        <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="px-4 py-4 text-sm font-bold text-gray-900 border-r border-dashed border-gray-200">{o.Orden || o.ORDENFERT}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-200">
+                            <div className="font-mono text-xs text-blue-700 font-bold mb-1">{o.CodMaterial || o.MATERIAL}</div>
+                            <div className="text-[11px] text-gray-500 truncate max-w-[300px] mx-auto uppercase">{o.Descripcion || o.NOMBRE}</div>
+                          </td>
+                          <td className="px-4 py-4 text-sm font-bold text-blue-800 border-r border-dashed border-gray-200">{o.Cantidad || o.CANTIDAD}</td>
+                          <td className="px-4 py-4 text-sm text-gray-600 border-r border-dashed border-gray-200 font-medium">{o.Almacen || o.ALMACEN}</td>
+                          <td className="px-4 py-4 text-[11px] text-gray-400 font-medium">{o.NombRespControlProd || o.RespCtrlProd || o.RESPCTRLPROD}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -414,7 +448,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <CardHeader className="flex flex-row items-center justify-between bg-gray-50/50 border-b">
               <div>
                 <CardTitle>Tiempos Estándar de Ensamblado</CardTitle>
-                <CardDescription>Catálogo de tiempos por material y puesto de trabajo</CardDescription>
+                <CardDescription>Catálogo técnico por material y puesto</CardDescription>
               </div>
               <Badge className="bg-purple-600 text-white px-4 py-1 rounded-full font-bold">{filteredTiempos.length} Registros</Badge>
             </CardHeader>
@@ -424,34 +458,38 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
               <div ref={syncRefs.tiempos.bottom} className="overflow-x-auto max-h-[600px] bg-white">
                 <table ref={syncRefs.tiempos.table} className="w-full border-collapse">
-                  <thead className="bg-gray-50 sticky top-0 shadow-sm z-10">
+                  <thead className="bg-gray-50 sticky top-0 shadow-sm z-10 text-center">
                     <tr className="text-gray-500 text-[10px] font-bold uppercase">
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Línea - Puesto</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Tiempo (min)</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Stock Actual</th>
-                      <th className="px-4 py-3 text-center border-r border-dashed border-gray-200">Stock Seg.</th>
-                      <th className="px-4 py-3 text-center">Clase</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea / Puesto</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Tiempo (min)</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Stock Actual</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Stock Seg.</th>
+                      <th className="px-4 py-3">Responsable</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredTiempos.map((t, idx) => (
-                      <tr key={idx} className="hover:bg-purple-50/40 transition-colors">
-                        <td className="px-4 py-4 text-center text-sm font-bold text-gray-900 border-r border-dashed border-gray-200 font-mono">{t.CodMaterial}</td>
-                        <td className="px-4 py-4 text-center border-r border-dashed border-gray-200">
-                          <div className="text-xs font-bold text-gray-700 mb-0.5">{t.Linea}</div>
-                          <div className="text-[10px] text-gray-400 font-medium">{t.PuestoTrabajo}</div>
-                        </td>
-                        <td className="px-4 py-4 text-center text-sm font-bold text-purple-700 border-r border-dashed border-gray-200">
-                          {t.Tiempo_Min ? t.Tiempo_Min.toFixed(4) : '0.0000'}
-                        </td>
-                        <td className="px-4 py-4 text-center text-sm font-mono font-semibold text-gray-600 border-r border-dashed border-gray-200">{t.StockActual || 0}</td>
-                        <td className="px-4 py-4 text-center text-sm font-mono font-semibold text-gray-400 border-r border-dashed border-gray-200">{t.StockSeguridad || 0}</td>
-                        <td className="px-4 py-4 text-center">
-                          <Badge variant="outline" className="text-[10px] font-bold uppercase px-3">{t.ClaseAprovisionam || 'E'}</Badge>
-                        </td>
+                  <tbody className="divide-y divide-gray-100 text-center">
+                    {filteredTiempos.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-12 text-gray-400">No se encontraron tiempos de ensamblado para este grupo</td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredTiempos.map((t, idx) => (
+                        <tr key={idx} className="hover:bg-purple-50/40 transition-colors">
+                          <td className="px-4 py-4 text-sm font-bold text-gray-900 border-r border-dashed border-gray-200 font-mono">{t.CodMaterial}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-200">
+                            <div className="text-xs font-bold text-gray-700 mb-0.5">{t.Linea || t.PuestoTrabajoLinea}</div>
+                            <div className="text-[10px] text-gray-400 font-medium">{t.PuestoTrabajo}</div>
+                          </td>
+                          <td className="px-4 py-4 text-sm font-bold text-purple-700 border-r border-dashed border-gray-200">
+                            {t.Tiempo_Min ? Number(t.Tiempo_Min).toFixed(4) : '0.0000'}
+                          </td>
+                          <td className="px-4 py-4 text-sm font-mono font-semibold text-gray-600 border-r border-dashed border-gray-200">{t.StockActual || 0}</td>
+                          <td className="px-4 py-4 text-sm font-mono font-semibold text-gray-400 border-r border-dashed border-gray-200">{t.StockSeguridad || 0}</td>
+                          <td className="px-4 py-4 text-[10px] font-medium text-gray-400">{t.NombRespControlProd || t.RespCtrlProd}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
