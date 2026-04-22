@@ -11,7 +11,6 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -64,7 +63,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      // Cargamos de forma segura cada recurso para que un fallo no bloquee a los demás
       const [provRes, fertRes] = await Promise.allSettled([
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getOrdenesFert(1, 20000)
@@ -143,10 +141,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000, false), [tiemposEnsamblado, criteria1000]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000, false), [tiemposEnsamblado, criteria2000]);
 
-  const extractMaterialInfo = (materialStr: string) => {
-    const match = String(materialStr || '').match(/^(\d+)\s*(.*)$/);
-    const code = match ? match[1].slice(-8) : '—';
-    const description = match ? match[2].trim() : (materialStr || '—');
+  // Función de extracción inteligente con fallback
+  const extractMaterialInfo = (item: any) => {
+    const materialStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    const match = materialStr.match(/^(\d+)\s+(.*)$/);
+    
+    let code = '—';
+    let description = '—';
+    
+    if (match) {
+      code = match[1].slice(-8);
+      description = match[2].trim();
+    } else {
+      code = materialStr.match(/^\d+$/) ? materialStr.slice(-8) : (materialStr || '—');
+      description = item.NOMBRE || item.NombreMaterial || item.Descripcion || item.descripcion || '—';
+    }
+    
     return { code, description };
   };
 
@@ -177,23 +187,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return () => cleaners.forEach(c => c?.());
   }, [activeTab, ordenes, ordenesFert, tiemposEnsamblado, mounted]);
 
-  const FilterAuditPanel = ({ criteria, count, label }: { criteria: any, count: number, label: string }) => (
-    <div className="bg-gray-50 border border-dashed rounded-2xl p-3 mb-4 flex items-center justify-between">
-      <div className="flex items-center gap-4">
-        <div className="flex flex-col">
-          <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">Segmentación {label}</span>
-          <span className="text-xs font-bold text-gray-700">{count} Registros</span>
-        </div>
-        <div className="h-6 w-px bg-gray-200" />
-        <div className="flex gap-2">
-          <Badge variant="outline" className="text-[10px] font-mono border-blue-200 text-blue-600">RESP: {criteria.resp.length || 'TODOS'}</Badge>
-          <Badge variant="outline" className="text-[10px] font-mono border-green-200 text-green-600">ALM: {criteria.alm.length || 'TODOS'}</Badge>
-          {criteria.sector.length > 0 && <Badge variant="outline" className="text-[10px] font-mono border-orange-200 text-orange-600">SEC: {criteria.sector.length}</Badge>}
-        </div>
-      </div>
-    </div>
-  );
-
   if (!mounted || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
@@ -211,7 +204,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </div>
         <div>
           <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Planificación Táctica Venta Externa</h2>
-          <p className="text-sm text-gray-400 font-medium">Segmentación Inteligente Quito / Guayaquil</p>
+          <p className="text-sm text-gray-400 font-medium">Segmentación Inteligente por Planta</p>
         </div>
       </div>
       
@@ -263,8 +256,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="space-y-12">
-          <div className="space-y-2">
-            <FilterAuditPanel criteria={criteria1000} count={provC1000.length} label="Quito 1000" />
+          {/* C1000 - Quito */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({provC1000.length})
+            </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollProv1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollProv1000.width[0], height: '1px' }} /></div>
               <div ref={scrollProv1000.bottom} className="overflow-x-auto border-t max-h-[400px]">
@@ -280,12 +276,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {provC1000.map((o, i) => {
-                      const { code, description } = extractMaterialInfo(o.MATERIAL);
+                      const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-green-50/30">
                           <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black truncate max-w-[300px]">{description}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
                           <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
                           <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
                         </tr>
@@ -296,8 +292,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          <div className="space-y-2">
-            <FilterAuditPanel criteria={criteria2000} count={provC2000.length} label="Guayaquil 2000" />
+
+          {/* C2000 - Guayaquil */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({provC2000.length})
+            </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollProv2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollProv2000.width[0], height: '1px' }} /></div>
               <div ref={scrollProv2000.bottom} className="overflow-x-auto border-t max-h-[400px]">
@@ -313,12 +313,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {provC2000.map((o, i) => {
-                      const { code, description } = extractMaterialInfo(o.MATERIAL);
+                      const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
                           <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black truncate max-w-[300px]">{description}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
                           <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
                           <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
                         </tr>
@@ -332,8 +332,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesFert" className="space-y-12">
-          <div className="space-y-2">
-            <FilterAuditPanel criteria={criteria1000} count={fertC1000.length} label="Quito 1000 (Fert)" />
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-600" /> Quito 1000 ({fertC1000.length})
+            </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollFert1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert1000.width[0], height: '1px' }} /></div>
               <div ref={scrollFert1000.bottom} className="overflow-x-auto border-t max-h-[400px]">
@@ -348,13 +350,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {fertC1000.map((o, i) => {
-                      const { code, description } = extractMaterialInfo(o.MATERIAL || o.CodMaterial);
+                      const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-center">{o.NOMBRE || description}</td>
-                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-left">{description}</td>
+                          <td className="px-4 py-3 font-black text-gray-800">{o.CANTIDAD || o.Cantidad}</td>
                         </tr>
                       );
                     })}
@@ -363,8 +365,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          <div className="space-y-2">
-            <FilterAuditPanel criteria={criteria2000} count={fertC2000.length} label="Guayaquil 2000 (Fert)" />
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-600" /> Guayaquil 2000 ({fertC2000.length})
+            </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollFert2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert2000.width[0], height: '1px' }} /></div>
               <div ref={scrollFert2000.bottom} className="overflow-x-auto border-t max-h-[400px]">
@@ -379,13 +383,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {fertC2000.map((o, i) => {
-                      const { code, description } = extractMaterialInfo(o.MATERIAL || o.CodMaterial);
+                      const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-center">{o.NOMBRE || description}</td>
-                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-left">{description}</td>
+                          <td className="px-4 py-3 font-black text-gray-800">{o.CANTIDAD || o.Cantidad}</td>
                         </tr>
                       );
                     })}
@@ -397,8 +401,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-12">
-          <div className="space-y-2">
-            <FilterAuditPanel criteria={criteria1000} count={tiemposC1000.length} label="Quito 1000 (Técnico)" />
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
+               <Clock className="w-4 h-4" /> Quito 1000 - Catálogo Técnico ({tiemposC1000.length})
+            </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos1000.width[0], height: '1px' }} /></div>
               <div ref={scrollTiempos1000.bottom} className="overflow-x-auto border-t max-h-[400px]">
@@ -414,13 +420,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {tiemposC1000.map((t, i) => (
                       <tr key={i} className="hover:bg-green-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
+                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
+                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -428,8 +434,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          <div className="space-y-2">
-            <FilterAuditPanel criteria={criteria2000} count={tiemposC2000.length} label="Guayaquil 2000 (Técnico)" />
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
+               <Clock className="w-4 h-4" /> Guayaquil 2000 - Catálogo Técnico ({tiemposC2000.length})
+            </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos2000.width[0], height: '1px' }} /></div>
               <div ref={scrollTiempos2000.bottom} className="overflow-x-auto border-t max-h-[400px]">
@@ -445,13 +453,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {tiemposC2000.map((t, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
+                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
+                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
                   </tbody>
