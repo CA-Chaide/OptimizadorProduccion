@@ -352,31 +352,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="diaria">
           <Card>
-            <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex-1">
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarCheck className="w-5 h-5 text-primary" />
-                  Programación Diaria: {targetDate}
-                </CardTitle>
-                <CardDescription>
-                  Horizonte: Hoy + {horizonValue} día(s). Órdenes para el día laborable objetivo.
-                </CardDescription>
-              </div>
-              
-              {!isLoadingDaily && dailyOrders.length > 0 && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="px-3 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-gray-50 rounded">Página {dailyPage} de {totalDailyPages}</span>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily}><RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Recargar</Button>
-                </div>
-              )}
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarCheck className="w-5 h-5 text-primary" />
+                Programación Diaria: {targetDate}
+              </CardTitle>
+              <CardDescription>
+                Horizonte: Hoy + {horizonValue} día(s). Órdenes para el día laborable objetivo.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <div className="rounded-md border bg-white shadow-sm overflow-hidden">
                 <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
@@ -411,9 +396,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </table>
                 </div>
               </div>
+
+              {/* Controles de Navegación y Recarga en la parte inferior */}
               {!isLoadingDaily && dailyOrders.length > 0 && (
-                <div className="mt-4 flex justify-end text-[10px] text-gray-400 uppercase font-bold tracking-widest">
-                  Total {dailyOrders.length} registros para {targetDate}
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-2">
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                    <span className="px-3 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-gray-50 rounded">Página {dailyPage} de {totalDailyPages}</span>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">
+                      Total {dailyOrders.length} registros para {targetDate}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8">
+                      <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Recargar
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
