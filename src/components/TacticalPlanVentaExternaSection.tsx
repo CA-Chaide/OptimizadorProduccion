@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
  * Implementa la Segmentación Inteligente para Venta Externa.
  * - Divide datos por Planta (1000/2000).
  * - Aplica filtros de ALMACEN, RESPCTRLPROD y SECTOR dinámicamente.
- * - Tab 'Tiempos' renombrado a 'Tiempos Ensamblado'.
+ * - Tabs renombrados: ÓRDENES PROVISIONALES y TIEMPOS ENSAMBLADO.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -87,7 +87,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         if (!g.centro) continue;
         try {
           const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-          // Standardize data extraction to fix "no data" issue
           const rawPayload = res.data;
           const actualData = Array.isArray(rawPayload) ? rawPayload : (rawPayload?.data || []);
           if (Array.isArray(actualData) && actualData.length > 0) {
@@ -98,7 +97,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         }
       }
       setTiemposEnsamblado(allTiempos);
-      inspector.captureVariable('tiemposEnsambladoRaw', allTiempos);
     } catch (error) {
       console.error('Error en loadData:', error);
     }
@@ -138,12 +136,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const matchResp = criteria.resp.length === 0 || criteria.resp.some((code: string) => itemResp.includes(code));
       
       const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
-      const hasAlmacenField = o.hasOwnProperty('Almacen') || o.hasOwnProperty('ALMACEN');
-      const matchAlm = criteria.alm.length === 0 || !hasAlmacenField || criteria.alm.includes(itemAlm);
+      const hasAlmacenField = o.hasOwnProperty('Almacen') || o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen');
+      const matchAlm = criteria.alm.length === 0 || !hasAlmacenField || itemAlm === '' || criteria.alm.includes(itemAlm);
       
       const itemSector = String(o.Sector || o.SECTOR || '').trim();
       const hasSectorField = o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
-      const matchSector = criteria.sector.length === 0 || !hasSectorField || criteria.sector.includes(itemSector);
+      const matchSector = criteria.sector.length === 0 || !hasSectorField || itemSector === '' || criteria.sector.includes(itemSector);
 
       return matchResp && matchAlm && matchSector;
     });
@@ -159,11 +157,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000), [tiemposEnsamblado, criteria1000]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000), [tiemposEnsamblado, criteria2000]);
 
-  // Función de extracción inteligente con fallback
   const extractMaterialInfo = (item: any) => {
     const materialStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const match = materialStr.match(/^(\d+)\s+(.*)$/);
-    
     let code = '—';
     let description = '—';
     
@@ -174,7 +170,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       code = materialStr.match(/^\d+$/) ? materialStr.slice(-8) : (materialStr || '—');
       description = item.NOMBRE || item.NombreMaterial || item.Descripcion || item.descripcion || '—';
     }
-    
     return { code, description };
   };
 
@@ -230,7 +225,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         <TabsList className="grid w-full grid-cols-5 h-12 bg-gray-100/50 border rounded-xl p-1 mb-8">
           <TabsTrigger value="grupos" className="rounded-lg font-bold uppercase text-[10px]">Grupos</TabsTrigger>
           <TabsTrigger value="restricciones" className="rounded-lg font-bold uppercase text-[10px]">Restricciones</TabsTrigger>
-          <TabsTrigger value="ordenes" className="rounded-lg font-bold uppercase text-[10px]">Provisionales</TabsTrigger>
+          <TabsTrigger value="ordenes" className="rounded-lg font-bold uppercase text-[10px]">Órdenes Provisionales</TabsTrigger>
           <TabsTrigger value="ordenesFert" className="rounded-lg font-bold uppercase text-[10px]">Órdenes Fert</TabsTrigger>
           <TabsTrigger value="tiempos" className="rounded-lg font-bold uppercase text-[10px]">Tiempos Ensamblado</TabsTrigger>
         </TabsList>
@@ -238,7 +233,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         <TabsContent value="grupos">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {grupos.map(g => (
-              <Card key={g.codigo_grupo} className="p-6 border-2 border-dashed rounded-3xl bg-gray-50/30">
+              <Card key={g.codigo_grupo} className="p-6 border-2 border-dashed rounded-3xl bg-gray-50/30 text-center">
                 <Badge className="bg-green-600 mb-3">Planta {g.centro}</Badge>
                 <h4 className="font-black text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
               </Card>
@@ -350,9 +345,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesFert" className="space-y-12">
+          {/* FERT 1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-600" /> Quito 1000 ({fertC1000.length})
+              <div className="w-2 h-2 rounded-full bg-green-600" /> Quito 1000 - Órdenes Fert ({fertC1000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollFert1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert1000.width[0], height: '1px' }} /></div>
@@ -373,7 +369,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <tr key={i} className="hover:bg-green-50/30">
                           <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-left">{description}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
                           <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                         </tr>
                       );
@@ -383,9 +379,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
+          {/* FERT 2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-600" /> Guayaquil 2000 ({fertC2000.length})
+              <div className="w-2 h-2 rounded-full bg-blue-600" /> Guayaquil 2000 - Órdenes Fert ({fertC2000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollFert2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert2000.width[0], height: '1px' }} /></div>
@@ -405,8 +402,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
                           <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-left">{description}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
                           <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                         </tr>
                       );
