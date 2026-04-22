@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -160,7 +161,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
             <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
             <TabsTrigger value="ordenes">Órdenes Previsionales</TabsTrigger>
             <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
-            <TabsTrigger value="tiemposEnsamblado">Tiempos Ensamblado</TabsTrigger>
+            <TabsTrigger value="tiemposMuebles">Tiempos Muebles</TabsTrigger>
         </TabsList>
         <TabsContent value="grupos" className="mt-4">
             <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
@@ -194,7 +195,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                 </CardContent>
             </Card>
         </TabsContent>
-        <TabsContent value="tiemposEnsamblado" className="mt-4">
+        <TabsContent value="tiemposMuebles" className="mt-4">
             <TiemposEnsambladoTab grupos={gruposMuebles} />
         </TabsContent>
       </Tabs>
