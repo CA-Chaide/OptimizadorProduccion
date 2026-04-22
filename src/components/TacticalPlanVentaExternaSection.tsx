@@ -1,8 +1,7 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, FileText, Clock, Search, Filter, X } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, Search, Filter, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -19,10 +18,9 @@ import { Input } from '@/components/ui/input';
  * TacticalPlanVentaExternaSection
  * 
  * Reestructurado profesionalmente:
- * 1. Filtros individuales DENTRO de cada tab operativo.
- * 2. Recuperación de tiempos mediante getTiemposEnsambladobyCentroyCodigoGrupo.
- * 3. Procesamiento de respuesta { data: [], length }.
- * 4. Doble scroll sincronizado y contenido centrado con bordes dashed.
+ * 1. Órdenes Provisionales segmentadas por Centro 1000 y Centro 2000.
+ * 2. Filtros de restricciones aplicados por separado para cada grupo.
+ * 3. Doble scroll sincronizado y contenido centrado con bordes dashed.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -36,14 +34,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Estados de filtros locales por Tab
-  const [filtersOrders, setFiltersOrders] = useState({ query: '', resp: '' });
+  // Estados de filtros locales
+  const [filtersC1000, setFiltersC1000] = useState({ query: '', resp: '' });
+  const [filtersC2000, setFiltersC2000] = useState({ query: '', resp: '' });
   const [filtersFert, setFiltersFert] = useState({ query: '', resp: '' });
   const [filtersTiempos, setFiltersTiempos] = useState({ query: '', resp: '' });
 
   // Refs para sincronización de scroll
-  const syncRefs = {
-    ordenes: { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) },
+  const scrollRefs = {
+    c1000: { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) },
+    c2000: { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) },
     fert: { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) },
     tiempos: { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) }
   };
@@ -76,22 +76,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      // 1. Cargar Órdenes Provisionales
-      const provRes = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
+      const [provRes, fertRes] = await Promise.all([
+        serviciosService.OrdenesProvisionalesPaginados(1, 20000),
+        serviciosService.getOrdenesFert(1, 20000)
+      ]);
       setOrders(provRes.data || []);
-
-      // 2. Cargar Órdenes Fert
-      const fertRes = await serviciosService.getOrdenesFert(1, 20000);
       setOrdersFert(fertRes.data || []);
 
-      // 3. Cargar Tiempos usando el método específico por cada grupo
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
-        console.log(`[Venta Externa] Consultando tiempos para Centro: ${g.centro}, Grupo: ${g.codigo_grupo}`);
         const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo);
-        
-        // Manejar estructura { data: [], length }
         const payload = res.data;
         const dataArray = payload?.data ? (Array.isArray(payload.data) ? payload.data : [payload.data]) : 
                          (Array.isArray(payload) ? payload : []);
@@ -101,10 +96,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         }
       }
       setTiemposEnsamblado(allTiempos);
-      inspector.captureVariable('tiemposVentaExterna', allTiempos.length);
     } catch (error) {
       console.error('Error cargando datos operativos:', error);
-      addNotification('error', 'Error al recuperar datos de la API');
     }
   };
 
@@ -120,55 +113,67 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, []);
 
-  // Lógica de filtrado base por RESPCTRLPROD
-  const getRespCodesFromRestrictions = () => {
-    return restricciones
+  // Lógica de filtrado por centro y grupo
+  const filterByGroupRestrictions = (data: any[], centro: string, localFilters: any) => {
+    const group = grupos.find(g => String(g.centro) === centro);
+    if (!group) return [];
+
+    const groupRestrictions = restricciones.filter(r => r.codigo_grupo === group.codigo_grupo);
+    const respCodes = groupRestrictions
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
-  };
-
-  const applyFilters = (data: any[], localFilters: { query: string, resp: string }) => {
-    const respCodes = getRespCodesFromRestrictions();
     
+    const almacenValues = groupRestrictions
+      .filter(r => r.nombre_restriccion === 'ALMACEN')
+      .map(r => r.valor_restriccion.trim())
+      .filter(v => v !== '');
+
     return data.filter(item => {
-      // Campos dinámicos para responsables y materiales
       const itemResp = String(item.RESPCTRLPROD || item.RespCtrlProd || item.respCtrlProd || '').trim();
-      const itemNameResp = String(item.NombRespControlProd || item.RespCtrlProd || '').toLowerCase();
+      const itemAlm = String(item.Almacen || item.ALMACEN || '').trim();
       const itemContent = JSON.stringify(item).toLowerCase();
 
-      const matchRestriccion = respCodes.length === 0 || respCodes.includes(itemResp);
+      const matchRestriccion = (respCodes.length === 0 || respCodes.includes(itemResp)) &&
+                              (almacenValues.length === 0 || almacenValues.includes(itemAlm));
       const matchQuery = !localFilters.query || itemContent.includes(localFilters.query.toLowerCase());
-      const matchLocalResp = !localFilters.resp || itemNameResp === localFilters.resp.toLowerCase() || itemResp === localFilters.resp;
+      const matchLocalResp = !localFilters.resp || itemResp === localFilters.resp;
 
       return matchRestriccion && matchQuery && matchLocalResp;
     });
   };
 
-  // Datos filtrados para cada Tab
-  const filteredOrders = useMemo(() => applyFilters(ordenes, filtersOrders), [ordenes, restricciones, filtersOrders]);
-  const filteredFert = useMemo(() => applyFilters(ordenesFert, filtersFert), [ordenesFert, restricciones, filtersFert]);
-  const filteredTiempos = useMemo(() => applyFilters(tiemposEnsamblado, filtersTiempos), [tiemposEnsamblado, restricciones, filtersTiempos]);
-
-  // Lista única de responsables para selectores
-  const getUniqueResponsibles = (data: any[]) => {
-    const resps = new Set<string>();
-    data.forEach(o => {
-      const name = o.NombRespControlProd || o.RespCtrlProd || o.RESPCTRLPROD;
-      if (name) resps.add(String(name));
+  const ordenesC1000 = useMemo(() => filterByGroupRestrictions(ordenes, '1000', filtersC1000), [ordenes, grupos, restricciones, filtersC1000]);
+  const ordenesC2000 = useMemo(() => filterByGroupRestrictions(ordenes, '2000', filtersC2000), [ordenes, grupos, restricciones, filtersC2000]);
+  
+  const filteredFert = useMemo(() => {
+    const allRespCodes = restricciones
+      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
+    
+    return ordenesFert.filter(o => {
+      const itemResp = String(o.RESPCTRLPROD || o.RespCtrlProd || '').trim();
+      const matchRestriccion = allRespCodes.length === 0 || allRespCodes.includes(itemResp);
+      const matchQuery = !filtersFert.query || JSON.stringify(o).toLowerCase().includes(filtersFert.query.toLowerCase());
+      const matchLocalResp = !filtersFert.resp || itemResp === filtersFert.resp;
+      return matchRestriccion && matchQuery && matchLocalResp;
     });
-    return Array.from(resps).sort();
-  };
+  }, [ordenesFert, restricciones, filtersFert]);
 
-  const respsOrders = useMemo(() => getUniqueResponsibles(ordenes), [ordenes]);
-  const respsFert = useMemo(() => getUniqueResponsibles(ordenesFert), [ordenesFert]);
-  const respsTiempos = useMemo(() => getUniqueResponsibles(tiemposEnsamblado), [tiemposEnsamblado]);
+  const filteredTiempos = useMemo(() => {
+    return tiemposEnsamblado.filter(t => {
+      const itemResp = String(t.RespCtrlProd || t.RESPCTRLPROD || '').trim();
+      const matchQuery = !filtersTiempos.query || JSON.stringify(t).toLowerCase().includes(filtersTiempos.query.toLowerCase());
+      const matchLocalResp = !filtersTiempos.resp || itemResp === filtersTiempos.resp;
+      return matchQuery && matchLocalResp;
+    });
+  }, [tiemposEnsamblado, filtersTiempos]);
 
   // Sincronización de scroll
   const setupScroll = (refGroup: any) => {
     if (!refGroup.top.current || !refGroup.bottom.current) return;
-    const syncB = () => { refGroup.bottom.current.scrollLeft = refGroup.top.current.scrollLeft; };
-    const syncT = () => { refGroup.top.current.scrollLeft = refGroup.bottom.current.scrollLeft; };
+    const syncB = () => { if (refGroup.bottom.current) refGroup.bottom.current.scrollLeft = refGroup.top.current.scrollLeft; };
+    const syncT = () => { if (refGroup.top.current) refGroup.top.current.scrollLeft = refGroup.bottom.current.scrollLeft; };
     refGroup.top.current.addEventListener('scroll', syncB);
     refGroup.bottom.current.addEventListener('scroll', syncT);
     return () => {
@@ -178,104 +183,119 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   };
 
   useEffect(() => {
-    if (activeTab === 'ordenes' && syncRefs.ordenes.table.current) {
-      syncRefs.ordenes.width[1](syncRefs.ordenes.table.current.offsetWidth);
-      return setupScroll(syncRefs.ordenes);
+    if (activeTab === 'ordenes') {
+      setupScroll(scrollRefs.c1000);
+      setupScroll(scrollRefs.c2000);
+      if (scrollRefs.c1000.table.current) scrollRefs.c1000.width[1](scrollRefs.c1000.table.current.offsetWidth);
+      if (scrollRefs.c2000.table.current) scrollRefs.c2000.width[1](scrollRefs.c2000.table.current.offsetWidth);
     }
-    if (activeTab === 'ordenesFert' && syncRefs.fert.table.current) {
-      syncRefs.fert.width[1](syncRefs.fert.table.current.offsetWidth);
-      return setupScroll(syncRefs.fert);
+    if (activeTab === 'ordenesFert' && scrollRefs.fert.table.current) {
+      scrollRefs.fert.width[1](scrollRefs.fert.table.current.offsetWidth);
+      setupScroll(scrollRefs.fert);
     }
-    if (activeTab === 'tiempos' && syncRefs.tiempos.table.current) {
-      syncRefs.tiempos.width[1](syncRefs.tiempos.table.current.offsetWidth);
-      return setupScroll(syncRefs.tiempos);
+    if (activeTab === 'tiempos' && scrollRefs.tiempos.table.current) {
+      scrollRefs.tiempos.width[1](scrollRefs.tiempos.table.current.offsetWidth);
+      setupScroll(scrollRefs.tiempos);
     }
-  }, [activeTab, filteredOrders, filteredFert, filteredTiempos]);
+  }, [activeTab, ordenesC1000, ordenesC2000, filteredFert, filteredTiempos]);
 
-  // Componente de barra de filtros local
-  const FilterBar = ({ 
-    filters, 
-    setFilters, 
-    resps 
-  }: { 
-    filters: { query: string, resp: string }, 
-    setFilters: any, 
-    resps: string[] 
-  }) => (
-    <div className="flex flex-wrap gap-4 items-end mb-4 bg-gray-50 p-4 border rounded-2xl shadow-sm">
-      <div className="flex-1 min-w-[200px] space-y-1">
-        <label className="text-[10px] font-bold text-gray-400 uppercase">Buscar Material / Código</label>
-        <Input 
-          placeholder="Filtrar..." 
-          value={filters.query}
-          onChange={(e) => setFilters((f: any) => ({ ...f, query: e.target.value }))}
-          className="h-10 rounded-xl"
-        />
+  const FilterBar = ({ filters, setFilters, data }: { filters: any, setFilters: any, data: any[] }) => {
+    const resps = useMemo(() => {
+      const set = new Set<string>();
+      data.forEach(d => {
+        const val = d.RESPCTRLPROD || d.RespCtrlProd || d.respCtrlProd;
+        if (val) set.add(String(val));
+      });
+      return Array.from(set).sort();
+    }, [data]);
+
+    return (
+      <div className="flex flex-wrap gap-3 items-end mb-4 bg-gray-50/80 p-3 border border-dashed rounded-xl">
+        <div className="flex-1 min-w-[150px]">
+          <label className="text-[9px] font-bold text-gray-400 uppercase ml-1">Buscar</label>
+          <Input 
+            placeholder="Filtrar datos..." 
+            value={filters.query}
+            onChange={(e) => setFilters((f: any) => ({ ...f, query: e.target.value }))}
+            className="h-8 rounded-lg text-xs"
+          />
+        </div>
+        <div className="w-40">
+          <label className="text-[9px] font-bold text-gray-400 uppercase ml-1">Responsable</label>
+          <select 
+            value={filters.resp}
+            onChange={(e) => setFilters((f: any) => ({ ...f, resp: e.target.value }))}
+            className="w-full h-8 border border-gray-200 rounded-lg px-2 text-xs bg-white"
+          >
+            <option value="">Todos</option>
+            {resps.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => setFilters({ query: '', resp: '' })} className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-500">
+          <X className="w-3.5 h-3.5" />
+        </Button>
       </div>
-      <div className="w-64 space-y-1">
-        <label className="text-[10px] font-bold text-gray-400 uppercase">Responsable</label>
-        <select 
-          value={filters.resp}
-          onChange={(e) => setFilters((f: any) => ({ ...f, resp: e.target.value }))}
-          className="w-full h-10 border border-gray-200 rounded-xl px-3 text-sm bg-white"
-        >
-          <option value="">Todos</option>
-          {resps.map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
+    );
+  };
+
+  const TableLayout = ({ refGroup, children }: { refGroup: any, children: React.ReactNode }) => (
+    <div className="space-y-0">
+      <div ref={refGroup.top} className="overflow-x-auto h-3 bg-gray-50/30 border-x rounded-t-lg">
+        <div style={{ width: refGroup.width[0], height: '1px' }} />
       </div>
-      <Button 
-        variant="ghost" 
-        size="sm"
-        onClick={() => setFilters({ query: '', resp: '' })}
-        className="h-10 text-gray-400 hover:text-red-600"
-      >
-        <X className="w-4 h-4" />
-      </Button>
+      <div ref={refGroup.bottom} className="overflow-x-auto border rounded-b-lg max-h-[450px]">
+        {children}
+      </div>
     </div>
   );
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
-        <Loader2 className="w-12 h-12 animate-spin text-green-600" />
-        <p className="text-gray-500 font-bold">Cargando Planificación de Venta Externa...</p>
+        <Loader2 className="w-10 h-10 animate-spin text-green-600" />
+        <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Sincronizando Venta Externa...</p>
       </div>
     );
   }
 
   return (
     <div className="p-6 md:p-8 space-y-6">
-      <div className="flex items-center space-x-3 mb-4">
-        <ShoppingCart className="w-10 h-10 text-green-600" />
+      <div className="flex items-center space-x-4 mb-6">
+        <div className="bg-green-600 p-3 rounded-2xl shadow-lg shadow-green-200">
+          <ShoppingCart className="w-8 h-8 text-white" />
+        </div>
         <div>
-          <h2 className="text-2xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Venta Externa</h2>
-          <p className="text-sm text-gray-500 font-medium">Gestión especializada por Centro y Código de Grupo</p>
+          <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Venta Externa</h2>
+          <Badge variant="outline" className="border-green-200 text-green-700 bg-green-50 font-bold px-3">Catálogo de Planificación</Badge>
         </div>
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="flex w-full bg-gray-100/60 p-1.5 rounded-2xl mb-8 border border-gray-200">
-          <TabsTrigger value="grupos" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
-          <TabsTrigger value="restricciones" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
-          <TabsTrigger value="ordenes" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><Package className="w-4 h-4" /> Provisionales</TabsTrigger>
-          <TabsTrigger value="ordenesFert" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><FileText className="w-4 h-4" /> Órdenes Fert</TabsTrigger>
-          <TabsTrigger value="tiempos" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><Clock className="w-4 h-4" /> Tiempos</TabsTrigger>
+        <TabsList className="flex w-full bg-gray-100/50 p-1.5 rounded-2xl mb-8 border border-gray-200 shadow-inner">
+          <TabsTrigger value="grupos" className="flex-1 py-3 text-xs font-black uppercase data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl transition-all">Grupos</TabsTrigger>
+          <TabsTrigger value="restricciones" className="flex-1 py-3 text-xs font-black uppercase data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl transition-all">Restricciones</TabsTrigger>
+          <TabsTrigger value="ordenes" className="flex-1 py-3 text-xs font-black uppercase data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl transition-all">Provisionales</TabsTrigger>
+          <TabsTrigger value="ordenesFert" className="flex-1 py-3 text-xs font-black uppercase data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl transition-all">Órdenes Fert</TabsTrigger>
+          <TabsTrigger value="tiempos" className="flex-1 py-3 text-xs font-black uppercase data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl transition-all">Tiempos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="grupos">
-          <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50 border-b">
-              <CardTitle>Grupos Operativos Identificados</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
+          <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white">
+            <CardContent className="p-8">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {grupos.map(g => (
-                  <div key={g.codigo_grupo} className="p-6 border-2 border-dashed border-gray-200 rounded-2xl bg-white hover:border-green-400 hover:shadow-xl transition-all">
+                  <div key={g.codigo_grupo} className="p-6 border-2 border-dashed border-gray-100 rounded-3xl bg-gray-50/50 hover:border-green-400 hover:bg-white hover:shadow-2xl transition-all group">
                     <div className="flex justify-between items-start mb-4">
-                      <span className="font-bold text-xl text-gray-800">{g.nombre_grupo}</span>
-                      <Badge className="bg-green-100 text-green-800 border-green-200 uppercase font-bold">C-{g.centro}</Badge>
+                      <div className="space-y-1">
+                        <span className="block text-xs font-bold text-gray-400 uppercase tracking-widest">Planta de Producción</span>
+                        <span className="text-2xl font-black text-gray-800 group-hover:text-green-600 transition-colors">Centro {g.centro}</span>
+                      </div>
+                      <Badge className="bg-green-600 text-white border-none font-black px-4 py-1 rounded-full shadow-lg shadow-green-100">C-{g.centro}</Badge>
                     </div>
-                    <p className="text-xs text-gray-400 font-mono">CÓDIGO: {g.codigo_grupo}</p>
+                    <div className="pt-4 border-t border-dashed border-gray-200">
+                      <h4 className="font-bold text-gray-700 uppercase text-sm mb-1">{g.nombre_grupo}</h4>
+                      <p className="text-[10px] text-gray-400 font-mono">UUID-REG: {g.codigo_grupo}</p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -284,176 +304,220 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="restricciones">
-          <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50 border-b">
-              <CardTitle>Restricciones del Área</CardTitle>
-            </CardHeader>
+          <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white">
             <CardContent className="p-0">
-              <table className="w-full text-center">
-                <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-500">
-                  <tr>
-                    <th className="px-6 py-4 border-r border-dashed border-gray-200">Parámetro</th>
-                    <th className="px-6 py-4 border-r border-dashed border-gray-200">Valor Configurado</th>
-                    <th className="px-6 py-4">Descripción Técnica</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {restricciones.map(r => (
-                    <tr key={r.codigo_restriccion} className="hover:bg-green-50/40">
-                      <td className="px-6 py-5 font-bold text-gray-900 border-r border-dashed border-gray-200">{r.nombre_restriccion}</td>
-                      <td className="px-6 py-5 border-r border-dashed border-gray-200">
-                        <Badge variant="outline" className="font-mono border-green-200 text-green-700 bg-green-50">{r.valor_restriccion}</Badge>
-                      </td>
-                      <td className="px-6 py-5 text-sm text-gray-500 italic">{r.description || r.descripcion || 'Sin descripción'}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-center border-collapse">
+                  <thead className="bg-gray-50/80 border-b border-gray-100">
+                    <tr className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
+                      <th className="px-8 py-5 border-r border-dashed border-gray-200">Identificador</th>
+                      <th className="px-8 py-5 border-r border-dashed border-gray-200">Valor Operativo</th>
+                      <th className="px-8 py-5">Especificación del Parámetro</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {restricciones.map(r => (
+                      <tr key={r.codigo_restriccion} className="hover:bg-green-50/30 transition-colors group">
+                        <td className="px-8 py-6 font-black text-gray-800 border-r border-dashed border-gray-200 group-hover:text-green-700">{r.nombre_restriccion}</td>
+                        <td className="px-8 py-6 border-r border-dashed border-gray-200">
+                          <span className="font-mono text-sm px-4 py-1.5 rounded-xl bg-gray-100 text-gray-600 border border-gray-200 group-hover:border-green-200 group-hover:bg-green-50 group-hover:text-green-700 transition-all">
+                            {r.valor_restriccion}
+                          </span>
+                        </td>
+                        <td className="px-8 py-6 text-sm text-gray-400 font-medium italic">{r.description || r.descripcion || 'Configuración estándar del sistema'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="ordenes">
-          <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50 border-b">
-              <div className="flex justify-between items-center">
-                <CardTitle>Órdenes Provisionales (Venta Externa)</CardTitle>
-                <Badge className="bg-green-600 text-white font-bold">{filteredOrders.length} Registros</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4">
-              <FilterBar filters={filtersOrders} setFilters={setFiltersOrders} resps={respsOrders} />
-              <div ref={syncRefs.ordenes.top} className="overflow-x-auto h-4 bg-gray-100/50 border-x rounded-t-lg">
-                <div style={{ width: syncRefs.ordenes.width[0], height: '1px' }} />
-              </div>
-              <div ref={syncRefs.ordenes.bottom} className="overflow-x-auto border-x border-b rounded-b-lg max-h-[500px]">
-                <table ref={syncRefs.ordenes.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material / Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Almacén</th>
-                      <th className="px-4 py-3">Responsable</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[13px]">
-                    {filteredOrders.map((o, idx) => (
-                      <tr key={idx} className="hover:bg-green-50/40">
-                        <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-200">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-4 border-r border-dashed border-gray-200">
-                          <div className="font-mono text-xs text-green-700 font-bold">{o.MATERIAL}</div>
-                          <div className="text-[11px] text-gray-500 truncate max-w-[300px] mx-auto uppercase">{o.NOMBRE}</div>
-                        </td>
-                        <td className="px-4 py-4 font-bold text-gray-800 border-r border-dashed border-gray-200">{o.CANTIDAD}</td>
-                        <td className="px-4 py-4 text-gray-600 border-r border-dashed border-gray-200">{o.Almacen || o.ALMACEN}</td>
-                        <td className="px-4 py-4 text-[11px] text-gray-400">{o.NombRespControlProd || o.RespCtrlProd || o.RESPCTRLPROD}</td>
+          <div className="grid grid-cols-1 gap-8">
+            {/* SECCIÓN CENTRO 1000 */}
+            <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white">
+              <CardHeader className="bg-gray-50/80 border-b border-gray-100 flex flex-row items-center justify-between px-8 py-5">
+                <div>
+                  <CardTitle className="text-xl font-black text-gray-800 uppercase tracking-tighter">Centro 1000 - Quito</CardTitle>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Órdenes Provisionales Venta Externa</p>
+                </div>
+                <Badge className="bg-green-600 text-white font-black px-4 rounded-full">{ordenesC1000.length} REG</Badge>
+              </CardHeader>
+              <CardContent className="p-8">
+                <FilterBar filters={filtersC1000} setFilters={setFiltersC1000} data={ordenes} />
+                <TableLayout refGroup={scrollRefs.c1000}>
+                  <table ref={scrollRefs.c1000.table} className="w-full text-center border-collapse">
+                    <thead className="bg-gray-50/80 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 tracking-widest">
+                      <tr>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Orden</th>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Cod. Material</th>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Descripción del Bien</th>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Unidades</th>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Almacén</th>
+                        <th className="px-6 py-4">Resp. Control</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {ordenesC1000.map((o, idx) => (
+                        <tr key={idx} className="hover:bg-green-50/30 transition-colors group">
+                          <td className="px-6 py-5 font-black text-gray-800 border-r border-dashed border-gray-200 group-hover:text-green-700">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-6 py-5 font-mono text-xs text-green-600 font-bold border-r border-dashed border-gray-200">{o.MATERIAL}</td>
+                          <td className="px-6 py-5 border-r border-dashed border-gray-200 text-xs text-gray-500 font-bold uppercase truncate max-w-[300px]">{o.NOMBRE}</td>
+                          <td className="px-6 py-5 font-black text-gray-800 border-r border-dashed border-gray-200">{o.CANTIDAD}</td>
+                          <td className="px-6 py-5 text-gray-500 font-bold border-r border-dashed border-gray-200">{o.Almacen || o.ALMACEN}</td>
+                          <td className="px-6 py-5 text-[10px] text-gray-400 font-bold">{o.NombRespControlProd || o.RespCtrlProd}</td>
+                        </tr>
+                      ))}
+                      {ordenesC1000.length === 0 && (
+                        <tr><td colSpan={6} className="py-20 text-gray-300 font-bold uppercase tracking-widest text-xs italic">No hay órdenes para el Centro 1000</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </TableLayout>
+              </CardContent>
+            </Card>
+
+            {/* SECCIÓN CENTRO 2000 */}
+            <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white">
+              <CardHeader className="bg-gray-50/80 border-b border-gray-100 flex flex-row items-center justify-between px-8 py-5">
+                <div>
+                  <CardTitle className="text-xl font-black text-gray-800 uppercase tracking-tighter">Centro 2000 - Guayaquil</CardTitle>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Órdenes Provisionales Venta Externa</p>
+                </div>
+                <Badge className="bg-blue-600 text-white font-black px-4 rounded-full">{ordenesC2000.length} REG</Badge>
+              </CardHeader>
+              <CardContent className="p-8">
+                <FilterBar filters={filtersC2000} setFilters={setFiltersC2000} data={ordenes} />
+                <TableLayout refGroup={scrollRefs.c2000}>
+                  <table ref={scrollRefs.c2000.table} className="w-full text-center border-collapse">
+                    <thead className="bg-gray-50/80 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 tracking-widest">
+                      <tr>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Orden</th>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Cod. Material</th>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Descripción del Bien</th>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Unidades</th>
+                        <th className="px-6 py-4 border-r border-dashed border-gray-200">Almacén</th>
+                        <th className="px-6 py-4">Resp. Control</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {ordenesC2000.map((o, idx) => (
+                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors group">
+                          <td className="px-6 py-5 font-black text-gray-800 border-r border-dashed border-gray-200 group-hover:text-blue-700">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-6 py-5 font-mono text-xs text-blue-600 font-bold border-r border-dashed border-gray-200">{o.MATERIAL}</td>
+                          <td className="px-6 py-5 border-r border-dashed border-gray-200 text-xs text-gray-500 font-bold uppercase truncate max-w-[300px]">{o.NOMBRE}</td>
+                          <td className="px-6 py-5 font-black text-gray-800 border-r border-dashed border-gray-200">{o.CANTIDAD}</td>
+                          <td className="px-6 py-5 text-gray-500 font-bold border-r border-dashed border-gray-200">{o.Almacen || o.ALMACEN}</td>
+                          <td className="px-6 py-5 text-[10px] text-gray-400 font-bold">{o.NombRespControlProd || o.RespCtrlProd}</td>
+                        </tr>
+                      ))}
+                      {ordenesC2000.length === 0 && (
+                        <tr><td colSpan={6} className="py-20 text-gray-300 font-bold uppercase tracking-widest text-xs italic">No hay órdenes para el Centro 2000</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </TableLayout>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="ordenesFert">
-          <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50 border-b">
-              <div className="flex justify-between items-center">
-                <CardTitle>Órdenes Fert (Productos Terminados)</CardTitle>
-                <Badge className="bg-blue-600 text-white font-bold">{filteredFert.length} Registros</Badge>
+          <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white">
+            <CardHeader className="bg-gray-50/80 border-b border-gray-100 flex flex-row items-center justify-between px-8 py-5">
+              <div>
+                <CardTitle className="text-xl font-black text-gray-800 uppercase tracking-tighter">Órdenes de Producto Terminado (FERT)</CardTitle>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Venta Externa - Consolidado de Centros</p>
               </div>
+              <Badge className="bg-indigo-600 text-white font-black px-4 rounded-full">{filteredFert.length} REG</Badge>
             </CardHeader>
-            <CardContent className="p-4">
-              <FilterBar filters={filtersFert} setFilters={setFiltersFert} resps={respsFert} />
-              <div ref={syncRefs.fert.top} className="overflow-x-auto h-4 bg-gray-100/50 border-x rounded-t-lg">
-                <div style={{ width: syncRefs.fert.width[0], height: '1px' }} />
-              </div>
-              <div ref={syncRefs.fert.bottom} className="overflow-x-auto border-x border-b rounded-b-lg max-h-[500px]">
-                <table ref={syncRefs.fert.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500">
+            <CardContent className="p-8">
+              <FilterBar filters={filtersFert} setFilters={setFiltersFert} data={ordenesFert} />
+              <TableLayout refGroup={scrollRefs.fert}>
+                <table ref={scrollRefs.fert.table} className="w-full text-center border-collapse">
+                  <thead className="bg-gray-50/80 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 tracking-widest">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material / Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Almacén</th>
-                      <th className="px-4 py-3">Responsable</th>
+                      <th className="px-6 py-4 border-r border-dashed border-gray-200">Orden Fert</th>
+                      <th className="px-6 py-4 border-r border-dashed border-gray-200">Material / Código</th>
+                      <th className="px-6 py-4 border-r border-dashed border-gray-200">Cantidad</th>
+                      <th className="px-6 py-4 border-r border-dashed border-gray-200">Almacén</th>
+                      <th className="px-6 py-4">Resp. Control</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 text-[13px]">
+                  <tbody className="divide-y divide-gray-50">
                     {filteredFert.map((o, idx) => (
-                      <tr key={idx} className="hover:bg-blue-50/40">
-                        <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-200">{o.Orden || o.ORDENFERT}</td>
-                        <td className="px-4 py-4 border-r border-dashed border-gray-200">
-                          <div className="font-mono text-xs text-blue-700 font-bold">{o.CodMaterial || o.MATERIAL}</div>
-                          <div className="text-[11px] text-gray-500 truncate max-w-[300px] mx-auto uppercase">{o.Descripcion || o.NOMBRE}</div>
+                      <tr key={idx} className="hover:bg-indigo-50/30 transition-colors group">
+                        <td className="px-6 py-5 font-black text-gray-800 border-r border-dashed border-gray-200 group-hover:text-indigo-700">{o.Orden || o.ORDENFERT}</td>
+                        <td className="px-6 py-5 border-r border-dashed border-gray-200">
+                          <div className="font-mono text-xs text-indigo-600 font-bold">{o.CodMaterial || o.MATERIAL}</div>
+                          <div className="text-[10px] text-gray-400 font-bold uppercase truncate max-w-[250px] mx-auto">{o.Descripcion || o.NOMBRE}</div>
                         </td>
-                        <td className="px-4 py-4 font-bold text-gray-800 border-r border-dashed border-gray-200">{o.Cantidad || o.CANTIDAD}</td>
-                        <td className="px-4 py-4 text-gray-600 border-r border-dashed border-gray-200">{o.Almacen || o.ALMACEN}</td>
-                        <td className="px-4 py-4 text-[11px] text-gray-400">{o.NombRespControlProd || o.RespCtrlProd || o.RESPCTRLPROD}</td>
+                        <td className="px-6 py-5 font-black text-gray-800 border-r border-dashed border-gray-200">{o.Cantidad || o.CANTIDAD}</td>
+                        <td className="px-6 py-5 text-gray-500 font-bold border-r border-dashed border-gray-200">{o.Almacen || o.ALMACEN}</td>
+                        <td className="px-6 py-5 text-[10px] text-gray-400 font-bold">{o.NombRespControlProd || o.RespCtrlProd}</td>
                       </tr>
                     ))}
+                    {filteredFert.length === 0 && (
+                      <tr><td colSpan={5} className="py-20 text-gray-300 font-bold uppercase tracking-widest text-xs italic">No hay órdenes Fert identificadas</td></tr>
+                    )}
                   </tbody>
                 </table>
-              </div>
+              </TableLayout>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="tiempos">
-          <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50 border-b">
-              <div className="flex justify-between items-center">
-                <CardTitle>Tiempos de Ensamblado (Catálogo Técnico)</CardTitle>
-                <Badge className="bg-purple-600 text-white font-bold">{filteredTiempos.length} Registros</Badge>
+          <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white">
+            <CardHeader className="bg-gray-50/80 border-b border-gray-100 flex flex-row items-center justify-between px-8 py-5">
+              <div>
+                <CardTitle className="text-xl font-black text-gray-800 uppercase tracking-tighter">Tiempos Estándar de Fabricación</CardTitle>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Catálogo Técnico de Venta Externa</p>
               </div>
+              <Badge className="bg-purple-600 text-white font-black px-4 rounded-full">{filteredTiempos.length} REG</Badge>
             </CardHeader>
-            <CardContent className="p-4">
-              <FilterBar filters={filtersTiempos} setFilters={setFiltersTiempos} resps={respsTiempos} />
-              <div ref={syncRefs.tiempos.top} className="overflow-x-auto h-4 bg-gray-100/50 border-x rounded-t-lg">
-                <div style={{ width: syncRefs.tiempos.width[0], height: '1px' }} />
-              </div>
-              <div ref={syncRefs.tiempos.bottom} className="overflow-x-auto border-x border-b rounded-b-lg max-h-[500px]">
-                <table ref={syncRefs.tiempos.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500">
+            <CardContent className="p-8">
+              <FilterBar filters={filtersTiempos} setFilters={setFiltersTiempos} data={tiemposEnsamblado} />
+              <TableLayout refGroup={scrollRefs.tiempos}>
+                <table ref={scrollRefs.tiempos.table} className="w-full text-center border-collapse">
+                  <thead className="bg-gray-50/80 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 tracking-widest">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Centro</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea / Puesto</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (min)</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Stock Actual</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Stock Seg.</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Clase</th>
-                      <th className="px-4 py-3">Resp. Prod.</th>
+                      <th className="px-5 py-4 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-5 py-4 border-r border-dashed border-gray-200">Centro</th>
+                      <th className="px-5 py-4 border-r border-dashed border-gray-200">Línea de Ensamble</th>
+                      <th className="px-5 py-4 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
+                      <th className="px-5 py-4 border-r border-dashed border-gray-200">Stock Hoy</th>
+                      <th className="px-5 py-4 border-r border-dashed border-gray-200">Seguridad</th>
+                      <th className="px-5 py-4 border-r border-dashed border-gray-200">Aprov.</th>
+                      <th className="px-5 py-4">Resp.</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 text-[13px]">
+                  <tbody className="divide-y divide-gray-50">
                     {filteredTiempos.map((t, idx) => (
-                      <tr key={idx} className="hover:bg-purple-50/30">
-                        <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-200 font-mono">{t.CodMaterial}</td>
-                        <td className="px-4 py-4 text-gray-600 border-r border-dashed border-gray-200">{t.Centro}</td>
-                        <td className="px-4 py-4 border-r border-dashed border-gray-200">
-                          <div className="text-[11px] font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
-                          <div className="text-[9px] text-gray-400 uppercase">{t.PuestoTrabajo}</div>
+                      <tr key={idx} className="hover:bg-purple-50/30 transition-colors group">
+                        <td className="px-5 py-5 font-black text-gray-800 border-r border-dashed border-gray-200 group-hover:text-purple-700">{t.CodMaterial}</td>
+                        <td className="px-5 py-5 text-gray-500 font-bold border-r border-dashed border-gray-200">C-{t.Centro}</td>
+                        <td className="px-5 py-5 border-r border-dashed border-gray-200">
+                          <div className="text-[11px] font-black text-gray-700 uppercase leading-none">{t.PuestoTrabajoLinea || t.Linea}</div>
+                          <div className="text-[9px] text-gray-400 mt-1 font-mono uppercase">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-4 font-bold text-purple-700 border-r border-dashed border-gray-200">
+                        <td className="px-5 py-5 font-mono text-sm text-purple-700 font-black border-r border-dashed border-gray-200">
                           {t.Tiempo_Min ? Number(t.Tiempo_Min).toFixed(4) : '0.0000'}
                         </td>
-                        <td className="px-4 py-4 font-mono text-gray-600 border-r border-dashed border-gray-200">{t.StockActual || 0}</td>
-                        <td className="px-4 py-4 font-mono text-gray-400 border-r border-dashed border-gray-200">{t.StockSeguridad || 0}</td>
-                        <td className="px-4 py-4 font-bold text-teal-600 border-r border-dashed border-gray-200">{t.ClaseAprovisionam || '—'}</td>
-                        <td className="px-4 py-4 text-[10px] text-gray-400">{t.NombRespControlProd || t.RespCtrlProd}</td>
+                        <td className="px-5 py-5 font-mono text-gray-600 border-r border-dashed border-gray-200">{t.StockActual || 0}</td>
+                        <td className="px-5 py-5 font-mono text-gray-400 border-r border-dashed border-gray-200">{t.StockSeguridad || 0}</td>
+                        <td className="px-5 py-5 font-black text-teal-600 border-r border-dashed border-gray-200">{t.ClaseAprovisionam || 'E'}</td>
+                        <td className="px-5 py-5 text-[10px] text-gray-400 font-bold uppercase">{t.RespCtrlProd}</td>
                       </tr>
                     ))}
                     {filteredTiempos.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="py-20 text-gray-400 italic">No se encontraron datos técnicos para los filtros seleccionados</td>
-                      </tr>
+                      <tr><td colSpan={8} className="py-20 text-gray-300 font-bold uppercase tracking-widest text-xs italic">No hay tiempos técnicos cargados</td></tr>
                     )}
                   </tbody>
                 </table>
-              </div>
+              </TableLayout>
             </CardContent>
           </Card>
         </TabsContent>
