@@ -55,7 +55,13 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           const sectoresToFilter = sectoresRestriction.valor_restriccion.split(separator).map(s => s.trim()).filter(s => s);
           
           if (sectoresToFilter.length > 0) {
-            dataArray = dataArray.filter(order => order.SECTORDESC && sectoresToFilter.includes(order.SECTORDESC));
+            const sectoresToFilterLower = sectoresToFilter.map(s => s.toLowerCase());
+            dataArray = dataArray.filter(order => {
+                const sectorDesc = (order.SECTORDESC || '').toLowerCase();
+                // Check if any of the filter strings are included in the order's sector description
+                return sectorDesc && sectoresToFilterLower.some(filterSector => sectorDesc.includes(filterSector));
+            });
+
             addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT, aplicando filtro 'SECTORES' desde restricciones: ${sectoresToFilter.join(', ')}.`);
           } else {
              addNotification('warning', `La restricción 'SECTORES' para el grupo Muebles está vacía. Mostrando todas las órdenes FERT.`);
@@ -101,25 +107,25 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const endIndex = startIndex + rowsPerPage;
 
   const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
-      if (lastScrolledRef.current === 'table') {
-          lastScrolledRef.current = null;
-          return;
-      }
-      if (tableScrollRef.current) {
-          lastScrolledRef.current = 'top';
-          tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-      }
+    if (lastScrolledRef.current === 'table') {
+      lastScrolledRef.current = null;
+      return;
+    }
+    if (tableScrollRef.current) {
+      lastScrolledRef.current = 'top';
+      tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
   };
 
   const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
-      if (lastScrolledRef.current === 'top') {
-          lastScrolledRef.current = null;
-          return;
-      }
-      if (topScrollRef.current) {
-          lastScrolledRef.current = 'table';
-          topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-      }
+    if (lastScrolledRef.current === 'top') {
+      lastScrolledRef.current = null;
+      return;
+    }
+    if (topScrollRef.current) {
+      lastScrolledRef.current = 'table';
+      topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
   };
   
   useEffect(() => {
