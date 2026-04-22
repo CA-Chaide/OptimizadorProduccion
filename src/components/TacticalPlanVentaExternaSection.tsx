@@ -270,9 +270,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <table ref={scrollProv1000.table} className="w-full text-center border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed">Cantidad</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
                       <th className="px-4 py-3">Almacén</th>
                     </tr>
                   </thead>
@@ -280,13 +281,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     {provC1000.map((o, i) => (
                       <tr key={i} className="hover:bg-green-50/30">
                         <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                          <div className="font-mono text-green-600 font-black">
-                            {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                          </div>
-                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
-                            {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                          </div>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">
+                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                        </td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">
+                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
                         </td>
                         <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
                         <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
@@ -308,9 +307,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <table ref={scrollProv2000.table} className="w-full text-center border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed">Cantidad</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
                       <th className="px-4 py-3">Almacén</th>
                     </tr>
                   </thead>
@@ -318,13 +318,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     {provC2000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                          <div className="font-mono text-blue-600 font-black">
-                            {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                          </div>
-                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
-                            {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                          </div>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">
+                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                        </td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">
+                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
                         </td>
                         <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
                         <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
@@ -350,9 +348,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <table ref={scrollFert1000.table} className="w-full text-center border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed">Orden Fert</th>
-                      <th className="px-4 py-3 border-r border-dashed">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed">Descripción</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
                       <th className="px-4 py-3">Cantidad</th>
                     </tr>
                   </thead>
@@ -360,15 +358,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     {fertC1000.map((o, i) => (
                       <tr key={i} className="hover:bg-green-50/30">
                         <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                          <div className="font-mono text-green-600 font-black">
-                            {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                          </div>
-                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
-                            {String(o.MATERIAL || o.CodMaterial || '').replace(/^\d+\s*/, '') || o.NOMBRE || o.Descripcion || '—'}
-                          </div>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">
+                          {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
                         </td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-left text-center">{o.NOMBRE || o.Descripcion}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-center text-gray-500 font-bold uppercase">{o.NOMBRE || o.Descripcion || '—'}</td>
                         <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                       </tr>
                     ))}
@@ -388,9 +381,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <table ref={scrollFert2000.table} className="w-full text-center border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed">Orden Fert</th>
-                      <th className="px-4 py-3 border-r border-dashed">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed">Descripción</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
                       <th className="px-4 py-3">Cantidad</th>
                     </tr>
                   </thead>
@@ -398,15 +391,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     {fertC2000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                          <div className="font-mono text-blue-600 font-black">
-                            {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                          </div>
-                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
-                            {String(o.MATERIAL || o.CodMaterial || '').replace(/^\d+\s*/, '') || o.NOMBRE || o.Descripcion || '—'}
-                          </div>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">
+                          {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
                         </td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-left text-center">{o.NOMBRE || o.Descripcion}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-center text-gray-500 font-bold uppercase">{o.NOMBRE || o.Descripcion || '—'}</td>
                         <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                       </tr>
                     ))}

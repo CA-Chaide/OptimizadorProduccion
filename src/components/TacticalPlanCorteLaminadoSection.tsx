@@ -174,6 +174,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <tr>
                     <th className="px-4 py-3 border-r border-dashed">Orden</th>
                     <th className="px-4 py-3 border-r border-dashed">Material</th>
+                    <th className="px-4 py-3 border-r border-dashed">Descripción</th>
                     <th className="px-4 py-3 border-r border-dashed">Cantidad</th>
                     <th className="px-4 py-3">Almacén</th>
                   </tr>
@@ -182,13 +183,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {ordenesFiltradas.map((o, i) => (
                     <tr key={i} className="hover:bg-red-50/30">
                       <td className="px-4 py-4 font-bold border-r border-dashed">{o.ORDENPREVISIONAL}</td>
-                      <td className="px-4 py-4 border-r border-dashed text-center">
-                        <div className="font-mono text-red-600 font-bold">
-                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                        </div>
-                        <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
-                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                        </div>
+                      <td className="px-4 py-4 border-r border-dashed font-mono text-red-600 font-bold">
+                        {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                      </td>
+                      <td className="px-4 py-4 border-r border-dashed text-gray-500 uppercase font-black truncate max-w-[300px]">
+                        {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
                       </td>
                       <td className="px-4 py-4 font-black border-r border-dashed">{o.CANTIDAD}</td>
                       <td className="px-4 py-4 font-bold text-gray-500">{o.Almacen}</td>

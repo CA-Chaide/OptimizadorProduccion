@@ -290,6 +290,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <tr>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
                       <th className="px-4 py-3">Almacén</th>
                     </tr>
@@ -298,13 +299,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     {provC1000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                          <div className="font-mono text-blue-600 font-black">
-                            {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                          </div>
-                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
-                            {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                          </div>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">
+                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                        </td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">
+                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
                         </td>
                         <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
                         <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
@@ -329,6 +328,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <tr>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
                       <th className="px-4 py-3">Almacén</th>
                     </tr>
@@ -337,13 +337,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     {provC2000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                          <div className="font-mono text-blue-600 font-black">
-                            {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                          </div>
-                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
-                            {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                          </div>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">
+                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                        </td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">
+                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
                         </td>
                         <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
                         <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>

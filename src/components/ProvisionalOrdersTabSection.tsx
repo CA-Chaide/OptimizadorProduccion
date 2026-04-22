@@ -207,31 +207,31 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Orden Previsional
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Material
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider text-center">
-                    Extracción Descripción
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
+                    Descripción
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Categoría
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Cantidad
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Unidad
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Fecha Inicio
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Fecha Fin
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Centro
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
@@ -241,37 +241,32 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {displayedOrders.map((order, index) => (
-                  <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50 text-center">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border-r border-dashed">
                       {order.ORDENPREVISIONAL}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
-                      {order.MATERIAL}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-indigo-600 font-bold border-r border-dashed">
+                      {String(order.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="font-mono text-indigo-600 font-bold text-sm">
-                        {String(order.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                      </div>
-                      <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
-                        {String(order.MATERIAL || '').replace(/^\d+\s*/, '') || order.NOMBRE || '—'}
-                      </div>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 uppercase font-black truncate max-w-[250px] border-r border-dashed">
+                      {String(order.MATERIAL || '').replace(/^\d+\s*/, '') || order.NOMBRE || '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-r border-dashed">
                       {order.CATEGORIA}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 border-r border-dashed">
                       {order.CANTIDAD}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-r border-dashed">
                       {order.UNIDAD}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-r border-dashed">
                       {order.FECHAINICIO}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-r border-dashed">
                       {order.FECHAFIN}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-r border-dashed">
                       {order.Centro}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
