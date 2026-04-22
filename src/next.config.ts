@@ -1,4 +1,3 @@
-
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -23,6 +22,7 @@ const nextConfig: NextConfig = {
     return [
       {
         // Proxy para redirigir peticiones locales a la API de Chaide evitando CORS
+        // Actualizado a apps.chaide.com según reporte de entorno real
         source: '/Aplicativos/ApiOptimizadorProduccion/:path*',
         destination: 'https://apps.chaide.com/ProductionOptimizer/:path*',
       },
