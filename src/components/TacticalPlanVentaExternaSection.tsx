@@ -15,9 +15,10 @@ import { Badge } from '@/components/ui/badge';
 /**
  * TacticalPlanVentaExternaSection
  * 
- * Segmentación Inteligente: Órdenes Provisionales y Tiempos se muestran filtradas 
- * por centro (1000/2000) de forma independiente.
- * Se desglosa la columna Material en Material y Descripción.
+ * Segmentación Inteligente: Órdenes y Tiempos filtrados por centro (1000/2000) independientemente.
+ * - Órdenes: Filtra por RESPCTRLPROD, ALMACEN y SECTOR.
+ * - Tiempos: Filtra EXCLUSIVAMENTE por RESPCTRLPROD y ALMACEN.
+ * - Desglose de Material: Separación en columnas de Código y Descripción.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -115,8 +116,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
-  // Lógica de Filtrado por Restricciones de Grupo
-  const getFilteredData = (data: any[], centro: string) => {
+  // Filtrado General para Órdenes (RESPCTRLPROD, ALMACEN, SECTOR)
+  const getFilteredOrdersData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
     
     const group = grupos.find(g => String(g.centro) === centro);
@@ -156,7 +157,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     });
   };
 
-  // Lógica de Filtrado Específica para Tiempos (Solo RESPCTRLPROD y ALMACEN)
+  // Filtrado para Tiempos (SOLO RESPCTRLPROD y ALMACEN)
   const getFilteredTiemposData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
     
@@ -189,7 +190,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     });
   };
 
-  // Helper para desglosar Material y Descripción
+  // Helper para extracción de material y descripción
   const extractMaterialInfo = (materialStr: string) => {
     const match = String(materialStr || '').match(/^(\d+)\s*(.*)$/);
     const code = match ? match[1].slice(-8) : '—';
@@ -197,17 +198,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return { code, description };
   };
 
-  // Datos Segmentados
-  const provC1000 = useMemo(() => getFilteredData(ordenes, '1000'), [ordenes, grupos, restricciones]);
-  const provC2000 = useMemo(() => getFilteredData(ordenes, '2000'), [ordenes, grupos, restricciones]);
+  // Datos Segmentados por Centro
+  const provC1000 = useMemo(() => getFilteredOrdersData(ordenes, '1000'), [ordenes, grupos, restricciones]);
+  const provC2000 = useMemo(() => getFilteredOrdersData(ordenes, '2000'), [ordenes, grupos, restricciones]);
   
-  const fertC1000 = useMemo(() => getFilteredData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones]);
-  const fertC2000 = useMemo(() => getFilteredData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones]);
+  const fertC1000 = useMemo(() => getFilteredOrdersData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones]);
+  const fertC2000 = useMemo(() => getFilteredOrdersData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones]);
 
   const tiemposC1000 = useMemo(() => getFilteredTiemposData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => getFilteredTiemposData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
-  // Función de Sincronización de Scroll
+  // Sincronización de Scroll
   const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
@@ -305,9 +306,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Tab Provisionales Segmentado */}
         <TabsContent value="ordenes" className="space-y-12">
-          {/* C1000 */}
+          {/* Provisionales C1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({provC1000.length})
@@ -343,7 +343,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* C2000 */}
+          {/* Provisionales C2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({provC2000.length})
@@ -381,9 +381,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* Tab Fert Segmentado */}
         <TabsContent value="ordenesFert" className="space-y-12">
-          {/* C1000 */}
+          {/* Fert C1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
                <CheckCircle2 className="w-4 h-4" /> Quito - Fert 1000 ({fertC1000.length})
@@ -401,22 +400,23 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {fertC1000.map((o, i) => (
-                      <tr key={i} className="hover:bg-green-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">
-                          {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                        </td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-center text-gray-500 font-bold uppercase">{o.NOMBRE || o.Descripcion || '—'}</td>
-                        <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
-                      </tr>
-                    ))}
+                    {fertC1000.map((o, i) => {
+                      const { code, description } = extractMaterialInfo(o.MATERIAL || o.CodMaterial);
+                      return (
+                        <tr key={i} className="hover:bg-green-50/30">
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-center text-gray-500 font-bold uppercase">{o.NOMBRE || description}</td>
+                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </Card>
           </div>
-          {/* C2000 */}
+          {/* Fert C2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
                <CheckCircle2 className="w-4 h-4" /> Guayaquil - Fert 2000 ({fertC2000.length})
@@ -434,16 +434,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {fertC2000.map((o, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">
-                          {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                        </td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-center text-gray-500 font-bold uppercase">{o.NOMBRE || o.Descripcion || '—'}</td>
-                        <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
-                      </tr>
-                    ))}
+                    {fertC2000.map((o, i) => {
+                      const { code, description } = extractMaterialInfo(o.MATERIAL || o.CodMaterial);
+                      return (
+                        <tr key={i} className="hover:bg-blue-50/30">
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-center text-gray-500 font-bold uppercase">{o.NOMBRE || description}</td>
+                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -451,9 +452,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* Tab Tiempos Segmentado */}
         <TabsContent value="tiempos" className="space-y-12">
-          {/* C1000 */}
+          {/* Tiempos C1000 - Filtrado por RESP y ALM */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
                <Clock className="w-4 h-4" /> Quito - Catálogo Técnico 1000 ({tiemposC1000.length})
@@ -478,7 +478,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
                         <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
@@ -487,7 +487,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* C2000 */}
+          {/* Tiempos C2000 - Filtrado por RESP y ALM */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
                <Clock className="w-4 h-4" /> Guayaquil - Catálogo Técnico 2000 ({tiemposC2000.length})
@@ -512,7 +512,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
                         <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
