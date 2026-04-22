@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -65,23 +64,46 @@ export const OrdenesFertTabSection: React.FC = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [groupsRes, restRes, fertRes] = await Promise.all([
+      // 1. Consulta exploratoria para obtener el total de registros
+      console.log('[OrdenesFert] Iniciando consulta exploratoria...');
+      const exploratoryRes = await serviciosService.getOrdenesFert(1, 1);
+      const total = exploratoryRes.totalRegistros || 0;
+      
+      let allData: OrdenFert[] = [];
+      
+      if (total > 0) {
+        const BATCH_SIZE = 10000;
+        const totalPages = Math.ceil(total / BATCH_SIZE);
+        console.log(`[OrdenesFert] Detectados ${total} registros. Cargando en ${totalPages} bloques de ${BATCH_SIZE}...`);
+        
+        // 2. Cargar todos los bloques
+        for (let i = 1; i <= totalPages; i++) {
+          console.log(`[OrdenesFert] Descargando bloque ${i}/${totalPages}...`);
+          const res = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
+          if (res?.data) {
+            const pageData = Array.isArray(res.data) ? res.data : [res.data];
+            allData = [...allData, ...pageData];
+          }
+        }
+      }
+
+      // 3. Cargar grupos y restricciones para filtros
+      const [groupsRes, restRes] = await Promise.all([
         grupoService.getAll(),
-        restriccionService.getAll(),
-        serviciosService.getOrdenesFert()
+        restriccionService.getAll()
       ]);
 
-      const rawData = Array.isArray(fertRes?.data) ? fertRes.data : [];
-      setAllRawOrders(rawData);
+      setAllRawOrders(allData);
       setGroups(groupsRes?.data || []);
       setRestrictions(restRes?.data || []);
 
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
       
-      inspector.captureVariable('fert_raw_count', rawData.length);
+      inspector.captureVariable('fert_raw_count', allData.length);
       inspector.captureVariable('restrictions_count', (restRes?.data || []).length);
       
+      console.log('[OrdenesFert] Carga completa finalizada.');
     } catch (err) {
       addNotification('error', `Error al cargar órdenes FERT: ${(err as Error).message}`);
     } finally {

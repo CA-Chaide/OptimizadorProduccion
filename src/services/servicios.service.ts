@@ -336,16 +336,32 @@ export const serviciosService = {
   },
   
 
-  async getOrdenesFert(): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/OrdenesFert", {
-      method: "GET",
+  async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+        
     });
     if (!response.ok) {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
       throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+
+  async getTiemposEnsambladobyCentroyCodigoGrupo(centro: string, codigoGrupo: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/TiemposEnsambladoPorCentroYCodigoGrupo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ Centro: centro, CodigoGrupo: codigoGrupo }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Ensamblado");
     }
     return response.json();
   },
