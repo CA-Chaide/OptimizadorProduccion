@@ -16,8 +16,7 @@ import { Badge } from '@/components/ui/badge';
  * TacticalPlanVentaExternaSection
  * 
  * Implementa la Segmentación Inteligente para Venta Externa.
- * - ÓRDENES FERT: Muestra la data completa de getOrdenesFert sin filtros técnicos (solo segmentación por planta).
- * - ÓRDENES PROVISIONALES y TIEMPOS: Aplica filtrado técnico riguroso por RESPCTRLPROD, ALMACEN y SECTOR.
+ * - ÓRDENES PROVISIONALES, ÓRDENES FERT y TIEMPOS: Aplica filtrado técnico riguroso por RESPCTRLPROD, ALMACEN y SECTOR.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -76,12 +75,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         setOrders(Array.isArray(data) ? data : []);
       });
 
-      // 2. Órdenes FERT (Recuperado con getOrdenesFert)
+      // 2. Órdenes FERT
       serviciosService.getOrdenesFert(1, 20000).then(res => {
         const data = res.data?.data || res.data || [];
-        const finalData = Array.isArray(data) ? data : [];
-        setOrdersFert(finalData);
-        inspector.captureVariable('ordenesFertLoaded', finalData.length);
+        setOrdersFert(Array.isArray(data) ? data : []);
       });
 
       // 3. Tiempos de Ensamblado
@@ -131,6 +128,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const filterData = (data: any[], centro: string, criteria: any) => {
     if (!data || data.length === 0) return [];
     
+    // Si no hay criterios configurados para el centro, no mostrar nada para evitar fuga de datos
     if (criteria.resp.length === 0 && criteria.alm.length === 0 && criteria.sector.length === 0) {
       return [];
     }
@@ -155,15 +153,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const criteria1000 = useMemo(() => getFilterCriteria('1000'), [grupos, restricciones]);
   const criteria2000 = useMemo(() => getFilterCriteria('2000'), [grupos, restricciones]);
 
-  // Provisionales y Tiempos usan filtros técnicos
+  // Segmentación Independiente por Planta
   const provC1000 = useMemo(() => filterData(ordenes, '1000', criteria1000), [ordenes, criteria1000]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000', criteria2000), [ordenes, criteria2000]);
+  
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', criteria1000), [ordenesFert, criteria1000]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', criteria2000), [ordenesFert, criteria2000]);
+  
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000), [tiemposEnsamblado, criteria1000]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000), [tiemposEnsamblado, criteria2000]);
-
-  // ÓRDENES FERT: Solo segmentación por planta, sin filtros técnicos (Solicitud: no aplique ningún filtro)
-  const fertC1000 = useMemo(() => ordenesFert.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === '1000'), [ordenesFert]);
-  const fertC2000 = useMemo(() => ordenesFert.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === '2000'), [ordenesFert]);
 
   const extractMaterialInfo = (item: any) => {
     const materialStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
@@ -175,8 +173,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       code = match[1].slice(-8);
       description = match[2].trim();
     } else {
-      code = materialStr.match(/^\d+$/) ? materialStr.slice(-8) : (materialStr || '—');
-      description = item.NOMBRE || item.NombreMaterial || item.Descripcion || item.descripcion || '—';
+      const isPurelyNumeric = /^\d+$/.test(materialStr);
+      if (isPurelyNumeric && materialStr.length > 0) {
+        code = materialStr.slice(-8);
+        description = item.NOMBRE || item.NombreMaterial || item.Descripcion || item.descripcion || '—';
+      } else if (materialStr.length > 0) {
+        description = materialStr;
+        const fallbackCode = String(item.CodMaterial || item.MATERIAL || item.Material || '').trim();
+        if (/^\d+$/.test(fallbackCode)) code = fallbackCode.slice(-8);
+      }
     }
     return { code, description };
   };
@@ -230,12 +235,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 h-12 bg-gray-100/50 border rounded-xl p-1 mb-8">
+        <TabsList className="grid w-full grid-cols-4 h-12 bg-gray-100/50 border rounded-xl p-1 mb-8">
           <TabsTrigger value="grupos" className="rounded-lg font-bold uppercase text-[10px]">Grupos</TabsTrigger>
           <TabsTrigger value="restricciones" className="rounded-lg font-bold uppercase text-[10px]">Restricciones</TabsTrigger>
           <TabsTrigger value="ordenes" className="rounded-lg font-bold uppercase text-[10px]">ÓRDENES PROVISIONALES</TabsTrigger>
-          <TabsTrigger value="ordenesFert" className="rounded-lg font-bold uppercase text-[10px]">ÓRDENES FERT</TabsTrigger>
-          <TabsTrigger value="tiempos" className="rounded-lg font-bold uppercase text-[10px]">TIEMPOS ENSAMBLADO</TabsTrigger>
+          <TabsTrigger value="ordenesFert" className="rounded-lg font-bold uppercase text-[10px]">ÓRDENES FERT / TIEMPOS</TabsTrigger>
         </TabsList>
 
         <TabsContent value="grupos">
@@ -277,6 +281,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="space-y-12">
+          {/* C1000 - Quito */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({provC1000.length})
@@ -312,6 +317,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
+          {/* C2000 - Guayaquil */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({provC2000.length})
@@ -350,9 +356,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesFert" className="space-y-12">
+          {/* Órdenes FERT - Quito */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({fertC1000.length})
+              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Órdenes FERT 1000 ({fertC1000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollFert1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert1000.width[0], height: '1px' }} /></div>
@@ -360,7 +367,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <table ref={scrollFert1000.table} className="w-full text-center border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
@@ -372,11 +379,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden || o.orden || '—'}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD || o.Cantidad || o.cantidad || 0}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || o.ALMACEN}</td>
                         </tr>
                       );
                     })}
@@ -385,9 +392,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
+          {/* Órdenes FERT - Guayaquil */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({fertC2000.length})
+              <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Órdenes FERT 2000 ({fertC2000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollFert2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert2000.width[0], height: '1px' }} /></div>
@@ -395,7 +403,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <table ref={scrollFert2000.table} className="w-full text-center border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
@@ -407,11 +415,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden || o.orden || '—'}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD || o.Cantidad || o.cantidad || 0}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || o.ALMACEN}</td>
                         </tr>
                       );
                     })}
@@ -423,9 +431,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-12">
+          {/* Tiempos C1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito 1000 - Catálogo Técnico ({tiemposC1000.length})
+              <Clock className="w-4 h-4" /> Quito - Tiempos Ensamblado 1000 ({tiemposC1000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos1000.width[0], height: '1px' }} /></div>
@@ -461,9 +470,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
+          {/* Tiempos C2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-               <Clock className="w-4 h-4" /> Guayaquil 2000 - Catálogo Técnico ({tiemposC2000.length})
+               <Clock className="w-4 h-4" /> Guayaquil - Tiempos Ensamblado 2000 ({tiemposC2000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos2000.width[0], height: '1px' }} /></div>
