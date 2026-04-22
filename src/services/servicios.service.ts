@@ -198,7 +198,7 @@ export const serviciosService = {
     const response = await fetch(API_URL + "/TiemposEnsambladoPorCentroYCodigoGrupo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ Centro: centro, CodigoGrupo: codigoGrupo }),
+      body: JSON.stringify({ Centro: String(centro), CodigoGrupo: Number(codigoGrupo) }),
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
