@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, AlertCircle, Clock } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Wind, Users, Lock, Package, Loader2, Clock } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -12,15 +12,6 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 
-/**
- * TacticalPlanEspumasSection
- * 
- * Reestructurado para mostrar el grupo específico "Espuma"
- * 1. Grupos: Filtrados por "Espuma"
- * 2. Restricciones: Pertenecientes a esos grupos
- * 3. Órdenes Provisionales: Filtradas por RESPCTRLPROD y ALMACEN
- * 4. Tiempos de Ensamblado: Recuperados dinámicamente
- */
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
   const { addNotification } = useAppContext();
@@ -33,21 +24,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [tiemposCurrentPage, setTiemposCurrentPage] = useState(1);
   const [tiemposItemsPerPage, setTiemposItemsPerPage] = useState(10);
-  const [materialSearch, setMaterialSearch] = useState('');
-  const [selectedResponsible, setSelectedResponsible] = useState('');
 
-  // Refs para sincronización de scroll
+  // Refs para sincronización de scroll (Órdenes)
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [tableWidth, setTableWidth] = useState(0);
 
+  // Refs para sincronización de scroll (Tiempos)
   const topScrollTiemposRef = useRef<HTMLDivElement>(null);
   const tableContainerTiemposRef = useRef<HTMLDivElement>(null);
   const tableTiemposRef = useRef<HTMLTableElement>(null);
   const [tableTiemposWidth, setTableTiemposWidth] = useState(0);
 
-  // 1. Cargar Grupos de Espumas
   const fetchGruposEspumas = async () => {
     try {
       const res = await grupoService.getAll();
@@ -55,16 +44,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         g.nombre_grupo.toLowerCase().includes('espuma')
       );
       setGrupos(filtered);
-      inspector.captureVariable('gruposEspumasFiltrados', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando grupos:', error);
-      addNotification('error', 'Error al cargar grupos de espumas');
       return [];
     }
   };
 
-  // 2. Cargar Restricciones
   const fetchRestricciones = async (gruposIds: number[]) => {
     try {
       const res = await restriccionService.getAll();
@@ -79,11 +65,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
   };
 
-  // 3. Cargar Tiempos de Ensamblado
   const fetchTiemposEnsamblado = async (filteredGroups: Grupo[]) => {
     try {
       const allTiempos = [];
       for (const g of filteredGroups) {
+        if (!g.centro) continue;
         const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo);
         if (res.data) {
           const data = Array.isArray(res.data) ? res.data : [res.data];
@@ -96,7 +82,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
   };
 
-  // 4. Cargar Órdenes Provisionales
   const fetchOrdenes = async () => {
     try {
       const res = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
@@ -105,32 +90,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       console.error('Error cargando órdenes:', error);
     }
   };
-
-  // Filtrar tiempos por búsqueda y responsable
-  const filteredTiempos = useMemo(() => {
-    return tiemposEnsamblado.filter(t => {
-      const matchMaterial = !materialSearch || 
-        t.CodMaterial.toLowerCase().includes(materialSearch.toLowerCase()) ||
-        (t.Linea && t.Linea.toLowerCase().includes(materialSearch.toLowerCase())) ||
-        (t.Centro && t.Centro.toLowerCase().includes(materialSearch.toLowerCase()));
-      
-      const matchResponsible = !selectedResponsible || 
-        (t.NombRespControlProd && t.NombRespControlProd.toLowerCase().includes(selectedResponsible.toLowerCase())) ||
-        (t.RespCtrlProd && t.RespCtrlProd.toLowerCase().includes(selectedResponsible.toLowerCase()));
-      
-      return matchMaterial && matchResponsible;
-    });
-  }, [tiemposEnsamblado, materialSearch, selectedResponsible]);
-
-  // Obtener lista única de responsables
-  const responsibleOptions = useMemo(() => {
-    const unique = new Set(
-      tiemposEnsamblado
-        .map(t => t.NombRespControlProd || t.RespCtrlProd)
-        .filter(Boolean)
-    );
-    return Array.from(unique).sort();
-  }, [tiemposEnsamblado]);
 
   useEffect(() => {
     const initData = async () => {
@@ -147,9 +106,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     initData();
   }, []);
 
-  // Lógica de filtrado para Órdenes
   const ordenesFiltradas = useMemo(() => {
     if (ordenes.length === 0) return [];
+    
     const respCtrlProdValues = restricciones
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -160,6 +119,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       .map(r => r.valor_restriccion.trim())
       .filter(v => v !== '');
 
+    if (respCtrlProdValues.length === 0 && almacenValues.length === 0) return ordenes;
+
     return ordenes.filter(o => {
       const respVal = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || '').trim();
       const almVal = String(o.Almacen || o.ALMACEN || '').trim();
@@ -169,7 +130,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   }, [ordenes, restricciones]);
 
-  // Sincronización de scroll genérica
   const setupScrollSync = (top: HTMLDivElement | null, bottom: HTMLDivElement | null) => {
     if (!top || !bottom) return;
     const syncBottom = () => { bottom.scrollLeft = top.scrollLeft; };
@@ -212,23 +172,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <Wind className="w-8 h-8 text-blue-600" />
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Programación Táctica Corte Espuma</h2>
-            <p className="text-sm text-gray-500">Gestión de órdenes y procesos para el área de espumas</p>
+            <p className="text-sm text-gray-500">Gestión de procesos para el grupo operativo de espumas</p>
           </div>
         </div>
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-8">
-          <TabsTrigger value="grupos" className="flex items-center gap-2"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
-          <TabsTrigger value="restricciones" className="flex items-center gap-2"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
-          <TabsTrigger value="ordenes" className="flex items-center gap-2"><Package className="w-4 h-4" /> Órdenes Provisionales</TabsTrigger>
-          <TabsTrigger value="tiempos" className="flex items-center gap-2"><Clock className="w-4 h-4" /> Tiempos de Ensamblado</TabsTrigger>
+        <TabsList className="flex w-full bg-gray-100/50 p-1 rounded-lg mb-8 border border-gray-200">
+          <TabsTrigger value="grupos" className="flex-1 flex items-center justify-center gap-2 py-2.5"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
+          <TabsTrigger value="restricciones" className="flex-1 flex items-center justify-center gap-2 py-2.5"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
+          <TabsTrigger value="ordenes" className="flex-1 flex items-center justify-center gap-2 py-2.5"><Package className="w-4 h-4" /> Órdenes Provisionales</TabsTrigger>
+          <TabsTrigger value="tiempos" className="flex-1 flex items-center justify-center gap-2 py-2.5"><Clock className="w-4 h-4" /> Tiempos de Ensamblado</TabsTrigger>
         </TabsList>
 
         <TabsContent value="grupos">
           <Card>
             <CardHeader>
-              <CardTitle>Grupos de Espumas</CardTitle>
+              <CardTitle>Grupos Asignados</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -249,26 +209,26 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         <TabsContent value="restricciones">
           <Card>
             <CardHeader>
-              <CardTitle>Restricciones Configuradas</CardTitle>
+              <CardTitle>Restricciones de Operación</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto border rounded-lg">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Parámetro</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Valor</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Descripción</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase border-r border-dashed border-gray-300">Parámetro</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase border-r border-dashed border-gray-300">Valor</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Descripción</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-gray-200 text-center">
                     {restricciones.map(r => (
                       <tr key={r.codigo_restriccion} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-center border-r border-dashed border-gray-300">{r.nombre_restriccion}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 border-r border-dashed border-gray-300">{r.nombre_restriccion}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm border-r border-dashed border-gray-300">
                           <Badge variant="outline" className="font-mono border-blue-200 text-blue-700">{r.valor_restriccion}</Badge>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500 text-center">{r.descripcion || '—'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{r.descripcion || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -282,7 +242,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle>Órdenes Provisionales</CardTitle>
+                <CardTitle>Órdenes Provisionales Filtradas</CardTitle>
                 <Badge variant="outline" className="bg-blue-50 text-blue-700">{ordenesFiltradas.length} Registros</Badge>
               </div>
             </CardHeader>
@@ -292,25 +252,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <div style={{ width: tableWidth, height: '1px' }} />
                 </div>
                 <div ref={tableContainerRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
-                  <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
+                  <table ref={tableRef} className="min-w-full divide-y divide-gray-200 text-center">
                     <thead className="bg-gray-100 sticky top-0 z-10">
                       <tr>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Orden</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Cantidad</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Almacén</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">Orden</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">Cantidad</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase">Almacén</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {ordenesFiltradas.map((o, idx) => (
                         <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 border-r border-dashed border-gray-300">
                             <div className="font-mono text-xs text-blue-600">{o.MATERIAL}</div>
                             <div className="truncate max-w-[250px] mx-auto">{o.NOMBRE}</div>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-blue-700 border-r border-dashed border-gray-300">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-700 border-r border-dashed border-gray-300">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700">{o.Almacen}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -325,115 +285,42 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle>Tiempos de Ensamblado</CardTitle>
-                <Badge variant="outline" className="bg-purple-50 text-purple-700">{filteredTiempos.length} Registros</Badge>
+                <CardTitle>Tiempos Estándar de Ensamblado</CardTitle>
+                <Badge variant="outline" className="bg-purple-50 text-purple-700">{tiemposEnsamblado.length} Registros</Badge>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {/* Filtros */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Buscar por Material, Línea o Centro</label>
-                    <input
-                      type="text"
-                      placeholder="Código material, línea o centro..."
-                      value={materialSearch}
-                      onChange={(e) => {
-                        setMaterialSearch(e.target.value);
-                        setTiemposCurrentPage(1);
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Filtrar por Responsable</label>
-                    <select
-                      value={selectedResponsible}
-                      onChange={(e) => {
-                        setSelectedResponsible(e.target.value);
-                        setTiemposCurrentPage(1);
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Todos los responsables</option>
-                      {responsibleOptions.map(resp => (
-                        <option key={resp} value={resp}>{resp}</option>
-                      ))}
-                    </select>
-                  </div>
+              <div className="space-y-0">
+                <div ref={topScrollTiemposRef} className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg" style={{ marginBottom: '-1px' }}>
+                  <div style={{ width: tableTiemposWidth, height: '1px' }} />
                 </div>
-
-                {/* Tabla */}
-                <div className="space-y-0">
-                  <div ref={topScrollTiemposRef} className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg" style={{ marginBottom: '-1px' }}>
-                    <div style={{ width: tableTiemposWidth, height: '1px' }} />
-                  </div>
-                  <div ref={tableContainerTiemposRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
-                    <table ref={tableTiemposRef} className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-100 sticky top-0 z-10">
-                        <tr>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Centro</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Material</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Línea</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Puesto</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Stock</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Responsable</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Tiempo (min)</th>
+                <div ref={tableContainerTiemposRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
+                  <table ref={tableTiemposRef} className="min-w-full divide-y divide-gray-200 text-center">
+                    <thead className="bg-gray-100 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">CodMaterial</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">Línea</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">Puesto</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">Tiempo (min)</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">Stock Actual</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase border-r border-dashed border-gray-300">Seguridad</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-700 uppercase">Resp. Prod.</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {tiemposEnsamblado.map((t, idx) => (
+                        <tr key={idx} className="hover:bg-purple-50/20 transition-colors">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold border-r border-dashed border-gray-300">{t.CodMaterial}</td>
+                          <td className="px-4 py-3 text-xs border-r border-dashed border-gray-300">{t.Linea}</td>
+                          <td className="px-4 py-3 text-xs border-r border-dashed border-gray-300">{t.PuestoTrabajo}</td>
+                          <td className="px-4 py-3 font-mono text-sm text-purple-700 font-bold border-r border-dashed border-gray-300">{t.Tiempo_Min?.toFixed(4)}</td>
+                          <td className="px-4 py-3 text-sm border-r border-dashed border-gray-300">{t.StockActual}</td>
+                          <td className="px-4 py-3 text-sm border-r border-dashed border-gray-300">{t.StockSeguridad}</td>
+                          <td className="px-4 py-3 text-xs font-medium text-gray-600">{t.RespCtrlProd}</td>
                         </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredTiempos.slice((tiemposCurrentPage - 1) * tiemposItemsPerPage, tiemposCurrentPage * tiemposItemsPerPage).map((t, idx) => (
-                          <tr key={idx} className="hover:bg-blue-50/20 transition-colors">
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{t.Centro}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{t.CodMaterial}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300 truncate max-w-[200px]">{t.Linea}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">{t.PuestoTrabajo}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300 font-mono text-sm">{t.StockActual}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300 truncate max-w-[200px]">{t.NombRespControlProd || t.RespCtrlProd}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-blue-600">{t.Tiempo_Min ? t.Tiempo_Min.toFixed(4) : 'N/A'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-700">Registros por página:</label>
-                    <select 
-                      value={tiemposItemsPerPage} 
-                      onChange={(e) => {
-                        setTiemposItemsPerPage(Number(e.target.value));
-                        setTiemposCurrentPage(1);
-                      }}
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-                    >
-                      <option value={5}>5</option>
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                    </select>
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    Página {tiemposCurrentPage} de {Math.ceil(filteredTiempos.length / tiemposItemsPerPage) || 1}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setTiemposCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={tiemposCurrentPage === 1}
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Anterior
-                    </button>
-                    <button
-                      onClick={() => setTiemposCurrentPage(prev => Math.min(Math.ceil(filteredTiempos.length / tiemposItemsPerPage), prev + 1))}
-                      disabled={tiemposCurrentPage >= Math.ceil(filteredTiempos.length / tiemposItemsPerPage)}
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Siguiente
-                    </button>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </CardContent>
