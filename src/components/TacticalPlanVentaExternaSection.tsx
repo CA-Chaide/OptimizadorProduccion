@@ -128,7 +128,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const filterData = (data: any[], centro: string, criteria: any) => {
     if (!data || data.length === 0) return [];
     
-    // Si no hay criterios configurados para este centro, no mostramos datos (evita mostrar "todo")
+    // Si no hay criterios configurados para este centro, no mostramos datos
     if (criteria.resp.length === 0 && criteria.alm.length === 0 && criteria.sector.length === 0) {
       return [];
     }
@@ -351,7 +351,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           {/* FERT 1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-600" /> Quito 1000 - Órdenes Fert ({fertC1000.length})
+              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({fertC1000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollFert1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert1000.width[0], height: '1px' }} /></div>
@@ -362,7 +362,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3">Cantidad</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
+                      <th className="px-4 py-3">Almacén</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
@@ -373,7 +374,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
                         </tr>
                       );
                     })}
@@ -385,7 +387,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           {/* FERT 2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-600" /> Guayaquil 2000 - Órdenes Fert ({fertC2000.length})
+              <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({fertC2000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollFert2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollFert2000.width[0], height: '1px' }} /></div>
@@ -396,7 +398,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3">Cantidad</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
+                      <th className="px-4 py-3">Almacén</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
@@ -405,9 +408,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
                           <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
                         </tr>
                       );
                     })}
@@ -422,7 +426,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           {/* Tiempos C1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito 1000 - Tiempos Ensamblado ({tiemposC1000.length})
+              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito 1000 - TIEMPOS ENSAMBLADO ({tiemposC1000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos1000.width[0], height: '1px' }} /></div>
@@ -462,7 +466,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           {/* Tiempos C2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-               <Clock className="w-4 h-4" /> Guayaquil 2000 - Tiempos Ensamblado ({tiemposC2000.length})
+               <Clock className="w-4 h-4" /> Guayaquil 2000 - TIEMPOS ENSAMBLADO ({tiemposC2000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos2000.width[0], height: '1px' }} /></div>
