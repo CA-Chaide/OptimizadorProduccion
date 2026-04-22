@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -130,23 +130,41 @@ export const TacticalPlanForrosSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 md:grid-cols-5 mb-8">
-          <TabsTrigger value="grupos" className="flex items-center gap-2">
-            <Users className="w-4 h-4" /> Grupos
-          </TabsTrigger>
-          <TabsTrigger value="restricciones" className="flex items-center gap-2">
-            <Lock className="w-4 h-4" /> Restricciones
-          </TabsTrigger>
-          <TabsTrigger value="tiempos" className="flex items-center gap-2">
-            <Timer className="w-4 h-4" /> Tiempos de Producción
-          </TabsTrigger>
-          <TabsTrigger value="ordenes" className="flex items-center gap-2">
-            <Package className="w-4 h-4" /> Órdenes Previsionales
-          </TabsTrigger>
-          <TabsTrigger value="diaria" className="flex items-center gap-2">
-            <CalendarCheck className="w-4 h-4" /> Programación Diaria
-          </TabsTrigger>
-        </TabsList>
+        {/* Barra de pestañas con scroll horizontal */}
+        <div className="relative border-b border-gray-200 mb-8">
+          <TabsList className="flex w-full h-auto bg-transparent p-0 overflow-x-auto justify-start scrollbar-hide">
+            <TabsTrigger 
+              value="grupos" 
+              className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"
+            >
+              <Users className="w-4 h-4" /> Grupos
+            </TabsTrigger>
+            <TabsTrigger 
+              value="restricciones" 
+              className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"
+            >
+              <Lock className="w-4 h-4" /> Restricciones
+            </TabsTrigger>
+            <TabsTrigger 
+              value="tiempos" 
+              className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"
+            >
+              <Timer className="w-4 h-4" /> Tiempos de Producción
+            </TabsTrigger>
+            <TabsTrigger 
+              value="ordenes" 
+              className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"
+            >
+              <Package className="w-4 h-4" /> Órdenes Previsionales
+            </TabsTrigger>
+            <TabsTrigger 
+              value="diaria" 
+              className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"
+            >
+              <CalendarCheck className="w-4 h-4" /> Programación Diaria
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="grupos">
           <Card>
