@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -151,7 +152,7 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grup
                                 <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
                             </div>
                             <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh]">
-                                <Table ref={tableRef}>
+                                <table ref={tableRef} className="min-w-full text-xs divide-y divide-gray-200">
                                     <TableHeader>
                                         <TableRow>
                                             {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
@@ -171,7 +172,7 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grup
                                             </TableRow>
                                         ))}
                                     </TableBody>
-                                </Table>
+                                </table>
                             </div>
                         </>
                     )
