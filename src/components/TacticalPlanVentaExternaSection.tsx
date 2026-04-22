@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
  * Implementa la Segmentación Inteligente para Venta Externa.
  * - Divide datos por Planta (1000/2000).
  * - Aplica filtros de ALMACEN, RESPCTRLPROD y SECTOR dinámicamente.
- * - Tabs renombrados: ÓRDENES PROVISIONALES y TIEMPOS ENSAMBLADO.
+ * - Tabs: ÓRDENES PROVISIONALES, ÓRDENES FERT y TIEMPOS ENSAMBLADO.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -71,29 +71,28 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      const [provRes, fertRes] = await Promise.allSettled([
-        serviciosService.OrdenesProvisionalesPaginados(1, 20000),
-        serviciosService.getOrdenesFert(1, 20000)
-      ]);
-      
-      const provData = provRes.status === 'fulfilled' ? (provRes.value.data?.data || provRes.value.data || []) : [];
-      const fertData = fertRes.status === 'fulfilled' ? (fertRes.value.data?.data || fertRes.value.data || []) : [];
-      
-      setOrders(Array.isArray(provData) ? provData : []);
-      setOrdersFert(Array.isArray(fertData) ? fertData : []);
+      // Cargar datos de forma independiente para resiliencia
+      serviciosService.OrdenesProvisionalesPaginados(1, 20000).then(res => {
+        const data = res.data?.data || res.data || [];
+        setOrders(Array.isArray(data) ? data : []);
+      });
+
+      serviciosService.getOrdenesFert(1, 20000).then(res => {
+        const data = res.data?.data || res.data || [];
+        setOrdersFert(Array.isArray(data) ? data : []);
+      });
 
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
         try {
           const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-          const rawPayload = res.data;
-          const actualData = Array.isArray(rawPayload) ? rawPayload : (rawPayload?.data || []);
-          if (Array.isArray(actualData) && actualData.length > 0) {
+          const actualData = res.data?.data || res.data || [];
+          if (Array.isArray(actualData)) {
             allTiempos.push(...actualData);
           }
         } catch (e) {
-          console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`, e);
+          console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`);
         }
       }
       setTiemposEnsamblado(allTiempos);
@@ -128,6 +127,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const filterData = (data: any[], centro: string, criteria: any) => {
     if (!data || data.length === 0) return [];
+    
+    // Si no hay criterios configurados para este centro, no mostramos datos (evita mostrar "todo")
+    if (criteria.resp.length === 0 && criteria.alm.length === 0 && criteria.sector.length === 0) {
+      return [];
+    }
+
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
@@ -136,12 +141,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const matchResp = criteria.resp.length === 0 || criteria.resp.some((code: string) => itemResp.includes(code));
       
       const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
-      const hasAlmacenField = o.hasOwnProperty('Almacen') || o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen');
-      const matchAlm = criteria.alm.length === 0 || !hasAlmacenField || itemAlm === '' || criteria.alm.includes(itemAlm);
+      const matchAlm = criteria.alm.length === 0 || itemAlm === '' || criteria.alm.includes(itemAlm);
       
       const itemSector = String(o.Sector || o.SECTOR || '').trim();
-      const hasSectorField = o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
-      const matchSector = criteria.sector.length === 0 || !hasSectorField || itemSector === '' || criteria.sector.includes(itemSector);
+      const matchSector = criteria.sector.length === 0 || itemSector === '' || criteria.sector.includes(itemSector);
 
       return matchResp && matchAlm && matchSector;
     });
@@ -225,9 +228,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         <TabsList className="grid w-full grid-cols-5 h-12 bg-gray-100/50 border rounded-xl p-1 mb-8">
           <TabsTrigger value="grupos" className="rounded-lg font-bold uppercase text-[10px]">Grupos</TabsTrigger>
           <TabsTrigger value="restricciones" className="rounded-lg font-bold uppercase text-[10px]">Restricciones</TabsTrigger>
-          <TabsTrigger value="ordenes" className="rounded-lg font-bold uppercase text-[10px]">Órdenes Provisionales</TabsTrigger>
-          <TabsTrigger value="ordenesFert" className="rounded-lg font-bold uppercase text-[10px]">Órdenes Fert</TabsTrigger>
-          <TabsTrigger value="tiempos" className="rounded-lg font-bold uppercase text-[10px]">Tiempos Ensamblado</TabsTrigger>
+          <TabsTrigger value="ordenes" className="rounded-lg font-bold uppercase text-[10px]">ÓRDENES PROVISIONALES</TabsTrigger>
+          <TabsTrigger value="ordenesFert" className="rounded-lg font-bold uppercase text-[10px]">ÓRDENES FERT</TabsTrigger>
+          <TabsTrigger value="tiempos" className="rounded-lg font-bold uppercase text-[10px]">TIEMPOS ENSAMBLADO</TabsTrigger>
         </TabsList>
 
         <TabsContent value="grupos">
