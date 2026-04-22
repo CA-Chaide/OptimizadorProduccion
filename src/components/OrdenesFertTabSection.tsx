@@ -17,17 +17,17 @@ const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100];
 
 // Define static columns to ensure order and completeness
 const COLUMNS_TO_DISPLAY = [
-  'MAQUINA', 'ORDEN_PRODUCCION', 'FECHA_ORDEN', 'HORA_ORDEN', 'CLASE_ORDEN', 'CENTRO', 
-  'MATERIAL', 'CANT_PRODUCIR', 'UNIDAD_MEDIDA', 'RESP_CONTROL_PROD', 
-  'FECHA_INICIO_PROG', 'FECHA_FIN_PROG', 'SECTOR', 'SECTORDESC', 'CATEGORIA'
+  'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
+  'MAQUINA', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD', 'PRIORIDAD'
 ];
+
 
 export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones }) => {
   const inspector = useRuntimeInspector('OrdenesFertTab');
   const { addNotification } = useAppContext();
 
   const [orders, setOrders] = useState<OrdenFert[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[1]);
@@ -37,7 +37,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const tableRef = useRef<HTMLTableElement>(null);
   const [tableWidth, setTableWidth] = useState(0);
   const lastScrolledRef = useRef<'top' | 'table' | null>(null);
-
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -262,7 +261,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             </thead>
             <tbody className="divide-y divide-gray-200">
               {paginatedOrders.map((order, index) => (
-                <tr key={`${order.ORDEN_PRODUCCION}-${index}`} className="hover:bg-gray-50">
+                <tr key={`${order.ORDEN}-${index}`} className="hover:bg-gray-50">
                   {COLUMNS_TO_DISPLAY.map((col, colIndex) => (
                        <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
                          {String((order as any)[col] ?? '-')}

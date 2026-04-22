@@ -209,17 +209,37 @@ export interface Turno {
 }
 
 export interface OrdenFert {
-  ORDEN_PRODUCCION: string;
-  FECHA_ORDEN: string;
-  HORA_ORDEN: string;
-  CLASE_ORDEN: string;
   CENTRO: string;
+  ORDEN: string;
   MATERIAL: string;
-  CANT_PRODUCIR: number;
-  UNIDAD_MEDIDA: string;
-  RESP_CONTROL_PROD: string;
-  FECHA_INICIO_PROG: string;
-  FECHA_FIN_PROG: string;
-  SECTOR: string;
   SECTORDESC: string;
+  CATEGORIA: string;
+  NOMBRE: string;
+  CANTPROGRAMADA: number;
+  CANTENTREGADA: number;
+  CANTNOTIFICADA: number;
+  CANTRECHAZO: number;
+  UNIDAD: string;
+  FECHA: string;
+  ANIO: number;
+  MES: number;
+  DIA: number;
+  SEMANA: number;
+  RESPCTRLPROD: string;
+  PRIORIDAD: number;
+  ENLINEA: number;
+  MAQUINA: string;
+  PEDIDO: string;
+  CANTPROGPESONETO: number;
+  CANTENTREGPESONETO: number;
+  CANTNOTIFPESONETO: number;
+  CANTRECHAZOPESONETO: number;
+  POSICION: string;
+  PUESTOTRABAJO: string;
+  PUESTOTRABAJO2: string;
+  PUESTOTRABAJO3: string;
+  IDHOJARUTA: string;
+  FECHAORDEN: string;
+  CANTPENDIENTE: number;
+  TIEMPOPENDIENTE: number;
 }
