@@ -45,7 +45,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       setError(null);
       logger.log('[OrdenesFertTab] Fetching FERT orders...', 'info');
       try {
-        // Exploratory call to get total records
+        // 1. Exploratory call
         const exploreResponse = await serviciosService.getOrdenesFert(1, 1);
         const totalRecords = exploreResponse.totalRegistros || (exploreResponse.data?.length > 0 ? 1 : 0);
 
@@ -56,6 +56,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           return;
         }
 
+        // 2. Load in batches
         const BATCH_SIZE = 10000;
         const totalPagesToFetch = Math.ceil(totalRecords / BATCH_SIZE);
         let allData: OrdenFert[] = [];
@@ -69,28 +70,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         }
         
         let dataArray = allData;
-        
-        // const sectoresRestriction = restricciones.find(r => r.nombre_restriccion === 'SECTORES');
-
-        // if (sectoresRestriction && sectoresRestriction.valor_restriccion) {
-        //   const separator = sectoresRestriction.valor_restriccion.includes('&') ? '&' : ',';
-        //   const sectoresToFilter = sectoresRestriction.valor_restriccion.split(separator).map(s => s.trim()).filter(s => s);
-          
-        //   if (sectoresToFilter.length > 0) {
-        //     const sectoresToFilterLower = sectoresToFilter.map(s => s.toLowerCase());
-        //     dataArray = dataArray.filter(order => {
-        //         const sectorDesc = (order.SECTORDESC || '').toLowerCase();
-        //         // Check if any of the filter strings are included in the order's sector description
-        //         return sectorDesc && sectoresToFilterLower.some(filterSector => sectorDesc.includes(filterSector));
-        //     });
-
-        //     addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT (de ${totalRecords} totales), aplicando filtro 'SECTORES': ${sectoresToFilter.join(', ')}.`);
-        //   } else {
-        //      addNotification('warning', `La restricción 'SECTORES' para el grupo Muebles está vacía. Mostrando todas las ${totalRecords} órdenes FERT.`);
-        //   }
-        // } else {
-        //   addNotification('info', `No se encontró la restricción 'SECTORES' para el grupo Muebles. Mostrando todas las ${totalRecords} órdenes FERT.`);
-        // }
         
         addNotification('info', `Mostrando todas las ${dataArray.length} órdenes FERT sin aplicar filtros.`);
         setOrders(dataArray);
@@ -197,7 +176,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return (
         <div className="flex flex-col items-center justify-center py-12 text-gray-500 border-2 border-dashed rounded-lg">
           <Package className="w-12 h-12 mb-4 text-gray-300" />
-          <p>No hay órdenes FERT disponibles para mostrar (posiblemente por el filtro de sector).</p>
+          <p>No hay órdenes FERT disponibles para mostrar.</p>
         </div>
     );
   }
