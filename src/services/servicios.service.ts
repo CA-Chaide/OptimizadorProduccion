@@ -1,7 +1,7 @@
+
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { Line } from "recharts";
 
 const API_URL = `${environment.apiURL}/api/servicios`;
 
@@ -354,7 +354,7 @@ export const serviciosService = {
     const response = await fetch(API_URL + "/TiemposEnsambladoPorCentroYCodigoGrupo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ Centro: Centro, CodigoGrupo: CodigoGrupo}),
+      body: JSON.stringify({ Centro: Centro, CodigoGrupo: CodigoGrupo }),
     });
     if (!response.ok) {
       const errorBody = await response
@@ -363,7 +363,5 @@ export const serviciosService = {
       throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
     }
     return response.json();
-  },
-
-
+  }
 };
