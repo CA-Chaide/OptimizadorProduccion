@@ -15,8 +15,9 @@ import { Badge } from '@/components/ui/badge';
 /**
  * TacticalPlanVentaExternaSection
  * 
- * Segmentación Inteligente: Órdenes Provisionales, Órdenes Fert y Tiempos 
- * se muestran filtradas por centro (1000/2000) de forma independiente.
+ * Segmentación Inteligente: Órdenes Provisionales y Tiempos se muestran filtradas 
+ * por centro (1000/2000) de forma independiente.
+ * Se desglosa la columna Material en Material y Descripción.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -133,6 +134,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       .map(r => r.valor_restriccion.trim())
       .filter(v => v !== '');
 
+    const sectorCodes = groupRest
+      .filter(r => r.nombre_restriccion === 'SECTOR')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
@@ -143,21 +149,63 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
       const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
 
+      const itemSector = String(o.Sector || o.SECTOR || '').trim();
+      const matchSector = sectorCodes.length === 0 || sectorCodes.includes(itemSector);
+
+      return matchResp && matchAlm && matchSector;
+    });
+  };
+
+  // Lógica de Filtrado Específica para Tiempos (Solo RESPCTRLPROD y ALMACEN)
+  const getFilteredTiemposData = (data: any[], centro: string) => {
+    if (!data || data.length === 0) return [];
+    
+    const group = grupos.find(g => String(g.centro) === centro);
+    if (!group) return data.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === centro);
+    
+    const groupRest = restricciones.filter(r => r.codigo_grupo === group.codigo_grupo);
+    
+    const respCodes = groupRest
+      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+    
+    const almCodes = groupRest
+      .filter(r => r.nombre_restriccion === 'ALMACEN')
+      .map(r => r.valor_restriccion.trim())
+      .filter(v => v !== '');
+
+    return data.filter(o => {
+      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+      if (itemCentro !== centro) return false;
+
+      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
+      const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp.includes(code));
+
+      const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
+      const matchAlm = almCodes.length === 0 || itemAlm === '' || almCodes.includes(itemAlm);
+
       return matchResp && matchAlm;
     });
   };
 
-  // Datos Segmentados - Provisionales
+  // Helper para desglosar Material y Descripción
+  const extractMaterialInfo = (materialStr: string) => {
+    const match = String(materialStr || '').match(/^(\d+)\s*(.*)$/);
+    const code = match ? match[1].slice(-8) : '—';
+    const description = match ? match[2].trim() : (materialStr || '—');
+    return { code, description };
+  };
+
+  // Datos Segmentados
   const provC1000 = useMemo(() => getFilteredData(ordenes, '1000'), [ordenes, grupos, restricciones]);
   const provC2000 = useMemo(() => getFilteredData(ordenes, '2000'), [ordenes, grupos, restricciones]);
-
-  // Datos Segmentados - Fert
+  
   const fertC1000 = useMemo(() => getFilteredData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones]);
   const fertC2000 = useMemo(() => getFilteredData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones]);
 
-  // Datos Segmentados - Tiempos
-  const tiemposC1000 = useMemo(() => getFilteredData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
-  const tiemposC2000 = useMemo(() => getFilteredData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
+  const tiemposC1000 = useMemo(() => getFilteredTiemposData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
+  const tiemposC2000 = useMemo(() => getFilteredTiemposData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
   // Función de Sincronización de Scroll
   const setupScroll = (group: any) => {
@@ -192,7 +240,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <Loader2 className="w-12 h-12 animate-spin text-green-600" />
-        <p className="text-gray-500 font-black uppercase tracking-widest animate-pulse">Sincronizando Segmentación Venta Externa...</p>
+        <p className="text-gray-500 font-black uppercase tracking-widest animate-pulse">Sincronizando Venta Externa...</p>
       </div>
     );
   }
@@ -278,19 +326,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {provC1000.map((o, i) => (
-                      <tr key={i} className="hover:bg-green-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">
-                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                        </td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">
-                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                        </td>
-                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
-                      </tr>
-                    ))}
+                    {provC1000.map((o, i) => {
+                      const { code, description } = extractMaterialInfo(o.MATERIAL);
+                      return (
+                        <tr key={i} className="hover:bg-green-50/30">
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">{description}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -315,19 +362,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {provC2000.map((o, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">
-                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                        </td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">
-                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                        </td>
-                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
-                      </tr>
-                    ))}
+                    {provC2000.map((o, i) => {
+                      const { code, description } = extractMaterialInfo(o.MATERIAL);
+                      return (
+                        <tr key={i} className="hover:bg-blue-50/30">
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">{description}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -391,7 +437,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     {fertC2000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-green-600 font-black">
                           {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
                         </td>
                         <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-center text-gray-500 font-bold uppercase">{o.NOMBRE || o.Descripcion || '—'}</td>
@@ -466,7 +512,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
                         <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
