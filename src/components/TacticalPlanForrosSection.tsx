@@ -32,22 +32,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
-  // Helper para fecha Hoy + 1 hábil
-  const getNextWorkingDay = useCallback(() => {
-    const date = new Date();
-    const day = date.getDay(); // 0: Dom, 5: Vie, 6: Sab
-    
-    let daysToAdd = 1;
-    if (day === 5) daysToAdd = 3; // Viernes -> Lunes
-    else if (day === 6) daysToAdd = 2; // Sábado -> Lunes
-    else if (day === 0) daysToAdd = 1; // Domingo -> Lunes
-    
-    date.setDate(date.getDate() + daysToAdd);
-    return date.toISOString().split('T')[0];
-  }, []);
-
-  const targetDate = useMemo(() => getNextWorkingDay(), [getNextWorkingDay]);
-
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -76,6 +60,33 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const forrosGroupIds = new Set(forrosGruposList.map(g => g.codigo_grupo));
     return restricciones.filter(r => forrosGroupIds.has(r.codigo_grupo));
   }, [forrosGruposList, restricciones]);
+
+  // Obtener valor de Horizonte de Planificación
+  const horizonValue = useMemo(() => {
+    const horizon = forrosRestricciones.find(r => 
+      r.nombre_restriccion.trim().toUpperCase() === 'HORIZONTE_PLANIFICACION' || 
+      r.nombre_restriccion.trim().toUpperCase() === 'HORIZONTE_PLANIFICACIÓN'
+    );
+    const val = horizon ? parseInt(horizon.valor_restriccion) : 1;
+    return isNaN(val) ? 1 : val;
+  }, [forrosRestricciones]);
+
+  // Helper para fecha Hoy + Horizonte (sin fines de semana)
+  const getTargetPlanningDate = useCallback((days: number) => {
+    const date = new Date();
+    // Añadimos los días del horizonte
+    date.setDate(date.getDate() + days);
+    
+    const day = date.getDay(); // 0: Dom, 6: Sab
+    
+    // Ajustar si cae en fin de semana (mover al Lunes)
+    if (day === 6) date.setDate(date.getDate() + 2); // Sábado -> Lunes
+    else if (day === 0) date.setDate(date.getDate() + 1); // Domingo -> Lunes
+    
+    return date.toISOString().split('T')[0];
+  }, []);
+
+  const targetDate = useMemo(() => getTargetPlanningDate(horizonValue), [getTargetPlanningDate, horizonValue]);
 
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
@@ -111,7 +122,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (Object.keys(externalFilters).length === 0) return;
     setIsLoadingDaily(true);
     try {
-      // Consultamos lote amplio para filtrar localmente por fecha
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
@@ -125,7 +135,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
           if (!matchesExternal) return false;
 
-          // 2. Filtro de Fecha Hoy + 1 Hábil
+          // 2. Filtro de Fecha Hoy + Horizonte
           const orderDateKey = Object.keys(order).find(k => k.toUpperCase() === 'FECHAINICIO');
           if (!orderDateKey) return false;
           
@@ -310,7 +320,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-200">
                       {isLoadingTiempos ? (
                         <tr><td colSpan={tiemposColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" /></td></tr>
                       ) : paginatedTiemposData.map((t, idx) => (
@@ -348,7 +358,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <CalendarCheck className="w-5 h-5 text-primary" />
                   Programación Diaria: {targetDate}
                 </CardTitle>
-                <CardDescription>Órdenes filtradas para el próximo día hábil (Hoy+1), excluyendo fines de semana.</CardDescription>
+                <CardDescription>
+                  Horizonte: Hoy + {horizonValue} día(s). Órdenes para el día laborable objetivo.
+                </CardDescription>
               </div>
               
               {!isLoadingDaily && dailyOrders.length > 0 && (
