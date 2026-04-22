@@ -16,9 +16,10 @@ import { Badge } from '@/components/ui/badge';
  * TacticalPlanVentaExternaSection
  * 
  * Implementa la Segmentación Inteligente para Venta Externa.
- * - Divide datos por Planta (1000/2000).
- * - Aplica filtros de ALMACEN, RESPCTRLPROD y SECTOR dinámicamente.
- * - Tabs: ÓRDENES PROVISIONALES, ÓRDENES FERT y TIEMPOS ENSAMBLADO.
+ * - Recupera Órdenes FERT con el método getOrdenesFert.
+ * - Aplica filtrado técnico riguroso por RESPCTRLPROD, ALMACEN y SECTOR.
+ * - Divide la información de forma automática e independiente para Quito (1000) y Guayaquil (2000).
+ * - Mantiene el patrón de diseño de doble scroll y columnas de material separadas.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -71,17 +72,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      // Cargar datos de forma independiente para resiliencia
+      // 1. Órdenes Provisionales
       serviciosService.OrdenesProvisionalesPaginados(1, 20000).then(res => {
         const data = res.data?.data || res.data || [];
         setOrders(Array.isArray(data) ? data : []);
       });
 
+      // 2. Órdenes FERT (Recuperado con getOrdenesFert)
       serviciosService.getOrdenesFert(1, 20000).then(res => {
         const data = res.data?.data || res.data || [];
         setOrdersFert(Array.isArray(data) ? data : []);
       });
 
+      // 3. Tiempos de Ensamblado
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
@@ -128,21 +131,25 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const filterData = (data: any[], centro: string, criteria: any) => {
     if (!data || data.length === 0) return [];
     
-    // Si no hay criterios configurados para este centro, no mostramos datos
+    // Rigurosidad: Si no hay criterios configurados para este centro, la tabla no muestra nada.
     if (criteria.resp.length === 0 && criteria.alm.length === 0 && criteria.sector.length === 0) {
       return [];
     }
 
     return data.filter(o => {
+      // 1. Filtrado por Centro (Planta)
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
       
+      // 2. Filtrado Riguroso por RESPCTRLPROD
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = criteria.resp.length === 0 || criteria.resp.some((code: string) => itemResp.includes(code));
       
+      // 3. Filtrado por Almacén
       const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
       const matchAlm = criteria.alm.length === 0 || itemAlm === '' || criteria.alm.includes(itemAlm);
       
+      // 4. Filtrado por Sector
       const itemSector = String(o.Sector || o.SECTOR || '').trim();
       const matchSector = criteria.sector.length === 0 || itemSector === '' || criteria.sector.includes(itemSector);
 
@@ -160,8 +167,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000), [tiemposEnsamblado, criteria1000]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000), [tiemposEnsamblado, criteria2000]);
 
+  // Función robusta para separar Código y Descripción
   const extractMaterialInfo = (item: any) => {
     const materialStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    // Busca patrón "8+ dígitos + espacio + texto"
     const match = materialStr.match(/^(\d+)\s+(.*)$/);
     let code = '—';
     let description = '—';
@@ -170,13 +179,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       code = match[1].slice(-8);
       description = match[2].trim();
     } else {
+      // Fallback: si solo es número o no tiene espacio
       code = materialStr.match(/^\d+$/) ? materialStr.slice(-8) : (materialStr || '—');
+      // Recuperar descripción de campos alternativos si no se extrajo de la cadena principal
       description = item.NOMBRE || item.NombreMaterial || item.Descripcion || item.descripcion || '—';
     }
     return { code, description };
   };
 
-  const setupScroll = (group: any) => {
+  // Sincronización de desplazamiento superior e inferior
+  const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
     const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
@@ -191,9 +203,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   useEffect(() => {
     if (!mounted) return;
     const cleaners = [
-      setupScroll(scrollProv1000), setupScroll(scrollProv2000),
-      setupScroll(scrollFert1000), setupScroll(scrollFert2000),
-      setupScroll(scrollTiempos1000), setupScroll(scrollTiempos2000)
+      setupScrollSync(scrollProv1000), setupScrollSync(scrollProv2000),
+      setupScrollSync(scrollFert1000), setupScrollSync(scrollFert2000),
+      setupScrollSync(scrollTiempos1000), setupScrollSync(scrollTiempos2000)
     ];
     setTimeout(() => {
       [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000].forEach(s => {
@@ -271,8 +283,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
+        {/* --- TABS OPERATIVOS CON SEGMENTACIÓN --- */}
+        
+        {/* TAB 1: ÓRDENES PROVISIONALES */}
         <TabsContent value="ordenes" className="space-y-12">
-          {/* C1000 - Quito */}
+          {/* Quito 1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({provC1000.length})
@@ -308,8 +323,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-
-          {/* C2000 - Guayaquil */}
+          {/* Guayaquil 2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({provC2000.length})
@@ -347,8 +361,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
+        {/* TAB 2: ÓRDENES FERT */}
         <TabsContent value="ordenesFert" className="space-y-12">
-          {/* FERT 1000 */}
+          {/* Quito 1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({fertC1000.length})
@@ -384,7 +399,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* FERT 2000 */}
+          {/* Guayaquil 2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({fertC2000.length})
@@ -422,11 +437,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
+        {/* TAB 3: TIEMPOS ENSAMBLADO */}
         <TabsContent value="tiempos" className="space-y-12">
-          {/* Tiempos C1000 */}
+          {/* Quito 1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito 1000 - TIEMPOS ENSAMBLADO ({tiemposC1000.length})
+              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito 1000 - Catálogo Técnico ({tiemposC1000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos1000.width[0], height: '1px' }} /></div>
@@ -462,11 +478,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-
-          {/* Tiempos C2000 */}
+          {/* Guayaquil 2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-               <Clock className="w-4 h-4" /> Guayaquil 2000 - TIEMPOS ENSAMBLADO ({tiemposC2000.length})
+               <Clock className="w-4 h-4" /> Guayaquil 2000 - Catálogo Técnico ({tiemposC2000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos2000.width[0], height: '1px' }} /></div>
