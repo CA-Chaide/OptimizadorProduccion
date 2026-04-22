@@ -16,10 +16,8 @@ import { Badge } from '@/components/ui/badge';
  * TacticalPlanVentaExternaSection
  * 
  * Implementa la Segmentación Inteligente para Venta Externa.
- * - Recupera Órdenes FERT con el método getOrdenesFert.
- * - Aplica filtrado técnico riguroso por RESPCTRLPROD, ALMACEN y SECTOR.
- * - Divide la información de forma automática e independiente para Quito (1000) y Guayaquil (2000).
- * - Mantiene el patrón de diseño de doble scroll y columnas de material separadas.
+ * - ÓRDENES FERT: Muestra la data completa de getOrdenesFert sin filtros técnicos (solo segmentación por planta).
+ * - ÓRDENES PROVISIONALES y TIEMPOS: Aplica filtrado técnico riguroso por RESPCTRLPROD, ALMACEN y SECTOR.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -81,7 +79,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       // 2. Órdenes FERT (Recuperado con getOrdenesFert)
       serviciosService.getOrdenesFert(1, 20000).then(res => {
         const data = res.data?.data || res.data || [];
-        setOrdersFert(Array.isArray(data) ? data : []);
+        const finalData = Array.isArray(data) ? data : [];
+        setOrdersFert(finalData);
+        inspector.captureVariable('ordenesFertLoaded', finalData.length);
       });
 
       // 3. Tiempos de Ensamblado
@@ -131,25 +131,20 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const filterData = (data: any[], centro: string, criteria: any) => {
     if (!data || data.length === 0) return [];
     
-    // Rigurosidad: Si no hay criterios configurados para este centro, la tabla no muestra nada.
     if (criteria.resp.length === 0 && criteria.alm.length === 0 && criteria.sector.length === 0) {
       return [];
     }
 
     return data.filter(o => {
-      // 1. Filtrado por Centro (Planta)
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
       
-      // 2. Filtrado Riguroso por RESPCTRLPROD
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = criteria.resp.length === 0 || criteria.resp.some((code: string) => itemResp.includes(code));
       
-      // 3. Filtrado por Almacén
       const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
       const matchAlm = criteria.alm.length === 0 || itemAlm === '' || criteria.alm.includes(itemAlm);
       
-      // 4. Filtrado por Sector
       const itemSector = String(o.Sector || o.SECTOR || '').trim();
       const matchSector = criteria.sector.length === 0 || itemSector === '' || criteria.sector.includes(itemSector);
 
@@ -160,17 +155,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const criteria1000 = useMemo(() => getFilterCriteria('1000'), [grupos, restricciones]);
   const criteria2000 = useMemo(() => getFilterCriteria('2000'), [grupos, restricciones]);
 
+  // Provisionales y Tiempos usan filtros técnicos
   const provC1000 = useMemo(() => filterData(ordenes, '1000', criteria1000), [ordenes, criteria1000]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000', criteria2000), [ordenes, criteria2000]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', criteria1000), [ordenesFert, criteria1000]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', criteria2000), [ordenesFert, criteria2000]);
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000), [tiemposEnsamblado, criteria1000]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000), [tiemposEnsamblado, criteria2000]);
 
-  // Función robusta para separar Código y Descripción
+  // ÓRDENES FERT: Solo segmentación por planta, sin filtros técnicos (Solicitud: no aplique ningún filtro)
+  const fertC1000 = useMemo(() => ordenesFert.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === '1000'), [ordenesFert]);
+  const fertC2000 = useMemo(() => ordenesFert.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === '2000'), [ordenesFert]);
+
   const extractMaterialInfo = (item: any) => {
     const materialStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
-    // Busca patrón "8+ dígitos + espacio + texto"
     const match = materialStr.match(/^(\d+)\s+(.*)$/);
     let code = '—';
     let description = '—';
@@ -179,15 +175,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       code = match[1].slice(-8);
       description = match[2].trim();
     } else {
-      // Fallback: si solo es número o no tiene espacio
       code = materialStr.match(/^\d+$/) ? materialStr.slice(-8) : (materialStr || '—');
-      // Recuperar descripción de campos alternativos si no se extrajo de la cadena principal
       description = item.NOMBRE || item.NombreMaterial || item.Descripcion || item.descripcion || '—';
     }
     return { code, description };
   };
 
-  // Sincronización de desplazamiento superior e inferior
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
@@ -283,11 +276,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* --- TABS OPERATIVOS CON SEGMENTACIÓN --- */}
-        
-        {/* TAB 1: ÓRDENES PROVISIONALES */}
         <TabsContent value="ordenes" className="space-y-12">
-          {/* Quito 1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({provC1000.length})
@@ -323,7 +312,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* Guayaquil 2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({provC2000.length})
@@ -361,9 +349,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* TAB 2: ÓRDENES FERT */}
         <TabsContent value="ordenesFert" className="space-y-12">
-          {/* Quito 1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito - Planta 1000 ({fertC1000.length})
@@ -386,11 +372,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden || o.orden || '—'}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD || o.Cantidad}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD || o.Cantidad || o.cantidad || 0}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
                     })}
@@ -399,7 +385,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* Guayaquil 2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Guayaquil - Planta 2000 ({fertC2000.length})
@@ -422,11 +407,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden || o.orden || '—'}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD || o.Cantidad}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD || o.Cantidad || o.cantidad || 0}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
                     })}
@@ -437,9 +422,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* TAB 3: TIEMPOS ENSAMBLADO */}
         <TabsContent value="tiempos" className="space-y-12">
-          {/* Quito 1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito 1000 - Catálogo Técnico ({tiemposC1000.length})
@@ -478,7 +461,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* Guayaquil 2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
                <Clock className="w-4 h-4" /> Guayaquil 2000 - Catálogo Técnico ({tiemposC2000.length})
