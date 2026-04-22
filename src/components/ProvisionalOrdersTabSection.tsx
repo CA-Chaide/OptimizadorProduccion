@@ -213,8 +213,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     Material
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Nombre
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider text-center">
+                    Extracción Descripción
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     Categoría
@@ -245,11 +245,16 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {order.ORDENPREVISIONAL}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
                       {order.MATERIAL}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
-                      {order.NOMBRE}
+                    <td className="px-6 py-4 text-center">
+                      <div className="font-mono text-indigo-600 font-bold text-sm">
+                        {String(order.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                      </div>
+                      <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
+                        {String(order.MATERIAL || '').replace(/^\d+\s*/, '') || order.NOMBRE || '—'}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {order.CATEGORIA}

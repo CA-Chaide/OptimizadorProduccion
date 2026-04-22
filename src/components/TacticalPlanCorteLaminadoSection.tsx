@@ -182,7 +182,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {ordenesFiltradas.map((o, i) => (
                     <tr key={i} className="hover:bg-red-50/30">
                       <td className="px-4 py-4 font-bold border-r border-dashed">{o.ORDENPREVISIONAL}</td>
-                      <td className="px-4 py-4 font-mono text-red-600 border-r border-dashed">{o.MATERIAL}</td>
+                      <td className="px-4 py-4 border-r border-dashed text-center">
+                        <div className="font-mono text-red-600 font-bold">
+                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                        </div>
+                        <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
+                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
+                        </div>
+                      </td>
                       <td className="px-4 py-4 font-black border-r border-dashed">{o.CANTIDAD}</td>
                       <td className="px-4 py-4 font-bold text-gray-500">{o.Almacen}</td>
                     </tr>

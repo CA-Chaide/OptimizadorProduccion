@@ -279,10 +279,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {provC1000.map((o, i) => (
                       <tr key={i} className="hover:bg-green-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 font-mono text-green-600 font-black border-r border-dashed border-gray-100">{o.MATERIAL}</td>
-                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
+                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
+                          <div className="font-mono text-green-600 font-black">
+                            {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                          </div>
+                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
+                            {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -310,10 +317,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {provC2000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 font-mono text-blue-600 font-black border-r border-dashed border-gray-100">{o.MATERIAL}</td>
-                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
+                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
+                          <div className="font-mono text-blue-600 font-black">
+                            {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                          </div>
+                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
+                            {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -345,10 +359,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {fertC1000.map((o, i) => (
                       <tr key={i} className="hover:bg-green-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENFERT || o.Orden}</td>
-                        <td className="px-4 py-3 font-mono text-green-600 font-black border-r border-dashed border-gray-100">{o.MATERIAL || o.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-left">{o.NOMBRE || o.Descripcion}</td>
-                        <td className="px-4 py-3 font-black text-gray-800">{o.CANTIDAD || o.Cantidad}</td>
+                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
+                          <div className="font-mono text-green-600 font-black">
+                            {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                          </div>
+                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
+                            {String(o.MATERIAL || o.CodMaterial || '').replace(/^\d+\s*/, '') || o.NOMBRE || o.Descripcion || '—'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-left text-center">{o.NOMBRE || o.Descripcion}</td>
+                        <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -376,10 +397,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {fertC2000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENFERT || o.Orden}</td>
-                        <td className="px-4 py-3 font-mono text-blue-600 font-black border-r border-dashed border-gray-100">{o.MATERIAL || o.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-left">{o.NOMBRE || o.Descripcion}</td>
-                        <td className="px-4 py-3 font-black text-gray-800">{o.CANTIDAD || o.Cantidad}</td>
+                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
+                          <div className="font-mono text-blue-600 font-black">
+                            {String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
+                          </div>
+                          <div className="text-[10px] text-gray-500 uppercase font-black truncate max-w-[200px] mx-auto">
+                            {String(o.MATERIAL || o.CodMaterial || '').replace(/^\d+\s*/, '') || o.NOMBRE || o.Descripcion || '—'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-left text-center">{o.NOMBRE || o.Descripcion}</td>
+                        <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -402,22 +430,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <table ref={scrollTiempos1000.table} className="w-full text-center border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed">Línea Técnica</th>
-                      <th className="px-4 py-3 border-r border-dashed">T. Estándar (Min)</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea Técnica</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
                       <th className="px-4 py-3">Stock / Seg.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {tiemposC1000.map((t, i) => (
-                      <tr key={i} className="hover:bg-green-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
+                      <tr key={i} className="hover:bg-blue-50/30">
+                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
+                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -436,22 +464,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <table ref={scrollTiempos2000.table} className="w-full text-center border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
-                      <th className="px-4 py-3 border-r border-dashed">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed">Línea Técnica</th>
-                      <th className="px-4 py-3 border-r border-dashed">T. Estándar (Min)</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea Técnica</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
                       <th className="px-4 py-3">Stock / Seg.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {tiemposC2000.map((t, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
+                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
+                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
                   </tbody>
