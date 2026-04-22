@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2, ClipboardList, UserCheck } from 'lucide-react';
+import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2, ClipboardList, UserCheck, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
+import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -86,7 +87,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-8">
+        <TabsList className="grid w-full grid-cols-6 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -98,6 +99,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="habilidades" className="flex items-center gap-2">
             <UserCheck className="w-4 h-4" />
             Habilidades
+          </TabsTrigger>
+          <TabsTrigger value="tiempos" className="flex items-center gap-2">
+            <Clock className="w-4 h-4" />
+            Tiempos
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
@@ -210,6 +215,17 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <HabilidadesOpTabSection groups={grupos} restrictions={restricciones} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tiempos">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tiempos de Ensamblado</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TiemposEnsambladoTabSection />
             </CardContent>
           </Card>
         </TabsContent>

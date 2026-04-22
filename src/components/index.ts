@@ -20,6 +20,7 @@ export * from './TacticalPlan2Section';
 export * from './ProvisionalOrdersTabSection';
 export * from './OrdenesFertTabSection';
 export * from './HabilidadesOpTabSection';
+export * from './TiemposEnsambladoTabSection';
 export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
 export * from './InventoryNeedsSection';
