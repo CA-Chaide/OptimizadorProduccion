@@ -98,11 +98,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     initData();
   }, [mounted]);
 
-  // Lógica de Filtrado por Restricciones de Grupo (Segmentación Inteligente)
+  // Lógica de Filtrado General (Provisionales)
   const getFilteredData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
     
-    // Encontrar el grupo que corresponde a este centro
     const group = grupos.find(g => String(g.centro) === centro);
     if (!group) return data.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === centro);
     
@@ -124,19 +123,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       .filter(v => v !== '');
 
     return data.filter(o => {
-      // Validar Centro
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
 
-      // Validar Responsable
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp.includes(code));
 
-      // Validar Almacén (si aplica)
       const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
       const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
 
-      // Validar Sector (si aplica)
       const itemSector = String(o.Sector || o.SECTOR || '').trim();
       const matchSector = sectorCodes.length === 0 || sectorCodes.includes(itemSector);
 
@@ -144,11 +139,46 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
+  // Lógica de Filtrado Específica para Tiempos (Solo RESPCTRLPROD y ALMACEN)
+  const getFilteredTiemposData = (data: any[], centro: string) => {
+    if (!data || data.length === 0) return [];
+    
+    const group = grupos.find(g => String(g.centro) === centro);
+    if (!group) return data.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === centro);
+    
+    const groupRest = restricciones.filter(r => r.codigo_grupo === group.codigo_grupo);
+    
+    const respCodes = groupRest
+      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+    
+    const almCodes = groupRest
+      .filter(r => r.nombre_restriccion === 'ALMACEN')
+      .map(r => r.valor_restriccion.trim())
+      .filter(v => v !== '');
+
+    return data.filter(o => {
+      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+      if (itemCentro !== centro) return false;
+
+      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
+      const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp.includes(code));
+
+      // En Tiempos el almacén podría no estar presente en todas las filas, validar si existe el campo
+      const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
+      const matchAlm = almCodes.length === 0 || itemAlm === '' || almCodes.includes(itemAlm);
+
+      return matchResp && matchAlm;
+    });
+  };
+
   // Datos Segmentados
   const provC1000 = useMemo(() => getFilteredData(ordenes, '1000'), [ordenes, grupos, restricciones]);
   const provC2000 = useMemo(() => getFilteredData(ordenes, '2000'), [ordenes, grupos, restricciones]);
-  const tiemposC1000 = useMemo(() => getFilteredData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
-  const tiemposC2000 = useMemo(() => getFilteredData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
+  
+  const tiemposC1000 = useMemo(() => getFilteredTiemposData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
+  const tiemposC2000 = useMemo(() => getFilteredTiemposData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
   // Sincronización de Scroll
   const setupScroll = (group: any) => {
@@ -194,7 +224,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <Wind className="w-8 h-8 text-white" />
         </div>
         <div>
-          <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2>
+          <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Planificación Táctica Corte Espuma</h2>
           <p className="text-sm text-gray-400 font-medium">Segmentación Inteligente Quito (1000) / Guayaquil (2000)</p>
         </div>
       </div>
@@ -267,10 +297,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {provC1000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 font-mono text-blue-600 font-black border-r border-dashed border-gray-100">{o.MATERIAL}</td>
-                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
+                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
+                        <td className="px-4 py-3 font-mono text-blue-600 font-black border-r border-dashed border-gray-100 text-center">{o.MATERIAL}</td>
+                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -299,10 +329,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {provC2000.map((o, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 font-mono text-blue-600 font-black border-r border-dashed border-gray-100">{o.MATERIAL}</td>
-                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
+                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
+                        <td className="px-4 py-3 font-mono text-blue-600 font-black border-r border-dashed border-gray-100 text-center">{o.MATERIAL}</td>
+                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -333,13 +363,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {tiemposC1000.map((t, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
+                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
+                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -368,13 +398,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {tiemposC2000.map((t, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
+                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
+                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
                   </tbody>
