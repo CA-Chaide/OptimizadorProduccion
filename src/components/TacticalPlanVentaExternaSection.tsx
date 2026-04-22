@@ -15,8 +15,8 @@ import { Badge } from '@/components/ui/badge';
 /**
  * TacticalPlanVentaExternaSection
  * 
- * Implementa la Segmentación Inteligente para Venta Externa basada en restricciones de grupo.
- * - Filtra ÓRDENES PROVISIONALES, ÓRDENES FERT y TIEMPOS por RESPCTRLPROD, ALMACEN y SECTOR.
+ * Implementa la Segmentación Inteligente para Venta Externa.
+ * Aplica filtros rigurosos de RESPCTRLPROD, ALMACEN y SECTOR basados en las restricciones de los grupos.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -45,10 +45,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     try {
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => 
-        g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('venta externa')
+        g.nombre_grupo && (g.nombre_grupo.toLowerCase().includes('venta externa') || g.nombre_grupo.toLowerCase().includes('ventaexterna'))
       );
       setGrupos(filtered);
-      inspector.captureVariable('gruposVentaExterna', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando grupos:', error);
@@ -61,7 +60,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const res = await restriccionService.getAll();
       const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
       setRestricciones(filtered);
-      inspector.captureVariable('restriccionesVentaExterna', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando restricciones:', error);
@@ -111,17 +109,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   /**
    * filterData: Motor de segmentación técnica
-   * Aplica los filtros de RESPCTRLPROD, ALMACEN y SECTOR de forma estricta.
+   * Agrega restricciones de todos los grupos de "Venta Externa" para un centro.
    */
   const filterData = (data: any[], centro: string) => {
-    // Buscar todos los grupos que pertenezcan a este centro
-    const relevantGroups = grupos.filter(g => String(g.centro) === centro);
+    const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
     
-    // Extraer restricciones de todos los grupos relevantes
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
     
+    // Obtener listas blancas de códigos permitidos
     const respCodes = groupRest
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -129,7 +126,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     
     const almCodes = groupRest
       .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .map(r => r.valor_restriccion.trim())
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
 
     const sectorCodes = groupRest
@@ -137,27 +134,27 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
 
-    // Si no hay ninguna restricción definida, no mostramos nada por seguridad operativa
-    if (respCodes.length === 0 && almCodes.length === 0 && sectorCodes.length === 0) return [];
-
     return data.filter(o => {
-      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+      // Validar Centro (algunos campos vienen en mayúsculas otros minúsculas)
+      const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== centro) return false;
       
+      // Validar Responsable
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       
-      const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
+      // Validar Almacén
+      const itemAlm = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const matchAlm = almCodes.length === 0 || itemAlm === '' || almCodes.includes(itemAlm);
       
-      const itemSector = String(o.Sector || o.SECTOR || o.SECTORDESC || '').trim();
+      // Validar Sector
+      const itemSector = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
       const matchSector = sectorCodes.length === 0 || sectorCodes.some(code => itemSector.includes(code));
 
       return matchResp && matchAlm && matchSector;
     });
   };
 
-  // Segmentación de datos por Planta y Tipo
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones]);
   const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones]);
@@ -165,55 +162,30 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
-  // Función para desglosar código y descripción de material con fallback inteligente
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
-    
-    // Patrón 1: Código + Espacio + Texto (Ej: "30000160 TEXTO...")
     const match = matStr.match(/^(\d+)\s+(.*)$/);
-    if (match) {
-      return { code: match[1].slice(-8), desc: match[2].trim() };
-    }
-    
-    // Patrón 2: Solo Código numérico
-    if (/^\d+$/.test(matStr)) {
-      return { code: matStr.slice(-8), desc: nameStr || '—' };
-    }
-    
-    // Fallback: No se pudo identificar código numérico claro
+    if (match) return { code: match[1].slice(-8), desc: match[2].trim() };
+    if (/^\d+$/.test(matStr)) return { code: matStr.slice(-8), desc: nameStr || '—' };
     return { code: '—', desc: matStr || nameStr || '—' };
   };
 
-  // Sincronización de barras de scroll
   const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
     const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
-    return () => { 
-      group.top.current?.removeEventListener('scroll', syncB); 
-      group.bottom.current?.removeEventListener('scroll', syncT); 
-    };
+    return () => { group.top.current?.removeEventListener('scroll', syncB); group.bottom.current?.removeEventListener('scroll', syncT); };
   };
 
   useEffect(() => {
     if (!mounted) return;
     const items = [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000];
     const cleaners = items.map(setupScroll);
-    
-    const updateWidths = () => {
-      items.forEach(s => {
-        if (s.table.current) s.width[1](s.table.current.offsetWidth);
-      });
-    };
-    
-    const timer = setTimeout(updateWidths, 400);
-    return () => {
-      cleaners.forEach(c => c?.());
-      clearTimeout(timer);
-    };
+    setTimeout(() => items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }), 500);
+    return () => cleaners.forEach(c => c?.());
   }, [activeTab, ordenes, ordenesFert, tiemposEnsamblado, mounted]);
 
   if (!mounted || isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-green-600" /></div>;
@@ -239,7 +211,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               <Card key={g.codigo_grupo} className="p-6 border-2 border-dashed">
                 <Badge className="bg-green-600 mb-2">Centro {g.centro}</Badge>
                 <h4 className="font-bold uppercase">{g.nombre_grupo}</h4>
-                <p className="text-xs text-gray-400 mt-2 font-mono">Restricciones: {restricciones.filter(r => r.codigo_grupo === g.codigo_grupo).length}</p>
               </Card>
             ))}
           </div>
@@ -269,11 +240,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const info = extractMaterialInfo(o);
                         return (
                           <tr key={i} className="hover:bg-green-50/30 transition-colors">
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-medium text-gray-900">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-medium text-gray-900">{o.ORDENPREVISIONAL || '—'}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-bold">{info.code}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 text-left truncate max-w-[250px] uppercase font-bold text-gray-500">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-900">{o.CANTIDAD || o.CANTPROGRAMADA || '—'}</td>
-                            <td className="px-4 py-3 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-900">{o.CANTIDAD || '—'}</td>
+                            <td className="px-4 py-3 font-medium text-gray-400">{o.Almacen || '—'}</td>
                           </tr>
                         );
                       })}
@@ -300,9 +271,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200 text-left">Sector</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Categoría</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Cant. Prog</th>
+                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Cant. Prog.</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Fecha</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Resp.</th>
                         <th className="px-4 py-3">Máquina</th>
@@ -316,8 +285,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 font-bold text-gray-900">{o.ORDEN || '—'}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black">{info.code}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 text-left truncate max-w-[250px] uppercase font-bold text-gray-500">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 text-left text-gray-400 font-medium">{o.SECTORDESC || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-medium text-gray-500">{o.CATEGORIA || '—'}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-800">{o.CANTPROGRAMADA || '—'}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 font-bold text-gray-700">{o.FECHA || '—'}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase">{o.RESPCTRLPROD || '—'}</td>
@@ -334,7 +301,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-8">
-          {[ { title: 'Catálogo Quito - 1000', data: tiemposC1000, scroll: scrollTiempos1000 }, { title: 'Catálogo Guayaquil - 2000', data: tiemposC2000, scroll: scrollTiempos2000 } ].map((center, idx) => (
+          {[ { title: 'Quito - 1000', data: tiemposC1000, scroll: scrollTiempos1000 }, { title: 'Guayaquil - 2000', data: tiemposC2000, scroll: scrollTiempos2000 } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className="text-sm font-bold uppercase text-indigo-700 px-2 flex items-center gap-2">
                  <Clock className="w-4 h-4" /> {center.title} ({center.data.length})
