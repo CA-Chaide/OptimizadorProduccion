@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
  * 
  * Implementa la Segmentación Inteligente para Venta Externa.
  * - ÓRDENES PROVISIONALES y TIEMPOS: Filtro por restricciones (RESP, ALM, SECTOR).
- * - ÓRDENES FERT: Data completa de getOrdenesFert, segmentada por planta, sin filtros técnicos.
+ * - ÓRDENES FERT: Diseño basado en esquema real de la API (getOrdenesFert).
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -70,7 +70,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      // Carga paralela pero capturando errores individuales
       const pProv = serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] }));
       const pFert = serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] }));
       
@@ -109,59 +108,51 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
-  // Filtrado para Provisionales y Tiempos
-  const getFilterCriteria = (centro: string) => {
+  // Filtrado Técnico
+  const filterData = (data: any[], centro: string) => {
     const group = grupos.find(g => String(g.centro) === centro);
-    if (!group) return { resp: [], alm: [], sector: [] };
+    if (!group) return [];
+    
     const groupRest = restricciones.filter(r => r.codigo_grupo === group.codigo_grupo);
-    return {
-      resp: groupRest.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== ''),
-      alm: groupRest.filter(r => r.nombre_restriccion === 'ALMACEN').map(r => r.valor_restriccion.trim()).filter(v => v !== ''),
-      sector: groupRest.filter(r => r.nombre_restriccion === 'SECTOR').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '')
-    };
-  };
+    const respCodes = groupRest.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
+    const almCodes = groupRest.filter(r => r.nombre_restriccion === 'ALMACEN').map(r => r.valor_restriccion.trim()).filter(v => v !== '');
+    const sectorCodes = groupRest.filter(r => r.nombre_restriccion === 'SECTOR').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
 
-  const filterWithCriteria = (data: any[], centro: string, criteria: any) => {
-    if (!data || data.length === 0) return [];
-    if (criteria.resp.length === 0 && criteria.alm.length === 0 && criteria.sector.length === 0) return [];
+    if (respCodes.length === 0 && almCodes.length === 0 && sectorCodes.length === 0) return [];
 
     return data.filter(o => {
-      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+      const itemCentro = String(o.Centro || o.CENTRO || '').trim();
       if (itemCentro !== centro) return false;
       
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
-      const matchResp = criteria.resp.length === 0 || criteria.resp.some((code: string) => itemResp.includes(code));
+      const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp.includes(code));
       
-      const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
-      const matchAlm = criteria.alm.length === 0 || itemAlm === '' || criteria.alm.includes(itemAlm);
+      const itemAlm = String(o.Almacen || o.ALMACEN || '').trim();
+      const matchAlm = almCodes.length === 0 || itemAlm === '' || almCodes.includes(itemAlm);
       
-      const itemSector = String(o.Sector || o.SECTOR || '').trim();
-      const matchSector = criteria.sector.length === 0 || itemSector === '' || criteria.sector.includes(itemSector);
+      const itemSector = String(o.Sector || o.SECTOR || o.SECTORDESC || '').trim();
+      const matchSector = sectorCodes.length === 0 || sectorCodes.some(code => itemSector.includes(code));
 
       return matchResp && matchAlm && matchSector;
     });
   };
 
-  // Segmentación para Provisionales y Tiempos (CON Filtros)
-  const crit1000 = useMemo(() => getFilterCriteria('1000'), [grupos, restricciones]);
-  const crit2000 = useMemo(() => getFilterCriteria('2000'), [grupos, restricciones]);
+  // Segmentación
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones]);
+  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
+  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
-  const provC1000 = useMemo(() => filterWithCriteria(ordenes, '1000', crit1000), [ordenes, crit1000]);
-  const provC2000 = useMemo(() => filterWithCriteria(ordenes, '2000', crit2000), [ordenes, crit2000]);
-  const tiemposC1000 = useMemo(() => filterWithCriteria(tiemposEnsamblado, '1000', crit1000), [tiemposEnsamblado, crit1000]);
-  const tiemposC2000 = useMemo(() => filterWithCriteria(tiemposEnsamblado, '2000', crit2000), [tiemposEnsamblado, crit2000]);
-
-  // Segmentación para Órdenes FERT (SIN Filtros, solo por planta)
-  const fertC1000 = useMemo(() => ordenesFert.filter(o => String(o.Centro || o.CENTRO || '').trim() === '1000'), [ordenesFert]);
-  const fertC2000 = useMemo(() => ordenesFert.filter(o => String(o.Centro || o.CENTRO || '').trim() === '2000'), [ordenesFert]);
-
-  // Auxiliar para separar material y descripción
+  // Auxiliar para separar material y descripción con fallback
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
     const match = matStr.match(/^(\d+)\s+(.*)$/);
     if (match) return { code: match[1].slice(-8), desc: match[2].trim() };
-    if (/^\d+$/.test(matStr)) return { code: matStr.slice(-8), desc: item.NOMBRE || item.NombreMaterial || item.Descripcion || '—' };
-    return { code: '—', desc: matStr || '—' };
+    if (/^\d+$/.test(matStr)) return { code: matStr.slice(-8), desc: nameStr || '—' };
+    return { code: '—', desc: matStr || nameStr || '—' };
   };
 
   // Scroll Sync
@@ -192,9 +183,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5 mb-8">
-          <TabsTrigger value="grupos">Grupos</TabsTrigger>
-          <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 mb-8">
+          <TabsTrigger value="grupos">GRUPOS</TabsTrigger>
           <TabsTrigger value="ordenes">ÓRDENES PROVISIONALES</TabsTrigger>
           <TabsTrigger value="ordenesFert">ÓRDENES FERT</TabsTrigger>
           <TabsTrigger value="tiempos">TIEMPOS ENSAMBLADO</TabsTrigger>
@@ -211,46 +201,27 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="restricciones">
-          <Card className="overflow-hidden border rounded-xl">
-            <table className="w-full text-center">
-              <thead className="bg-gray-50 text-xs font-bold uppercase text-gray-400">
-                <tr><th className="py-4 border-r">Parámetro</th><th className="py-4 border-r">Valor</th><th className="py-4">Descripción</th></tr>
-              </thead>
-              <tbody className="divide-y text-xs">
-                {restricciones.map(r => (
-                  <tr key={r.codigo_restriccion}>
-                    <td className="py-4 font-bold border-r">{r.nombre_restriccion}</td>
-                    <td className="py-4 border-r"><Badge variant="outline">{r.valor_restriccion}</Badge></td>
-                    <td className="py-4 text-gray-400 italic">{r.descripcion}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="ordenes" className="space-y-8">
           {[ { title: 'Quito - 1000', data: provC1000, scroll: scrollProv1000 }, { title: 'Guayaquil - 2000', data: provC2000, scroll: scrollProv2000 } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className="text-sm font-bold uppercase text-green-700 px-2">{center.title} ({center.data.length})</h3>
-              <Card className="overflow-hidden border rounded-xl shadow-sm">
+              <Card className="overflow-hidden border border-dashed rounded-xl shadow-sm">
                 <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
                 <div ref={center.scroll.bottom} className="overflow-x-auto border-t max-h-[400px]">
                   <table ref={center.scroll.table} className="w-full text-center border-collapse">
                     <thead className="bg-gray-50 sticky top-0 text-[10px] font-bold text-gray-500 uppercase">
-                      <tr><th className="px-4 py-3 border-r">Orden</th><th className="px-4 py-3 border-r">Material</th><th className="px-4 py-3 border-r">Descripción</th><th className="px-4 py-3 border-r">Cantidad</th><th>Almacén</th></tr>
+                      <tr><th className="px-4 py-3 border-r border-dashed">Orden</th><th className="px-4 py-3 border-r border-dashed">Material</th><th className="px-4 py-3 border-r border-dashed text-left">Descripción</th><th className="px-4 py-3 border-r border-dashed">Cantidad</th><th>Almacén</th></tr>
                     </thead>
-                    <tbody className="divide-y text-[11px]">
+                    <tbody className="divide-y divide-dashed text-[11px]">
                       {center.data.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         return (
                           <tr key={i} className="hover:bg-green-50/30">
-                            <td className="px-4 py-3 border-r font-medium">{o.ORDENPREVISIONAL}</td>
-                            <td className="px-4 py-3 border-r font-mono text-green-600 font-bold">{info.code}</td>
-                            <td className="px-4 py-3 border-r text-left truncate max-w-[250px] uppercase font-bold text-gray-500">{info.desc}</td>
-                            <td className="px-4 py-3 border-r font-bold">{o.CANTIDAD}</td>
-                            <td className="px-4 py-3 font-medium text-gray-400">{o.Almacen}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-medium">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-mono text-green-600 font-bold">{info.code}</td>
+                            <td className="px-4 py-3 border-r border-dashed text-left truncate max-w-[250px] uppercase font-bold text-gray-500">{info.desc}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-bold">{o.CANTIDAD || o.CANTPROGRAMADA || '—'}</td>
+                            <td className="px-4 py-3 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
                         );
                       })}
@@ -266,22 +237,40 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           {[ { title: 'Quito - 1000', data: fertC1000, scroll: scrollFert1000 }, { title: 'Guayaquil - 2000', data: fertC2000, scroll: scrollFert2000 } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className="text-sm font-bold uppercase text-blue-700 px-2">{center.title} ({center.data.length})</h3>
-              <Card className="overflow-hidden border rounded-xl shadow-sm">
+              <Card className="overflow-hidden border border-dashed rounded-xl shadow-sm">
                 <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
                 <div ref={center.scroll.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                  <table ref={center.scroll.table} className="w-full border-collapse">
+                  <table ref={center.scroll.table} className="w-full text-center border-collapse">
                     <thead className="bg-gray-50 sticky top-0 text-[10px] font-bold text-gray-500 uppercase">
-                      <tr><th className="px-4 py-3 border-r">Orden FERT</th><th className="px-4 py-3 border-r">Material (Crudo)</th><th className="px-4 py-3 border-r">Cantidad</th><th>Almacén</th></tr>
+                      <tr>
+                        <th className="px-4 py-3 border-r border-dashed">Orden</th>
+                        <th className="px-4 py-3 border-r border-dashed">Material</th>
+                        <th className="px-4 py-3 border-r border-dashed text-left">Descripción</th>
+                        <th className="px-4 py-3 border-r border-dashed text-left">Sector</th>
+                        <th className="px-4 py-3 border-r border-dashed">Categoría</th>
+                        <th className="px-4 py-3 border-r border-dashed">Cant. Prog</th>
+                        <th className="px-4 py-3 border-r border-dashed">Fecha</th>
+                        <th className="px-4 py-3 border-r border-dashed">Resp.</th>
+                        <th className="px-4 py-3">Máquina</th>
+                      </tr>
                     </thead>
-                    <tbody className="divide-y text-[11px]">
-                      {center.data.map((o, i) => (
-                        <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 border-r text-center font-medium">{o.ORDENFERT || o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 border-r text-left font-bold text-gray-600">{o.MATERIAL || o.Material || o.CodMaterial}</td>
-                          <td className="px-4 py-3 border-r text-center font-bold">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 text-center text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
-                        </tr>
-                      ))}
+                    <tbody className="divide-y divide-dashed text-[11px]">
+                      {center.data.map((o, i) => {
+                        const info = extractMaterialInfo(o);
+                        return (
+                          <tr key={i} className="hover:bg-blue-50/30">
+                            <td className="px-4 py-3 border-r border-dashed font-bold">{o.ORDEN || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-mono text-blue-600 font-black">{info.code}</td>
+                            <td className="px-4 py-3 border-r border-dashed text-left truncate max-w-[200px] uppercase font-bold text-gray-500">{info.desc}</td>
+                            <td className="px-4 py-3 border-r border-dashed text-left text-gray-400 font-medium">{o.SECTORDESC || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-medium text-gray-500">{o.CATEGORIA || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-black text-gray-800">{o.CANTPROGRAMADA || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-medium">{o.FECHA || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-bold text-gray-400 uppercase">{o.RESPCTRLPROD || '—'}</td>
+                            <td className="px-4 py-3 font-medium text-gray-400">{o.MAQUINA || '—'}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -291,25 +280,25 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-8">
-          {[ { title: 'Catálogo Quito', data: tiemposC1000, scroll: scrollTiempos1000 }, { title: 'Catálogo Guayaquil', data: tiemposC2000, scroll: scrollTiempos2000 } ].map((center, idx) => (
+          {[ { title: 'Catálogo Quito - 1000', data: tiemposC1000, scroll: scrollTiempos1000 }, { title: 'Catálogo Guayaquil - 2000', data: tiemposC2000, scroll: scrollTiempos2000 } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className="text-sm font-bold uppercase text-indigo-700 px-2">{center.title} ({center.data.length})</h3>
-              <Card className="overflow-hidden border rounded-xl shadow-sm">
+              <Card className="overflow-hidden border border-dashed rounded-xl shadow-sm">
                 <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
                 <div ref={center.scroll.bottom} className="overflow-x-auto border-t max-h-[400px]">
                   <table ref={center.scroll.table} className="w-full text-center border-collapse">
                     <thead className="bg-gray-50 sticky top-0 text-[10px] font-bold text-gray-500 uppercase">
-                      <tr><th className="px-4 py-3 border-r">Material</th><th className="px-4 py-3 border-r">Descripción</th><th className="px-4 py-3 border-r">Línea Técnica</th><th className="px-4 py-3 border-r">T. Estándar</th><th>Stock/Seg.</th></tr>
+                      <tr><th className="px-4 py-3 border-r border-dashed">Material</th><th className="px-4 py-3 border-r border-dashed text-left">Descripción</th><th className="px-4 py-3 border-r border-dashed">Línea Técnica</th><th className="px-4 py-3 border-r border-dashed">T. Estándar</th><th>Stock/Seg.</th></tr>
                     </thead>
-                    <tbody className="divide-y text-[11px]">
+                    <tbody className="divide-y divide-dashed text-[11px]">
                       {center.data.map((t, i) => {
                         const info = extractMaterialInfo(t);
                         return (
                           <tr key={i} className="hover:bg-indigo-50/30">
-                            <td className="px-4 py-3 border-r font-mono font-bold">{info.code}</td>
-                            <td className="px-4 py-3 border-r text-left uppercase font-bold text-gray-500 truncate max-w-[200px]">{info.desc}</td>
-                            <td className="px-4 py-3 border-r font-medium text-gray-700">{t.Linea}</td>
-                            <td className="px-4 py-3 border-r font-bold text-indigo-600">{t.Tiempo_Min?.toFixed(4)}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-mono font-bold">{info.code}</td>
+                            <td className="px-4 py-3 border-r border-dashed text-left uppercase font-bold text-gray-500 truncate max-w-[250px]">{info.desc}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-medium text-gray-700">{t.Linea || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed font-bold text-indigo-600">{t.Tiempo_Min?.toFixed(4) || '—'}</td>
                             <td className="px-4 py-3 text-gray-400 font-medium">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
