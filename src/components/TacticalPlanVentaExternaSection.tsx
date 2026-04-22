@@ -23,6 +23,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
   const { addNotification } = useAppContext();
 
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('grupos');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
@@ -36,6 +37,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const scrollC2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollFert = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+
+  // Hydration safety
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchGrupos = async () => {
     try {
@@ -71,16 +77,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         serviciosService.getOrdenesFert(1, 20000)
       ]);
       
-      // Manejar estructura { data: [], length }
-      setOrders(provRes.data || provRes.data?.data || []);
-      setOrdersFert(fertRes.data || fertRes.data?.data || []);
+      // Manejar estructura { data: [], length } o array directo
+      const provData = provRes.data?.data || provRes.data || [];
+      const fertData = fertRes.data?.data || fertRes.data || [];
+      
+      setOrders(Array.isArray(provData) ? provData : []);
+      setOrdersFert(Array.isArray(fertData) ? fertData : []);
 
       // 2. Cargar Tiempos de Ensamblado por cada grupo identificado
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
         const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-        // Acceder a res.data que es el objeto { data: [], length }
         const actualData = res.data?.data || res.data || [];
         if (Array.isArray(actualData)) {
           allTiempos.push(...actualData);
@@ -89,34 +97,36 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setTiemposEnsamblado(allTiempos);
       
       inspector.captureVariable('dataLoaded', {
-        provisionales: (provRes.data || provRes.data?.data || []).length,
-        fert: (fertRes.data || fertRes.data?.data || []).length,
+        provisionales: provData.length,
+        fert: fertData.length,
         tiempos: allTiempos.length
       });
     } catch (error) {
       console.error('Error cargando datos operativos:', error);
-      addNotification('error', 'Error al cargar datos desde la API');
+      addNotification('error', 'Error al cargar datos desde la API operativa');
     }
   };
 
   useEffect(() => {
+    if (!mounted) return;
+
     const init = async () => {
       setIsLoading(true);
-      const filteredGroups = await fetchGrupos();
-      const ids = filteredGroups.map(g => g.codigo_grupo);
+      const groups = await fetchGrupos();
+      const ids = groups.map(g => g.codigo_grupo);
       await fetchRestricciones(ids);
-      await loadData(filteredGroups);
+      await loadData(groups);
       setIsLoading(false);
     };
     init();
-  }, []);
+  }, [mounted]);
 
   // Lógica de Filtrado por Restricciones
   const getFilteredData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
     
     const group = grupos.find(g => String(g.centro) === centro);
-    if (!group) return [];
+    if (!group) return data.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === centro);
     
     const groupRest = restricciones.filter(r => r.codigo_grupo === group.codigo_grupo);
     
@@ -177,6 +187,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!mounted) return;
+    
     const cleaners = [
       setupScroll(scrollC1000),
       setupScroll(scrollC2000),
@@ -191,11 +203,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       if (scrollTiempos.table.current) scrollTiempos.width[1](scrollTiempos.table.current.offsetWidth);
     };
     
-    setTimeout(updateWidths, 200);
+    setTimeout(updateWidths, 300);
     return () => cleaners.forEach(c => c?.());
-  }, [activeTab, ordenesC1000, ordenesC2000, fertFiltradas, tiemposEnsamblado]);
+  }, [activeTab, ordenesC1000, ordenesC2000, fertFiltradas, tiemposEnsamblado, mounted]);
 
-  if (isLoading) {
+  if (!mounted || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <Loader2 className="w-12 h-12 animate-spin text-green-600" />
@@ -225,7 +237,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <TabsTrigger value="tiempos" className="rounded-lg font-bold uppercase text-[10px]">Tiempos</TabsTrigger>
         </TabsList>
 
-        {/* CONTENIDO DE GRUPOS */}
         <TabsContent value="grupos">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {grupos.map(g => (
@@ -239,7 +250,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* CONTENIDO DE RESTRICCIONES */}
         <TabsContent value="restricciones">
           <Card className="rounded-3xl overflow-hidden border-none shadow-xl shadow-gray-100">
             <div className="overflow-x-auto border rounded-3xl">
@@ -268,13 +278,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* CONTENIDO DE PROVISIONALES (SEGMENTADO) */}
         <TabsContent value="ordenes" className="space-y-12">
           {/* BLOQUE C1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 flex items-center gap-2 px-2">
               <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" />
-              Centro 1000 - Órdenes Segmentadas
+              Centro 1000 - Órdenes Segmentadas ({ordenesC1000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollC1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollC1000.width[0], height: '1px' }} /></div>
@@ -299,7 +308,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen || o.ALMACEN}</td>
                       </tr>
                     ))}
-                    {ordenesC1000.length === 0 && <tr><td colSpan={5} className="py-10 text-gray-300 font-bold uppercase italic">Sin órdenes para C1000</td></tr>}
+                    {ordenesC1000.length === 0 && <tr><td colSpan={5} className="py-10 text-gray-300 font-bold uppercase italic">Sin órdenes filtradas para C1000</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -310,7 +319,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 flex items-center gap-2 px-2">
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-              Centro 2000 - Órdenes Segmentadas
+              Centro 2000 - Órdenes Segmentadas ({ordenesC2000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollC2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollC2000.width[0], height: '1px' }} /></div>
@@ -335,7 +344,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen || o.ALMACEN}</td>
                       </tr>
                     ))}
-                    {ordenesC2000.length === 0 && <tr><td colSpan={5} className="py-10 text-gray-300 font-bold uppercase italic">Sin órdenes para C2000</td></tr>}
+                    {ordenesC2000.length === 0 && <tr><td colSpan={5} className="py-10 text-gray-300 font-bold uppercase italic">Sin órdenes filtradas para C2000</td></tr>}
                   </tbody>
                 </table>
               </div>
