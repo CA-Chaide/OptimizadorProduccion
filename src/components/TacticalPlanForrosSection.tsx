@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -130,7 +130,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-8">
+        <TabsList className="grid w-full grid-cols-1 md:grid-cols-5 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" /> Grupos
           </TabsTrigger>
@@ -142,6 +142,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
             <Package className="w-4 h-4" /> Órdenes Previsionales
+          </TabsTrigger>
+          <TabsTrigger value="diaria" className="flex items-center gap-2">
+            <CalendarCheck className="w-4 h-4" /> Programación Diaria
           </TabsTrigger>
         </TabsList>
 
@@ -307,10 +310,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
               )}
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border bg-white shadow-sm">
+              <div className="rounded-md border bg-white shadow-sm overflow-hidden">
                 <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10">
+                    <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                       <tr>
                         {tiemposColumns.map(col => (
                           <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b bg-gray-50">
@@ -368,6 +371,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection externalFilters={externalFilters} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="diaria">
+          <Card>
+            <CardHeader>
+              <CardTitle>Programación Diaria de Forros</CardTitle>
+              <CardDescription>Gestión y seguimiento de la producción diaria para el grupo de Forros.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                <div className="bg-indigo-50 p-6 rounded-full">
+                  <CalendarCheck className="w-12 h-12 text-indigo-600" />
+                </div>
+                <div className="max-w-md">
+                  <h4 className="text-lg font-semibold text-gray-900">Módulo en Preparación</h4>
+                  <p className="text-gray-500 text-sm">
+                    Aquí se visualizará la secuencia detallada de producción, asignación de personal y cumplimiento de metas diarias para el área de Forros.
+                  </p>
+                </div>
+                <Button variant="outline" onClick={fetchData}>
+                  <RefreshCw className="w-4 h-4 mr-2" /> Actualizar Datos Base
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
