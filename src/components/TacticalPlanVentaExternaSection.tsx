@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, CheckCircle2, Info, Eye } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, Eye } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -13,11 +13,6 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-/**
- * TacticalPlanVentaExternaSection
- * 
- * Vista optimizada con Auditoría de Filtros para visualización de segmentación C1000/C2000.
- */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
   const { addNotification } = useAppContext();
@@ -39,9 +34,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   const fetchGrupos = async () => {
     try {
@@ -71,13 +64,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      const [provRes, fertRes] = await Promise.all([
+      // Cargamos de forma segura cada recurso para que un fallo no bloquee a los demás
+      const [provRes, fertRes] = await Promise.allSettled([
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getOrdenesFert(1, 20000)
       ]);
       
-      const provData = provRes.data?.data || provRes.data || [];
-      const fertData = fertRes.data?.data || fertRes.data || [];
+      const provData = provRes.status === 'fulfilled' ? (provRes.value.data?.data || provRes.value.data || []) : [];
+      const fertData = fertRes.status === 'fulfilled' ? (fertRes.value.data?.data || fertRes.value.data || []) : [];
       
       setOrders(Array.isArray(provData) ? provData : []);
       setOrdersFert(Array.isArray(fertData) ? fertData : []);
@@ -85,15 +79,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
-        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-        const actualData = res.data?.data || res.data || [];
-        if (Array.isArray(actualData)) {
-          allTiempos.push(...actualData);
+        try {
+          const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
+          const actualData = res.data?.data || res.data || [];
+          if (Array.isArray(actualData)) allTiempos.push(...actualData);
+        } catch (e) {
+          console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`, e);
         }
       }
       setTiemposEnsamblado(allTiempos);
     } catch (error) {
-      console.error('Error cargando datos operativos:', error);
+      console.error('Error en loadData:', error);
     }
   };
 
@@ -110,14 +106,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
-  // --- LÓGICA DE FILTRADO Y AUDITORÍA ---
-
   const getFilterCriteria = (centro: string) => {
     const group = grupos.find(g => String(g.centro) === centro);
     if (!group) return { resp: [], alm: [], sector: [] };
-
     const groupRest = restricciones.filter(r => r.codigo_grupo === group.codigo_grupo);
-
     return {
       resp: groupRest.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== ''),
       alm: groupRest.filter(r => r.nombre_restriccion === 'ALMACEN').map(r => r.valor_restriccion.trim()).filter(v => v !== ''),
@@ -126,48 +118,31 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   };
 
   const filterData = (data: any[], centro: string, criteria: any, useSector = true) => {
+    if (!data || data.length === 0) return [];
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
-
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = criteria.resp.length === 0 || criteria.resp.some((code: string) => itemResp.includes(code));
-
       const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
       const matchAlm = criteria.alm.length === 0 || criteria.alm.includes(itemAlm);
-
       if (!useSector) return matchResp && matchAlm;
-
       const itemSector = String(o.Sector || o.SECTOR || '').trim();
       const matchSector = criteria.sector.length === 0 || criteria.sector.includes(itemSector);
-
       return matchResp && matchAlm && matchSector;
     });
   };
 
-  // Criterios Aplicados
   const criteria1000 = useMemo(() => getFilterCriteria('1000'), [grupos, restricciones]);
   const criteria2000 = useMemo(() => getFilterCriteria('2000'), [grupos, restricciones]);
 
-  // Capturar en Inspector para visualización remota
-  useEffect(() => {
-    if (mounted) {
-      inspector.captureVariable('filtrosAplicadosQuito', criteria1000);
-      inspector.captureVariable('filtrosAplicadosGye', criteria2000);
-    }
-  }, [criteria1000, criteria2000, mounted]);
-
-  // Datos Segmentados
   const provC1000 = useMemo(() => filterData(ordenes, '1000', criteria1000), [ordenes, criteria1000]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000', criteria2000), [ordenes, criteria2000]);
-  
   const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', criteria1000), [ordenesFert, criteria1000]);
   const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', criteria2000), [ordenesFert, criteria2000]);
-
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000, false), [tiemposEnsamblado, criteria1000]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000, false), [tiemposEnsamblado, criteria2000]);
 
-  // Helper para extracción de material y descripción
   const extractMaterialInfo = (materialStr: string) => {
     const match = String(materialStr || '').match(/^(\d+)\s*(.*)$/);
     const code = match ? match[1].slice(-8) : '—';
@@ -175,7 +150,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return { code, description };
   };
 
-  // Sincronización de Scroll
   const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
@@ -195,16 +169,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setupScroll(scrollFert1000), setupScroll(scrollFert2000),
       setupScroll(scrollTiempos1000), setupScroll(scrollTiempos2000)
     ];
-    const updateWidths = () => {
+    setTimeout(() => {
       [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000].forEach(s => {
         if (s.table.current) s.width[1](s.table.current.offsetWidth);
       });
-    };
-    setTimeout(updateWidths, 400);
+    }, 400);
     return () => cleaners.forEach(c => c?.());
   }, [activeTab, ordenes, ordenesFert, tiemposEnsamblado, mounted]);
-
-  // --- COMPONENTES UI AUXILIARES ---
 
   const FilterAuditPanel = ({ criteria, count, label }: { criteria: any, count: number, label: string }) => (
     <div className="bg-gray-50 border border-dashed rounded-2xl p-3 mb-4 flex items-center justify-between">
@@ -215,35 +186,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </div>
         <div className="h-6 w-px bg-gray-200" />
         <div className="flex gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="cursor-help"><Badge variant="outline" className="text-[10px] font-mono border-blue-200 text-blue-600">RESP: {criteria.resp.length || 'TODOS'}</Badge></div>
-              </TooltipTrigger>
-              <TooltipContent><p className="text-xs">Filtros RESPCTRLPROD: {criteria.resp.join(', ') || 'Sin restricción'}</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="cursor-help"><Badge variant="outline" className="text-[10px] font-mono border-green-200 text-green-600">ALM: {criteria.alm.length || 'TODOS'}</Badge></div>
-              </TooltipTrigger>
-              <TooltipContent><p className="text-xs">Filtros ALMACEN: {criteria.alm.join(', ') || 'Sin restricción'}</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          {criteria.sector.length > 0 && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="cursor-help"><Badge variant="outline" className="text-[10px] font-mono border-orange-200 text-orange-600">SEC: {criteria.sector.length}</Badge></div>
-                </TooltipTrigger>
-                <TooltipContent><p className="text-xs">Filtros SECTOR: {criteria.sector.join(', ')}</p></TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          <Badge variant="outline" className="text-[10px] font-mono border-blue-200 text-blue-600">RESP: {criteria.resp.length || 'TODOS'}</Badge>
+          <Badge variant="outline" className="text-[10px] font-mono border-green-200 text-green-600">ALM: {criteria.alm.length || 'TODOS'}</Badge>
+          {criteria.sector.length > 0 && <Badge variant="outline" className="text-[10px] font-mono border-orange-200 text-orange-600">SEC: {criteria.sector.length}</Badge>}
         </div>
       </div>
-      <Eye className="w-4 h-4 text-gray-300" />
     </div>
   );
 
@@ -251,7 +198,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <Loader2 className="w-12 h-12 animate-spin text-green-600" />
-        <p className="text-gray-500 font-black uppercase tracking-widest animate-pulse">Analizando Venta Externa...</p>
+        <p className="text-gray-500 font-black uppercase tracking-widest animate-pulse">Sincronizando Venta Externa...</p>
       </div>
     );
   }
@@ -264,7 +211,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </div>
         <div>
           <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Planificación Táctica Venta Externa</h2>
-          <p className="text-sm text-gray-400 font-medium">Observabilidad de Segmentación Técnica</p>
+          <p className="text-sm text-gray-400 font-medium">Segmentación Inteligente Quito / Guayaquil</p>
         </div>
       </div>
       
@@ -283,7 +230,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               <Card key={g.codigo_grupo} className="p-6 border-2 border-dashed rounded-3xl bg-gray-50/30">
                 <Badge className="bg-green-600 mb-3">Planta {g.centro}</Badge>
                 <h4 className="font-black text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
-                <p className="text-xs text-gray-400 mt-2 font-mono">ID: {g.codigo_grupo}</p>
               </Card>
             ))}
           </div>
@@ -317,7 +263,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="space-y-12">
-          {/* C1000 */}
           <div className="space-y-2">
             <FilterAuditPanel criteria={criteria1000} count={provC1000.length} label="Quito 1000" />
             <Card className="rounded-3xl overflow-hidden shadow-sm">
@@ -340,7 +285,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <tr key={i} className="hover:bg-green-50/30">
                           <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black truncate max-w-[200px]">{description}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black truncate max-w-[300px]">{description}</td>
                           <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
                           <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
                         </tr>
@@ -351,7 +296,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* C2000 */}
           <div className="space-y-2">
             <FilterAuditPanel criteria={criteria2000} count={provC2000.length} label="Guayaquil 2000" />
             <Card className="rounded-3xl overflow-hidden shadow-sm">
@@ -374,7 +318,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <tr key={i} className="hover:bg-blue-50/30">
                           <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black truncate max-w-[200px]">{description}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black truncate max-w-[300px]">{description}</td>
                           <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
                           <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
                         </tr>
@@ -388,7 +332,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesFert" className="space-y-12">
-          {/* Fert C1000 */}
           <div className="space-y-2">
             <FilterAuditPanel criteria={criteria1000} count={fertC1000.length} label="Quito 1000 (Fert)" />
             <Card className="rounded-3xl overflow-hidden shadow-sm">
@@ -408,10 +351,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o.MATERIAL || o.CodMaterial);
                       return (
                         <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENFERT || o.Orden}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase">{o.NOMBRE || description}</td>
-                          <td className="px-4 py-3 font-black text-gray-800">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-center">{o.NOMBRE || description}</td>
+                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                         </tr>
                       );
                     })}
@@ -420,7 +363,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* Fert C2000 */}
           <div className="space-y-2">
             <FilterAuditPanel criteria={criteria2000} count={fertC2000.length} label="Guayaquil 2000 (Fert)" />
             <Card className="rounded-3xl overflow-hidden shadow-sm">
@@ -440,10 +382,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o.MATERIAL || o.CodMaterial);
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENFERT || o.Orden}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black">{code}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase">{o.NOMBRE || description}</td>
-                          <td className="px-4 py-3 font-black text-gray-800">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-center">{o.NOMBRE || description}</td>
+                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                         </tr>
                       );
                     })}
@@ -455,7 +397,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-12">
-          {/* Tiempos C1000 */}
           <div className="space-y-2">
             <FilterAuditPanel criteria={criteria1000} count={tiemposC1000.length} label="Quito 1000 (Técnico)" />
             <Card className="rounded-3xl overflow-hidden shadow-sm">
@@ -473,13 +414,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {tiemposC1000.map((t, i) => (
                       <tr key={i} className="hover:bg-green-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
+                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
+                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -487,7 +428,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             </Card>
           </div>
-          {/* Tiempos C2000 */}
           <div className="space-y-2">
             <FilterAuditPanel criteria={criteria2000} count={tiemposC2000.length} label="Guayaquil 2000 (Técnico)" />
             <Card className="rounded-3xl overflow-hidden shadow-sm">
@@ -505,13 +445,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {tiemposC2000.map((t, i) => (
                       <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
+                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
                           <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
                           <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
+                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
                       </tr>
                     ))}
                   </tbody>

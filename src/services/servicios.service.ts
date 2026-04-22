@@ -245,16 +245,19 @@ export const serviciosService = {
   },
 
   async OrdenesProvisionalesPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/OrdenesProvisionalesPaginadas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
-    });
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fetch Ordenes Provisionales");
+    try {
+      const response = await fetch(API_URL + "/OrdenesProvisionalesPaginadas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+      });
+      if (!response.ok) {
+        return { data: [], length: 0 };
+      }
+      return response.json();
+    } catch (e) {
+      return { data: [], length: 0 };
     }
-    return response.json();
   },
 
   async VersionesFabricacion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
@@ -271,15 +274,20 @@ export const serviciosService = {
   },
 
   async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
-    });
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fetch Ordenes Fert");
+    try {
+      const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+      });
+      if (!response.ok) {
+        console.warn("getOrdenesFert failed with status:", response.status);
+        return { data: [], length: 0 };
+      }
+      return response.json();
+    } catch (e) {
+      console.error("getOrdenesFert exception:", e);
+      return { data: [], length: 0 };
     }
-    return response.json();
   },
 };
