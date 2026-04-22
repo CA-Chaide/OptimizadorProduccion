@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, Eye } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -12,6 +12,14 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 
+/**
+ * TacticalPlanVentaExternaSection
+ * 
+ * Implementa la Segmentación Inteligente para Venta Externa.
+ * - Divide datos por Planta (1000/2000).
+ * - Aplica filtros de ALMACEN, RESPCTRLPROD y SECTOR dinámicamente.
+ * - Tab 'Tiempos' renombrado a 'Tiempos Ensamblado'.
+ */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
   const { addNotification } = useAppContext();
@@ -79,13 +87,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         if (!g.centro) continue;
         try {
           const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-          const actualData = res.data?.data || res.data || [];
-          if (Array.isArray(actualData)) allTiempos.push(...actualData);
+          // Standardize data extraction to fix "no data" issue
+          const rawPayload = res.data;
+          const actualData = Array.isArray(rawPayload) ? rawPayload : (rawPayload?.data || []);
+          if (Array.isArray(actualData) && actualData.length > 0) {
+            allTiempos.push(...actualData);
+          }
         } catch (e) {
           console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`, e);
         }
       }
       setTiemposEnsamblado(allTiempos);
+      inspector.captureVariable('tiemposEnsambladoRaw', allTiempos);
     } catch (error) {
       console.error('Error en loadData:', error);
     }
@@ -115,18 +128,23 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     };
   };
 
-  const filterData = (data: any[], centro: string, criteria: any, useSector = true) => {
+  const filterData = (data: any[], centro: string, criteria: any) => {
     if (!data || data.length === 0) return [];
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
+      
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = criteria.resp.length === 0 || criteria.resp.some((code: string) => itemResp.includes(code));
+      
       const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
-      const matchAlm = criteria.alm.length === 0 || criteria.alm.includes(itemAlm);
-      if (!useSector) return matchResp && matchAlm;
+      const hasAlmacenField = o.hasOwnProperty('Almacen') || o.hasOwnProperty('ALMACEN');
+      const matchAlm = criteria.alm.length === 0 || !hasAlmacenField || criteria.alm.includes(itemAlm);
+      
       const itemSector = String(o.Sector || o.SECTOR || '').trim();
-      const matchSector = criteria.sector.length === 0 || criteria.sector.includes(itemSector);
+      const hasSectorField = o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
+      const matchSector = criteria.sector.length === 0 || !hasSectorField || criteria.sector.includes(itemSector);
+
       return matchResp && matchAlm && matchSector;
     });
   };
@@ -138,8 +156,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const provC2000 = useMemo(() => filterData(ordenes, '2000', criteria2000), [ordenes, criteria2000]);
   const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', criteria1000), [ordenesFert, criteria1000]);
   const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', criteria2000), [ordenesFert, criteria2000]);
-  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000, false), [tiemposEnsamblado, criteria1000]);
-  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000, false), [tiemposEnsamblado, criteria2000]);
+  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', criteria1000), [tiemposEnsamblado, criteria1000]);
+  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', criteria2000), [tiemposEnsamblado, criteria2000]);
 
   // Función de extracción inteligente con fallback
   const extractMaterialInfo = (item: any) => {
@@ -214,7 +232,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <TabsTrigger value="restricciones" className="rounded-lg font-bold uppercase text-[10px]">Restricciones</TabsTrigger>
           <TabsTrigger value="ordenes" className="rounded-lg font-bold uppercase text-[10px]">Provisionales</TabsTrigger>
           <TabsTrigger value="ordenesFert" className="rounded-lg font-bold uppercase text-[10px]">Órdenes Fert</TabsTrigger>
-          <TabsTrigger value="tiempos" className="rounded-lg font-bold uppercase text-[10px]">Tiempos</TabsTrigger>
+          <TabsTrigger value="tiempos" className="rounded-lg font-bold uppercase text-[10px]">Tiempos Ensamblado</TabsTrigger>
         </TabsList>
 
         <TabsContent value="grupos">
@@ -279,11 +297,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black">{code}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
                         </tr>
                       );
                     })}
@@ -316,11 +334,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black">{code}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[300px]">{description}</td>
-                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen}</td>
+                          <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
                         </tr>
                       );
                     })}
@@ -353,10 +371,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-green-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENFERT || o.Orden}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black">{code}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-left">{description}</td>
-                          <td className="px-4 py-3 font-black text-gray-800">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                         </tr>
                       );
                     })}
@@ -386,10 +404,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       const { code, description } = extractMaterialInfo(o);
                       return (
                         <tr key={i} className="hover:bg-blue-50/30">
-                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100">{o.ORDENFERT || o.Orden}</td>
-                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black">{code}</td>
+                          <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENFERT || o.Orden}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{code}</td>
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 truncate max-w-xs text-gray-500 font-bold uppercase text-left">{description}</td>
-                          <td className="px-4 py-3 font-black text-gray-800">{o.CANTIDAD || o.Cantidad}</td>
+                          <td className="px-4 py-3 font-black text-gray-800 text-center">{o.CANTIDAD || o.Cantidad}</td>
                         </tr>
                       );
                     })}
@@ -401,9 +419,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-12">
+          {/* Tiempos C1000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-green-700 px-2 flex items-center gap-2">
-               <Clock className="w-4 h-4" /> Quito 1000 - Catálogo Técnico ({tiemposC1000.length})
+              <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" /> Quito 1000 - Tiempos Ensamblado ({tiemposC1000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos1000.width[0], height: '1px' }} /></div>
@@ -412,31 +431,38 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea Técnica</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
                       <th className="px-4 py-3">Stock / Seg.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {tiemposC1000.map((t, i) => (
-                      <tr key={i} className="hover:bg-green-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
-                          <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
-                          <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
-                      </tr>
-                    ))}
+                    {tiemposC1000.map((t, i) => {
+                      const { code, description } = extractMaterialInfo(t);
+                      return (
+                        <tr key={i} className="hover:bg-green-50/30">
+                          <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[250px]">{description}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
+                            <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
+                            <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </Card>
           </div>
+
+          {/* Tiempos C2000 */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-               <Clock className="w-4 h-4" /> Guayaquil 2000 - Catálogo Técnico ({tiemposC2000.length})
+               <Clock className="w-4 h-4" /> Guayaquil 2000 - Tiempos Ensamblado ({tiemposC2000.length})
             </h3>
             <Card className="rounded-3xl overflow-hidden shadow-sm">
               <div ref={scrollTiempos2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos2000.width[0], height: '1px' }} /></div>
@@ -445,23 +471,28 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
                     <tr>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea Técnica</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
                       <th className="px-4 py-3">Stock / Seg.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {tiemposC2000.map((t, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100">
-                          <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
-                          <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400">{t.StockActual} / {t.StockSeguridad}</td>
-                      </tr>
-                    ))}
+                    {tiemposC2000.map((t, i) => {
+                      const { code, description } = extractMaterialInfo(t);
+                      return (
+                        <tr key={i} className="hover:bg-blue-50/30">
+                          <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{code}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-gray-500 uppercase font-black text-left truncate max-w-[250px]">{description}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
+                            <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
+                            <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-green-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
