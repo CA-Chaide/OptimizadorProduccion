@@ -101,11 +101,6 @@ export const TacticalPlanMueblesSection: React.FC = () => {
     const [gruposMuebles, setGruposMuebles] = useState<Grupo[]>([]);
     const [restriccionesMuebles, setRestriccionesMuebles] = useState<Restriccion[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isClient, setIsClient] = useState(false);
-
-    useEffect(() => {
-        setIsClient(true);
-    }, []);
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -159,56 +154,50 @@ export const TacticalPlanMueblesSection: React.FC = () => {
         <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica muebles</h2>
       </div>
 
-      {isClient ? (
-        <Tabs defaultValue="ordenes" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="grupos">Grupos</TabsTrigger>
-                <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
-                <TabsTrigger value="ordenes">Órdenes Previsionales</TabsTrigger>
-                <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
-                <TabsTrigger value="tiemposMuebles">Tiempos Muebles</TabsTrigger>
-            </TabsList>
-            <TabsContent value="grupos" className="mt-4">
-                <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
-            </TabsContent>
-            <TabsContent value="restricciones" className="mt-4">
-                <RestriccionesTab restricciones={restriccionesMuebles} isLoading={isLoading} />
-            </TabsContent>
-            <TabsContent value="ordenes" className="mt-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Datos de Órdenes Previsionales</CardTitle>
-                        <CardDescription>
-                            Visualización y exploración de todas las órdenes previsionales disponibles en el sistema, filtrado para almacenes 1011 y 1015.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ProvisionalOrdersTabSection />
-                    </CardContent>
-                </Card>
-            </TabsContent>
-            <TabsContent value="ordenesFert" className="mt-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Datos de Órdenes Fert</CardTitle>
-                        <CardDescription>
-                            Visualización de las órdenes de fabricación (FERT).
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <OrdenesFertTabSection restricciones={restriccionesMuebles} />
-                    </CardContent>
-                </Card>
-            </TabsContent>
-            <TabsContent value="tiemposMuebles" className="mt-4">
-                <TiemposEnsambladoTab grupos={gruposMuebles} />
-            </TabsContent>
-        </Tabs>
-      ) : (
-        <div className="flex justify-center items-center p-8">
-            <Loader2 className="w-8 h-8 animate-spin" />
-        </div>
-      )}
+      <Tabs defaultValue="ordenes" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="grupos">Grupos</TabsTrigger>
+              <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
+              <TabsTrigger value="ordenes">Órdenes Previsionales</TabsTrigger>
+              <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
+              <TabsTrigger value="tiemposMuebles">Tiempos Muebles</TabsTrigger>
+          </TabsList>
+          <TabsContent value="grupos" className="mt-4">
+              <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
+          </TabsContent>
+          <TabsContent value="restricciones" className="mt-4">
+              <RestriccionesTab restricciones={restriccionesMuebles} isLoading={isLoading} />
+          </TabsContent>
+          <TabsContent value="ordenes" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Datos de Órdenes Previsionales</CardTitle>
+                      <CardDescription>
+                          Visualización y exploración de todas las órdenes previsionales disponibles en el sistema, filtrado para almacenes 1011 y 1015.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <ProvisionalOrdersTabSection />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="ordenesFert" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Datos de Órdenes Fert</CardTitle>
+                      <CardDescription>
+                          Visualización de las órdenes de fabricación (FERT).
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <OrdenesFertTabSection restricciones={restriccionesMuebles} />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="tiemposMuebles" className="mt-4">
+              <TiemposEnsambladoTab grupos={gruposMuebles} />
+          </TabsContent>
+      </Tabs>
     </div>
   );
 };
