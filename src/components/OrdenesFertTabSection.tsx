@@ -17,9 +17,9 @@ const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100];
 
 // Define static columns to ensure order and completeness
 const COLUMNS_TO_DISPLAY = [
-  'ORDEN_PRODUCCION', 'FECHA_ORDEN', 'HORA_ORDEN', 'CLASE_ORDEN', 'CENTRO', 
+  'MAQUINA', 'ORDEN_PRODUCCION', 'FECHA_ORDEN', 'HORA_ORDEN', 'CLASE_ORDEN', 'CENTRO', 
   'MATERIAL', 'CANT_PRODUCIR', 'UNIDAD_MEDIDA', 'RESP_CONTROL_PROD', 
-  'FECHA_INICIO_PROG', 'FECHA_FIN_PROG', 'SECTOR', 'SECTORDESC'
+  'FECHA_INICIO_PROG', 'FECHA_FIN_PROG', 'SECTOR', 'SECTORDESC', 'CATEGORIA'
 ];
 
 export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones }) => {
@@ -43,11 +43,32 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     const fetchOrders = async () => {
       setIsLoading(true);
       setError(null);
-      logger.log('[OrdenesFertTab] Fetching FERT orders...');
+      logger.log('[OrdenesFertTab] Fetching FERT orders...', 'info');
       try {
-        const ordersResponse = await serviciosService.getOrdenesFert();
+        // Exploratory call to get total records
+        const exploreResponse = await serviciosService.getOrdenesFert(1, 1);
+        const totalRecords = exploreResponse.totalRegistros || (exploreResponse.data?.length > 0 ? 1 : 0);
+
+        if (totalRecords === 0) {
+          setOrders([]);
+          addNotification('info', 'No se encontraron órdenes FERT.');
+          setIsLoading(false);
+          return;
+        }
+
+        const BATCH_SIZE = 10000;
+        const totalPagesToFetch = Math.ceil(totalRecords / BATCH_SIZE);
+        let allData: OrdenFert[] = [];
+
+        for (let i = 1; i <= totalPagesToFetch; i++) {
+          addNotification('info', `Cargando lote ${i} de ${totalPagesToFetch} de órdenes FERT...`);
+          const pageResponse = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
+          if (pageResponse.data && Array.isArray(pageResponse.data)) {
+            allData = allData.concat(pageResponse.data);
+          }
+        }
         
-        let dataArray = (ordersResponse.data && Array.isArray(ordersResponse.data)) ? ordersResponse.data : [];
+        let dataArray = allData;
         
         const sectoresRestriction = restricciones.find(r => r.nombre_restriccion === 'SECTORES');
 
@@ -63,16 +84,16 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                 return sectorDesc && sectoresToFilterLower.some(filterSector => sectorDesc.includes(filterSector));
             });
 
-            addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT, aplicando filtro 'SECTORES' desde restricciones: ${sectoresToFilter.join(', ')}.`);
+            addNotification('success', `Se cargaron ${dataArray.length} órdenes FERT (de ${totalRecords} totales), aplicando filtro 'SECTORES': ${sectoresToFilter.join(', ')}.`);
           } else {
-             addNotification('warning', `La restricción 'SECTORES' para el grupo Muebles está vacía. Mostrando todas las órdenes FERT.`);
+             addNotification('warning', `La restricción 'SECTORES' para el grupo Muebles está vacía. Mostrando todas las ${totalRecords} órdenes FERT.`);
           }
         } else {
-          addNotification('info', `No se encontró la restricción 'SECTORES' para el grupo Muebles. Mostrando todas las órdenes FERT.`);
+          addNotification('info', `No se encontró la restricción 'SECTORES' para el grupo Muebles. Mostrando todas las ${totalRecords} órdenes FERT.`);
         }
 
         setOrders(dataArray);
-        logger.log(`[OrdenesFertTab] Loaded ${dataArray.length} FERT orders.`);
+        logger.log(`[OrdenesFertTab] Loaded ${dataArray.length} FERT orders.`, 'success');
 
       } catch (err) {
         const errorMessage = (err as Error).message;
@@ -194,7 +215,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             onChange={handleRowsPerPageChange}
             className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
           </select>
         </div>
         <div className="flex items-center space-x-4">

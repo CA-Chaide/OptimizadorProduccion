@@ -336,10 +336,11 @@ export const serviciosService = {
   },
   
 
-  async getOrdenesFert(): Promise<BodyResponse<any>> {
+  async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/OrdenesFert", {
-      method: "GET",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
     });
     if (!response.ok) {
       const errorBody = await response
