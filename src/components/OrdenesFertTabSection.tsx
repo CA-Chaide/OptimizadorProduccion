@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -75,7 +76,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
       } catch (err) {
         const errorMessage = (err as Error).message;
-        logger.error(`[OrdenesFertTab] Error fetching data: ${errorMessage}`);
+        logger.log(`[OrdenesFertTab] Error fetching data: ${errorMessage}`, 'error');
         setError(errorMessage);
         addNotification('error', `Error al cargar datos: ${errorMessage}`);
       } finally {
@@ -223,7 +224,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           >
             Siguiente →
           </button>
-          <button
+           <button
             onClick={() => goToPage(totalPages)}
             disabled={currentPage === totalPages || isLoading}
             className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
