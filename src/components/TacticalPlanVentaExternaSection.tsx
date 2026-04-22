@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ShoppingCart, Users, Lock, Package, Loader2, FileText, Clock, Search, Filter, X } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -17,11 +18,11 @@ import { Input } from '@/components/ui/input';
 /**
  * TacticalPlanVentaExternaSection
  * 
- * Vista optimizada para el grupo "Venta Externa"
- * - Recupera tiempos usando getTiemposEnsambladobyCentroyCodigoGrupo (Centro y CodigoGrupo).
- * - Mapeo de datos corregido para estructura { data: [], length }.
- * - Tabs alineados uniformemente a ancho completo.
- * - Doble scroll sincronizado en todas las tablas de datos.
+ * Reestructurado profesionalmente:
+ * 1. Filtros individuales DENTRO de cada tab operativo.
+ * 2. Recuperación de tiempos mediante getTiemposEnsambladobyCentroyCodigoGrupo.
+ * 3. Procesamiento de respuesta { data: [], length }.
+ * 4. Doble scroll sincronizado y contenido centrado con bordes dashed.
  */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -34,10 +35,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [ordenesFert, setOrdersFert] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadingPhase, setLoadingPhase] = useState<string>('Inicializando...');
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRespFilter, setSelectedRespFilter] = useState('');
+  // Estados de filtros locales por Tab
+  const [filtersOrders, setFiltersOrders] = useState({ query: '', resp: '' });
+  const [filtersFert, setFiltersFert] = useState({ query: '', resp: '' });
+  const [filtersTiempos, setFiltersTiempos] = useState({ query: '', resp: '' });
 
   // Refs para sincronización de scroll
   const syncRefs = {
@@ -46,16 +48,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     tiempos: { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) }
   };
 
-  const extractValue = (item: any, keys: string[]) => {
-    for (const key of keys) {
-      if (item[key] !== undefined && item[key] !== null) return String(item[key]).trim();
-    }
-    return '';
-  };
-
   const fetchGrupos = async () => {
     try {
-      setLoadingPhase('Cargando grupos operativos...');
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => 
         g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('venta externa')
@@ -70,7 +64,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const fetchRestricciones = async (gruposIds: number[]) => {
     try {
-      setLoadingPhase('Cargando restricciones...');
       const res = await restriccionService.getAll();
       const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
       setRestricciones(filtered);
@@ -83,23 +76,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      setLoadingPhase('Cargando órdenes provisionales...');
+      // 1. Cargar Órdenes Provisionales
       const provRes = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
-      setOrders(Array.isArray(provRes.data) ? provRes.data : (provRes.data?.data || []));
+      setOrders(provRes.data || []);
 
-      setLoadingPhase('Cargando órdenes fert...');
+      // 2. Cargar Órdenes Fert
       const fertRes = await serviciosService.getOrdenesFert(1, 20000);
-      setOrdersFert(Array.isArray(fertRes.data) ? fertRes.data : (fertRes.data?.data || []));
+      setOrdersFert(fertRes.data || []);
 
-      setLoadingPhase('Cargando tiempos de ensamblado por grupo...');
+      // 3. Cargar Tiempos usando el método específico por cada grupo
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
         console.log(`[Venta Externa] Consultando tiempos para Centro: ${g.centro}, Grupo: ${g.codigo_grupo}`);
         const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo);
         
-        // CORRECCIÓN: La API devuelve { data: { data: [], length }, ... }
-        // Debemos acceder a res.data.data si existe, o manejarlo según BodyResponse
+        // Manejar estructura { data: [], length }
         const payload = res.data;
         const dataArray = payload?.data ? (Array.isArray(payload.data) ? payload.data : [payload.data]) : 
                          (Array.isArray(payload) ? payload : []);
@@ -109,7 +101,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         }
       }
       setTiemposEnsamblado(allTiempos);
-      inspector.captureVariable('tiemposEnsambladoCargados', allTiempos.length);
+      inspector.captureVariable('tiemposVentaExterna', allTiempos.length);
     } catch (error) {
       console.error('Error cargando datos operativos:', error);
       addNotification('error', 'Error al recuperar datos de la API');
@@ -128,40 +120,51 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, []);
 
-  const filterData = (data: any[]) => {
-    const respCodes = restricciones
+  // Lógica de filtrado base por RESPCTRLPROD
+  const getRespCodesFromRestrictions = () => {
+    return restricciones
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
+  };
 
+  const applyFilters = (data: any[], localFilters: { query: string, resp: string }) => {
+    const respCodes = getRespCodesFromRestrictions();
+    
     return data.filter(item => {
-      const itemResp = extractValue(item, ['RESPCTRLPROD', 'RESPCONTROLPROD', 'RespCtrlProd', 'respCtrlProd', 'NombRespControlProd']);
-      const itemMat = extractValue(item, ['CodMaterial', 'MATERIAL', 'Material', 'NOMBRE', 'Nombre', 'Descripcion']).toLowerCase();
-      const itemNameResp = extractValue(item, ['NombRespControlProd', 'RespCtrlProd', 'RESPCTRLPROD']).toLowerCase();
+      // Campos dinámicos para responsables y materiales
+      const itemResp = String(item.RESPCTRLPROD || item.RespCtrlProd || item.respCtrlProd || '').trim();
+      const itemNameResp = String(item.NombRespControlProd || item.RespCtrlProd || '').toLowerCase();
+      const itemContent = JSON.stringify(item).toLowerCase();
 
-      const matchesRestriccion = respCodes.length === 0 || respCodes.includes(itemResp);
-      const matchesSearch = !searchQuery || itemMat.includes(searchQuery.toLowerCase());
-      const matchesRespFilter = !selectedRespFilter || itemNameResp === selectedRespFilter.toLowerCase() || itemResp === selectedRespFilter;
+      const matchRestriccion = respCodes.length === 0 || respCodes.includes(itemResp);
+      const matchQuery = !localFilters.query || itemContent.includes(localFilters.query.toLowerCase());
+      const matchLocalResp = !localFilters.resp || itemNameResp === localFilters.resp.toLowerCase() || itemResp === localFilters.resp;
 
-      return matchesRestriccion && matchesSearch && matchesRespFilter;
+      return matchRestriccion && matchQuery && matchLocalResp;
     });
   };
 
-  const filteredOrders = useMemo(() => filterData(ordenes), [ordenes, restricciones, searchQuery, selectedRespFilter]);
-  const filteredFert = useMemo(() => filterData(ordenesFert), [ordenesFert, restricciones, searchQuery, selectedRespFilter]);
-  const filteredTiempos = useMemo(() => filterData(tiemposEnsamblado), [tiemposEnsamblado, restricciones, searchQuery, selectedRespFilter]);
+  // Datos filtrados para cada Tab
+  const filteredOrders = useMemo(() => applyFilters(ordenes, filtersOrders), [ordenes, restricciones, filtersOrders]);
+  const filteredFert = useMemo(() => applyFilters(ordenesFert, filtersFert), [ordenesFert, restricciones, filtersFert]);
+  const filteredTiempos = useMemo(() => applyFilters(tiemposEnsamblado, filtersTiempos), [tiemposEnsamblado, restricciones, filtersTiempos]);
 
-  const uniqueResponsibles = useMemo(() => {
+  // Lista única de responsables para selectores
+  const getUniqueResponsibles = (data: any[]) => {
     const resps = new Set<string>();
-    [...ordenes, ...ordenesFert, ...tiemposEnsamblado].forEach(o => {
-      const name = extractValue(o, ['NombRespControlProd']);
-      const code = extractValue(o, ['RespCtrlProd', 'RESPCTRLPROD']);
-      if (name) resps.add(name);
-      else if (code) resps.add(code);
+    data.forEach(o => {
+      const name = o.NombRespControlProd || o.RespCtrlProd || o.RESPCTRLPROD;
+      if (name) resps.add(String(name));
     });
     return Array.from(resps).sort();
-  }, [ordenes, ordenesFert, tiemposEnsamblado]);
+  };
 
+  const respsOrders = useMemo(() => getUniqueResponsibles(ordenes), [ordenes]);
+  const respsFert = useMemo(() => getUniqueResponsibles(ordenesFert), [ordenesFert]);
+  const respsTiempos = useMemo(() => getUniqueResponsibles(tiemposEnsamblado), [tiemposEnsamblado]);
+
+  // Sincronización de scroll
   const setupScroll = (refGroup: any) => {
     if (!refGroup.top.current || !refGroup.bottom.current) return;
     const syncB = () => { refGroup.bottom.current.scrollLeft = refGroup.top.current.scrollLeft; };
@@ -189,91 +192,90 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     }
   }, [activeTab, filteredOrders, filteredFert, filteredTiempos]);
 
+  // Componente de barra de filtros local
+  const FilterBar = ({ 
+    filters, 
+    setFilters, 
+    resps 
+  }: { 
+    filters: { query: string, resp: string }, 
+    setFilters: any, 
+    resps: string[] 
+  }) => (
+    <div className="flex flex-wrap gap-4 items-end mb-4 bg-gray-50 p-4 border rounded-2xl shadow-sm">
+      <div className="flex-1 min-w-[200px] space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase">Buscar Material / Código</label>
+        <Input 
+          placeholder="Filtrar..." 
+          value={filters.query}
+          onChange={(e) => setFilters((f: any) => ({ ...f, query: e.target.value }))}
+          className="h-10 rounded-xl"
+        />
+      </div>
+      <div className="w-64 space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase">Responsable</label>
+        <select 
+          value={filters.resp}
+          onChange={(e) => setFilters((f: any) => ({ ...f, resp: e.target.value }))}
+          className="w-full h-10 border border-gray-200 rounded-xl px-3 text-sm bg-white"
+        >
+          <option value="">Todos</option>
+          {resps.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <Button 
+        variant="ghost" 
+        size="sm"
+        onClick={() => setFilters({ query: '', resp: '' })}
+        className="h-10 text-gray-400 hover:text-red-600"
+      >
+        <X className="w-4 h-4" />
+      </Button>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
         <Loader2 className="w-12 h-12 animate-spin text-green-600" />
-        <p className="text-gray-500 font-semibold">{loadingPhase}</p>
+        <p className="text-gray-500 font-bold">Cargando Planificación de Venta Externa...</p>
       </div>
     );
   }
 
   return (
     <div className="p-6 md:p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <ShoppingCart className="w-10 h-10 text-green-600" />
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800">Programación Táctica Venta Externa</h2>
-            <p className="text-sm text-gray-500 font-medium">Gestión técnica basada en Centro y Código de Grupo</p>
-          </div>
+      <div className="flex items-center space-x-3 mb-4">
+        <ShoppingCart className="w-10 h-10 text-green-600" />
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Venta Externa</h2>
+          <p className="text-sm text-gray-500 font-medium">Gestión especializada por Centro y Código de Grupo</p>
         </div>
       </div>
       
-      <div className="bg-white p-5 border rounded-2xl shadow-sm flex flex-wrap gap-5 items-end">
-        <div className="flex-1 min-w-[300px] space-y-2">
-          <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
-            <Search className="w-3.5 h-3.5" /> Buscar Material / Código
-          </label>
-          <div className="relative">
-            <Input 
-              placeholder="Ej: 20005178 o Sábana..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-11 border-gray-200 focus:ring-green-500 rounded-xl"
-            />
-            <Search className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-gray-400" />
-          </div>
-        </div>
-        
-        <div className="w-72 space-y-2">
-          <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5" /> Responsable
-          </label>
-          <select 
-            value={selectedRespFilter}
-            onChange={(e) => setSelectedRespFilter(e.target.value)}
-            className="w-full h-11 border border-gray-200 rounded-xl px-4 text-sm outline-none bg-white transition-all focus:ring-2 focus:ring-green-500"
-          >
-            <option value="">Todos los responsables</option>
-            {uniqueResponsibles.map(resp => (
-              <option key={resp} value={resp}>{resp}</option>
-            ))}
-          </select>
-        </div>
-
-        <Button 
-          variant="ghost" 
-          onClick={() => { setSearchQuery(''); setSelectedRespFilter(''); }}
-          className="h-11 px-5 text-gray-500 hover:bg-gray-100 rounded-xl font-semibold"
-        >
-          <X className="w-4 h-4 mr-2" /> Limpiar Filtros
-        </Button>
-      </div>
-
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex w-full bg-gray-100/60 p-1.5 rounded-2xl mb-8 border border-gray-200">
-          <TabsTrigger value="grupos" className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-all data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
-          <TabsTrigger value="restricciones" className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-all data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
-          <TabsTrigger value="ordenes" className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-all data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl"><Package className="w-4 h-4" /> Provisionales</TabsTrigger>
-          <TabsTrigger value="ordenesFert" className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-all data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl"><FileText className="w-4 h-4" /> Órdenes Fert</TabsTrigger>
-          <TabsTrigger value="tiempos" className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-all data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl"><Clock className="w-4 h-4" /> Tiempos</TabsTrigger>
+          <TabsTrigger value="grupos" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
+          <TabsTrigger value="restricciones" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
+          <TabsTrigger value="ordenes" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><Package className="w-4 h-4" /> Provisionales</TabsTrigger>
+          <TabsTrigger value="ordenesFert" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><FileText className="w-4 h-4" /> Órdenes Fert</TabsTrigger>
+          <TabsTrigger value="tiempos" className="flex-1 py-3 text-sm font-bold data-[state=active]:bg-white data-[state=active]:shadow-md rounded-xl flex items-center justify-center gap-2"><Clock className="w-4 h-4" /> Tiempos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="grupos">
-          <Card className="border-none shadow-lg rounded-2xl">
-            <CardHeader className="bg-gray-50/50 border-b">
-              <CardTitle>Grupos Operativos</CardTitle>
+          <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
+            <CardHeader className="bg-gray-50 border-b">
+              <CardTitle>Grupos Operativos Identificados</CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {grupos.map(g => (
                   <div key={g.codigo_grupo} className="p-6 border-2 border-dashed border-gray-200 rounded-2xl bg-white hover:border-green-400 hover:shadow-xl transition-all">
                     <div className="flex justify-between items-start mb-4">
                       <span className="font-bold text-xl text-gray-800">{g.nombre_grupo}</span>
-                      <Badge className="bg-green-100 text-green-800 border-green-200">CENTRO {g.centro}</Badge>
+                      <Badge className="bg-green-100 text-green-800 border-green-200 uppercase font-bold">C-{g.centro}</Badge>
                     </div>
-                    <p className="text-xs text-gray-400 font-mono">ID: {g.codigo_grupo}</p>
+                    <p className="text-xs text-gray-400 font-mono">CÓDIGO: {g.codigo_grupo}</p>
                   </div>
                 ))}
               </div>
@@ -283,26 +285,26 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="restricciones">
           <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50/50 border-b">
-              <CardTitle>Restricciones de Filtrado</CardTitle>
+            <CardHeader className="bg-gray-50 border-b">
+              <CardTitle>Restricciones del Área</CardTitle>
             </CardHeader>
-            <CardContent className="p-0 text-center">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr className="text-gray-500 text-xs font-bold uppercase">
+            <CardContent className="p-0">
+              <table className="w-full text-center">
+                <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-500">
+                  <tr>
                     <th className="px-6 py-4 border-r border-dashed border-gray-200">Parámetro</th>
-                    <th className="px-6 py-4 border-r border-dashed border-gray-200">Valor</th>
-                    <th className="px-6 py-4">Descripción</th>
+                    <th className="px-6 py-4 border-r border-dashed border-gray-200">Valor Configurado</th>
+                    <th className="px-6 py-4">Descripción Técnica</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {restricciones.map(r => (
-                    <tr key={r.codigo_restriccion} className="hover:bg-green-50/30 transition-colors">
+                    <tr key={r.codigo_restriccion} className="hover:bg-green-50/40">
                       <td className="px-6 py-5 font-bold text-gray-900 border-r border-dashed border-gray-200">{r.nombre_restriccion}</td>
                       <td className="px-6 py-5 border-r border-dashed border-gray-200">
                         <Badge variant="outline" className="font-mono border-green-200 text-green-700 bg-green-50">{r.valor_restriccion}</Badge>
                       </td>
-                      <td className="px-6 py-5 text-sm text-gray-500">{r.descripcion || '—'}</td>
+                      <td className="px-6 py-5 text-sm text-gray-500 italic">{r.description || r.descripcion || 'Sin descripción'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -311,22 +313,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Tab: Órdenes Provisionales con Doble Scroll */}
         <TabsContent value="ordenes">
           <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50/50 border-b">
+            <CardHeader className="bg-gray-50 border-b">
               <div className="flex justify-between items-center">
-                <CardTitle>Órdenes Provisionales</CardTitle>
+                <CardTitle>Órdenes Provisionales (Venta Externa)</CardTitle>
                 <Badge className="bg-green-600 text-white font-bold">{filteredOrders.length} Registros</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <div ref={syncRefs.ordenes.top} className="overflow-x-auto h-4 bg-gray-100/50 border-b">
+            <CardContent className="p-4">
+              <FilterBar filters={filtersOrders} setFilters={setFiltersOrders} resps={respsOrders} />
+              <div ref={syncRefs.ordenes.top} className="overflow-x-auto h-4 bg-gray-100/50 border-x rounded-t-lg">
                 <div style={{ width: syncRefs.ordenes.width[0], height: '1px' }} />
               </div>
-              <div ref={syncRefs.ordenes.bottom} className="overflow-x-auto max-h-[600px]">
-                <table ref={syncRefs.ordenes.table} className="w-full border-collapse text-center">
-                  <thead className="bg-gray-50 sticky top-0 shadow-sm text-[10px] font-bold uppercase text-gray-500">
+              <div ref={syncRefs.ordenes.bottom} className="overflow-x-auto border-x border-b rounded-b-lg max-h-[500px]">
+                <table ref={syncRefs.ordenes.table} className="w-full text-center border-collapse">
+                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500">
                     <tr>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material / Descripción</th>
@@ -355,22 +357,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Tab: Órdenes Fert con Doble Scroll */}
         <TabsContent value="ordenesFert">
           <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50/50 border-b">
+            <CardHeader className="bg-gray-50 border-b">
               <div className="flex justify-between items-center">
-                <CardTitle>Órdenes Fert</CardTitle>
+                <CardTitle>Órdenes Fert (Productos Terminados)</CardTitle>
                 <Badge className="bg-blue-600 text-white font-bold">{filteredFert.length} Registros</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <div ref={syncRefs.fert.top} className="overflow-x-auto h-4 bg-gray-100/50 border-b">
+            <CardContent className="p-4">
+              <FilterBar filters={filtersFert} setFilters={setFiltersFert} resps={respsFert} />
+              <div ref={syncRefs.fert.top} className="overflow-x-auto h-4 bg-gray-100/50 border-x rounded-t-lg">
                 <div style={{ width: syncRefs.fert.width[0], height: '1px' }} />
               </div>
-              <div ref={syncRefs.fert.bottom} className="overflow-x-auto max-h-[600px]">
-                <table ref={syncRefs.fert.table} className="w-full border-collapse text-center">
-                  <thead className="bg-gray-50 sticky top-0 shadow-sm text-[10px] font-bold uppercase text-gray-500">
+              <div ref={syncRefs.fert.bottom} className="overflow-x-auto border-x border-b rounded-b-lg max-h-[500px]">
+                <table ref={syncRefs.fert.table} className="w-full text-center border-collapse">
+                  <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500">
                     <tr>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden Fert</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material / Descripción</th>
@@ -399,27 +401,27 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Tab: Tiempos de Ensamblado con Doble Scroll */}
         <TabsContent value="tiempos">
           <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-gray-50/50 border-b">
+            <CardHeader className="bg-gray-50 border-b">
               <div className="flex justify-between items-center">
                 <CardTitle>Tiempos de Ensamblado (Catálogo Técnico)</CardTitle>
                 <Badge className="bg-purple-600 text-white font-bold">{filteredTiempos.length} Registros</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <div ref={syncRefs.tiempos.top} className="overflow-x-auto h-4 bg-gray-100/50 border-b">
+            <CardContent className="p-4">
+              <FilterBar filters={filtersTiempos} setFilters={setFiltersTiempos} resps={respsTiempos} />
+              <div ref={syncRefs.tiempos.top} className="overflow-x-auto h-4 bg-gray-100/50 border-x rounded-t-lg">
                 <div style={{ width: syncRefs.tiempos.width[0], height: '1px' }} />
               </div>
-              <div ref={syncRefs.tiempos.bottom} className="overflow-x-auto max-h-[600px]">
-                <table ref={syncRefs.tiempos.table} className="w-full border-collapse text-center">
-                  <thead className="bg-gray-50 sticky top-0 shadow-sm text-[10px] font-bold uppercase text-gray-500">
+              <div ref={syncRefs.tiempos.bottom} className="overflow-x-auto border-x border-b rounded-b-lg max-h-[500px]">
+                <table ref={syncRefs.tiempos.table} className="w-full text-center border-collapse">
+                  <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500">
                     <tr>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Centro</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea / Puesto</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Tiempo (min)</th>
+                      <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (min)</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Stock Actual</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Stock Seg.</th>
                       <th className="px-4 py-3 border-r border-dashed border-gray-200">Clase</th>
@@ -427,26 +429,27 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[13px]">
-                    {filteredTiempos.length === 0 ? (
-                      <tr><td colSpan={8} className="px-4 py-12 text-gray-400">No hay información técnica disponible para el grupo seleccionado</td></tr>
-                    ) : (
-                      filteredTiempos.map((t, idx) => (
-                        <tr key={idx} className="hover:bg-purple-50/30 transition-colors">
-                          <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-200 font-mono">{t.CodMaterial}</td>
-                          <td className="px-4 py-4 text-gray-600 border-r border-dashed border-gray-200">{t.Centro}</td>
-                          <td className="px-4 py-4 border-r border-dashed border-gray-200">
-                            <div className="text-[11px] font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
-                            <div className="text-[9px] text-gray-400 uppercase">{t.PuestoTrabajo}</div>
-                          </td>
-                          <td className="px-4 py-4 font-bold text-purple-700 border-r border-dashed border-gray-200">
-                            {t.Tiempo_Min ? Number(t.Tiempo_Min).toFixed(4) : '0.0000'}
-                          </td>
-                          <td className="px-4 py-4 font-mono text-gray-600 border-r border-dashed border-gray-200">{t.StockActual || 0}</td>
-                          <td className="px-4 py-4 font-mono text-gray-400 border-r border-dashed border-gray-200">{t.StockSeguridad || 0}</td>
-                          <td className="px-4 py-4 font-bold text-teal-600 border-r border-dashed border-gray-200">{t.ClaseAprovisionam || '—'}</td>
-                          <td className="px-4 py-4 text-[10px] text-gray-400">{t.RespCtrlProd}</td>
-                        </tr>
-                      ))
+                    {filteredTiempos.map((t, idx) => (
+                      <tr key={idx} className="hover:bg-purple-50/30">
+                        <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-200 font-mono">{t.CodMaterial}</td>
+                        <td className="px-4 py-4 text-gray-600 border-r border-dashed border-gray-200">{t.Centro}</td>
+                        <td className="px-4 py-4 border-r border-dashed border-gray-200">
+                          <div className="text-[11px] font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
+                          <div className="text-[9px] text-gray-400 uppercase">{t.PuestoTrabajo}</div>
+                        </td>
+                        <td className="px-4 py-4 font-bold text-purple-700 border-r border-dashed border-gray-200">
+                          {t.Tiempo_Min ? Number(t.Tiempo_Min).toFixed(4) : '0.0000'}
+                        </td>
+                        <td className="px-4 py-4 font-mono text-gray-600 border-r border-dashed border-gray-200">{t.StockActual || 0}</td>
+                        <td className="px-4 py-4 font-mono text-gray-400 border-r border-dashed border-gray-200">{t.StockSeguridad || 0}</td>
+                        <td className="px-4 py-4 font-bold text-teal-600 border-r border-dashed border-gray-200">{t.ClaseAprovisionam || '—'}</td>
+                        <td className="px-4 py-4 text-[10px] text-gray-400">{t.NombRespControlProd || t.RespCtrlProd}</td>
+                      </tr>
+                    ))}
+                    {filteredTiempos.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="py-20 text-gray-400 italic">No se encontraron datos técnicos para los filtros seleccionados</td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
