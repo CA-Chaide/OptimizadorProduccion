@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, Info, CheckCircle2, AlertCircle, Search, Settings2 } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, Info, CheckCircle2, Search, Settings2, Wind, Scissors } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -26,7 +26,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para sincronización de scroll
+  // Refs para sincronización de scroll (6 pares de barras)
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollFert1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -102,6 +102,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
+  // Lógica de filtrado inteligente corregida para Tiempos (omitir si campo no existe)
   const filterData = (data: any[], centro: string) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
@@ -132,10 +133,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
+      const hasAlmField = o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen') || o.hasOwnProperty('almacen');
+      const matchAlm = !hasAlmField || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
-      const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
+      const hasSectorField = o.hasOwnProperty('SECTORDESC') || o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
+      const matchSector = !hasSectorField || sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
 
       return matchResp && matchAlm && matchSector;
     });
@@ -200,24 +203,24 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="bg-white border-gray-200 text-gray-600 py-1 px-3">
             <div className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse" />
-            Sincronizado
+            Segmentación Inteligente
           </Badge>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {/* Navegación de Tabs Estilizada */}
         <TabsList className="flex flex-wrap h-auto w-full bg-transparent gap-3 mb-8 p-0">
           {[
-            { id: 'grupos', label: 'Grupos Operativos', icon: Users, color: 'hover:border-blue-500', active: 'data-[state=active]:bg-blue-600 data-[state=active]:text-white' },
-            { id: 'restricciones', label: 'Restricciones Técnicas', icon: Lock, color: 'hover:border-amber-500', active: 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' },
-            { id: 'ordenes', label: 'Órdenes Provisionales', icon: Package, color: 'hover:border-green-500', active: 'data-[state=active]:bg-green-600 data-[state=active]:text-white' },
-            { id: 'ordenesFert', label: 'Órdenes FERT', icon: ShoppingCart, color: 'hover:border-indigo-500', active: 'data-[state=active]:bg-indigo-600 data-[state=active]:text-white' },
-            { id: 'tiempos', label: 'Tiempos Ensamblado', icon: Clock, color: 'hover:border-teal-500', active: 'data-[state=active]:bg-teal-600 data-[state=active]:text-white' },
+            { id: 'grupos', label: 'Grupos Operativos', icon: Users, color: 'hover:border-blue-500', active: 'data-[state=active]:bg-blue-600 data-[state=active]:text-white', desc: 'Grupos técnicos de Venta Externa por planta.' },
+            { id: 'restricciones', label: 'Restricciones Técnicas', icon: Lock, color: 'hover:border-amber-500', active: 'data-[state=active]:bg-amber-600 data-[state=active]:text-white', desc: 'Filtros de segmentación por Responsable, Almacén y Sector.' },
+            { id: 'ordenes', label: 'Órdenes Provisionales', icon: Package, color: 'hover:border-green-500', active: 'data-[state=active]:bg-green-600 data-[state=active]:text-white', desc: 'Listado de demanda sugerida filtrada por planta.' },
+            { id: 'ordenesFert', label: 'Órdenes FERT', icon: ShoppingCart, color: 'hover:border-indigo-500', active: 'data-[state=active]:bg-indigo-600 data-[state=active]:text-white', desc: 'Control de órdenes reales con estado de entrega y pendientes.' },
+            { id: 'tiempos', label: 'Tiempos Ensamblado', icon: Clock, color: 'hover:border-teal-500', active: 'data-[state=active]:bg-teal-600 data-[state=active]:text-white', desc: 'Catálogo de tiempos técnicos por material y línea.' },
           ].map(tab => (
             <TabsTrigger 
               key={tab.id} 
               value={tab.id} 
+              title={tab.desc}
               className={cn(
                 "flex-1 min-w-[140px] flex items-center justify-center gap-2 py-4 px-6 rounded-2xl border-2 border-white bg-white shadow-sm transition-all duration-300 font-bold uppercase text-[10px] tracking-wider",
                 tab.color,
@@ -230,117 +233,82 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsList>
 
-        {/* CONTENIDO: GRUPOS */}
         <TabsContent value="grupos">
-          <div className="space-y-4">
-            <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3">
-              <Info className="w-5 h-5 text-blue-600 mt-0.5" />
-              <p className="text-sm text-blue-800 leading-relaxed">
-                A continuación se muestran los grupos operativos configurados para el proceso de <strong>Venta Externa</strong>. Cada grupo define los parámetros de filtrado para las órdenes y catálogos técnicos.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {grupos.map(g => (
-                <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
-                  <CardHeader className="pb-2">
-                    <Badge className="w-fit bg-blue-600 mb-2">PLANTA {g.centro}</Badge>
-                    <CardTitle className="text-lg font-black text-gray-800 leading-tight uppercase">{g.nombre_grupo}</CardTitle>
-                    <CardDescription className="font-mono text-[10px]">CÓDIGO SISTEMA: {g.codigo_grupo}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2 text-green-600 text-xs font-bold">
-                      <CheckCircle2 className="w-4 h-4" />
-                      GRUPO ACTIVO
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {grupos.map(g => (
+              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
+                <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
+                <Badge className="w-fit bg-blue-600 mb-2">PLANTA {g.centro}</Badge>
+                <h4 className="font-black text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
+                <p className="text-[10px] font-mono text-gray-400 mt-1">CÓDIGO: {g.codigo_grupo}</p>
+                <div className="mt-4 pt-4 border-t border-dashed flex items-center gap-2 text-green-600 text-xs font-bold">
+                  <CheckCircle2 className="w-4 h-4" /> GRUPO ACTIVO
+                </div>
+              </Card>
+            ))}
           </div>
         </TabsContent>
 
-        {/* CONTENIDO: RESTRICCIONES */}
         <TabsContent value="restricciones">
-          <div className="space-y-4">
-            <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
-              <Settings2 className="w-5 h-5 text-amber-600 mt-0.5" />
-              <p className="text-sm text-amber-800 leading-relaxed">
-                Filtros técnicos de segmentación. Estas reglas definen qué órdenes se visualizan basándose en <strong>Responsables (RESPCTRLPROD)</strong>, <strong>Almacenes</strong> y <strong>Sectores</strong>.
-              </p>
-            </div>
-            <Card className="rounded-3xl border-none shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100/50 text-[10px] font-black uppercase text-gray-400">
-                    <tr>
-                      <th className="px-6 py-6 border-r border-dashed border-gray-200">Parámetro Técnico</th>
-                      <th className="px-6 py-6 border-r border-dashed border-gray-200 text-center">Valor Configurado</th>
-                      <th className="px-6 py-6 text-left">Descripción Operativa</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px] bg-white">
-                    {restricciones.map(r => (
-                      <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20 transition-colors">
-                        <td className="px-6 py-5 font-black text-gray-700 border-r border-dashed border-gray-200 uppercase tracking-tighter">{r.nombre_restriccion}</td>
-                        <td className="px-6 py-5 border-r border-dashed border-gray-200">
-                          <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50 px-3">{r.valor_restriccion}</Badge>
-                        </td>
-                        <td className="px-6 py-5 text-gray-400 italic text-left">{r.descripcion || 'Sin descripción adicional'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+          <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+            <table className="w-full border-collapse">
+              <thead className="bg-gray-50/50 text-[10px] font-black uppercase text-gray-400">
+                <tr>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro Técnico</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor Configurado</th>
+                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-[11px]">
+                {restricciones.map(r => (
+                  <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20">
+                    <td className="px-6 py-4 font-black text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200 text-center">
+                      <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50">{r.valor_restriccion}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
         </TabsContent>
 
-        {/* CONTENIDO: ÓRDENES PROVISIONALES */}
-        <TabsContent value="ordenes" className="space-y-12">
-          <div className="p-4 bg-green-50 border border-green-100 rounded-2xl flex items-start gap-3">
-            <Info className="w-5 h-5 text-green-600 mt-0.5" />
-            <p className="text-sm text-green-800 leading-relaxed">
-              Visualización de la <strong>Demanda Sugerida</strong>. Estos registros están filtrados rigurosamente por las restricciones técnicas de cada planta.
-            </p>
-          </div>
-          {[ { title: 'QUITO - PLANTA 1000', data: provC1000, scroll: scrollProv1000, color: 'text-green-700', bullet: 'bg-green-600' }, { title: 'GUAYAQUIL - PLANTA 2000', data: provC2000, scroll: scrollProv2000, color: 'text-indigo-700', bullet: 'bg-indigo-600' } ].map((center, idx) => (
-            <div key={idx} className="space-y-4">
+        {/* ÓRDENES PROVISIONALES */}
+        <TabsContent value="ordenes" className="space-y-8">
+          {[ { t: 'Quito 1000', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600' }, { t: 'Guayaquil 2000', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.color)}>
-                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.bullet)} /> {center.title}
+                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.c)}>
+                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length})
                 </h3>
-                <Badge variant="secondary" className="bg-white border text-gray-500 font-mono text-[10px]">{center.data.length} REGISTROS</Badge>
               </div>
-              <Card className="overflow-hidden border-none rounded-3xl shadow-sm bg-white">
-                <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
-                <div ref={center.scroll.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.scroll.table} className="w-full text-center border-collapse">
-                    <thead className="bg-gray-50/80 sticky top-0 z-10 text-[9px] font-black text-gray-500 uppercase tracking-wider">
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
+                  <table ref={center.s.table} className="w-full border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-400">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-100">Orden Previsional</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-100">Material</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-100 text-left">Descripción del Producto</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-100">Cantidad</th>
-                        <th className="px-4 py-4">Almacén Origen</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Orden</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
+                        <th className="px-4 py-4">Almacén</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-[11px]">
-                      {center.data.map((o, i) => {
+                    <tbody className="divide-y divide-gray-100 text-[11px]">
+                      {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         return (
-                          <tr key={i} className="hover:bg-green-50/30 transition-colors">
-                            <td className="px-4 py-4 border-r border-dashed border-gray-100 font-bold text-gray-900">{o.ORDENPREVISIONAL || '—'}</td>
-                            <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono text-green-600 font-black tracking-tighter text-center">{info.code}</td>
-                            <td className="px-4 py-4 border-r border-dashed border-gray-100 text-left truncate max-w-[280px] uppercase font-black text-gray-500 tracking-tighter">{info.desc}</td>
-                            <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-900 text-center text-lg">{o.CANTIDAD || '0'}</td>
-                            <td className="px-4 py-4 font-bold text-gray-400 text-center">{o.Almacen || '—'}</td>
+                          <tr key={i} className="hover:bg-gray-50/50">
+                            <td className="px-4 py-3 font-bold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
+                            <td className="px-4 py-3 font-mono font-black text-green-600 border-r border-dashed border-gray-100 text-center">{info.code}</td>
+                            <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[300px] font-medium text-gray-500 uppercase">{info.desc}</td>
+                            <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 text-center text-sm">{o.CANTIDAD || '0'}</td>
+                            <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || '—'}</td>
                           </tr>
                         );
                       })}
-                      {center.data.length === 0 && (
-                        <tr><td colSpan={5} className="py-12 text-gray-300 font-bold uppercase tracking-widest text-[10px]">No se encontraron órdenes para este criterio</td></tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
@@ -349,69 +317,57 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        {/* CONTENIDO: ÓRDENES FERT */}
-        <TabsContent value="ordenesFert" className="space-y-12">
-          <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-3">
-            <Search className="w-5 h-5 text-indigo-600 mt-0.5" />
-            <p className="text-sm text-indigo-800 leading-relaxed">
-              Seguimiento operativo de <strong>Órdenes FERT</strong>. Incluye el estado de entregas, notificaciones y rechazos técnicos reportados por el backend.
-            </p>
-          </div>
-          {[ { title: 'QUITO - 1000 (FERT)', data: fertC1000, scroll: scrollFert1000, color: 'text-blue-700', bullet: 'bg-blue-600' }, { title: 'GUAYAQUIL - 2000 (FERT)', data: fertC2000, scroll: scrollFert2000, color: 'text-violet-700', bullet: 'bg-violet-600' } ].map((center, idx) => (
-            <div key={idx} className="space-y-4">
+        {/* ÓRDENES FERT */}
+        <TabsContent value="ordenesFert" className="space-y-8">
+          {[ { t: 'Quito 1000 (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600' }, { t: 'Guayaquil 2000 (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600' } ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.color)}>
-                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.bullet)} /> {center.title}
+                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.c)}>
+                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length})
                 </h3>
-                <Badge variant="secondary" className="bg-white border text-gray-500 font-mono text-[10px]">{center.data.length} REGISTROS</Badge>
               </div>
-              <Card className="overflow-hidden border-none rounded-3xl shadow-sm bg-white">
-                <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
-                <div ref={center.scroll.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.scroll.table} className="w-full text-center border-collapse">
-                    <thead className="bg-gray-50/80 sticky top-0 z-10 text-[8px] font-black text-gray-500 uppercase tracking-tighter">
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
+                  <table ref={center.s.table} className="w-full border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 tracking-tighter">
                       <tr>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Orden</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Sector</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/50">Prog.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-green-50/50">Ent.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/50">Not.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-red-50/50">Rech.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-orange-50/50">Pend.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200">T. Pend (min)</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/30">Prog.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-green-50/30">Ent.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/30">Not.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-red-50/30">Rech.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-orange-50/30">Pend.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">T. Pend (m)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Resp.</th>
                         <th className="px-3 py-4">Máquina</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[10px]">
-                      {center.data.map((o, i) => {
+                      {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         return (
-                          <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-bold text-gray-900">{o.ORDEN || '—'}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600 font-black text-center">{info.code}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-left truncate max-w-[180px] uppercase font-black text-gray-500 tracking-tighter">{info.desc}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-gray-400 font-bold text-[9px] uppercase">{o.SECTORDESC || '—'}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-bold text-gray-400">{o.CATEGORIA || '—'}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-blue-800 text-center bg-blue-50/20">{o.CANTPROGRAMADA || 0}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-green-700 text-center bg-green-50/20">{o.CANTENTREGADA || 0}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-blue-700 text-center bg-blue-50/20">{o.CANTNOTIFICADA || 0}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-red-600 text-center bg-red-50/20">{o.CANTRECHAZO || 0}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-orange-600 text-center bg-orange-50/20">{o.CANTPENDIENTE || 0}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-center font-bold">{o.TIEMPOPENDIENTE || 0}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-bold text-gray-700 text-center whitespace-nowrap">{o.FECHA || '—'}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-center">{o.RESPCTRLPROD || '—'}</td>
+                          <tr key={i} className="hover:bg-gray-50/50">
+                            <td className="px-3 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDEN || '—'}</td>
+                            <td className="px-3 py-3 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 text-center">{info.code}</td>
+                            <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[180px] font-black text-gray-500 uppercase tracking-tighter">{info.desc}</td>
+                            <td className="px-3 py-3 text-gray-400 font-bold border-r border-dashed border-gray-100 text-center">{o.SECTORDESC || '—'}</td>
+                            <td className="px-3 py-3 font-black text-blue-800 border-r border-dashed border-gray-100 text-center bg-blue-50/10 text-xs">{o.CANTPROGRAMADA || 0}</td>
+                            <td className="px-3 py-3 font-black text-green-700 border-r border-dashed border-gray-100 text-center bg-green-50/10 text-xs">{o.CANTENTREGADA || 0}</td>
+                            <td className="px-3 py-3 font-black text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/10 text-xs">{o.CANTNOTIFICADA || 0}</td>
+                            <td className="px-3 py-3 font-black text-red-600 border-r border-dashed border-gray-100 text-center bg-red-50/10 text-xs">{o.CANTRECHAZO || 0}</td>
+                            <td className="px-3 py-3 font-black text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10 text-xs">{o.CANTPENDIENTE || 0}</td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center">{o.TIEMPOPENDIENTE || 0}</td>
+                            <td className="px-3 py-3 font-bold text-gray-600 border-r border-dashed border-gray-100 text-center">{o.FECHA || '—'}</td>
+                            <td className="px-3 py-3 font-black text-gray-400 border-r border-dashed border-gray-100 text-center">{o.RESPCTRLPROD || '—'}</td>
                             <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
                           </tr>
                         );
                       })}
-                      {center.data.length === 0 && (
-                        <tr><td colSpan={14} className="py-12 text-gray-300 font-bold uppercase tracking-widest text-[10px]">No hay órdenes FERT registradas en este período</td></tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
@@ -420,51 +376,41 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        {/* CONTENIDO: TIEMPOS */}
-        <TabsContent value="tiempos" className="space-y-12">
-          <div className="p-4 bg-teal-50 border border-teal-100 rounded-2xl flex items-start gap-3">
-            <Clock className="w-5 h-5 text-teal-600 mt-0.5" />
-            <p className="text-sm text-teal-800 leading-relaxed">
-              <strong>Catálogo de Tiempos Estándar</strong>. Define el tiempo requerido para la fabricación de cada unidad, esencial para el cálculo de capacidad y saturación de líneas.
-            </p>
-          </div>
-          {[ { title: 'QUITO - CATÁLOGO 1000', data: tiemposC1000, scroll: scrollTiempos1000, color: 'text-teal-700', bullet: 'bg-teal-600' }, { title: 'GUAYAQUIL - CATÁLOGO 2000', data: tiemposC2000, scroll: scrollTiempos2000, color: 'text-indigo-700', bullet: 'bg-indigo-600' } ].map((center, idx) => (
-            <div key={idx} className="space-y-4">
+        {/* TIEMPOS ENSAMBLADO */}
+        <TabsContent value="tiempos" className="space-y-8">
+          {[ { t: 'Catálogo Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.color)}>
-                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.bullet)} /> {center.title}
+                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.c)}>
+                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length})
                 </h3>
-                <Badge variant="secondary" className="bg-white border text-gray-500 font-mono text-[10px]">{center.data.length} REGISTROS</Badge>
               </div>
-              <Card className="overflow-hidden border-none rounded-3xl shadow-sm bg-white">
-                <div ref={center.scroll.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.scroll.width[0], height: '1px' }} /></div>
-                <div ref={center.scroll.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.scroll.table} className="w-full text-center border-collapse">
-                    <thead className="bg-gray-50/80 sticky top-0 z-10 text-[9px] font-black text-gray-500 uppercase tracking-wider">
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
+                  <table ref={center.s.table} className="w-full border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-400">
                       <tr>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción del Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200">Línea Técnica</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">T. Estándar (Min)</th>
-                        <th className="px-4 py-4">S. Actual / Seg.</th>
+                        <th className="px-4 py-4 text-center">S. Actual / Seguridad</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-[11px]">
-                      {center.data.map((t, i) => {
+                    <tbody className="divide-y divide-gray-100 text-[11px]">
+                      {center.d.map((t, i) => {
                         const info = extractMaterialInfo(t);
                         return (
-                          <tr key={i} className="hover:bg-teal-50/30 transition-colors">
-                            <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono font-black text-teal-900 text-center tracking-tighter">{info.code}</td>
-                            <td className="px-4 py-4 border-r border-dashed border-gray-100 text-left uppercase font-black text-gray-500 truncate max-w-[280px] tracking-tighter">{info.desc}</td>
-                            <td className="px-4 py-4 border-r border-dashed border-gray-100 font-bold text-gray-700 text-center">{t.Linea || '—'}</td>
-                            <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono text-teal-600 font-black text-center text-lg">{t.Tiempo_Min?.toFixed(4) || '—'}</td>
-                            <td className="px-4 py-4 text-gray-400 font-bold text-center tracking-tighter">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
+                          <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                            <td className="px-4 py-3 font-mono font-black text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+                            <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 font-black text-gray-500 uppercase tracking-tighter truncate max-w-[280px]">{info.desc}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-bold text-gray-400">{t.Linea || '—'}</td>
+                            <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 text-center text-lg">{t.Tiempo_Min?.toFixed(4) || '—'}</td>
+                            <td className="px-4 py-3 text-center font-bold text-gray-400">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
                       })}
-                      {center.data.length === 0 && (
-                        <tr><td colSpan={5} className="py-12 text-gray-300 font-bold uppercase tracking-widest text-[10px]">No hay catálogos técnicos cargados para este centro</td></tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
