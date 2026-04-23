@@ -182,14 +182,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
-    // Extracción de dimensiones (Densidad, Ancho, Largo, Espesor)
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—' };
     if (desc) {
-      // Densidad: D12, D-20, etc.
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
-
-      // Dimensiones: 100x200x1, 100*200*1, etc.
       const dimMatch = desc.match(/(\d{2,})\s*[xX*]\s*(\d{2,})(?:\s*[xX*]\s*(\d+))?/);
       if (dimMatch) {
         dimensions.ancho = dimMatch[1];
@@ -214,7 +210,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   };
 
   const calculateSummary = (fertData: any[], tMap: Map<string, number>, centroId: string) => {
-    const map = new Map<string, { centro: string; maquina: string; categoria: string; totalOrdenes: number; totalCantidad: number; totalTiempo: number }>();
+    const map = new Map<string, { centro: string; maquina: string; categoria: string; totalOrdenes: number; totalCantidad: number; totalTiempo: number; totalTiempoCorte: number }>();
     
     fertData.forEach(o => {
       const maquina = String(o.MAQUINA || o.Maquina || o.maquina || 'SIN MÁQUINA').trim();
@@ -225,14 +221,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const matchingTimeMin = tMap.get(info.code) || 0;
       const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
       const hours = (cantPendiente * matchingTimeMin) / 60;
+      const corteHours = (cantPendiente * 0.05) / 3600;
 
       if (!map.has(key)) {
-        map.set(key, { centro: centroId, maquina, categoria, totalOrdenes: 0, totalCantidad: 0, totalTiempo: 0 });
+        map.set(key, { centro: centroId, maquina, categoria, totalOrdenes: 0, totalCantidad: 0, totalTiempo: 0, totalTiempoCorte: 0 });
       }
       const entry = map.get(key)!;
       entry.totalOrdenes += 1;
       entry.totalCantidad += Number(o.CANTPROGRAMADA || 0);
       entry.totalTiempo += hours;
+      entry.totalTiempoCorte += corteHours;
     });
     
     return Array.from(map.values()).sort((a, b) => 
@@ -247,7 +245,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
     const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
-    
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
     return () => {
@@ -260,11 +257,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     if (!mounted) return;
     const items = [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
     const cleaners = items.map(setupScrollSync);
-    
     const timer = setTimeout(() => {
       items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); });
     }, 500);
-    
     return () => {
       clearTimeout(timer);
       cleaners.forEach(c => c?.());
@@ -364,12 +359,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Categoría Técnica</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Órdenes</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Unidades</th>
-                        <th className="px-6 py-5 text-center text-teal-700 bg-teal-50/20">Tiempo Total (h)</th>
+                        <th className="px-6 py-5 text-center text-teal-700 bg-teal-50/20 border-r border-dashed border-gray-200">Tiempo PL (h)</th>
+                        <th className="px-6 py-5 text-center text-amber-700 bg-amber-50/20">T. Corte (h)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 font-medium italic">Sin operaciones programadas para esta planta y fecha</td></tr>
+                        <tr><td colSpan={6} className="py-12 text-center text-gray-400 font-medium italic">Sin operaciones programadas para esta planta y fecha</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/80 transition-all duration-200">
@@ -377,7 +373,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-6 py-4 font-medium text-gray-500 border-r border-dashed border-gray-100 text-center uppercase">{row.categoria}</td>
                             <td className="px-6 py-4 font-mono font-semibold text-purple-700 border-r border-dashed border-gray-100 text-center">{row.totalOrdenes}</td>
                             <td className="px-6 py-4 font-mono font-semibold text-green-700 border-r border-dashed border-gray-100 text-center">{row.totalCantidad.toLocaleString()}</td>
-                            <td className="px-6 py-4 font-mono font-bold text-teal-700 text-center bg-teal-50/5">{row.totalTiempo.toFixed(2)}h</td>
+                            <td className="px-6 py-4 font-mono font-bold text-teal-700 text-center bg-teal-50/5 border-r border-dashed border-gray-100">{row.totalTiempo.toFixed(2)}h</td>
+                            <td className="px-6 py-4 font-mono font-bold text-amber-700 text-center bg-amber-50/5">{row.totalTiempoCorte.toFixed(4)}h</td>
                           </tr>
                         ))
                       )}
@@ -388,7 +385,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <td colSpan={2} className="px-6 py-5 text-right border-r border-gray-800 tracking-widest">Totales Planta</td>
                           <td className="px-6 py-5 text-center border-r border-gray-800 text-purple-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalOrdenes, 0)}</td>
                           <td className="px-6 py-5 text-center border-r border-gray-800 text-green-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalCantidad, 0).toLocaleString()}</td>
-                          <td className="px-6 py-5 text-center text-teal-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempo, 0).toFixed(2)}h</td>
+                          <td className="px-6 py-5 text-center border-r border-gray-800 text-teal-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempo, 0).toFixed(2)}h</td>
+                          <td className="px-6 py-5 text-center text-amber-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempoCorte, 0).toFixed(4)}h</td>
                         </tr>
                       </tfoot>
                     )}
@@ -510,6 +508,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Prog.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Pend.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30 text-center">Tiempo PL (h)</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">Tiempo Pl Corte (h)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha</th>
                         <th className="px-3 py-4 text-center">Máquina</th>
                       </tr>
@@ -520,6 +519,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const matchingTimeMin = center.m.get(info.code);
                         const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
                         const calculatedHours = matchingTimeMin !== undefined ? (cantPendiente * matchingTimeMin) / 60 : null;
+                        const calculatedCorteHours = (cantPendiente * 0.05) / 3600;
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -535,6 +535,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-semibold text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10">{cantPendiente}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
                               {calculatedHours !== null ? `${calculatedHours.toFixed(2)}h` : '—'}
+                            </td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
+                              {calculatedCorteHours.toFixed(4)}h
                             </td>
                             <td className="px-3 py-3 font-medium text-gray-600 border-r border-dashed border-gray-100 text-center">{o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
