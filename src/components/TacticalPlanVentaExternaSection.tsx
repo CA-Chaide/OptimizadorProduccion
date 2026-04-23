@@ -220,7 +220,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const key = `${maquina}|${categoria}|${espesor}`;
       
       const matchingTimeMin = tMap.get(info.code) || 0;
-      const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
+      const cantPendiente = Number(o.CANTPENDIENTE ?? o.CANTPROGRAMADA ?? 0);
       const hours = (cantPendiente * matchingTimeMin) / 60;
       const corteHours = (cantPendiente * 5) / 3600;
 
@@ -267,15 +267,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     };
   }, [activeTab, ordenes, ordenesFert, tiemposEnsamblado, mounted]);
 
-  // SAFE RENDER FOR HYDRATION
-  if (!mounted) return <div className="p-20" />;
+  if (!mounted) return null;
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <div className="p-3 bg-green-600 rounded-2xl shadow-lg">
         <Loader2 className="w-12 h-12 animate-spin text-white" />
       </div>
-      <p className="text-sm font-bold text-gray-500 uppercase tracking-widest animate-pulse">Sincronizando Venta Externa...</p>
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Venta Externa...</p>
     </div>
   );
 
@@ -372,7 +371,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={7} className="py-12 text-center text-gray-400 font-medium italic">Sin operaciones programadas para esta planta y fecha</td></tr>
+                        <tr><td colSpan={7} className="py-12 text-center text-gray-400 font-medium italic">Sin operaciones programadas</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/80 transition-all duration-200">
@@ -445,8 +444,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Quito 1000', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600' }, 
-            { t: 'Guayaquil 2000', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600', m: getTiemposMap(tiemposC1000) }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600', m: getTiemposMap(tiemposC2000) } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
@@ -456,27 +455,48 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
-                        <th className="px-4 py-4 text-center">Almacén</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30 text-center">Tiempo PL</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
+                        <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[11px]">
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
+                        const matchingTimeMin = center.m.get(info.code);
+                        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                        const calculatedHours = matchingTimeMin !== undefined ? (qty * matchingTimeMin) / 60 : null;
+                        const calculatedCorteHours = (qty * 5) / 3600;
+                        
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-semibold text-green-600 border-r border-dashed border-gray-100 text-center">{info.code}</td>
-                            <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[300px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-4 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.CANTPROGRAMADA || '0'}</td>
-                            <td className="px-4 py-3 font-medium text-gray-400 text-center">{o.Almacen || '—'}</td>
+                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
+                            <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center">{info.code}</td>
+                            <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
+                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{qty}</td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
+                              {calculatedHours !== null ? calculatedHours.toFixed(2) : '—'}
+                            </td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
+                              {calculatedCorteHours.toFixed(2)}
+                            </td>
+                            <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || '—'}</td>
                           </tr>
                         );
                       })}
@@ -490,8 +510,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenesFert" className="mt-4 space-y-8">
           {[ 
-            { t: 'Quito 1000 (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600', m: getTiemposMap(tiemposC1000) }, 
-            { t: 'Guayaquil 2000 (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600', m: getTiemposMap(tiemposC2000) } 
+            { t: 'Planta 1000 - Quito (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600', m: getTiemposMap(tiemposC1000) }, 
+            { t: 'Planta 2000 - Guayaquil (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600', m: getTiemposMap(tiemposC2000) } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
@@ -503,15 +523,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-bold uppercase text-gray-400">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Prog.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Pend.</th>
