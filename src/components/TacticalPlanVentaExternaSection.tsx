@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -18,13 +18,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState('grupos');
+  const [activeTab, setActiveTab] = useState('resumen');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [ordenesFert, setOrdersFert] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string>('');
 
   // Refs para sincronización de scroll
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -103,6 +104,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
+  // Lista única de fechas para el filtro cronológico
+  const uniqueDates = useMemo(() => {
+    const dates = new Set<string>();
+    ordenes.forEach(o => { if (o.FECHAINICIO) dates.add(String(o.FECHAINICIO).trim()); });
+    ordenesFert.forEach(o => { if (o.FECHA) dates.add(String(o.FECHA).trim()); });
+    return Array.from(dates).sort().reverse();
+  }, [ordenes, ordenesFert]);
+
   const filterData = (data: any[], centro: string) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
@@ -140,37 +149,34 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const hasSectorField = o.hasOwnProperty('SECTORDESC') || o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
       const matchSector = !hasSectorField || sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
 
-      return matchResp && matchAlm && matchSector;
+      const itemDate = String(o.FECHA || o.FECHAINICIO || '').trim();
+      const matchDate = !selectedDate || itemDate === selectedDate;
+
+      return matchResp && matchAlm && matchSector && matchDate;
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones]);
-  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
-  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones, selectedDate]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones, selectedDate]);
+  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones, selectedDate]);
+  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones, selectedDate]);
 
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
-    
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-    
     return { code, desc };
   };
 
-  // Mapas de lookup para Tiempo PL (Cargamos valor numérico como MINUTOS)
   const tiemposMap1000 = useMemo(() => {
     const map = new Map<string, number>();
     tiemposC1000.forEach(t => {
       const info = extractMaterialInfo(t);
-      if (info.code) {
-        const val = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
-        map.set(info.code, val);
-      }
+      if (info.code) map.set(info.code, Number(t.Tiempo_Min ?? t.Tiempo ?? 0));
     });
     return map;
   }, [tiemposC1000]);
@@ -179,17 +185,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const map = new Map<string, number>();
     tiemposC2000.forEach(t => {
       const info = extractMaterialInfo(t);
-      if (info.code) {
-        const val = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
-        map.set(info.code, val);
-      }
+      if (info.code) map.set(info.code, Number(t.Tiempo_Min ?? t.Tiempo ?? 0));
     });
     return map;
   }, [tiemposC2000]);
 
   const summaryData = useMemo(() => {
     const allFertFiltered = [...fertC1000, ...fertC2000];
-    const map = new Map<string, { centro: string; maquina: string; categoria: string; totalOrdenes: number; totalCantidad: number }>();
+    const map = new Map<string, { centro: string; maquina: string; categoria: string; totalOrdenes: number; totalCantidad: number; totalTiempo: number }>();
     
     allFertFiltered.forEach(o => {
       const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
@@ -197,12 +200,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || 'N/A').trim();
       const key = `${centro}|${maquina}|${categoria}`;
       
+      const info = extractMaterialInfo(o);
+      const tMap = centro === '1000' ? tiemposMap1000 : tiemposMap2000;
+      const matchingTimeMin = tMap.get(info.code) || 0;
+      const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
+      const hours = (cantPendiente * matchingTimeMin) / 60;
+
       if (!map.has(key)) {
-        map.set(key, { centro, maquina, categoria, totalOrdenes: 0, totalCantidad: 0 });
+        map.set(key, { centro, maquina, categoria, totalOrdenes: 0, totalCantidad: 0, totalTiempo: 0 });
       }
       const entry = map.get(key)!;
       entry.totalOrdenes += 1;
       entry.totalCantidad += Number(o.CANTPROGRAMADA || 0);
+      entry.totalTiempo += hours;
     });
     
     return Array.from(map.values()).sort((a, b) => 
@@ -210,7 +220,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       a.maquina.localeCompare(b.maquina) ||
       a.categoria.localeCompare(b.categoria)
     );
-  }, [fertC1000, fertC2000]);
+  }, [fertC1000, fertC2000, tiemposMap1000, tiemposMap2000]);
 
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
@@ -251,17 +261,43 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <p className="text-sm text-gray-500 font-medium">Panel de Control de Programación Táctica</p>
           </div>
         </div>
+
+        {/* Filtro de Fecha Interno */}
+        <div className="flex items-center gap-3 bg-white p-2 px-4 rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 text-gray-400">
+            <CalendarIcon className="w-4 h-4" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Fecha Plan:</span>
+          </div>
+          <select 
+            value={selectedDate} 
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="text-xs font-bold text-gray-700 bg-transparent border-none focus:ring-0 cursor-pointer"
+          >
+            <option value="">TODAS LAS FECHAS</option>
+            {uniqueDates.map(date => (
+              <option key={date} value={date}>{date}</option>
+            ))}
+          </select>
+          {selectedDate && (
+            <button 
+              onClick={() => setSelectedDate('')}
+              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <Filter className="w-3.5 h-3.5 text-red-500" />
+            </button>
+          )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap h-auto w-full bg-transparent gap-3 mb-8 p-0">
           {[
+            { id: 'resumen', label: 'Resumen Ejecutivo', icon: LayoutDashboard, color: 'hover:border-purple-500', active: 'data-[state=active]:bg-purple-600 data-[state=active]:text-white' },
             { id: 'grupos', label: 'Grupos Operativos', icon: Users, color: 'hover:border-blue-500', active: 'data-[state=active]:bg-blue-600 data-[state=active]:text-white' },
             { id: 'restricciones', label: 'Restricciones Técnicas', icon: Lock, color: 'hover:border-amber-500', active: 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' },
             { id: 'ordenes', label: 'Órdenes Provisionales', icon: Package, color: 'hover:border-green-500', active: 'data-[state=active]:bg-green-600 data-[state=active]:text-white' },
             { id: 'ordenesFert', label: 'Órdenes FERT', icon: ShoppingCart, color: 'hover:border-indigo-500', active: 'data-[state=active]:bg-indigo-600 data-[state=active]:text-white' },
             { id: 'tiempos', label: 'Tiempos Ensamblado', icon: Clock, color: 'hover:border-teal-500', active: 'data-[state=active]:bg-teal-600 data-[state=active]:text-white' },
-            { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, color: 'hover:border-purple-500', active: 'data-[state=active]:bg-purple-600 data-[state=active]:text-white' },
           ].map(tab => (
             <TabsTrigger 
               key={tab.id} 
@@ -397,11 +433,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const info = extractMaterialInfo(o);
                         const matchingTimeMin = center.m.get(info.code);
                         const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
-                        
-                        // Cálculo: (Pendiente * Minutos) / 60
-                        const calculatedHours = matchingTimeMin !== undefined 
-                          ? (cantPendiente * matchingTimeMin) / 60 
-                          : null;
+                        const calculatedHours = matchingTimeMin !== undefined ? (cantPendiente * matchingTimeMin) / 60 : null;
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -416,14 +448,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-black text-red-600 border-r border-dashed border-gray-100 text-center bg-red-50/10 text-xs">{o.CANTRECHAZO || 0}</td>
                             <td className="px-3 py-3 font-black text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10 text-xs">{cantPendiente}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center">{o.TIEMPOPENDIENTE || 0}</td>
-                            <td className="px-3 py-3 font-mono font-black border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
-                              {calculatedHours !== null ? (
-                                <span className="flex items-center justify-center gap-1">
-                                  {calculatedHours.toFixed(2)}h
-                                </span>
-                              ) : (
-                                <span className="text-gray-300">—</span>
-                              )}
+                            <td className="px-3 py-3 font-mono font-black border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5 text-xs">
+                              {calculatedHours !== null ? `${calculatedHours.toFixed(2)}h` : <span className="text-gray-300">—</span>}
                             </td>
                             <td className="px-3 py-3 font-bold text-gray-600 border-r border-dashed border-gray-100 text-center whitespace-nowrap">{o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-black text-gray-400 border-r border-dashed border-gray-100 text-center">{o.RESPCTRLPROD || '—'}</td>
@@ -451,7 +477,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-400">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
@@ -485,8 +511,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-2 px-1">
               <div className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
-              <h3 className="text-xs font-black uppercase text-purple-700 tracking-tight">Resumen Ejecutivo por Recurso y Categoría</h3>
-              <Badge variant="secondary" className="ml-2 text-[9px] h-4 font-bold bg-purple-50 text-purple-700 border-purple-100">{summaryData.length} Grupos Técnicos</Badge>
+              <h3 className="text-xs font-black uppercase text-purple-700 tracking-tight">Resumen Ejecutivo por Planta y Recurso</h3>
+              <Badge variant="secondary" className="ml-2 text-[9px] h-4 font-bold bg-purple-50 text-purple-700 border-purple-100">
+                {summaryData.length} Grupos Técnicos {selectedDate ? `para ${selectedDate}` : ''}
+              </Badge>
             </div>
             
             <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
@@ -496,29 +524,30 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               
               <div ref={scrollResumen.bottom} className="overflow-x-auto max-h-[650px]">
                 <table ref={scrollResumen.table} className="w-full border-collapse">
-                  <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400">
+                  <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 border-b border-gray-100">
                     <tr>
-                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Centro</th>
+                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Planta</th>
                       <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Recurso / Máquina</th>
                       <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Categoría Técnica</th>
-                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center bg-purple-50/30 text-purple-800">Cant. Órdenes</th>
-                      <th className="px-6 py-5 text-center bg-green-50/30 text-green-800">Total Unidades</th>
+                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center bg-purple-50/30 text-purple-800">Ordenes</th>
+                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center bg-green-50/30 text-green-800">Unidades</th>
+                      <th className="px-6 py-5 text-center bg-teal-50/30 text-teal-800">Tiempo Total (h)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px]">
                     {summaryData.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay órdenes FERT cargadas para generar el resumen.</td>
+                        <td colSpan={6} className="py-12 text-center text-gray-400 italic font-medium">No hay órdenes cargadas para los filtros seleccionados.</td>
                       </tr>
                     ) : (
                       summaryData.map((row, idx) => (
-                        <tr key={idx} className="hover:bg-purple-50/20 transition-all duration-200">
-                          <td className="px-6 py-4 font-bold text-gray-900 border-r border-dashed border-gray-100 text-center">
-                            <Badge variant="outline" className={cn(
-                              "font-mono px-3",
-                              row.centro === '1000' ? "border-green-200 text-green-700 bg-green-50/30" : "border-indigo-200 text-indigo-700 bg-indigo-50/30"
+                        <tr key={idx} className="hover:bg-gray-50/80 transition-all duration-200">
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-center">
+                            <Badge className={cn(
+                              "font-black px-4 py-1 tracking-widest text-[10px]",
+                              row.centro === '1000' ? "bg-green-600 hover:bg-green-700" : "bg-indigo-600 hover:bg-indigo-700"
                             )}>
-                              {row.centro}
+                              {row.centro === '1000' ? 'QUITO' : 'GYE'}
                             </Badge>
                           </td>
                           <td className="px-6 py-4 font-black text-gray-700 border-r border-dashed border-gray-100 text-center uppercase tracking-tighter">
@@ -527,11 +556,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <td className="px-6 py-4 font-bold text-gray-500 border-r border-dashed border-gray-100 text-center uppercase">
                             {row.categoria}
                           </td>
-                          <td className="px-6 py-4 font-mono font-black text-purple-700 border-r border-dashed border-gray-100 text-center text-sm bg-purple-50/10">
+                          <td className="px-6 py-4 font-mono font-black text-purple-700 border-r border-dashed border-gray-100 text-center text-sm bg-purple-50/5">
                             {row.totalOrdenes}
                           </td>
-                          <td className="px-6 py-4 font-mono font-black text-green-700 text-center text-sm bg-green-50/10">
+                          <td className="px-6 py-4 font-mono font-black text-green-700 border-r border-dashed border-gray-100 text-center text-sm bg-green-50/5">
                             {row.totalCantidad.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 font-mono font-black text-teal-700 text-center text-sm bg-teal-50/5">
+                            {row.totalTiempo.toFixed(2)}h
                           </td>
                         </tr>
                       ))
@@ -540,12 +572,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   {summaryData.length > 0 && (
                     <tfoot className="bg-gray-900 text-white font-black text-[10px] uppercase">
                       <tr>
-                        <td colSpan={3} className="px-6 py-4 text-right border-r border-gray-800">Totales Consolidados</td>
-                        <td className="px-6 py-4 text-center border-r border-gray-800 text-purple-400 text-xs">
+                        <td colSpan={3} className="px-6 py-5 text-right border-r border-gray-800 tracking-widest">Totales Consolidados</td>
+                        <td className="px-6 py-5 text-center border-r border-gray-800 text-purple-400 text-xs font-mono">
                           {summaryData.reduce((acc, curr) => acc + curr.totalOrdenes, 0)}
                         </td>
-                        <td className="px-6 py-4 text-center text-green-400 text-xs">
+                        <td className="px-6 py-5 text-center border-r border-gray-800 text-green-400 text-xs font-mono">
                           {summaryData.reduce((acc, curr) => acc + curr.totalCantidad, 0).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-5 text-center text-teal-400 text-xs font-mono">
+                          {summaryData.reduce((acc, curr) => acc + curr.totalTiempo, 0).toFixed(2)}h
                         </td>
                       </tr>
                     </tfoot>
