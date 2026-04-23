@@ -91,7 +91,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     initData();
   }, [mounted]);
 
-  const filterData = (data: any[], centro: string, applyDateFilter: boolean = false) => {
+  const filterData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
     
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
@@ -161,18 +161,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dimensions };
   };
 
-  const getTiemposMap = (tiempos: any[]) => {
-    const map = new Map<string, number>();
-    tiempos.forEach(t => {
-      const info = extractMaterialInfo(t);
-      if (info.code) {
-        const timeVal = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
-        map.set(info.code, timeVal);
-      }
-    });
-    return map;
-  };
-
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
@@ -202,10 +190,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <div className="p-3 bg-primary rounded-2xl shadow-lg animate-pulse">
+      <div className="p-3 bg-primary rounded-2xl shadow-lg">
         <Loader2 className="w-12 h-12 animate-spin text-white" />
       </div>
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sincronizando Planificación de Espumas...</p>
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Corte Espuma...</p>
     </div>
   );
 
@@ -272,8 +260,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600', m: getTiemposMap(tiemposC1000) }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600', m: getTiemposMap(tiemposC2000) } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600' }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
@@ -295,20 +283,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={11} className="py-8 text-center text-gray-400 italic">Sin registros</td></tr>
+                        <tr><td colSpan={10} className="py-8 text-center text-gray-400 italic">Sin registros</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const info = extractMaterialInfo(o);
-                          const matchingTimeMin = center.m.get(info.code);
                           const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                          const calculatedHours = matchingTimeMin !== undefined ? (qty * matchingTimeMin) / 60 : null;
                           const calculatedCorteHours = (qty * 5) / 3600;
                           
                           return (
@@ -321,9 +306,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
                               <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
                               <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
-                              <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
-                                {calculatedHours !== null ? calculatedHours.toFixed(2) : '0.00'}
-                              </td>
                               <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
                                 {calculatedCorteHours.toFixed(2)}
                               </td>
