@@ -8,6 +8,7 @@ import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
 import { Package } from 'lucide-react';
 import type { OrdenFert, Restriccion } from '@/types/interfaces';
+import { Button } from '@/components/ui/button';
 
 interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
@@ -28,8 +29,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const { addNotification } = useAppContext();
 
   const [orders, setOrders] = useState<OrdenFert[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
     totalRegistros: 0,
@@ -37,6 +36,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     isExploring: true,
     rowsPerPage: 20,
   });
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   
   const [selectedDate, setSelectedDate] = useState<string>('');
 
@@ -58,7 +59,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       setError(null);
       logger.log('[OrdenesFertTab] Fetching FERT orders...', 'info');
       try {
-        // 1. Exploratory call
         const exploreResponse = await serviciosService.getOrdenesFert(1, 1);
         const totalRecords = exploreResponse.totalRegistros || (exploreResponse.data?.length > 0 ? 1 : 0);
 
@@ -69,7 +69,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           return;
         }
 
-        // 2. Load in batches
         const BATCH_SIZE = 10000;
         const totalPagesToFetch = Math.ceil(totalRecords / BATCH_SIZE);
         let allData: OrdenFert[] = [];
@@ -220,67 +219,20 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-4">
-          <span className="text-sm text-gray-600">
-            Mostrando {startIndex + 1} a {Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} órdenes.
-          </span>
+      <div className="flex items-center justify-start mb-4">
+        <div className="flex items-center space-x-2">
+          <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha:</label>
           <select
-            value={pagination.rowsPerPage}
-            onChange={handleRowsPerPageChange}
+            id="date-filter"
+            value={selectedDate}
+            onChange={handleDateChange}
             className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
+            <option value="">Todas</option>
+            {uniqueDates.map(date => (
+              <option key={date} value={date}>{date}</option>
+            ))}
           </select>
-           <div className="flex items-center space-x-2">
-            <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha:</label>
-            <select
-              id="date-filter"
-              value={selectedDate}
-              onChange={handleDateChange}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">Todas</option>
-              {uniqueDates.map(date => (
-                <option key={date} value={date}>{date}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="flex items-center space-x-4">
-           <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">
-              Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
-            </span>
-          </div>
-          <button
-            onClick={() => goToPage(1)}
-            disabled={pagination.currentPage === 1 || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            Primera
-          </button>
-          <button
-            onClick={() => goToPage(pagination.currentPage - 1)}
-            disabled={pagination.currentPage === 1 || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            ←
-          </button>
-          <button
-            onClick={() => goToPage(pagination.currentPage + 1)}
-            disabled={pagination.currentPage >= totalPagesLocal || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            →
-          </button>
-           <button
-            onClick={() => goToPage(totalPagesLocal)}
-            disabled={pagination.currentPage === totalPagesLocal || isLoading}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-          >
-            Última
-          </button>
         </div>
       </div>
 
@@ -327,6 +279,59 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+      
+      {/* Pagination Controls */}
+      <div className="flex items-center justify-between mt-4">
+        <div className="flex items-center space-x-4">
+          <span className="text-sm text-gray-600">
+            Mostrando {startIndex + 1} a {Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} órdenes.
+          </span>
+          <select
+            value={pagination.rowsPerPage}
+            onChange={handleRowsPerPageChange}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center space-x-2">
+           <span className="text-sm text-gray-600">
+            Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => goToPage(1)}
+            disabled={pagination.currentPage === 1 || isLoading}
+          >
+            Primera
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => goToPage(pagination.currentPage - 1)}
+            disabled={pagination.currentPage === 1 || isLoading}
+          >
+            Anterior
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => goToPage(pagination.currentPage + 1)}
+            disabled={pagination.currentPage >= totalPagesLocal || isLoading}
+          >
+            Siguiente
+          </Button>
+           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => goToPage(totalPagesLocal)}
+            disabled={pagination.currentPage === totalPagesLocal || isLoading}
+          >
+            Última
+          </Button>
         </div>
       </div>
     </div>
