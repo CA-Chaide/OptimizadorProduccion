@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, CheckCircle2, Info, Settings2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Wind, Users, Lock, Package, Loader2, Clock, CheckCircle2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -25,7 +25,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para sincronización de scroll (4 tablas: Prov x2, Tiempos x2)
+  // Refs para sincronización de scroll
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -171,139 +171,112 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   if (!mounted || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center p-20 gap-4">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
-        <p className="text-sm font-bold text-gray-500 uppercase tracking-widest animate-pulse">Sincronizando Corte Espuma...</p>
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Cargando Planificación de Espumas...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-8 space-y-8 bg-gray-50/50 min-h-screen">
-      {/* Header Principal */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center space-x-4">
-          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-100">
-            <Wind className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase leading-none">Planificación Táctica Corte Espuma</h2>
-            <p className="text-sm text-gray-500 font-medium mt-1">Control técnico de segmentación de espumas y laminados</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-white border-gray-200 text-gray-600 py-1.5 px-4 rounded-full shadow-sm">
-            <div className="w-2 h-2 rounded-full bg-blue-500 mr-2 animate-pulse" />
-            <span className="font-bold text-[10px] uppercase">Segmentación por Planta</span>
-          </Badge>
+    <div className="p-4 space-y-6">
+      {/* Header Compacto */}
+      <div className="flex items-center space-x-3 pb-2 border-b">
+        <Wind className="w-6 h-6 text-primary" />
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Planificación Táctica Corte Espuma</h2>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="flex flex-wrap h-auto w-full bg-transparent gap-3 mb-8 p-0">
-          {[
-            { id: 'grupos', label: 'Grupos Operativos', icon: Users, color: 'hover:border-blue-500', active: 'data-[state=active]:bg-blue-600 data-[state=active]:text-white', desc: 'Visualización de grupos técnicos asignados.' },
-            { id: 'restricciones', label: 'Restricciones', icon: Lock, color: 'hover:border-amber-500', active: 'data-[state=active]:bg-amber-600 data-[state=active]:text-white', desc: 'Configuración de filtros RESPCTRLPROD y ALMACEN.' },
-            { id: 'ordenes', label: 'Órdenes Provisionales', icon: Package, color: 'hover:border-green-500', active: 'data-[state=active]:bg-green-600 data-[state=active]:text-white', desc: 'Demanda sugerida segmentada por planta.' },
-            { id: 'tiempos', label: 'Catálogo de Tiempos', icon: Clock, color: 'hover:border-teal-500', active: 'data-[state=active]:bg-teal-600 data-[state=active]:text-white', desc: 'Tiempos estándar de ensamble por material.' },
-          ].map(tab => (
-            <TabsTrigger 
-              key={tab.id} 
-              value={tab.id} 
-              className={cn(
-                "flex-1 min-w-[150px] flex flex-col items-center justify-center gap-1 py-4 px-6 rounded-3xl border-2 border-white bg-white shadow-sm transition-all duration-300",
-                tab.color,
-                tab.active
-              )}
-            >
-              <tab.icon className="w-5 h-5 mb-1" />
-              <span className="font-black uppercase text-[10px] tracking-wider">{tab.label}</span>
-              <span className="text-[9px] opacity-60 font-medium normal-case hidden md:block">{tab.desc}</span>
-            </TabsTrigger>
-          ))}
+        <TabsList className="grid w-full grid-cols-4 h-12 bg-muted/50 p-1 rounded-lg">
+          <TabsTrigger value="grupos" className="gap-2 text-xs font-semibold"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
+          <TabsTrigger value="restricciones" className="gap-2 text-xs font-semibold"><Lock className="w-4 h-4" /> Filtros</TabsTrigger>
+          <TabsTrigger value="ordenes" className="gap-2 text-xs font-semibold"><Package className="w-4 h-4" /> Provisionales</TabsTrigger>
+          <TabsTrigger value="tiempos" className="gap-2 text-xs font-semibold"><Clock className="w-4 h-4" /> Tiempos</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="grupos">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <TabsContent value="grupos" className="mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {grupos.map(g => (
-              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
-                <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
-                <Badge className="w-fit bg-blue-600 mb-2">CENTRO {g.centro}</Badge>
-                <h4 className="font-black text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
-                <div className="mt-4 pt-4 border-t border-dashed flex items-center justify-between text-xs">
-                  <span className="font-mono text-gray-400">ID: {g.codigo_grupo}</span>
-                  <div className="flex items-center gap-1 text-green-600 font-bold">
-                    <CheckCircle2 className="w-4 h-4" /> ACTIVO
+              <Card key={g.codigo_grupo} className="shadow-sm border-l-4 border-l-primary overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Centro {g.centro}</span>
+                    <Badge variant="outline" className="text-[9px] text-green-600 border-green-200">Activo</Badge>
                   </div>
-                </div>
+                  <h4 className="font-bold text-gray-800 text-sm">{g.nombre_grupo}</h4>
+                  <p className="text-[10px] font-mono text-gray-400 mt-2">ID: {g.codigo_grupo}</p>
+                </CardContent>
               </Card>
             ))}
           </div>
         </TabsContent>
 
-        <TabsContent value="restricciones">
-          <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-            <table className="w-full border-collapse">
-              <thead className="bg-gray-50/50 text-[10px] font-black uppercase text-gray-400">
-                <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
-                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-[11px]">
-                {restricciones.map(r => (
-                  <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20 transition-colors">
-                    <td className="px-6 py-4 font-black text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
-                    <td className="px-6 py-4 border-r border-dashed border-gray-200 text-center">
-                      <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50">{r.valor_restriccion}</Badge>
-                    </td>
-                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || 'Sin descripción técnica'}</td>
+        <TabsContent value="restricciones" className="mt-4">
+          <Card className="shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/50 text-[10px] font-bold uppercase text-muted-foreground border-b">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Parámetro</th>
+                    <th className="px-4 py-3 text-center">Valor</th>
+                    <th className="px-4 py-3 text-left">Descripción</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {restricciones.map(r => (
+                    <tr key={r.codigo_restriccion} className="hover:bg-gray-50/50">
+                      <td className="px-4 py-3 font-bold text-gray-700 uppercase">{r.nombre_restriccion}</td>
+                      <td className="px-4 py-3 text-center">
+                        <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-primary font-bold">{r.valor_restriccion}</code>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 italic">{r.descripcion || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         </TabsContent>
 
         {/* ÓRDENES PROVISIONALES */}
-        <TabsContent value="ordenes" className="space-y-12">
+        <TabsContent value="ordenes" className="mt-4 space-y-6">
           {[ 
-            { t: 'Quito - Planta 1000', d: provC1000, s: scrollProv1000, c: 'text-blue-700', b: 'bg-blue-600' }, 
-            { t: 'Guayaquil - Planta 2000', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
+            { t: 'Planta 1000 (Quito)', d: provC1000, s: scrollProv1000, c: 'text-primary' }, 
+            { t: 'Planta 2000 (Guayaquil)', d: provC2000, s: scrollProv2000, c: 'text-indigo-600' } 
           ].map((center, idx) => (
-            <div key={idx} className="space-y-4">
-              <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-sm font-black uppercase flex items-center gap-2", center.c)}>
-                  <div className={cn("w-2.5 h-2.5 rounded-full animate-pulse", center.b)} /> {center.t}
-                  <Badge variant="secondary" className="ml-2 font-mono text-[10px]">{center.d.length} FILAS</Badge>
-                </h3>
+            <div key={idx} className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <div className="w-2 h-2 rounded-full bg-primary" />
+                <h3 className={cn("text-xs font-bold uppercase", center.c)}>{center.t}</h3>
+                <Badge variant="secondary" className="ml-2 text-[9px] h-4">{center.d.length} registros</Badge>
               </div>
-              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400">
+              <Card className="shadow-sm overflow-hidden">
+                <div ref={center.s.top} className="overflow-x-auto h-2 bg-muted/30 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
+                  <table ref={center.s.table} className="w-full text-xs">
+                    <thead className="bg-muted/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-muted-foreground border-b">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Cantidad</th>
-                        <th className="px-4 py-4 text-center">Almacén</th>
+                        <th className="px-4 py-3 text-center border-r">Orden</th>
+                        <th className="px-4 py-3 text-center border-r">Material</th>
+                        <th className="px-4 py-3 text-left border-r">Descripción</th>
+                        <th className="px-4 py-3 text-center border-r">Cant.</th>
+                        <th className="px-4 py-3 text-center">Almacén</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[11px]">
+                    <tbody className="divide-y divide-gray-100">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic font-bold uppercase tracking-widest">Sin órdenes para este centro</td></tr>
+                        <tr><td colSpan={5} className="py-8 text-center text-muted-foreground text-[10px] font-bold uppercase tracking-widest">Sin registros</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const info = extractMaterialInfo(o);
                           return (
-                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                              <td className="px-4 py-3 font-bold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
-                              <td className="px-4 py-3 font-mono font-black text-blue-600 border-r border-dashed border-gray-100 text-center text-xs">{info.code}</td>
-                              <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[320px] font-black text-gray-500 uppercase tracking-tighter">{info.desc}</td>
-                              <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 text-center text-sm">{o.CANTIDAD || '0'}</td>
-                              <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || '—'}</td>
+                            <tr key={i} className="hover:bg-gray-50/50">
+                              <td className="px-4 py-2 font-bold text-gray-700 text-center border-r">{o.ORDENPREVISIONAL || '—'}</td>
+                              <td className="px-4 py-2 font-mono font-bold text-primary text-center border-r">{info.code}</td>
+                              <td className="px-4 py-2 text-left border-r truncate max-w-[250px] font-medium text-gray-500 uppercase">{info.desc}</td>
+                              <td className="px-4 py-2 font-bold text-gray-800 text-center border-r">{o.CANTIDAD || '0'}</td>
+                              <td className="px-4 py-2 text-gray-400 text-center">{o.Almacen || '—'}</td>
                             </tr>
                           );
                         })
@@ -317,47 +290,46 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         {/* CATÁLOGO DE TIEMPOS */}
-        <TabsContent value="tiempos" className="space-y-12">
+        <TabsContent value="tiempos" className="mt-4 space-y-6">
           {[ 
-            { t: 'Tiempos Estándar - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, 
-            { t: 'Tiempos Estándar - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } 
+            { t: 'Tiempos - Planta 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-primary' }, 
+            { t: 'Tiempos - Planta 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-indigo-600' } 
           ].map((center, idx) => (
-            <div key={idx} className="space-y-4">
-              <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.c)}>
-                  <div className={cn("w-2.5 h-2.5 rounded-full animate-pulse", center.b)} /> {center.t}
-                  <Badge variant="outline" className="ml-2 font-mono text-[10px]">{center.d.length} MATERIALES</Badge>
-                </h3>
+            <div key={idx} className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <div className="w-2 h-2 rounded-full bg-primary" />
+                <h3 className={cn("text-xs font-bold uppercase", center.c)}>{center.t}</h3>
+                <Badge variant="secondary" className="ml-2 text-[9px] h-4">{center.d.length} registros</Badge>
               </div>
-              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-400">
+              <Card className="shadow-sm overflow-hidden">
+                <div ref={center.s.top} className="overflow-x-auto h-2 bg-muted/30 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
+                  <table ref={center.s.table} className="w-full text-xs">
+                    <thead className="bg-muted/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-muted-foreground border-b">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Línea de Ensamble</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">T. Estándar (Min)</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Stock Actual</th>
-                        <th className="px-4 py-4 text-center">Seguridad</th>
+                        <th className="px-4 py-3 text-center border-r">Material</th>
+                        <th className="px-4 py-3 text-left border-r">Línea Técnica</th>
+                        <th className="px-4 py-3 text-center border-r">Min. Est.</th>
+                        <th className="px-4 py-3 text-center border-r">Stock</th>
+                        <th className="px-4 py-3 text-center">Seguridad</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[11px]">
+                    <tbody className="divide-y divide-gray-100">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic font-bold uppercase tracking-widest">Sin datos técnicos para este centro</td></tr>
+                        <tr><td colSpan={5} className="py-8 text-center text-muted-foreground text-[10px] font-bold uppercase tracking-widest">Sin registros técnicos</td></tr>
                       ) : (
                         center.d.map((t, i) => {
                           const info = extractMaterialInfo(t);
                           return (
-                            <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                              <td className="px-4 py-3 font-mono font-black text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
-                              <td className="px-4 py-3 text-left border-r border-dashed border-gray-100">
-                                <div className="font-black text-gray-700 uppercase leading-none">{t.Linea || '—'}</div>
-                                <div className="text-[9px] text-gray-400 font-mono mt-1">{t.PuestoTrabajo || '—'}</div>
+                            <tr key={i} className="hover:bg-gray-50/50">
+                              <td className="px-4 py-2 font-mono font-bold text-primary text-center border-r">{info.code}</td>
+                              <td className="px-4 py-2 text-left border-r">
+                                <div className="font-bold text-gray-700 uppercase leading-none">{t.Linea || '—'}</div>
+                                <div className="text-[9px] text-gray-400 mt-1">{t.PuestoTrabajo || '—'}</div>
                               </td>
-                              <td className="px-4 py-3 font-mono font-black text-blue-600 border-r border-dashed border-gray-100 text-center text-lg">{t.Tiempo_Min?.toFixed(4) || '—'}</td>
-                              <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 text-center">{t.StockActual || 0}</td>
-                              <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockSeguridad || 0}</td>
+                              <td className="px-4 py-2 font-mono font-bold text-blue-600 text-center border-r">{t.Tiempo_Min?.toFixed(2) || '—'}</td>
+                              <td className="px-4 py-2 text-center border-r text-gray-500">{t.StockActual || 0}</td>
+                              <td className="px-4 py-2 text-center text-gray-400">{t.StockSeguridad || 0}</td>
                             </tr>
                           );
                         })
@@ -370,31 +342,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsContent>
       </Tabs>
-
-      {/* Panel Informativo Inferior */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-        <Card className="rounded-3xl border-none shadow-sm bg-white p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Info className="w-5 h-5 text-blue-600" />
-            <h4 className="font-black uppercase text-xs text-gray-800">Criterios de Segmentación</h4>
-          </div>
-          <p className="text-xs text-gray-500 leading-relaxed font-medium">
-            La data visualizada en este módulo está filtrada dinámicamente mediante las restricciones configuradas en los grupos de <span className="text-blue-600 font-bold">Corte Espuma</span>. 
-            El sistema valida automáticamente los códigos de responsable (<span className="font-mono bg-gray-100 px-1 rounded">RESPCTRLPROD</span>) y almacenes para asegurar que cada planta visualice solo su carga operativa pertinente.
-          </p>
-        </Card>
-        <Card className="rounded-3xl border-none shadow-sm bg-white p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Settings2 className="w-5 h-5 text-blue-600" />
-            <h4 className="font-black uppercase text-xs text-gray-800">Control de Interfaz</h4>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">SCROLL SINCRO: ON</Badge>
-            <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">AUTO-FILTER: ACTIVE</Badge>
-            <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">DATA-DENSITY: HIGH</Badge>
-          </div>
-        </Card>
-      </div>
     </div>
   );
 };
