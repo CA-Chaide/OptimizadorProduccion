@@ -256,31 +256,41 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <table ref={center.scroll.table} className="w-full text-center border-collapse">
                     <thead className="bg-gray-50 sticky top-0 text-[10px] font-bold text-gray-500 uppercase">
                       <tr>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Sector</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Categoría</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Cant. Prog.</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Fecha</th>
-                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Resp.</th>
-                        <th className="px-4 py-3">Máquina</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Orden</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Material</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200 text-left">Descripción</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Sector</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Categoría</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Cant. Prog.</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Entregada</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Notificada</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Rechazo</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Pendiente</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">T. Pend (min)</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Fecha</th>
+                        <th className="px-3 py-3 border-r border-dashed border-gray-200">Resp.</th>
+                        <th className="px-3 py-3">Máquina</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-dashed border-gray-100 text-[11px]">
+                    <tbody className="divide-y divide-dashed border-gray-100 text-[10px]">
                       {center.data.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         return (
                           <tr key={i} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-bold text-gray-900 text-center">{o.ORDEN || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{info.code}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 text-left truncate max-w-[250px] uppercase font-bold text-gray-500">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">{o.SECTORDESC || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-bold text-gray-400">{o.CATEGORIA || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-800 text-center">{o.CANTPROGRAMADA || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-bold text-gray-700 text-center">{o.FECHA || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-center">{o.RESPCTRLPROD || '—'}</td>
-                            <td className="px-4 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-bold text-gray-900 text-center">{o.ORDEN || '—'}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{info.code}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-left truncate max-w-[200px] uppercase font-bold text-gray-500">{info.desc}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center">{o.SECTORDESC || '—'}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-bold text-gray-400">{o.CATEGORIA || '—'}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-gray-800 text-center">{o.CANTPROGRAMADA || 0}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-green-700 text-center">{o.CANTENTREGADA || 0}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-blue-700 text-center">{o.CANTNOTIFICADA || 0}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-red-600 text-center">{o.CANTRECHAZO || 0}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-orange-600 text-center">{o.CANTPENDIENTE || 0}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-center">{o.TIEMPOPENDIENTE || 0}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-bold text-gray-700 text-center">{o.FECHA || '—'}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-center">{o.RESPCTRLPROD || '—'}</td>
+                            <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
                           </tr>
                         );
                       })}
