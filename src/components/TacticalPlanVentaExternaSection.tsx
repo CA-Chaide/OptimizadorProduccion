@@ -12,12 +12,6 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 
-/**
- * TacticalPlanVentaExternaSection
- * 
- * Implementa la Segmentación Inteligente para Venta Externa.
- * Aplica filtros rigurosos de RESPCTRLPROD, ALMACEN y SECTOR basados en las restricciones de los grupos.
- */
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
   const { addNotification } = useAppContext();
@@ -107,10 +101,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
-  /**
-   * filterData: Motor de segmentación técnica
-   * Agrega restricciones de todos los grupos de "Venta Externa" para un centro.
-   */
   const filterData = (data: any[], centro: string) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
@@ -118,7 +108,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
     
-    // Obtener listas blancas de códigos permitidos
     const respCodes = groupRest
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -135,19 +124,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       .filter(v => v !== '');
 
     return data.filter(o => {
-      // Validar Centro (algunos campos vienen en mayúsculas otros minúsculas)
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== centro) return false;
       
-      // Validar Responsable
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       
-      // Validar Almacén
       const itemAlm = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const matchAlm = almCodes.length === 0 || itemAlm === '' || almCodes.includes(itemAlm);
       
-      // Validar Sector
       const itemSector = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
       const matchSector = sectorCodes.length === 0 || sectorCodes.some(code => itemSector.includes(code));
 
@@ -241,10 +226,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         return (
                           <tr key={i} className="hover:bg-green-50/30 transition-colors">
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 font-medium text-gray-900">{o.ORDENPREVISIONAL || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-bold">{info.code}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-600 font-bold text-center">{info.code}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 text-left truncate max-w-[250px] uppercase font-bold text-gray-500">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-900">{o.CANTIDAD || '—'}</td>
-                            <td className="px-4 py-3 font-medium text-gray-400">{o.Almacen || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-900 text-center">{o.CANTIDAD || '—'}</td>
+                            <td className="px-4 py-3 font-medium text-gray-400 text-center">{o.Almacen || '—'}</td>
                           </tr>
                         );
                       })}
@@ -271,6 +256,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200 text-left">Descripción</th>
+                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Sector</th>
+                        <th className="px-4 py-3 border-r border-dashed border-gray-200">Categoría</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Cant. Prog.</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Fecha</th>
                         <th className="px-4 py-3 border-r border-dashed border-gray-200">Resp.</th>
@@ -282,13 +269,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const info = extractMaterialInfo(o);
                         return (
                           <tr key={i} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-bold text-gray-900">{o.ORDEN || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black">{info.code}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-bold text-gray-900 text-center">{o.ORDEN || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 font-black text-center">{info.code}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 text-left truncate max-w-[250px] uppercase font-bold text-gray-500">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-800">{o.CANTPROGRAMADA || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-bold text-gray-700">{o.FECHA || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase">{o.RESPCTRLPROD || '—'}</td>
-                            <td className="px-4 py-3 font-medium text-gray-400">{o.MAQUINA || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">{o.SECTORDESC || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-bold text-gray-400">{o.CATEGORIA || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-800 text-center">{o.CANTPROGRAMADA || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-bold text-gray-700 text-center">{o.FECHA || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-center">{o.RESPCTRLPROD || '—'}</td>
+                            <td className="px-4 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
                           </tr>
                         );
                       })}
@@ -324,11 +313,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const info = extractMaterialInfo(t);
                         return (
                           <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono font-bold text-indigo-900">{info.code}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono font-bold text-indigo-900 text-center">{info.code}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 text-left uppercase font-bold text-gray-500 truncate max-w-[250px]">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-medium text-gray-700">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-indigo-600">{t.Tiempo_Min?.toFixed(4) || '—'}</td>
-                            <td className="px-4 py-3 text-gray-400 font-medium">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-medium text-gray-700 text-center">{t.Linea || '—'}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-black text-indigo-600 text-center">{t.Tiempo_Min?.toFixed(4) || '—'}</td>
+                            <td className="px-4 py-3 text-gray-400 font-medium text-center">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
                       })}
