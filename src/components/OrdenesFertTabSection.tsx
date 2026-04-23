@@ -18,7 +18,7 @@ const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100];
 // Define static columns to ensure order and completeness
 const COLUMNS_TO_DISPLAY = [
   'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
-  'MAQUINA', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD', 'PRIORIDAD'
+  'MAQUINA', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
 ];
 
 
@@ -70,12 +70,13 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         
         let dataArray = allData;
         
-        // Filter for '019' and '006' in RESPCTRLPROD
+        // Filter for '019' and '006' in RESPCTRLPROD and '1000' in CENTRO
         const filteredData = dataArray.filter(order => 
-            order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006'
+            (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
+            order.CENTRO === '1000'
         );
         
-        addNotification('info', `Mostrando ${filteredData.length} de ${dataArray.length} órdenes FERT para responsables '019' y '006'.`);
+        addNotification('info', `Mostrando ${filteredData.length} de ${dataArray.length} órdenes FERT para responsables '019'/'006' en centro '1000'.`);
         setOrders(filteredData);
         logger.log(`[OrdenesFertTab] Loaded and filtered ${filteredData.length} FERT orders.`, 'success');
 
@@ -267,11 +268,20 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             <tbody className="divide-y divide-gray-200">
               {paginatedOrders.map((order, index) => (
                 <tr key={`${order.ORDEN}-${index}`} className="hover:bg-gray-50">
-                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => (
+                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
+                      let displayValue = String((order as any)[col] ?? '-');
+                      if (col === 'ORDEN' || col === 'MATERIAL') {
+                        // Ensure value is a string and long enough before slicing
+                        if (displayValue && displayValue.length > 4) {
+                            displayValue = displayValue.substring(4);
+                        }
+                      }
+                      return (
                        <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
-                         {String((order as any)[col] ?? '-')}
+                         {displayValue}
                        </td>
-                  ))}
+                      );
+                  })}
                 </tr>
               ))}
             </tbody>
