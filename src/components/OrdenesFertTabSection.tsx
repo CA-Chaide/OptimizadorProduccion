@@ -13,14 +13,15 @@ interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
 }
 
+interface PaginationState {
+  currentPage: number;
+  totalRegistros: number;
+  pageSize: number;
+  isExploring: boolean;
+  rowsPerPage: number;
+}
+
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100];
-
-// Define static columns to ensure order and completeness
-const COLUMNS_TO_DISPLAY = [
-  'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
-  'MAQUINA', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
-];
-
 
 export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones }) => {
   const inspector = useRuntimeInspector('OrdenesFertTab');
@@ -29,14 +30,27 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [orders, setOrders] = useState<OrdenFert[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[1]);
+  const [pagination, setPagination] = useState<PaginationState>({
+    currentPage: 1,
+    totalRegistros: 0,
+    pageSize: 10000,
+    isExploring: true,
+    rowsPerPage: 20,
+  });
   
+  const [selectedDate, setSelectedDate] = useState<string>('');
+
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [tableWidth, setTableWidth] = useState(0);
   const lastScrolledRef = useRef<'top' | 'table' | null>(null);
+
+  // Define static columns to ensure order and completeness
+  const COLUMNS_TO_DISPLAY = [
+    'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
+    'MAQUINA', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
+  ];
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -68,17 +82,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           }
         }
         
-        let dataArray = allData;
-        
-        // Filter for '019' and '006' in RESPCTRLPROD and '1000' in CENTRO
-        const filteredData = dataArray.filter(order => 
-            (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
-            order.CENTRO === '1000'
-        );
-        
-        addNotification('info', `Mostrando ${filteredData.length} de ${dataArray.length} órdenes FERT para responsables '019'/'006' en centro '1000'.`);
-        setOrders(filteredData);
-        logger.log(`[OrdenesFertTab] Loaded and filtered ${filteredData.length} FERT orders.`, 'success');
+        setOrders(allData);
+        logger.log(`[OrdenesFertTab] Loaded ${allData.length} FERT orders.`, 'success');
 
       } catch (err) {
         const errorMessage = (err as Error).message;
@@ -95,44 +100,48 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
   }, [addNotification, restricciones]);
 
-  const totalPages = Math.ceil(orders.length / rowsPerPage);
-  const paginatedOrders = useMemo(() => {
-    const startIndex = (currentPage - 1) * rowsPerPage;
-    return orders.slice(startIndex, startIndex + rowsPerPage);
-  }, [orders, currentPage, rowsPerPage]);
+  const uniqueDates = useMemo(() => {
+    if (!orders) return [];
+    const dates = new Set(orders.map(order => order.FECHA));
+    return Array.from(dates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    return orders
+      .filter(order => 
+        (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
+        order.CENTRO === '1000'
+      )
+      .filter(order => {
+        if (!selectedDate) return true;
+        return order.FECHA === selectedDate;
+      });
+  }, [orders, selectedDate]);
+  
+  const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
+  
+  const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
+  const endIndex = startIndex + pagination.rowsPerPage;
+  const displayedOrders = filteredOrders.slice(startIndex, endIndex);
 
   const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    setPagination(prev => ({
+        ...prev,
+        currentPage: Math.max(1, Math.min(page, totalPagesLocal))
+    }));
   };
 
   const handleRowsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setRowsPerPage(Number(e.target.value));
-    setCurrentPage(1); // Reset to first page
+    setPagination(prev => ({
+        ...prev,
+        rowsPerPage: Number(e.target.value),
+        currentPage: 1
+    }));
   };
   
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const endIndex = startIndex + rowsPerPage;
-
-  const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (lastScrolledRef.current === 'table') {
-      lastScrolledRef.current = null;
-      return;
-    }
-    if (tableScrollRef.current) {
-      lastScrolledRef.current = 'top';
-      tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    }
-  };
-
-  const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (lastScrolledRef.current === 'top') {
-      lastScrolledRef.current = null;
-      return;
-    }
-    if (topScrollRef.current) {
-      lastScrolledRef.current = 'table';
-      topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    }
+  const handleDateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedDate(e.target.value);
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
   
   useEffect(() => {
@@ -155,7 +164,29 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               resizeObserver.unobserve(tableRef.current);
           }
       };
-  }, [paginatedOrders]);
+  }, [displayedOrders]);
+
+  const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (lastScrolledRef.current === 'table') {
+      lastScrolledRef.current = null;
+      return;
+    }
+    if (tableScrollRef.current) {
+      lastScrolledRef.current = 'top';
+      tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+
+  const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (lastScrolledRef.current === 'top') {
+      lastScrolledRef.current = null;
+      return;
+    }
+    if (topScrollRef.current) {
+      lastScrolledRef.current = 'table';
+      topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
 
 
   if (isLoading && orders.length === 0) {
@@ -188,55 +219,64 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   return (
     <div className="space-y-4">
-      {/* Pagination Controls */}
+      {/* Controls */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-600">
-            Mostrando {startIndex + 1} a {Math.min(endIndex, orders.length)} de {orders.length} órdenes.
+            Mostrando {startIndex + 1} a {Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} órdenes.
           </span>
-          <label className="text-sm font-semibold text-gray-700">Filas por página:</label>
           <select
-            value={rowsPerPage}
+            value={pagination.rowsPerPage}
             onChange={handleRowsPerPageChange}
             className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
+            {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
           </select>
+           <div className="flex items-center space-x-2">
+            <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha:</label>
+            <select
+              id="date-filter"
+              value={selectedDate}
+              onChange={handleDateChange}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Todas</option>
+              {uniqueDates.map(date => (
+                <option key={date} value={date}>{date}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="flex items-center space-x-4">
+           <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">
+              Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
+            </span>
+          </div>
           <button
             onClick={() => goToPage(1)}
-            disabled={currentPage === 1 || isLoading}
+            disabled={pagination.currentPage === 1 || isLoading}
             className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
           >
             Primera
           </button>
           <button
-            onClick={() => goToPage(currentPage - 1)}
-            disabled={currentPage === 1 || isLoading}
+            onClick={() => goToPage(pagination.currentPage - 1)}
+            disabled={pagination.currentPage === 1 || isLoading}
             className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
           >
-            ← Anterior
+            ←
           </button>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">
-              Página <span className="font-bold">{currentPage}</span> de <span className="font-bold">{totalPages}</span>
-            </span>
-          </div>
           <button
-            onClick={() => goToPage(currentPage + 1)}
-            disabled={currentPage === totalPages || isLoading}
+            onClick={() => goToPage(pagination.currentPage + 1)}
+            disabled={pagination.currentPage >= totalPagesLocal || isLoading}
             className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
           >
-            Siguiente →
+            →
           </button>
            <button
-            onClick={() => goToPage(totalPages)}
-            disabled={currentPage === totalPages || isLoading}
+            onClick={() => goToPage(totalPagesLocal)}
+            disabled={pagination.currentPage === totalPagesLocal || isLoading}
             className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
           >
             Última
@@ -266,7 +306,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {paginatedOrders.map((order, index) => (
+              {displayedOrders.map((order, index) => (
                 <tr key={`${order.ORDEN}-${index}`} className="hover:bg-gray-50">
                   {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
                       let displayValue = String((order as any)[col] ?? '-');
@@ -275,7 +315,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                             displayValue = displayValue.substring(4);
                         }
                       } else if (col === 'MATERIAL') {
-                        // Get the last 8 characters, which is the standard material code format
                         displayValue = displayValue.slice(-8);
                       }
                       return (
