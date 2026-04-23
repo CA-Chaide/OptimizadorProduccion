@@ -30,6 +30,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
+  // Obtiene la fecha actual formateada en YYYY-MM-DD específicamente para la zona horaria de Ecuador
+  const getEcuadorTodayString = (): string => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+  };
+
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -68,43 +78,41 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
+  // Normaliza la fecha extrayendo solo el componente YYYY-MM-DD del texto para evitar desfases de horas
   const normalizeDateForComparison = (dateInput: any): string | null => {
     if (!dateInput) return null;
-    try {
-      const dateStr = String(dateInput).trim();
-      if (dateStr.includes('-')) return dateStr.split('T')[0];
-      if (dateStr.includes('/')) {
-        const parts = dateStr.split(' ')[0].split('/');
-        if (parts.length === 3) {
-          const [day, month, year] = parts;
-          if (year.length === 4) return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        }
-      }
-      const d = new Date(dateStr);
-      if (!isNaN(d.getTime())) {
-        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-      }
-    } catch (e) {
-      console.error('Error normalizando fecha:', dateInput, e);
-    }
+    const dateStr = String(dateInput).trim();
+    
+    // Caso 1: Formato YYYY-MM-DD (ISO o SQL)
+    const ymdMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (ymdMatch) return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+    
+    // Caso 2: Formato DD/MM/YYYY
+    const dmyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+    
     return null;
   };
 
-  const formatLocalDate = (date: Date): string => {
-    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-  };
-
+  // Calcula la fecha objetivo sumando el horizonte a la fecha de hoy en Ecuador
   const getTargetPlanningDate = useCallback((days: number) => {
-    const date = new Date();
+    // Obtenemos hoy en Ecuador para tener una base sólida
+    const todayStr = getEcuadorTodayString();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d); // Usamos constructor local con valores de Ecuador
+    
     date.setDate(date.getDate() + days);
-    const day = date.getDay();
-    if (day === 6) date.setDate(date.getDate() + 2);
-    else if (day === 0) date.setDate(date.getDate() + 1);
-    return formatLocalDate(date);
+    
+    // Ajuste de fines de semana
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek === 6) date.setDate(date.getDate() + 2); // Sábado -> Lunes
+    else if (dayOfWeek === 0) date.setDate(date.getDate() + 1); // Domingo -> Lunes
+    
+    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
   }, []);
 
   const targetDate = useMemo(() => getTargetPlanningDate(horizonValue), [getTargetPlanningDate, horizonValue]);
-  const todayDate = useMemo(() => formatLocalDate(new Date()), []);
+  const todayDate = useMemo(() => getEcuadorTodayString(), []);
 
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
@@ -143,6 +151,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
+          // 1. Filtros de área (Restricciones)
           const matchesExternal = Object.entries(externalFilters).every(([key, allowed]) => {
             const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === key.toUpperCase().trim());
             if (!orderKey) return true;
@@ -150,10 +159,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
             return allowed.some(a => a.trim().toUpperCase() === val);
           });
           if (!matchesExternal) return false;
+
+          // 2. Filtro de Fecha (Hoy o Día Objetivo)
           const orderDateKey = Object.keys(order).find(k => k.toUpperCase() === 'FECHAINICIO');
           if (!orderDateKey) return false;
+          
           const normalizedOrderDate = normalizeDateForComparison(order[orderDateKey]);
-          return normalizedOrderDate === targetDate || normalizedOrderDate === todayDate;
+          return normalizedOrderDate === todayDate || normalizedOrderDate === targetDate;
         });
         setDailyOrders(filtered);
         setDailyPage(1);
@@ -305,7 +317,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="diaria">
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Diaria: {todayDate} y {targetDate}</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Diaria (Ecuador UTC-5): {todayDate} y {targetDate}</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-md border bg-white overflow-hidden">
                 <div className="overflow-auto max-h-[60vh]">
@@ -316,7 +328,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-200">
                       {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : dailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
                         <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">{dailyColumns.map(col => (<td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{order[col] !== null && order[col] !== undefined ? String(order[col]) : '—'}</td>))}</tr>
-                      )) : (<tr><td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic">No hay órdenes para hoy o la fecha objetivo.</td></tr>)}
+                      )) : (<tr><td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic">No hay órdenes para hoy ({todayDate}) o la fecha objetivo ({targetDate}).</td></tr>)}
                     </tbody>
                   </table>
                 </div>
