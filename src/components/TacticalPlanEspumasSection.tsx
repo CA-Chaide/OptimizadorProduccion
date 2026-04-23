@@ -152,7 +152,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (desc) {
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
-      const dimMatch = desc.match(/(\d{2,})\s*[xX*]\s*(\d{2,})(?:\s*[xX*]\s*(\d+))?/);
+      // Mejorado para capturar decimales y espesores de un dígito
+      const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
       if (dimMatch) {
         dimensions.ancho = dimMatch[1];
         dimensions.largo = dimMatch[2];
@@ -369,7 +370,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                         const calculatedCorteHours = (qty * 5) / 3600;
 
-                        // Cálculos de Volumen y Peso
+                        // Cálculos verificados: Volumen en m3 y Peso en kg
                         const l = parseFloat(info.largo) || 0;
                         const w = parseFloat(info.ancho) || 0;
                         const e = parseFloat(info.esp) || 0;
@@ -405,41 +406,37 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="tiempos" className="mt-4 space-y-6">
-          {[ 
-            { t: 'Parámetros Técnicos - Quito', d: tiemposC1000, s: scrollTiempos1000, c: 'text-primary', b: 'bg-primary' }, 
-            { t: 'Parámetros Técnicos - Guayaquil', d: tiemposC2000, s: scrollTiempos2000, c: 'text-indigo-600', b: 'bg-indigo-600' } 
-          ].map((center, idx) => (
-            <div key={idx} className="space-y-2">
-              <h3 className={cn("text-[10px] font-bold uppercase tracking-tight px-1 flex items-center gap-2", center.c)}>
-                <div className={cn("w-1.5 h-1.5 rounded-full", center.b)} /> {center.t}
-              </h3>
-              <Card className="shadow-sm overflow-hidden border-none rounded-xl bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/30 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
+        <TabsContent value="tiempos" className="mt-4 space-y-8">
+          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
+              <div className="flex items-center justify-between px-2">
+                <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
+                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} materiales)
+                </h3>
+              </div>
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-4 py-3 text-center border-r border-dashed border-gray-100">Material</th>
-                        <th className="px-4 py-3 text-left border-r border-dashed border-gray-100">Línea Técnica</th>
-                        <th className="px-4 py-3 text-center border-r border-dashed border-gray-100">Min. Est.</th>
-                        <th className="px-4 py-3 text-center border-r border-dashed border-gray-100">Stock</th>
-                        <th className="px-4 py-3 text-center">Seguridad</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción Técnica</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Línea Prod.</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700 text-center">Estándar (Min)</th>
+                        <th className="px-4 py-4 text-center text-gray-400">Stock / Seguridad</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.map((t, i) => {
                         const info = extractMaterialInfo(t);
                         return (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-2.5 font-mono font-semibold text-primary/80 text-center border-r border-dashed border-gray-50 tracking-tighter">{info.code}</td>
-                            <td className="px-4 py-2.5 text-left border-r border-dashed border-gray-50">
-                              <div className="font-semibold text-gray-600 uppercase leading-none text-[10px]">{t.Linea || '—'}</div>
-                              <div className="text-[8px] text-gray-400 mt-0.5 font-mono">{t.PuestoTrabajo || '—'}</div>
-                            </td>
-                            <td className="px-4 py-2.5 font-mono font-semibold text-blue-600/80 text-center border-r border-dashed border-gray-50">{Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
-                            <td className="px-4 py-2.5 font-mono text-center border-r border-dashed border-gray-50 text-gray-400 font-medium">{t.StockActual || 0}</td>
-                            <td className="px-4 py-2.5 font-mono text-center text-gray-300 font-medium">{t.StockSeguridad || 0}</td>
+                          <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                            <td className="px-4 py-3 font-mono font-semibold text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+                            <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-200 text-center font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100 text-center">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 text-center font-medium text-gray-300">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
                       })}

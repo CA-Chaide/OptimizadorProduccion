@@ -34,11 +34,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
 
-  // Refs para sincronización de scroll
-  const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  const scrollFert1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  const scrollFert2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const scrollProv = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const scrollFert = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollResumen1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -168,13 +165,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones, selectedDate]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones, selectedDate]);
-  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
-  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
-
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -186,7 +176,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     if (desc) {
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
-      const dimMatch = desc.match(/(\d{2,})\s*[xX*]\s*(\d{2,})(?:\s*[xX*]\s*(\d+))?/);
+      // Mejorado para capturar decimales y espesores de un dígito
+      const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
       if (dimMatch) {
         dimensions.ancho = dimMatch[1];
         dimensions.largo = dimMatch[2];
@@ -209,17 +200,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return map;
   };
 
-  const calculateSummary = (fertData: any[], tMap: Map<string, number>, centroId: string) => {
+  const calculateSummary = (data: any[], tMap: Map<string, number>, centroId: string) => {
     const map = new Map<string, { centro: string; maquina: string; categoria: string; espesor: string; totalOrdenes: number; totalCantidad: number; totalTiempoPL: number; totalTiempoCorte: number }>();
     
-    fertData.forEach(o => {
+    data.forEach(o => {
       const maquina = String(o.MAQUINA || o.Maquina || o.maquina || 'SIN MÁQUINA').trim();
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || 'N/A').trim();
       const info = extractMaterialInfo(o);
       const espesor = info.esp || '—';
       const key = `${maquina}|${categoria}|${espesor}`;
       
-      const cantPendiente = Number(o.CANTPENDIENTE ?? o.CANTPROGRAMADA ?? 0);
+      const cantPendiente = Number(o.CANTPENDIENTE ?? o.CANTPROGRAMADA ?? o.CANTIDAD ?? 0);
       const minutesStandard = tMap.get(info.code) || 0;
       const hoursPL = (cantPendiente * minutesStandard) / 60;
       const corteHours = (cantPendiente * 5) / 3600;
@@ -229,7 +220,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       }
       const entry = map.get(key)!;
       entry.totalOrdenes += 1;
-      entry.totalCantidad += Number(o.CANTPROGRAMADA || 0);
+      entry.totalCantidad += Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       entry.totalTiempoPL += hoursPL;
       entry.totalTiempoCorte += corteHours;
     });
@@ -239,10 +230,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     );
   };
 
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones, selectedDate]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones, selectedDate]);
+  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
+  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
+
   const summaryData1000 = useMemo(() => calculateSummary(fertC1000, getTiemposMap(tiemposC1000), '1000'), [fertC1000, tiemposC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(fertC2000, getTiemposMap(tiemposC2000), '2000'), [fertC2000, tiemposC2000]);
 
-  const setupScrollSync = (group: any) => {
+  const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
     const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
@@ -256,10 +254,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   useEffect(() => {
     if (!mounted) return;
-    const items = [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
-    const cleaners = items.map(setupScrollSync);
+    const scrollItems = [scrollProv, scrollFert, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
+    const cleaners = scrollItems.map(setupScroll);
     const timer = setTimeout(() => {
-      items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); });
+      scrollItems.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); });
     }, 500);
     return () => {
       clearTimeout(timer);
@@ -345,7 +343,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </Select>
                   </div>
                 )}
-
                 <Badge variant="secondary" className="text-[10px] font-bold ml-auto">{center.d.length} GRUPOS TÉCNICOS</Badge>
               </div>
 
@@ -441,15 +438,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700' }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv, b: 'bg-green-600', c: 'text-green-700' }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv, b: 'bg-indigo-600', c: 'text-indigo-700' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
-              <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
-                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
-                </h3>
-              </div>
+              <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
+              </h3>
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
@@ -481,7 +476,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const hoursPL = (qty * minutesStandard) / 60;
                         const calculatedCorteHours = (qty * 5) / 3600;
 
-                        // Cálculos de Volumen y Peso
+                        // Cálculos verificados: Volumen en m3 y Peso en kg
                         const l = parseFloat(info.largo) || 0;
                         const w = parseFloat(info.ancho) || 0;
                         const e = parseFloat(info.esp) || 0;
@@ -520,15 +515,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenesFert" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600' }, 
-            { t: 'Planta 2000 - Guayaquil (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600' } 
+            { t: 'Planta 1000 - Quito (FERT)', d: fertC1000, s: scrollFert, b: 'bg-indigo-600', c: 'text-indigo-700' }, 
+            { t: 'Planta 2000 - Guayaquil (FERT)', d: fertC2000, s: scrollFert, b: 'bg-blue-600', c: 'text-blue-700' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
-              <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
-                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
-                </h3>
-              </div>
+              <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
+              </h3>
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
@@ -545,6 +538,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Prog.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Pend.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha</th>
@@ -559,6 +554,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const minutesStandard = tMap.get(info.code) || 0;
                         const hoursPL = (cantPendiente * minutesStandard) / 60;
                         const calculatedCorteHours = (cantPendiente * 5) / 3600;
+
+                        // Cálculos verificados: Volumen en m3 y Peso en kg
+                        const l = parseFloat(info.largo) || 0;
+                        const w = parseFloat(info.ancho) || 0;
+                        const e = parseFloat(info.esp) || 0;
+                        const d = parseFloat(info.dens) || 0;
+                        const volume = (l * w * e) / 1000000;
+                        const weight = volume * d;
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -572,6 +575,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 text-gray-400 font-medium border-r border-dashed border-gray-100 text-center">{o.CATEGORIA || '—'}</td>
                             <td className="px-3 py-3 font-semibold text-blue-800 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{o.CANTPROGRAMADA || 0}</td>
                             <td className="px-3 py-3 font-semibold text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10">{cantPendiente}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{volume.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{weight.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hoursPL.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
                               {calculatedCorteHours.toFixed(2)}
