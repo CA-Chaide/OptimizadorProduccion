@@ -221,7 +221,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const matchingTimeMin = tMap.get(info.code) || 0;
       const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
       const hours = (cantPendiente * matchingTimeMin) / 60;
-      const corteHours = (cantPendiente * 0.05) / 3600;
+      const corteHours = (cantPendiente * 5) / 3600;
 
       if (!map.has(key)) {
         map.set(key, { centro: centroId, maquina, categoria, totalOrdenes: 0, totalCantidad: 0, totalTiempo: 0, totalTiempoCorte: 0 });
@@ -519,7 +519,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const matchingTimeMin = center.m.get(info.code);
                         const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
                         const calculatedHours = matchingTimeMin !== undefined ? (cantPendiente * matchingTimeMin) / 60 : null;
-                        const calculatedCorteHours = (cantPendiente * 0.05) / 3600;
+                        const calculatedCorteHours = (cantPendiente * 5) / 3600;
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
