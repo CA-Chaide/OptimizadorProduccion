@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, Info, CheckCircle2, Search, Settings2, Wind, Scissors } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, Info, CheckCircle2, Search, Settings2, Wind, Scissors, LayoutDashboard } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -26,13 +26,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para sincronización de scroll (6 pares de barras)
+  // Refs para sincronización de scroll (7 pares de barras)
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollFert1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollFert2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const scrollResumen = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -102,7 +103,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
-  // Lógica de filtrado inteligente corregida para Tiempos (omitir si campo no existe)
   const filterData = (data: any[], centro: string) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
@@ -151,6 +151,32 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
+  // Lógica de agregación para el Tab de Resumen
+  const summaryData = useMemo(() => {
+    const allFertFiltered = [...fertC1000, ...fertC2000];
+    const map = new Map<string, { centro: string; maquina: string; categoria: string; totalOrdenes: number; totalCantidad: number }>();
+    
+    allFertFiltered.forEach(o => {
+      const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
+      const maquina = String(o.MAQUINA || o.Maquina || o.maquina || 'SIN MÁQUINA').trim();
+      const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || 'N/A').trim();
+      const key = `${centro}|${maquina}|${categoria}`;
+      
+      if (!map.has(key)) {
+        map.set(key, { centro, maquina, categoria, totalOrdenes: 0, totalCantidad: 0 });
+      }
+      const entry = map.get(key)!;
+      entry.totalOrdenes += 1;
+      entry.totalCantidad += Number(o.CANTPROGRAMADA || 0);
+    });
+    
+    return Array.from(map.values()).sort((a, b) => 
+      a.centro.localeCompare(b.centro) || 
+      a.maquina.localeCompare(b.maquina) ||
+      a.categoria.localeCompare(b.categoria)
+    );
+  }, [fertC1000, fertC2000]);
+
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -163,18 +189,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
-    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
-    group.top.current.addEventListener('scroll', syncB);
-    group.bottom.current.addEventListener('scroll', syncT);
+    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = bottomContainer!.scrollLeft; };
+    
+    const topContainer = group.top.current;
+    const bottomContainer = group.bottom.current;
+
+    topContainer.addEventListener('scroll', syncB);
+    bottomContainer.addEventListener('scroll', syncT);
     return () => { 
-      group.top.current?.removeEventListener('scroll', syncB); 
-      group.bottom.current?.removeEventListener('scroll', syncT); 
+      topContainer?.removeEventListener('scroll', syncB); 
+      bottomContainer?.removeEventListener('scroll', syncT); 
     };
   };
 
   useEffect(() => {
     if (!mounted) return;
-    const items = [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000];
+    const items = [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000, scrollResumen];
     const cleaners = items.map(setupScroll);
     setTimeout(() => items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }), 500);
     return () => cleaners.forEach(c => c?.());
@@ -216,6 +246,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             { id: 'ordenes', label: 'Órdenes Provisionales', icon: Package, color: 'hover:border-green-500', active: 'data-[state=active]:bg-green-600 data-[state=active]:text-white', desc: 'Listado de demanda sugerida filtrada por planta.' },
             { id: 'ordenesFert', label: 'Órdenes FERT', icon: ShoppingCart, color: 'hover:border-indigo-500', active: 'data-[state=active]:bg-indigo-600 data-[state=active]:text-white', desc: 'Control de órdenes reales con estado de entrega y pendientes.' },
             { id: 'tiempos', label: 'Tiempos Ensamblado', icon: Clock, color: 'hover:border-teal-500', active: 'data-[state=active]:bg-teal-600 data-[state=active]:text-white', desc: 'Catálogo de tiempos técnicos por material y línea.' },
+            { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, color: 'hover:border-purple-500', active: 'data-[state=active]:bg-purple-600 data-[state=active]:text-white', desc: 'Resumen consolidado por Centro, Máquina y Categoría.' },
           ].map(tab => (
             <TabsTrigger 
               key={tab.id} 
@@ -304,7 +335,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-4 py-3 font-bold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
                             <td className="px-4 py-3 font-mono font-black text-green-600 border-r border-dashed border-gray-100 text-center">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[300px] font-medium text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 text-center text-sm">{o.CANTIDAD || '0'}</td>
+                            <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 text-center text-sm">{o.CANTPROGRAMADA || '0'}</td>
                             <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || '—'}</td>
                           </tr>
                         );
@@ -336,11 +367,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Sector</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/30">Prog.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-green-50/30">Ent.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/30">Not.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-red-50/30">Rech.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-orange-50/30">Pend.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/30 text-blue-800">Prog.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-green-50/30 text-green-800">Ent.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/30 text-blue-800">Not.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-red-50/30 text-red-800">Rech.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-orange-50/30 text-orange-800">Pend.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">T. Pend (m)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Resp.</th>
@@ -351,18 +383,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         return (
-                          <tr key={i} className="hover:bg-gray-50/50">
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDEN || '—'}</td>
                             <td className="px-3 py-3 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 text-center">{info.code}</td>
                             <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[180px] font-black text-gray-500 uppercase tracking-tighter">{info.desc}</td>
                             <td className="px-3 py-3 text-gray-400 font-bold border-r border-dashed border-gray-100 text-center">{o.SECTORDESC || '—'}</td>
+                            <td className="px-3 py-3 text-gray-400 font-bold border-r border-dashed border-gray-100 text-center">{o.CATEGORIA || '—'}</td>
                             <td className="px-3 py-3 font-black text-blue-800 border-r border-dashed border-gray-100 text-center bg-blue-50/10 text-xs">{o.CANTPROGRAMADA || 0}</td>
                             <td className="px-3 py-3 font-black text-green-700 border-r border-dashed border-gray-100 text-center bg-green-50/10 text-xs">{o.CANTENTREGADA || 0}</td>
                             <td className="px-3 py-3 font-black text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/10 text-xs">{o.CANTNOTIFICADA || 0}</td>
                             <td className="px-3 py-3 font-black text-red-600 border-r border-dashed border-gray-100 text-center bg-red-50/10 text-xs">{o.CANTRECHAZO || 0}</td>
                             <td className="px-3 py-3 font-black text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10 text-xs">{o.CANTPENDIENTE || 0}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center">{o.TIEMPOPENDIENTE || 0}</td>
-                            <td className="px-3 py-3 font-bold text-gray-600 border-r border-dashed border-gray-100 text-center">{o.FECHA || '—'}</td>
+                            <td className="px-3 py-3 font-bold text-gray-600 border-r border-dashed border-gray-100 text-center whitespace-nowrap">{o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-black text-gray-400 border-r border-dashed border-gray-100 text-center">{o.RESPCTRLPROD || '—'}</td>
                             <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
                           </tr>
@@ -417,6 +450,83 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </Card>
             </div>
           ))}
+        </TabsContent>
+
+        {/* TAB RESUMEN CONSOLIDADO */}
+        <TabsContent value="resumen">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 px-1">
+              <div className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
+              <h3 className="text-xs font-black uppercase text-purple-700 tracking-tight">Resumen Ejecutivo por Recurso y Categoría</h3>
+              <Badge variant="secondary" className="ml-2 text-[9px] h-4 font-bold bg-purple-50 text-purple-700 border-purple-100">{summaryData.length} Grupos Técnicos</Badge>
+            </div>
+            
+            <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+              {/* Barra de scroll superior sincronizada */}
+              <div ref={scrollResumen.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b">
+                <div style={{ width: scrollResumen.width[0], height: '1px' }} />
+              </div>
+              
+              <div ref={scrollResumen.bottom} className="overflow-x-auto max-h-[650px]">
+                <table ref={scrollResumen.table} className="w-full border-collapse">
+                  <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400">
+                    <tr>
+                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Centro</th>
+                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Recurso / Máquina</th>
+                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Categoría Técnica</th>
+                      <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center bg-purple-50/30 text-purple-800">Cant. Órdenes</th>
+                      <th className="px-6 py-5 text-center bg-green-50/30 text-green-800">Total Unidades</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-[11px]">
+                    {summaryData.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay órdenes FERT cargadas para generar el resumen.</td>
+                      </tr>
+                    ) : (
+                      summaryData.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-purple-50/20 transition-all duration-200">
+                          <td className="px-6 py-4 font-bold text-gray-900 border-r border-dashed border-gray-100 text-center">
+                            <Badge variant="outline" className={cn(
+                              "font-mono px-3",
+                              row.centro === '1000' ? "border-green-200 text-green-700 bg-green-50/30" : "border-indigo-200 text-indigo-700 bg-indigo-50/30"
+                            )}>
+                              {row.centro}
+                            </Badge>
+                          </td>
+                          <td className="px-6 py-4 font-black text-gray-700 border-r border-dashed border-gray-100 text-center uppercase tracking-tighter">
+                            {row.maquina}
+                          </td>
+                          <td className="px-6 py-4 font-bold text-gray-500 border-r border-dashed border-gray-100 text-center uppercase">
+                            {row.categoria}
+                          </td>
+                          <td className="px-6 py-4 font-mono font-black text-purple-700 border-r border-dashed border-gray-100 text-center text-sm bg-purple-50/10">
+                            {row.totalOrdenes}
+                          </td>
+                          <td className="px-6 py-4 font-mono font-black text-green-700 text-center text-sm bg-green-50/10">
+                            {row.totalCantidad.toLocaleString()}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {summaryData.length > 0 && (
+                    <tfoot className="bg-gray-900 text-white font-black text-[10px] uppercase">
+                      <tr>
+                        <td colSpan={3} className="px-6 py-4 text-right border-r border-gray-800">Totales Consolidados</td>
+                        <td className="px-6 py-4 text-center border-r border-gray-800 text-purple-400 text-xs">
+                          {summaryData.reduce((acc, curr) => acc + curr.totalOrdenes, 0)}
+                        </td>
+                        <td className="px-6 py-4 text-center text-green-400 text-xs">
+                          {summaryData.reduce((acc, curr) => acc + curr.totalCantidad, 0).toLocaleString()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
