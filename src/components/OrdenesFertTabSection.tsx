@@ -31,7 +31,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[1]);
-
+  
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -270,11 +270,13 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                 <tr key={`${order.ORDEN}-${index}`} className="hover:bg-gray-50">
                   {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
                       let displayValue = String((order as any)[col] ?? '-');
-                      if (col === 'ORDEN' || col === 'MATERIAL') {
-                        // Ensure value is a string and long enough before slicing
+                      if (col === 'ORDEN') {
                         if (displayValue && displayValue.length > 4) {
                             displayValue = displayValue.substring(4);
                         }
+                      } else if (col === 'MATERIAL') {
+                        // Get the last 8 characters, which is the standard material code format
+                        displayValue = displayValue.slice(-8);
                       }
                       return (
                        <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
