@@ -268,7 +268,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   if (!mounted || isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <Loader2 className="w-12 h-12 animate-spin text-green-600" />
+      <div className="p-3 bg-green-600 rounded-2xl shadow-lg animate-pulse">
+        <Loader2 className="w-12 h-12 animate-spin text-white" />
+      </div>
       <p className="text-sm font-bold text-gray-500 uppercase tracking-widest animate-pulse">Sincronizando Venta Externa...</p>
     </div>
   );
@@ -359,8 +361,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Categoría Técnica</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Órdenes</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Unidades</th>
-                        <th className="px-6 py-5 text-center text-teal-700 bg-teal-50/20 border-r border-dashed border-gray-200">Tiempo PL (h)</th>
-                        <th className="px-6 py-5 text-center text-amber-700 bg-amber-50/20">T. Corte (h)</th>
+                        <th className="px-6 py-5 text-center text-teal-700 bg-teal-50/20 border-r border-dashed border-gray-200">Tiempo PL</th>
+                        <th className="px-6 py-5 text-center text-amber-700 bg-amber-50/20">T. Corte</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[11px]">
@@ -373,8 +375,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-6 py-4 font-medium text-gray-500 border-r border-dashed border-gray-100 text-center uppercase">{row.categoria}</td>
                             <td className="px-6 py-4 font-mono font-semibold text-purple-700 border-r border-dashed border-gray-100 text-center">{row.totalOrdenes}</td>
                             <td className="px-6 py-4 font-mono font-semibold text-green-700 border-r border-dashed border-gray-100 text-center">{row.totalCantidad.toLocaleString()}</td>
-                            <td className="px-6 py-4 font-mono font-bold text-teal-700 text-center bg-teal-50/5 border-r border-dashed border-gray-100">{row.totalTiempo.toFixed(2)}h</td>
-                            <td className="px-6 py-4 font-mono font-bold text-amber-700 text-center bg-amber-50/5">{row.totalTiempoCorte.toFixed(4)}h</td>
+                            <td className="px-6 py-4 font-mono font-bold text-teal-700 text-center bg-teal-50/5 border-r border-dashed border-gray-100">{row.totalTiempo.toFixed(2)}</td>
+                            <td className="px-6 py-4 font-mono font-bold text-amber-700 text-center bg-amber-50/5">{row.totalTiempoCorte.toFixed(2)}</td>
                           </tr>
                         ))
                       )}
@@ -385,8 +387,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <td colSpan={2} className="px-6 py-5 text-right border-r border-gray-800 tracking-widest">Totales Planta</td>
                           <td className="px-6 py-5 text-center border-r border-gray-800 text-purple-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalOrdenes, 0)}</td>
                           <td className="px-6 py-5 text-center border-r border-gray-800 text-green-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalCantidad, 0).toLocaleString()}</td>
-                          <td className="px-6 py-5 text-center border-r border-gray-800 text-teal-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempo, 0).toFixed(2)}h</td>
-                          <td className="px-6 py-5 text-center text-amber-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempoCorte, 0).toFixed(4)}h</td>
+                          <td className="px-6 py-5 text-center border-r border-gray-800 text-teal-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempo, 0).toFixed(2)}</td>
+                          <td className="px-6 py-5 text-center text-amber-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempoCorte, 0).toFixed(2)}</td>
                         </tr>
                       </tfoot>
                     )}
@@ -450,7 +452,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
                   <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400">
                       <tr>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
@@ -507,8 +509,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Prog.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Pend.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30 text-center">Tiempo PL (h)</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">Tiempo Pl Corte (h)</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30 text-center">Tiempo PL</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha</th>
                         <th className="px-3 py-4 text-center">Máquina</th>
                       </tr>
@@ -534,10 +536,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-semibold text-blue-800 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{o.CANTPROGRAMADA || 0}</td>
                             <td className="px-3 py-3 font-semibold text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10">{cantPendiente}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
-                              {calculatedHours !== null ? `${calculatedHours.toFixed(2)}h` : '—'}
+                              {calculatedHours !== null ? calculatedHours.toFixed(2) : '—'}
                             </td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
-                              {calculatedCorteHours.toFixed(4)}h
+                              {calculatedCorteHours.toFixed(2)}
                             </td>
                             <td className="px-3 py-3 font-medium text-gray-600 border-r border-dashed border-gray-100 text-center">{o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
@@ -580,8 +582,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <tr key={i} className="hover:bg-teal-50/20 transition-colors">
                             <td className="px-4 py-3 font-mono font-semibold text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100 text-center">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}m</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-200 text-center font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100 text-center">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
                             <td className="px-4 py-3 text-center font-medium text-gray-300">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
