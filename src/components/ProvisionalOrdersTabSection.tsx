@@ -34,7 +34,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const isInitialLoadDone = useRef(false);
 
-  // Estado para filtros por columna específicos
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({
     MATERIAL: '',
     CATEGORIA: '',
@@ -42,6 +41,32 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     RESPCONTROLPROD: '',
     MAQUINA: '',
   });
+
+  // Helper para formatear valores de fecha a la hora de Ecuador (UTC-5)
+  const formatValueForDisplay = (col: string, value: any): string => {
+    if (value === null || value === undefined) return '—';
+    const upperCol = col.toUpperCase().trim();
+    
+    // Si la columna es de fecha, forzamos la interpretación local de Ecuador
+    if (upperCol.includes('FECHA')) {
+      try {
+        const date = new Date(value);
+        if (isNaN(date.getTime())) return String(value);
+        
+        // Usamos Intl.DateTimeFormat para asegurar que se use la zona horaria de Ecuador
+        return new Intl.DateTimeFormat('es-EC', {
+          timeZone: 'America/Guayaquil',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(date);
+      } catch {
+        return String(value);
+      }
+    }
+    
+    return String(value);
+  };
 
   const handleColumnFilterChange = (column: string, value: string) => {
     setColumnFilters(prev => ({ ...prev, [column.toUpperCase()]: value }));
@@ -53,13 +78,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     
     try {
       setIsLoading(true);
-      // Consultamos un lote grande para permitir el filtrado dinámico local
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       
       if (response && response.data) {
-        // AUDITORÍA: Log de los datos crudos para el usuario
-        console.log('[DEBUG] Datos crudos recibidos del API (Primeros 5):', response.data.slice(0, 5));
-        
         setOrders(response.data);
         setPagination(prev => ({
           ...prev,
@@ -84,11 +105,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     }
   }, [fetchData]);
 
-  // Lógica de filtrado combinada (Externos + Locales por columna)
   const filteredOrders = useMemo(() => {
     let result = orders;
 
-    // 1. Filtros Externos (de Restricciones)
     if (externalFilters && Object.keys(externalFilters).length > 0) {
       result = result.filter(order => {
         return Object.entries(externalFilters).every(([filterKey, allowedValues]) => {
@@ -102,13 +121,12 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       });
     }
 
-    // 2. Filtros Locales por Columna
     result = result.filter(order => {
       return Object.entries(columnFilters).every(([filterKey, filterValue]) => {
         if (!filterValue) return true;
         const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === filterKey);
         if (!orderKey) return true;
-        const orderValue = String(order[orderKey] ?? '').toLowerCase();
+        const orderValue = formatValueForDisplay(orderKey, order[orderKey]).toLowerCase();
         return orderValue.includes(filterValue.toLowerCase());
       });
     });
@@ -118,7 +136,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
   const columns = useMemo(() => {
     if (filteredOrders.length === 0) return [];
-    // Priorizar columnas comunes al inicio
     const allKeys = Object.keys(filteredOrders[0]);
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'FECHAINICIO', 'FECHAFIN'];
     return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
@@ -133,7 +150,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
   return (
     <div className="space-y-4">
-      {/* Tabla Dinámica con Scroll y Filtros */}
       <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
           <table className="min-w-full divide-y divide-gray-200 border-collapse">
@@ -188,8 +204,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                         key={`cell-${idx}-${col}`} 
                         className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono"
                       >
-                        {/* NO MODIFICAMOS EL DATO: se muestra el valor crudo del objeto */}
-                        {order[col] !== null && order[col] !== undefined ? String(order[col]) : '—'}
+                        {formatValueForDisplay(col, order[col])}
                       </td>
                     ))}
                   </tr>
