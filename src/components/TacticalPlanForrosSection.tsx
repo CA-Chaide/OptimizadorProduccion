@@ -30,7 +30,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
-  // Helper para obtener hoy en Ecuador (YYYY-MM-DD) de forma segura
+  /**
+   * Obtiene la fecha de "hoy" en Ecuador (America/Guayaquil) formateada como YYYY-MM-DD.
+   */
   const getEcuadorTodayString = (): string => {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Guayaquil',
@@ -40,41 +42,38 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }).format(new Date());
   };
 
-  // FUNCIÓN MAESTRA: Extrae las partes de la fecha SIN usar el objeto Date de JS
-  // Esto evita desfases por zona horaria (UTC-5) y garantiza que el dato sea el mismo del servidor
+  /**
+   * Extracción pura de partes de fecha desde el texto.
+   * Evita cualquier resta de días por zona horaria de JS.
+   */
   const safeParseDateParts = (value: any) => {
     if (!value) return null;
     const str = String(value).trim();
     
-    // Intenta formato YYYY-MM-DD (ej: 2026-04-29...)
-    const ymd = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+    // Formato ISO o SQL YYYY-MM-DD
+    const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
     
-    // Intenta formato DD/MM/YYYY (ej: 29/04/2026...)
-    const dmy = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (dmy) return { y: dmy[3], m: dmy[2], d: dmy[1] };
+    // Formato Latino DD/MM/YYYY
+    const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
     
     return null;
   };
 
-  // Normaliza a YYYY-MM-DD para comparaciones lógicas exactas sin horas
   const normalizeDateForFilter = (dateInput: any): string | null => {
     const parts = safeParseDateParts(dateInput);
     if (parts) return `${parts.y}-${parts.m}-${parts.d}`;
     return null;
   };
 
-  // Formatea para visualización (DD/MM/YYYY) preservando los números originales
   const formatValueForDisplay = (col: string, value: any): string => {
     if (value === null || value === undefined) return '—';
     const upperCol = col.toUpperCase().trim();
     
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
-      if (parts) {
-        // Retornamos el formato legible DD/MM/YYYY extraído directamente del texto
-        return `${parts.d}/${parts.m}/${parts.y}`;
-      }
+      if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
       return String(value);
     }
     
@@ -122,7 +121,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const getTargetPlanningDate = useCallback((days: number) => {
     const todayStr = getEcuadorTodayString();
     const [y, m, d] = todayStr.split('-').map(Number);
-    const date = new Date(y, m - 1, d); // Mes es 0-indexed en JS
+    const date = new Date(y, m - 1, d); // Mes es 0-indexed en Date
     
     date.setDate(date.getDate() + days);
     
@@ -186,10 +185,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           });
           if (!matchesExternal) return false;
 
-          const orderDateKey = Object.keys(order).find(k => k.toUpperCase() === 'FECHAINICIO');
-          if (!orderDateKey) return false;
-          
-          const normalizedOrderDate = normalizeDateForFilter(order[orderDateKey]);
+          const normalizedOrderDate = normalizeDateForFilter(order['FECHAINICIO']);
           return normalizedOrderDate === todayDate || normalizedOrderDate === targetDate;
         });
         setDailyOrders(filtered);
@@ -220,7 +216,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const dailyColumns = useMemo(() => {
     if (dailyOrders.length === 0) return [];
     const allKeys = Object.keys(dailyOrders[0]);
-    // Agregamos RAW_FECHA_BACKEND
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'RAW_FECHA_BACKEND', 'CANTIDAD', 'FECHAFIN'];
     return [...priority.filter(k => allKeys.includes(k) || k === 'RAW_FECHA_BACKEND'), ...allKeys.filter(k => !priority.includes(k))];
   }, [dailyOrders]);
@@ -369,7 +364,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               col === 'RAW_FECHA_BACKEND' ? "text-red-600 bg-red-50" : "text-gray-600"
                             )}
                           >
-                            {col === 'RAW_FECHA_BACKEND' ? 'FECHA (RAW BACKEND)' : col}
+                            {col === 'RAW_FECHA_BACKEND' ? 'FECHA (RAW JSON)' : col}
                           </th>
                         ))}
                       </tr>
@@ -386,7 +381,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               )}
                             >
                               {col === 'RAW_FECHA_BACKEND' 
-                                ? String(order['FECHAINICIO'] || 'N/A') 
+                                ? JSON.stringify(order['FECHAINICIO']) 
                                 : formatValueForDisplay(col, order[col])}
                             </td>
                           ))}

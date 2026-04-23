@@ -42,19 +42,21 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     MAQUINA: '',
   });
 
-  // FUNCIÓN MAESTRA: Extrae las partes de la fecha SIN usar el objeto Date de JS
-  // Esto evita desfases por zona horaria (UTC-5) y garantiza que el dato sea el mismo del servidor
+  /**
+   * FUNCIÓN MAESTRA: Extrae las partes de la fecha SIN usar el objeto Date de JS.
+   * Esto garantiza que el día sea el mismo que está en la base de datos (p.ej. 2026-04-29).
+   */
   const safeParseDateParts = (value: any) => {
     if (!value) return null;
     const str = String(value).trim();
     
-    // Intenta formato YYYY-MM-DD (ej: 2026-04-29...)
-    const ymd = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+    // Intenta formato YYYY-MM-DD (captura los primeros 10 caracteres)
+    const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
     
-    // Intenta formato DD/MM/YYYY (ej: 29/04/2026...)
-    const dmy = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (dmy) return { y: dmy[3], m: dmy[2], d: dmy[1] };
+    // Intenta formato DD/MM/YYYY
+    const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
     
     return null;
   };
@@ -144,7 +146,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   const columns = useMemo(() => {
     if (filteredOrders.length === 0) return [];
     const allKeys = Object.keys(filteredOrders[0]);
-    // Agregamos RAW_FECHA_BACKEND al inicio o prioridad
+    // RAW_FECHA_BACKEND es una columna virtual de diagnóstico
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'RAW_FECHA_BACKEND', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'FECHAFIN'];
     return [...priority.filter(k => allKeys.includes(k) || k === 'RAW_FECHA_BACKEND'), ...allKeys.filter(k => !priority.includes(k))];
   }, [filteredOrders]);
@@ -171,7 +173,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                       col === 'RAW_FECHA_BACKEND' ? "text-red-600 bg-red-50" : "text-gray-600"
                     )}
                   >
-                    {col === 'RAW_FECHA_BACKEND' ? 'FECHA (RAW BACKEND)' : col}
+                    {col === 'RAW_FECHA_BACKEND' ? 'FECHA (RAW JSON)' : col}
                   </th>
                 ))}
               </tr>
@@ -219,7 +221,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                         )}
                       >
                         {col === 'RAW_FECHA_BACKEND' 
-                          ? String(order['FECHAINICIO'] || 'N/A') 
+                          ? JSON.stringify(order['FECHAINICIO']) 
                           : formatValueForDisplay(col, order[col])}
                       </td>
                     ))}
