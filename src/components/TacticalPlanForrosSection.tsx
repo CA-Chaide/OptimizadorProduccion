@@ -16,6 +16,7 @@ import { useAppContext } from '@/context/AppProvider';
 
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification } = useAppContext();
+  const [isMounted, setIsMounted] = useState(false);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [tiemposProduccion, setTiemposProduccion] = useState<any[]>([]);
@@ -30,23 +31,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
+  // Fechas dinámicas cargadas solo en el cliente
+  const [todayDate, setTodayDate] = useState<string>('');
+  const [targetDate, setTargetDate] = useState<string>('');
+
   /**
    * Obtiene la fecha de "hoy" en Ecuador (America/Guayaquil) formateada como YYYY-MM-DD.
    */
-  const getEcuadorTodayString = (): string => {
+  const getEcuadorTodayString = useCallback((): string => {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Guayaquil',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
     }).format(new Date());
-  };
+  }, []);
 
   /**
    * Extracción pura de partes de fecha desde el texto.
    * Evita cualquier resta de días por zona horaria de JS.
    */
-  const safeParseDateParts = (value: any) => {
+  const safeParseDateParts = useCallback((value: any) => {
     if (!value) return null;
     const str = String(value).trim();
     
@@ -59,15 +64,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
     
     return null;
-  };
+  }, []);
 
-  const normalizeDateForFilter = (dateInput: any): string | null => {
+  const normalizeDateForFilter = useCallback((dateInput: any): string | null => {
     const parts = safeParseDateParts(dateInput);
     if (parts) return `${parts.y}-${parts.m}-${parts.d}`;
     return null;
-  };
+  }, [safeParseDateParts]);
 
-  const formatValueForDisplay = (col: string, value: any): string => {
+  const formatValueForDisplay = useCallback((col: string, value: any): string => {
     if (value === null || value === undefined) return '—';
     const upperCol = col.toUpperCase().trim();
     
@@ -78,7 +83,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
     
     return String(value);
-  };
+  }, [safeParseDateParts]);
+
+  const getTargetPlanningDate = useCallback((days: number) => {
+    const todayStr = getEcuadorTodayString();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d); // Mes es 0-indexed en Date
+    
+    date.setDate(date.getDate() + days);
+    
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek === 6) date.setDate(date.getDate() + 2); // Sábado -> Lunes
+    else if (dayOfWeek === 0) date.setDate(date.getDate() + 1); // Domingo -> Lunes
+    
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  }, [getEcuadorTodayString]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -96,7 +120,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, []);
 
+  // Hydration guard y carga inicial
   useEffect(() => {
+    setIsMounted(true);
     fetchData();
   }, [fetchData]);
 
@@ -118,27 +144,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
-  const getTargetPlanningDate = useCallback((days: number) => {
-    const todayStr = getEcuadorTodayString();
-    const [y, m, d] = todayStr.split('-').map(Number);
-    const date = new Date(y, m - 1, d); // Mes es 0-indexed en Date
-    
-    date.setDate(date.getDate() + days);
-    
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek === 6) date.setDate(date.getDate() + 2); // Sábado -> Lunes
-    else if (dayOfWeek === 0) date.setDate(date.getDate() + 1); // Domingo -> Lunes
-    
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Guayaquil',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(date);
-  }, []);
-
-  const targetDate = useMemo(() => getTargetPlanningDate(horizonValue), [getTargetPlanningDate, horizonValue]);
-  const todayDate = useMemo(() => getEcuadorTodayString(), []);
+  // Actualizar fechas objetivo cuando cambien las restricciones o se monte el componente
+  useEffect(() => {
+    if (isMounted) {
+      setTodayDate(getEcuadorTodayString());
+      setTargetDate(getTargetPlanningDate(horizonValue));
+    }
+  }, [isMounted, horizonValue, getEcuadorTodayString, getTargetPlanningDate]);
 
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
@@ -171,7 +183,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [forrosGruposList]);
 
   const fetchDailyOrders = useCallback(async () => {
-    if (Object.keys(externalFilters).length === 0) return;
+    if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
     setIsLoadingDaily(true);
     try {
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
@@ -197,14 +209,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, targetDate, todayDate, addNotification]);
+  }, [externalFilters, targetDate, todayDate, addNotification, normalizeDateForFilter]);
 
   useEffect(() => {
-    if (forrosGruposList.length > 0) {
+    if (isMounted && forrosGruposList.length > 0) {
       fetchTiemposProduccion();
       fetchDailyOrders();
     }
-  }, [forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
+  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
@@ -232,6 +244,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
+
+  // No renderizar hasta que esté montado para evitar Hydration Error
+  if (!isMounted) return null;
 
   return (
     <div className="p-6 md:p-8 space-y-6">

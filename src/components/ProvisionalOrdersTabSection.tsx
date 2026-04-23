@@ -24,7 +24,7 @@ interface ProvisionalOrdersTabSectionProps {
 
 export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ externalFilters }) => {
   const { addNotification } = useAppContext();
-
+  const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<ProvisionalOrder[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
@@ -42,11 +42,15 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     MAQUINA: '',
   });
 
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   /**
    * FUNCIÓN MAESTRA: Extrae las partes de la fecha SIN usar el objeto Date de JS.
    * Esto garantiza que el día sea el mismo que está en la base de datos (p.ej. 2026-04-29).
    */
-  const safeParseDateParts = (value: any) => {
+  const safeParseDateParts = useCallback((value: any) => {
     if (!value) return null;
     const str = String(value).trim();
     
@@ -59,9 +63,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
     
     return null;
-  };
+  }, []);
 
-  const formatValueForDisplay = (col: string, value: any): string => {
+  const formatValueForDisplay = useCallback((col: string, value: any): string => {
     if (value === null || value === undefined) return '—';
     const upperCol = col.toUpperCase().trim();
     
@@ -75,7 +79,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     }
     
     return String(value);
-  };
+  }, [safeParseDateParts]);
 
   const handleColumnFilterChange = (column: string, value: string) => {
     setColumnFilters(prev => ({ ...prev, [column.toUpperCase()]: value }));
@@ -108,11 +112,11 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   }, [addNotification, isLoading]);
 
   useEffect(() => {
-    if (!isInitialLoadDone.current) {
+    if (isMounted && !isInitialLoadDone.current) {
       fetchData();
       isInitialLoadDone.current = true;
     }
-  }, [fetchData]);
+  }, [fetchData, isMounted]);
 
   const filteredOrders = useMemo(() => {
     let result = orders;
@@ -141,7 +145,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     });
 
     return result;
-  }, [orders, externalFilters, columnFilters]);
+  }, [orders, externalFilters, columnFilters, formatValueForDisplay]);
 
   const columns = useMemo(() => {
     if (filteredOrders.length === 0) return [];
@@ -156,6 +160,8 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     const start = (pagination.currentPage - 1) * pagination.rowsPerPage;
     return filteredOrders.slice(start, start + pagination.rowsPerPage);
   }, [filteredOrders, pagination.currentPage, pagination.rowsPerPage]);
+
+  if (!isMounted) return null;
 
   return (
     <div className="space-y-4">
