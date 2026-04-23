@@ -67,11 +67,13 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos, isMounted }: 
           <td className="px-2 py-2 text-right font-mono text-gray-700 min-w-[80px]">{format(row.up)}</td>
           <td className="px-2 py-2 text-right font-mono text-green-700 font-bold bg-green-50/30 min-w-[90px]">{format(row._demandaCubierta)}</td>
           <td className={`px-2 py-2 text-right font-mono font-bold bg-blue-50/30 ${row._backlogVentas > 0 ? 'text-red-600' : 'text-blue-700'} min-w-[80px]`}>{format(row._backlogVentas)}</td>
+          <td className={`px-2 py-2 text-right font-mono font-bold bg-amber-50/30 ${row._backlogTraslado > 0 ? 'text-amber-800' : 'text-gray-500'} min-w-[80px]`}>{format(row._backlogTraslado ?? 0)}</td>
           <td className={`px-2 py-2 text-right font-mono font-bold border-r-2 border-gray-300 bg-emerald-50/30 ${row._saldoFinal < 0 ? 'text-red-700' : 'text-emerald-700'} min-w-[90px]`}>{format(row._saldoFinal)}</td>
         </>
       ) : isCentro1000 ? (
         <>
-          <td className="px-2 py-2 text-right font-mono text-teal-700 font-semibold bg-teal-50/10 min-w-[90px]">{format(row._envioC2000)}</td>
+          <td className="px-2 py-2 text-right font-mono text-teal-700 font-semibold bg-teal-50/10 min-w-[80px]">{format(row._envioC2000Plan ?? row._trValorAMostrar)}</td>
+          <td className="px-2 py-2 text-right font-mono text-teal-800 font-semibold bg-teal-50/20 min-w-[80px]">{format(row._envioC2000)}</td>
           <td className="px-2 py-2 text-right font-mono text-cyan-700 font-semibold bg-cyan-50/10 min-w-[90px]">{format(row._quedaC1000)}</td>
           <td className={`px-2 py-2 text-right font-mono font-semibold ${row._deficitGeneral > 0 ? 'text-red-700' : 'text-green-700'} border-r-2 border-gray-300 min-w-[80px]`}>{format(row._deficitGeneral)}</td>
         </>
@@ -105,6 +107,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedLinea, setSelectedLinea] = useState<string>('');
   const [selectedMes, setSelectedMes] = useState<string>('');
+  const [selectedSector, setSelectedSector] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [isMounted, setIsMounted] = useState(false);
   const itemsPerPage = 50;
@@ -211,9 +214,21 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
             return nl === lineaNorm || nl.includes(lineaNorm) || lineaNorm.includes(nl);
           });
           const pBotella = registrosLinea[0];
-          tiempoDispGlobalPorLinea.set(keyLinea, safeNumber(pBotella?.minutos_horario_normal_TOTAL ?? 0));
-          poolMinutosHEPorLinea.set(keyLinea, (tc.diasLaborables ?? 0) * maxExtrasHoras * 60);
-          poolMinutosSabadosPorLinea.set(keyLinea, (tc.diasSabados ?? 0) * horasExtrasFin * 60);
+          const minutosJN = safeNumber(pBotella?.minutos_horario_normal_TOTAL ?? 0);
+          const minutosConExtras = safeNumber(pBotella?.minutos_extras_TOTAL ?? 0);
+          const minutosSabadoApi = safeNumber(pBotella?.minutos_sabado_TOTAL ?? 0);
+
+          // Capeamos el pool de sábados al máximo permitido por la restricción HORAS_EXTRAS_FIN_SEMANA.
+          // La API puede devolver un valor calculado con más horas/sábado que las permitidas.
+          const maxMinutosSabadoPermitidos = tc.diasSabados * horasExtrasFin * 60;
+          const minutosSabado = tc.diasSabados > 0
+            ? Math.min(minutosSabadoApi, maxMinutosSabadoPermitidos)
+            : minutosSabadoApi;
+
+          // Pool de HE y sábados basado en tiempos canónicos del cuello de botella.
+          tiempoDispGlobalPorLinea.set(keyLinea, minutosJN);
+          poolMinutosHEPorLinea.set(keyLinea, Math.max(0, minutosConExtras - minutosJN));
+          poolMinutosSabadosPorLinea.set(keyLinea, Math.max(0, minutosSabado));
         }
 
         const tupp = safeNumber(row.TiempoPorUnidad ?? 0) / Math.max(1, safeNumber(row.NumeroPuestos ?? row.numero_puestos ?? 1));
@@ -248,70 +263,125 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         return { ...r, participacionIndividual: partInd, minutosDisponiblesJornadaNormal: (partInd / 100) * dispJN, tiempoTotalNecesidad: r.prodAqui ? r._necesidad * r.tiempoUnitarioPorPuesto : 0, necesidadMaximaProducirJornadaNormal: maxJN, deficitJornadaNormal: defJN, tiempoTotalNecesidadDeficitJN: tDefJN };
       });
 
-      pase2.forEach(r => {
+      const prelimRows = pase2.map(r => {
+        const poolHE = poolMinutosHEPorLinea.get(r.keyLinea) || 0;
+        const partDefJN = (r.prodAqui && sumDefJN.get(r.keyLinea)! > 0) ? (r.deficitJornadaNormal / sumDefJN.get(r.keyLinea)!) * 100 : 0;
+
+        let maxHE = 0;
+        if (r._isPreComputed) {
+          maxHE = safeNumber(r.necesidadMaximaProducirHorasExtras);
+        } else if (r.prodAqui && sumTDefJN.get(r.keyLinea)! > 0) {
+          if (sumTDefJN.get(r.keyLinea)! <= poolHE) maxHE = r.deficitJornadaNormal;
+          else maxHE = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolHE) / r.tiempoUnitarioPorPuesto) : 0;
+        }
+
+        const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
+        return { r, maxHE, deficitHE, partDefJN };
+      });
+
+      const sumDefHE = new Map<string, number>();
+      const sumTDefHETiempo = new Map<string, number>();
+      prelimRows.forEach(({ r, deficitHE }) => {
+        sumDefHE.set(r.keyLinea, (sumDefHE.get(r.keyLinea) || 0) + deficitHE);
+        if (r.prodAqui) {
+          sumTDefHETiempo.set(r.keyLinea, (sumTDefHETiempo.get(r.keyLinea) || 0) + deficitHE * r.tiempoUnitarioPorPuesto);
+        }
+      });
+
+      prelimRows.forEach(({ r, maxHE, deficitHE, partDefJN }) => {
         const poolHE = poolMinutosHEPorLinea.get(r.keyLinea) || 0;
         const poolSab = poolMinutosSabadosPorLinea.get(r.keyLinea) || 0;
-        const partDefJN = (r.prodAqui && sumDefJN.get(r.keyLinea)! > 0) ? (r.deficitJornadaNormal / sumDefJN.get(r.keyLinea)!) * 100 : 0;
-        
-        let maxHE = 0;
+        const partDefHE = (r.prodAqui && (sumDefHE.get(r.keyLinea) || 0) > 0)
+          ? (deficitHE / (sumDefHE.get(r.keyLinea) || 1)) * 100
+          : 0;
+
         let maxSab = 0;
         let _prodViable = 0;
 
         if (r._isPreComputed) {
-          maxHE = safeNumber(r.necesidadMaximaProducirHorasExtras);
           maxSab = safeNumber(r.necesidadMaximaProducirSabados);
           _prodViable = safeNumber(r._prodViable);
         } else {
-          if (r.prodAqui && sumTDefJN.get(r.keyLinea)! > 0) {
-            if (sumTDefJN.get(r.keyLinea)! <= poolHE) maxHE = r.deficitJornadaNormal;
-            else maxHE = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolHE) / r.tiempoUnitarioPorPuesto) : 0;
-          }
-
-          const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
           if (r.prodAqui && deficitHE > 0 && poolSab > 0) {
-            if ((deficitHE * r.tiempoUnitarioPorPuesto) <= poolSab) maxSab = deficitHE;
-            else maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefJN / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
+            if ((sumTDefHETiempo.get(r.keyLinea) || 0) <= poolSab) maxSab = deficitHE;
+            else maxSab = r.tiempoUnitarioPorPuesto > 0 ? Math.floor(((partDefHE / 100) * poolSab) / r.tiempoUnitarioPorPuesto) : 0;
             maxSab = Math.min(maxSab, deficitHE);
           }
           _prodViable = r.necesidadMaximaProducirJornadaNormal + maxHE + maxSab;
         }
 
-        const deficitHE = Math.max(0, r.deficitJornadaNormal - maxHE);
         const deficitSabados = Math.max(0, deficitHE - maxSab);
         const _deficitGeneral = Math.max(0, r._necesidad - _prodViable);
         
         const trKey = `${normalizeMaterialCode(r.CodMaterial)}|${r.mesRef}`;
         const trViableValue = quickMaps.viables.get(trKey) || 0;
-        
-        const _trValorAMostrar = (trasladosViables && trasladosViables.length > 0) 
-          ? trViableValue 
-          : (isCentro1000 ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0)) : trViableValue);
 
-        const _disponibilidad = isCentro1000 ? (r._stockInitial + _prodViable - _trValorAMostrar) : (r._stockInitial + _prodViable + _trValorAMostrar);
-        
-        const _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
-        const _backlogVentas = Math.max(0, r.up - _demandaCubierta);
-        const _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
+        const trasladoPlan =
+          trasladosViables && trasladosViables.length > 0
+            ? trViableValue
+            : isCentro1000
+              ? Math.round(_prodViable * (r._necesidad > 0 ? r._traslado / r._necesidad : 0))
+              : trViableValue;
+
+        let _disponibilidad: number;
+        let _demandaCubierta: number;
+        let _backlogVentas: number;
+        let _backlogTraslado: number;
+        let _saldoFinal: number;
+        let _trValorAMostrar: number;
+        let _envioC2000Plan: number;
+        let _envioC2000: number;
+        let _quedaC1000: number;
+
+        if (isCentro1000) {
+          const base = r._stockInitial + _prodViable;
+          _demandaCubierta = Math.min(r.up, Math.max(0, base));
+          const rem = Math.max(0, base - _demandaCubierta);
+          _envioC2000Plan = trasladoPlan;
+          _envioC2000 = Math.min(trasladoPlan, rem);
+          _backlogVentas = Math.max(0, r.up - _demandaCubierta);
+          _backlogTraslado = Math.max(0, trasladoPlan - _envioC2000);
+          _saldoFinal = Math.max(0, rem - _envioC2000);
+          _trValorAMostrar = trasladoPlan;
+          _disponibilidad = base;
+          _quedaC1000 = Math.round(_prodViable - _envioC2000);
+        } else {
+          _trValorAMostrar = trasladoPlan;
+          _disponibilidad = r._stockInitial + _prodViable + _trValorAMostrar;
+          _demandaCubierta = Math.min(r.up, Math.max(0, _disponibilidad));
+          _backlogVentas = Math.max(0, r.up - _demandaCubierta);
+          _backlogTraslado = 0;
+          _saldoFinal = Math.max(0, _disponibilidad - _demandaCubierta);
+          _envioC2000Plan = 0;
+          _envioC2000 = 0;
+          _quedaC1000 = _prodViable;
+        }
 
         stockTracker.set(r.keyStock, _saldoFinal);
 
         todasLasFilasProcesadas.push({
           ...r,
-          _isPreComputed: r._isPreComputed || true, 
+          _isPreComputed: r._isPreComputed || true,
           necesidadMaximaProducirHorasExtras: maxHE,
           necesidadMaximaProducirSabados: maxSab,
           deficitHorasExtras: deficitHE,
           deficitSabados,
           tiempoTotalNecesidadDeficitHE: r.prodAqui ? deficitHE * r.tiempoUnitarioPorPuesto : 0,
           tiempoTotalNecesidadDeficitSAB: r.prodAqui ? deficitSabados * r.tiempoUnitarioPorPuesto : 0,
-          _prodViable, _deficitGeneral, _trValorAMostrar,
+          _prodViable,
+          _deficitGeneral,
+          _trValorAMostrar,
           _deficitNeto2000: Math.max(0, _deficitGeneral - trViableValue),
-          _envioC2000: isCentro1000 ? _trValorAMostrar : 0,
-          _quedaC1000: isCentro1000 ? Math.round(_prodViable - _trValorAMostrar) : _prodViable,
+          _envioC2000Plan,
+          _envioC2000: isCentro1000 ? _envioC2000 : 0,
+          _quedaC1000,
           participacionDeficitJN: partDefJN,
           minutosDisponiblesHorasExtras: (partDefJN / 100) * poolHE,
-          minutosDisponiblesSabados: (partDefJN / 100) * poolSab,
-          _demandaCubierta, _backlogVentas, _saldoFinal
+          minutosDisponiblesSabados: (partDefHE / 100) * poolSab,
+          _demandaCubierta,
+          _backlogVentas,
+          _backlogTraslado,
+          _saldoFinal,
         });
       });
     }
@@ -353,6 +423,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
         return mesNombre === selectedMes || String(row.mesRef) === selectedMes;
       });
     }
+    if (selectedSector) {
+      result = result.filter(row => String(row.Sector || '') === selectedSector);
+    }
     return result;
   }, [filasCalculadas, searchTerm, selectedLinea, selectedMes]);
 
@@ -360,8 +433,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     const res = {
       necPropia: 0, traslados: 0, necesidad: 0, tiempoNec: 0, dispMinJN: 0, maxJN: 0, defJN: 0,
       tDefJN: 0, tMinHE: 0, maxHE: 0, defHE: 0, tDefHE: 0, tMinSAB: 0, maxSAB: 0, defSAB: 0, tDefSAB: 0, viable: 0,
-      defGral: 0, trViable: 0, defNeto: 0, stockIni: 0, demanda: 0, demCubierta: 0, backlog: 0, saldoFinal: 0,
-      envio2000: 0, queda1000: 0
+      defGral: 0, trViable: 0, defNeto: 0, stockIni: 0, demanda: 0, demCubierta: 0, backlog: 0, backlogTrasl: 0, saldoFinal: 0,
+      envio2000: 0, envio2000Plan: 0, queda1000: 0
     };
     datosFiltrados.forEach((r: any) => {
       res.necPropia += safeNumber(r._necPropia);
@@ -385,11 +458,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       res.trViable += safeNumber(r._trValorAMostrar);
       res.defNeto += safeNumber(r._deficitNeto2000);
       res.envio2000 += safeNumber(r._envioC2000);
+      res.envio2000Plan += safeNumber(r._envioC2000Plan ?? r._trValorAMostrar);
       res.queda1000 += safeNumber(r._quedaC1000);
       res.stockIni += safeNumber(r._stockInitial);
       res.demanda += safeNumber(r.up);
       res.demCubierta += safeNumber(r._demandaCubierta);
       res.backlog += safeNumber(r._backlogVentas);
+      res.backlogTrasl += safeNumber(r._backlogTraslado);
       res.saldoFinal += safeNumber(r._saldoFinal);
     });
     return res;
@@ -421,6 +496,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   const lineasUnicasOptions = useMemo(() => {
     return Array.from(new Set(filasCalculadas.map(r => String(r.lineaRef || ''))))
       .filter(l => l !== '')
+      .sort();
+  }, [filasCalculadas]);
+
+  const sectoresUnicosOptions = useMemo(() => {
+    return Array.from(new Set(filasCalculadas.map(r => String(r.Sector || ''))))
+      .filter(s => s !== '')
       .sort();
   }, [filasCalculadas]);
 
@@ -459,6 +540,11 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
           <option value="">Línea: Todas</option>
           {lineasUnicasOptions.map(l => <option key={`opt-linea-${l}`} value={l}>{l}</option>)}
         </select>
+
+        <select value={selectedSector} onChange={e => setSelectedSector(e.target.value)} className="border border-gray-300 px-3 py-1.5 rounded-md text-sm bg-white">
+          <option value="">Sector: Todos</option>
+          {sectoresUnicosOptions.map(s => <option key={`opt-sector-${s}`} value={s}>{s}</option>)}
+        </select>
       </div>
 
       <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
@@ -470,7 +556,12 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-blue-700 uppercase bg-blue-100 border-r-2 border-gray-300">Jornada Normal</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-green-700 uppercase bg-green-100 border-r-2 border-gray-300">Horas Extras</th>
               <th colSpan={5} className="px-2 py-1 text-center font-bold text-orange-700 uppercase bg-orange-100 border-r-2 border-gray-300">Sábados</th>
-              <th colSpan={showSaldos ? 7 : 3} className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300">Resultados Consolidados</th>
+              <th
+                colSpan={showSaldos ? 8 : isCentro1000 ? 4 : 3}
+                className="px-2 py-1 text-center font-bold text-purple-700 uppercase bg-purple-100 border-r-2 border-gray-300"
+              >
+                Resultados Consolidados
+              </th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 uppercase font-bold text-gray-500">
               <th className="px-2 py-1 text-left bg-indigo-50/50 min-w-[80px]">Mes</th>
@@ -494,12 +585,15 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                 <>
                   <th className="px-2 py-1 text-right text-red-600 min-w-[80px]">Def.Gral</th><th className="px-2 py-1 text-right text-teal-600 min-w-[90px]">Traslados</th>
                   <th className="px-2 py-1 text-right text-indigo-600 min-w-[90px]">Stock Ini</th><th className="px-2 py-1 text-right text-gray-600 min-w-[80px]">Demanda</th>
-                  <th className="px-2 py-1 text-right text-green-600 min-w-[90px]">Despachos</th><th className="px-2 py-1 text-right text-blue-600 min-w-[80px]">Backlog</th>
+                  <th className="px-2 py-1 text-right text-green-600 min-w-[90px]">Despachos</th><th className="px-2 py-1 text-right text-blue-600 min-w-[80px]">BL Ventas</th>
+                  <th className="px-2 py-1 text-right text-amber-600 min-w-[80px]">BL Trasl.</th>
                   <th className="px-2 py-1 text-right text-emerald-600 border-r-2 border-gray-300 min-w-[90px]">Saldo Final</th>
                 </>
               ) : isCentro1000 ? (
                 <>
-                  <th className="px-2 py-1 text-right text-teal-600 min-w-[90px]">Envío 2000</th><th className="px-2 py-1 text-right text-cyan-600 min-w-[90px]">Queda 1000</th>
+                  <th className="px-2 py-1 text-right text-teal-600 min-w-[80px]" title="Plan (viable / ratio)">Tr. plan</th>
+                  <th className="px-2 py-1 text-right text-teal-700 min-w-[80px]" title="Traslado efectivo tras priorizar ventas">Tr. efec.</th>
+                  <th className="px-2 py-1 text-right text-cyan-600 min-w-[90px]">Queda 1000</th>
                   <th className="px-2 py-1 text-right text-red-600 border-r-2 border-gray-300 min-w-[80px]">Def.Gral</th>
                 </>
               ) : (
@@ -542,11 +636,13 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
                   <td className="px-2 py-2 text-right font-mono text-gray-300 min-w-[80px]">{formatTotal(totals.demanda)}</td>
                   <td className="px-2 py-2 text-right font-mono text-green-300 min-w-[90px]">{formatTotal(totals.demCubierta)}</td>
                   <td className="px-2 py-2 text-right font-mono text-blue-300 min-w-[80px]">{formatTotal(totals.backlog)}</td>
+                  <td className="px-2 py-2 text-right font-mono text-amber-200 min-w-[80px]">{formatTotal(totals.backlogTrasl)}</td>
                   <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-600 min-w-[90px]">{formatTotal(totals.saldoFinal)}</td>
                 </>
               ) : isCentro1000 ? (
                 <>
-                  <td className="px-2 py-2 text-right font-mono text-teal-300 min-w-[90px]">{formatTotal(totals.envio2000)}</td>
+                  <td className="px-2 py-2 text-right font-mono text-teal-300 min-w-[80px]">{formatTotal(totals.envio2000Plan)}</td>
+                  <td className="px-2 py-2 text-right font-mono text-teal-200 min-w-[80px]">{formatTotal(totals.envio2000)}</td>
                   <td className="px-2 py-2 text-right font-mono text-cyan-300 min-w-[90px]">{formatTotal(totals.queda1000)}</td>
                   <td className="px-2 py-2 text-right font-mono border-r-2 border-gray-600 min-w-[80px]">{formatTotal(totals.defGral)}</td>
                 </>
