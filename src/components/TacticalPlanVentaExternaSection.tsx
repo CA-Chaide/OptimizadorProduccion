@@ -155,7 +155,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
     
-    // Intentar extraer solo el número si viene con descripción (ej: "30000123 TEXTO")
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
@@ -163,13 +162,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return { code, desc };
   };
 
-  // Mapas de lookup para Tiempo PL (Cargamos valor numérico robusto)
+  // Mapas de lookup para Tiempo PL (Cargamos valor numérico como MINUTOS)
   const tiemposMap1000 = useMemo(() => {
     const map = new Map<string, number>();
     tiemposC1000.forEach(t => {
       const info = extractMaterialInfo(t);
       if (info.code) {
-        // Priorizar Tiempo_Min si existe, sino Tiempo
         const val = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
         map.set(info.code, val);
       }
@@ -217,7 +215,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
-    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
+    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = bottom.scrollLeft; };
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
     return () => {
@@ -252,12 +250,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">Venta Externa</h2>
             <p className="text-sm text-gray-500 font-medium">Panel de Control de Programación Táctica</p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-white border-gray-200 text-gray-600 py-1 px-3">
-            <div className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse" />
-            Segmentación Inteligente
-          </Badge>
         </div>
       </div>
 
@@ -295,9 +287,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <Badge className="w-fit bg-blue-600 mb-2">PLANTA {g.centro}</Badge>
                 <h4 className="font-black text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
                 <p className="text-[10px] font-mono text-gray-400 mt-1">CÓDIGO: {g.codigo_grupo}</p>
-                <div className="mt-4 pt-4 border-t border-dashed flex items-center gap-2 text-green-600 text-xs font-bold">
-                  <CheckCircle2 className="w-4 h-4" /> GRUPO ACTIVO
-                </div>
               </Card>
             ))}
           </div>
@@ -328,7 +317,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* ÓRDENES PROVISIONALES */}
         <TabsContent value="ordenes" className="space-y-8">
           {[ { t: 'Quito 1000', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600' }, { t: 'Guayaquil 2000', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
@@ -371,7 +359,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        {/* ÓRDENES FERT */}
         <TabsContent value="ordenesFert" className="space-y-8">
           {[ 
             { t: 'Quito 1000 (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600', m: tiemposMap1000 }, 
@@ -409,12 +396,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-50 text-[10px]">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
-                        const matchingTimeSec = center.m.get(info.code);
+                        const matchingTimeMin = center.m.get(info.code);
                         const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
                         
-                        // Cálculo: (Pendiente * Segundos) / 3600
-                        const calculatedHours = matchingTimeSec !== undefined 
-                          ? (cantPendiente * matchingTimeSec) / 3600 
+                        // Cálculo: (Pendiente * Minutos) / 60
+                        const calculatedHours = matchingTimeMin !== undefined 
+                          ? (cantPendiente * matchingTimeMin) / 60 
                           : null;
                         
                         return (
@@ -432,7 +419,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center">{o.TIEMPOPENDIENTE || 0}</td>
                             <td 
                               className="px-3 py-3 font-mono font-black border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5 cursor-help"
-                              title={calculatedHours !== null ? `Procedimiento: (${cantPendiente} pendientes * ${matchingTimeSec} seg) / 3600 = ${calculatedHours.toFixed(4)}h` : "Sin tiempo estándar vinculado"}
+                              title={calculatedHours !== null ? `Procedimiento: (${cantPendiente} pendientes * ${matchingTimeMin.toFixed(2)} min) / 60 = ${calculatedHours.toFixed(2)}h` : "Sin tiempo estándar vinculado"}
                             >
                               {calculatedHours !== null ? (
                                 <span className="flex items-center justify-center gap-1">
@@ -456,7 +443,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        {/* TIEMPOS ENSAMBLADO */}
         <TabsContent value="tiempos" className="space-y-8">
           {[ { t: 'Catálogo Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
@@ -474,7 +460,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Línea Técnica</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700 text-center">T. Estándar (Seg)</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700 text-center">T. Estándar (Min)</th>
                         <th className="px-4 py-4 text-center">S. Actual / Seguridad</th>
                       </tr>
                     </thead>
@@ -486,7 +472,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-4 py-3 font-mono font-black text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 font-black text-gray-500 uppercase tracking-tighter truncate max-w-[280px]">{info.desc}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-bold text-gray-400">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 text-center text-lg">{t.Tiempo_Min || t.Tiempo || '—'}s</td>
+                            <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 text-center text-lg">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}m</td>
                             <td className="px-4 py-3 text-center font-bold text-gray-400">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
@@ -499,7 +485,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        {/* TAB RESUMEN CONSOLIDADO */}
         <TabsContent value="resumen">
           <div className="space-y-4">
             <div className="flex items-center gap-2 px-1">
