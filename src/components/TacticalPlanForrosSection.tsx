@@ -30,7 +30,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
-  // Helper para obtener hoy en Ecuador (America/Guayaquil)
+  // Helper para obtener hoy en Ecuador (YYYY-MM-DD) de forma segura
   const getEcuadorTodayString = (): string => {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Guayaquil',
@@ -40,28 +40,44 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }).format(new Date());
   };
 
-  // Helper para normalizar fechas de la API a YYYY-MM-DD en zona horaria de Ecuador
-  const normalizeDateToEcuador = (dateInput: any): string | null => {
-    if (!dateInput) return null;
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return null;
+  // FUNCIÓN MAESTRA: Extrae las partes de la fecha SIN usar el objeto Date de JS
+  // Esto evita desfases por zona horaria (UTC-5) y garantiza que el dato sea el mismo del servidor
+  const safeParseDateParts = (value: any) => {
+    if (!value) return null;
+    const str = String(value).trim();
     
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Guayaquil',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(date);
+    // Intenta formato YYYY-MM-DD (ej: 2026-04-29...)
+    const ymd = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
+    
+    // Intenta formato DD/MM/YYYY (ej: 29/04/2026...)
+    const dmy = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (dmy) return { y: dmy[3], m: dmy[2], d: dmy[1] };
+    
+    return null;
   };
 
-  // Helper para formatear valores de fecha para mostrar en la tabla (Ecuador UTC-5)
+  // Normaliza a YYYY-MM-DD para comparaciones lógicas exactas sin horas
+  const normalizeDateForFilter = (dateInput: any): string | null => {
+    const parts = safeParseDateParts(dateInput);
+    if (parts) return `${parts.y}-${parts.m}-${parts.d}`;
+    return null;
+  };
+
+  // Formatea para visualización (DD/MM/YYYY) preservando los números originales
   const formatValueForDisplay = (col: string, value: any): string => {
     if (value === null || value === undefined) return '—';
     const upperCol = col.toUpperCase().trim();
+    
     if (upperCol.includes('FECHA')) {
-      const normalized = normalizeDateToEcuador(value);
-      return normalized || String(value);
+      const parts = safeParseDateParts(value);
+      if (parts) {
+        // Retornamos el formato legible DD/MM/YYYY extraído directamente del texto
+        return `${parts.d}/${parts.m}/${parts.y}`;
+      }
+      return String(value);
     }
+    
     return String(value);
   };
 
@@ -106,15 +122,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const getTargetPlanningDate = useCallback((days: number) => {
     const todayStr = getEcuadorTodayString();
     const [y, m, d] = todayStr.split('-').map(Number);
-    // Creamos la fecha localmente pero con componentes de Ecuador
-    const date = new Date(y, m - 1, d); 
+    const date = new Date(y, m - 1, d); // Mes es 0-indexed en JS
     
     date.setDate(date.getDate() + days);
     
-    // Ajuste de fines de semana (Sábado -> Lunes, Domingo -> Lunes)
     const dayOfWeek = date.getDay();
-    if (dayOfWeek === 6) date.setDate(date.getDate() + 2);
-    else if (dayOfWeek === 0) date.setDate(date.getDate() + 1);
+    if (dayOfWeek === 6) date.setDate(date.getDate() + 2); // Sábado -> Lunes
+    else if (dayOfWeek === 0) date.setDate(date.getDate() + 1); // Domingo -> Lunes
     
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Guayaquil',
@@ -164,7 +178,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
-          // 1. Filtros de área (Restricciones)
           const matchesExternal = Object.entries(externalFilters).every(([key, allowed]) => {
             const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === key.toUpperCase().trim());
             if (!orderKey) return true;
@@ -173,11 +186,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
           });
           if (!matchesExternal) return false;
 
-          // 2. Filtro de Fecha (Hoy o Día Objetivo) en Ecuador Time
           const orderDateKey = Object.keys(order).find(k => k.toUpperCase() === 'FECHAINICIO');
           if (!orderDateKey) return false;
           
-          const normalizedOrderDate = normalizeDateToEcuador(order[orderDateKey]);
+          const normalizedOrderDate = normalizeDateForFilter(order[orderDateKey]);
           return normalizedOrderDate === todayDate || normalizedOrderDate === targetDate;
         });
         setDailyOrders(filtered);
@@ -198,8 +210,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
-  const tiemposColumns = useMemo(() => tiemposProduccion.length > 0 ? Object.keys(tiemposProduccion[0]) : [], [tiemposProduccion]);
-  const dailyColumns = useMemo(() => dailyOrders.length > 0 ? Object.keys(dailyOrders[0]) : [], [dailyOrders]);
+  const tiemposColumns = useMemo(() => {
+    if (tiemposProduccion.length === 0) return [];
+    const allKeys = Object.keys(tiemposProduccion[0]);
+    const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'Tiempo'];
+    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+  }, [tiemposProduccion]);
+
+  const dailyColumns = useMemo(() => {
+    if (dailyOrders.length === 0) return [];
+    const allKeys = Object.keys(dailyOrders[0]);
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'CANTIDAD', 'FECHAINICIO', 'FECHAFIN'];
+    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+  }, [dailyOrders]);
 
   const paginatedTiemposData = useMemo(() => {
     const start = (tiemposPage - 1) * tiemposRowsPerPage;
@@ -242,7 +265,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Código</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Centro</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Nombre</th><th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Estado</th></tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-200">
                       {forrosGruposList.map((g) => (
                         <tr key={g.codigo_grupo} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{g.codigo_grupo}</td>
@@ -269,7 +292,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Nombre</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Valor</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Descripción</th></tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-200">
                       {forrosRestricciones.map((r) => (
                         <tr key={r.codigo_restriccion} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap font-semibold text-indigo-700">{r.nombre_restriccion}</td>
@@ -288,7 +311,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="tiempos">
           <Card>
             <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex-1"><CardTitle>Tiempos de Producción (Ecuador UTC-5)</CardTitle></div>
+              <div className="flex-1"><CardTitle>Tiempos de Producción (Ecuador Continental)</CardTitle></div>
               {!isLoadingTiempos && tiemposProduccion.length > 0 && (
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
@@ -298,21 +321,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(p => Math.min(totalTiemposPages, p + 1))} disabled={tiemposPage === totalTiemposPages}><ChevronRight className="h-4 w-4" /></Button>
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(totalTiemposPages)} disabled={tiemposPage === totalTiemposPages}><ChevronsRight className="h-4 w-4" /></Button>
                   </div>
-                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos}><RefreshCw className={cn("h-4 w-4", isLoadingTiempos && "animate-spin")} /></Button>
+                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos} title="Recargar"><RefreshCw className={cn("h-4 w-4", isLoadingTiempos && "animate-spin")} /></Button>
                 </div>
               )}
             </CardHeader>
             <CardContent>
               <div className="rounded-md border bg-white overflow-hidden">
                 <div className="overflow-auto max-h-[60vh]">
-                  <table className="min-w-full divide-y divide-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                       <tr>{tiemposColumns.map(col => (<th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">{col}</th>))}</tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {isLoadingTiempos ? (<tr><td colSpan={tiemposColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : paginatedTiemposData.map((t, idx) => (
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {isLoadingTiempos ? (<tr><td colSpan={tiemposColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : tiemposProduccion.length > 0 ? paginatedTiemposData.map((t, idx) => (
                         <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">{tiemposColumns.map(col => (<td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{formatValueForDisplay(col, t[col])}</td>))}</tr>
-                      ))}
+                      )) : (<tr><td colSpan={tiemposColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay datos disponibles.</td></tr>)}
                     </tbody>
                   </table>
                 </div>
@@ -323,25 +346,25 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="ordenes">
           <Card>
-            <CardHeader><CardTitle>Órdenes Previsionales Filtradas (Ecuador UTC-5)</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Órdenes Previsionales Filtradas (Ecuador Continental)</CardTitle></CardHeader>
             <CardContent><ProvisionalOrdersTabSection externalFilters={externalFilters} /></CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="diaria">
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Diaria (Ecuador UTC-5): {todayDate} y {targetDate}</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Diaria (Ecuador): {formatValueForDisplay('FECHA', todayDate)} y {formatValueForDisplay('FECHA', targetDate)}</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-md border bg-white overflow-hidden">
                 <div className="overflow-auto max-h-[60vh]">
-                  <table className="min-w-full divide-y divide-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                       <tr>{dailyColumns.map(col => (<th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">{col}</th>))}</tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-200 bg-white">
                       {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : dailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
                         <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">{dailyColumns.map(col => (<td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{formatValueForDisplay(col, order[col])}</td>))}</tr>
-                      )) : (<tr><td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic">No hay órdenes para hoy ({todayDate}) o la fecha objetivo ({targetDate}).</td></tr>)}
+                      )) : (<tr><td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada.</td></tr>)}
                     </tbody>
                   </table>
                 </div>

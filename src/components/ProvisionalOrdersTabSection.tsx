@@ -42,27 +42,34 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     MAQUINA: '',
   });
 
-  // Helper para formatear valores de fecha a la hora de Ecuador (UTC-5)
+  // FUNCIÓN MAESTRA: Extrae las partes de la fecha SIN usar el objeto Date de JS
+  // Esto evita desfases por zona horaria (UTC-5) y garantiza que el dato sea el mismo del servidor
+  const safeParseDateParts = (value: any) => {
+    if (!value) return null;
+    const str = String(value).trim();
+    
+    // Intenta formato YYYY-MM-DD (ej: 2026-04-29...)
+    const ymd = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
+    
+    // Intenta formato DD/MM/YYYY (ej: 29/04/2026...)
+    const dmy = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (dmy) return { y: dmy[3], m: dmy[2], d: dmy[1] };
+    
+    return null;
+  };
+
   const formatValueForDisplay = (col: string, value: any): string => {
     if (value === null || value === undefined) return '—';
     const upperCol = col.toUpperCase().trim();
     
-    // Si la columna es de fecha, forzamos la interpretación local de Ecuador
     if (upperCol.includes('FECHA')) {
-      try {
-        const date = new Date(value);
-        if (isNaN(date.getTime())) return String(value);
-        
-        // Usamos Intl.DateTimeFormat para asegurar que se use la zona horaria de Ecuador
-        return new Intl.DateTimeFormat('es-EC', {
-          timeZone: 'America/Guayaquil',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit'
-        }).format(date);
-      } catch {
-        return String(value);
+      const parts = safeParseDateParts(value);
+      if (parts) {
+        // Retornamos el formato legible DD/MM/YYYY extraído directamente del texto
+        return `${parts.d}/${parts.m}/${parts.y}`;
       }
+      return String(value);
     }
     
     return String(value);
@@ -158,7 +165,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                 {columns.map((col) => (
                   <th 
                     key={col} 
-                    className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b bg-gray-50"
+                    className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b"
                   >
                     {col}
                   </th>
@@ -233,8 +240,8 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
               {[20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
-          <div className="text-[10px] text-gray-400 font-bold tracking-widest">
-            {filteredOrders.length} REGISTROS FILTRADOS
+          <div className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">
+            {filteredOrders.length} registros filtrados
           </div>
         </div>
 
@@ -246,7 +253,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
             <Button variant="outline" size="icon" onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage + 1 }))} disabled={pagination.currentPage === totalPages} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
             <Button variant="outline" size="icon" onClick={() => setPagination(prev => ({ ...prev, currentPage: totalPages }))} disabled={pagination.currentPage === totalPages} className="h-8 w-8"><ChevronsRight className="h-4 w-4" /></Button>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoading && "animate-spin")} /> Actualizar</Button>
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading} className="h-8 px-4 bg-white" title="Actualizar datos"><RefreshCw className={cn("h-3 w-3 mr-2", isLoading && "animate-spin")} /> Actualizar</Button>
         </div>
       </div>
     </div>
