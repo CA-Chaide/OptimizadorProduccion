@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, CheckCircle2, LayoutDashboard } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, CheckCircle2, LayoutDashboard, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -163,12 +163,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return { code, desc };
   };
 
-  // Mapas de lookup para Tiempo PL (Tiempo estándar en segundos)
+  // Mapas de lookup para Tiempo PL (Cargamos valor numérico robusto)
   const tiemposMap1000 = useMemo(() => {
     const map = new Map<string, number>();
     tiemposC1000.forEach(t => {
       const info = extractMaterialInfo(t);
-      if (info.code) map.set(info.code, t.Tiempo_Min || t.Tiempo || 0);
+      if (info.code) {
+        // Priorizar Tiempo_Min si existe, sino Tiempo
+        const val = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
+        map.set(info.code, val);
+      }
     });
     return map;
   }, [tiemposC1000]);
@@ -177,7 +181,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const map = new Map<string, number>();
     tiemposC2000.forEach(t => {
       const info = extractMaterialInfo(t);
-      if (info.code) map.set(info.code, t.Tiempo_Min || t.Tiempo || 0);
+      if (info.code) {
+        const val = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
+        map.set(info.code, val);
+      }
     });
     return map;
   }, [tiemposC2000]);
@@ -367,8 +374,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         {/* ÓRDENES FERT */}
         <TabsContent value="ordenesFert" className="space-y-8">
           {[ 
-            { t: 'Quito 1000 (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600' }, 
-            { t: 'Guayaquil 2000 (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600' } 
+            { t: 'Quito 1000 (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600', m: tiemposMap1000 }, 
+            { t: 'Guayaquil 2000 (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600', m: tiemposMap2000 } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
@@ -402,9 +409,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-50 text-[10px]">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
-                        const matchingTime = center.t.includes('1000') 
-                          ? tiemposMap1000.get(info.code) 
-                          : tiemposMap2000.get(info.code);
+                        const matchingTimeSec = center.m.get(info.code);
+                        const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
+                        
+                        // Cálculo: (Pendiente * Segundos) / 3600
+                        const calculatedHours = matchingTimeSec !== undefined 
+                          ? (cantPendiente * matchingTimeSec) / 3600 
+                          : null;
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -417,12 +428,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-black text-green-700 border-r border-dashed border-gray-100 text-center bg-green-50/10 text-xs">{o.CANTENTREGADA || 0}</td>
                             <td className="px-3 py-3 font-black text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/10 text-xs">{o.CANTNOTIFICADA || 0}</td>
                             <td className="px-3 py-3 font-black text-red-600 border-r border-dashed border-gray-100 text-center bg-red-50/10 text-xs">{o.CANTRECHAZO || 0}</td>
-                            <td className="px-3 py-3 font-black text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10 text-xs">{o.CANTPENDIENTE || 0}</td>
+                            <td className="px-3 py-3 font-black text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10 text-xs">{cantPendiente}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center">{o.TIEMPOPENDIENTE || 0}</td>
-                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
-                              {matchingTime !== undefined ? (
-                                <span className="text-xs">
-                                  {((Number(o.CANTPENDIENTE || 0) * matchingTime) / 3600).toFixed(2)}h
+                            <td 
+                              className="px-3 py-3 font-mono font-black border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5 cursor-help"
+                              title={calculatedHours !== null ? `Procedimiento: (${cantPendiente} pendientes * ${matchingTimeSec} seg) / 3600 = ${calculatedHours.toFixed(4)}h` : "Sin tiempo estándar vinculado"}
+                            >
+                              {calculatedHours !== null ? (
+                                <span className="flex items-center justify-center gap-1">
+                                  {calculatedHours.toFixed(2)}h
                                 </span>
                               ) : (
                                 <span className="text-gray-300">—</span>
@@ -472,7 +486,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-4 py-3 font-mono font-black text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 font-black text-gray-500 uppercase tracking-tighter truncate max-w-[280px]">{info.desc}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-bold text-gray-400">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 text-center text-lg">{t.Tiempo_Min?.toFixed(1) || t.Tiempo?.toFixed(1) || '—'}s</td>
+                            <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 text-center text-lg">{t.Tiempo_Min || t.Tiempo || '—'}s</td>
                             <td className="px-4 py-3 text-center font-bold text-gray-400">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
