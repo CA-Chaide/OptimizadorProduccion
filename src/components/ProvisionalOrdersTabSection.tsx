@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
-import { useRuntimeInspector } from '@/services/RuntimeInspector';
+import { runtimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,6 @@ interface ProvisionalOrdersTabSectionProps {
 }
 
 export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ externalFilters }) => {
-  const inspector = useRuntimeInspector('ProvisionalOrdersTab');
   const { addNotification } = useAppContext();
 
   const [orders, setOrders] = useState<ProvisionalOrder[]>([]);
@@ -33,7 +32,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     rowsPerPage: 20,
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const isMounted = useRef(false);
+  const isInitialLoadDone = useRef(false);
 
   // Estado para filtros por columna específicos
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({
@@ -66,7 +65,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
           currentPage: 1
         }));
         
-        inspector.captureVariable('loadedOrdersCount', response.data.length);
+        runtimeInspector.captureVariable('ProvisionalOrdersTab', 'component', 'loadedOrdersCount', response.data.length);
       }
     } catch (err) {
       const errorMessage = (err as Error).message;
@@ -74,13 +73,13 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, inspector, isLoading]);
+  }, [addNotification, isLoading]);
 
   // Cargar al montar una sola vez
   useEffect(() => {
-    if (!isMounted.current) {
+    if (!isInitialLoadDone.current) {
       fetchData();
-      isMounted.current = true;
+      isInitialLoadDone.current = true;
     }
   }, [fetchData]);
 
@@ -139,70 +138,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
   return (
     <div className="space-y-4">
-      {/* Controles Superiores de Paginación */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-2 bg-gray-50/50 p-4 rounded-lg border">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-bold uppercase">Filas:</span>
-            <select
-              value={pagination.rowsPerPage}
-              onChange={(e) => setPagination(prev => ({ ...prev, rowsPerPage: Number(e.target.value), currentPage: 1 }))}
-              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading} className="h-8">
-            <RefreshCw className={cn("h-3 w-3 mr-2", isLoading && "animate-spin")} />
-            Actualizar
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setPagination(prev => ({ ...prev, currentPage: 1 }))}
-            disabled={pagination.currentPage === 1 || isLoading}
-            className="h-8 w-8"
-          >
-            <ChevronsLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage - 1 }))}
-            disabled={pagination.currentPage === 1 || isLoading}
-            className="h-8 w-8"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          
-          <div className="px-4 text-xs font-bold text-gray-700 min-w-[120px] text-center">
-            Página {pagination.currentPage} de {totalPages}
-          </div>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage + 1 }))}
-            disabled={pagination.currentPage === totalPages || isLoading}
-            className="h-8 w-8"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setPagination(prev => ({ ...prev, currentPage: totalPages }))}
-            disabled={pagination.currentPage === totalPages || isLoading}
-            className="h-8 w-8"
-          >
-            <ChevronsRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
       {/* Tabla Dinámica con Scroll Doble y Filtros por Columna */}
       <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
@@ -222,7 +157,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
               <tr className="bg-gray-50/50">
                 {columns.map((col) => {
                   const upperCol = col.toUpperCase().trim();
-                  // Determinar si esta columna debe tener un filtro local (MATERIAL, CATEGORIA, FECHAINICIO, RESPCONTROLPROD, MAQUINA)
                   const isFilterable = ['MATERIAL', 'CATEGORIA', 'FECHAINICIO', 'RESPCONTROLPROD', 'MAQUINA'].includes(upperCol);
                   
                   return (
@@ -232,7 +166,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                           <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
                           <input
                             type="text"
-                            placeholder={`Filtrar...`}
+                            placeholder={`Buscar...`}
                             value={columnFilters[upperCol] || ''}
                             onChange={(e) => handleColumnFilterChange(upperCol, e.target.value)}
                             className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white"
@@ -279,12 +213,76 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
         </div>
       </div>
 
-      {/* Resumen Final */}
-      {!isLoading && filteredOrders.length > 0 && (
-        <div className="mt-2 flex justify-end text-[10px] text-gray-400 uppercase font-bold tracking-widest">
-          Total {filteredOrders.length} registros filtrados de {orders.length} totales
+      {/* Controles Inferiores de Paginación y Recarga */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Filas por página:</span>
+            <select
+              value={pagination.rowsPerPage}
+              onChange={(e) => setPagination(prev => ({ ...prev, rowsPerPage: Number(e.target.value), currentPage: 1 }))}
+              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div className="h-4 w-px bg-gray-300 mx-2" />
+          <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">
+            Total {filteredOrders.length} filtrados
+          </div>
         </div>
-      )}
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPagination(prev => ({ ...prev, currentPage: 1 }))}
+              disabled={pagination.currentPage === 1 || isLoading}
+              className="h-8 w-8"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage - 1 }))}
+              disabled={pagination.currentPage === 1 || isLoading}
+              className="h-8 w-8"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            
+            <div className="px-4 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-white rounded shadow-sm">
+              Página {pagination.currentPage} de {totalPages}
+            </div>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage + 1 }))}
+              disabled={pagination.currentPage === totalPages || isLoading}
+              className="h-8 w-8"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPagination(prev => ({ ...prev, currentPage: totalPages }))}
+              disabled={pagination.currentPage === totalPages || isLoading}
+              className="h-8 w-8"
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading} className="h-8 px-4 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all">
+            <RefreshCw className={cn("h-3 w-3 mr-2", isLoading && "animate-spin")} />
+            Actualizar Datos
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };
