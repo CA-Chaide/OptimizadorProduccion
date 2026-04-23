@@ -144,8 +144,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   const columns = useMemo(() => {
     if (filteredOrders.length === 0) return [];
     const allKeys = Object.keys(filteredOrders[0]);
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'FECHAINICIO', 'FECHAFIN'];
-    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+    // Agregamos RAW_FECHA_BACKEND al inicio o prioridad
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'RAW_FECHA_BACKEND', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'FECHAFIN'];
+    return [...priority.filter(k => allKeys.includes(k) || k === 'RAW_FECHA_BACKEND'), ...allKeys.filter(k => !priority.includes(k))];
   }, [filteredOrders]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pagination.rowsPerPage));
@@ -165,9 +166,12 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                 {columns.map((col) => (
                   <th 
                     key={col} 
-                    className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b"
+                    className={cn(
+                      "px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b",
+                      col === 'RAW_FECHA_BACKEND' ? "text-red-600 bg-red-50" : "text-gray-600"
+                    )}
                   >
-                    {col}
+                    {col === 'RAW_FECHA_BACKEND' ? 'FECHA (RAW BACKEND)' : col}
                   </th>
                 ))}
               </tr>
@@ -209,9 +213,14 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                     {columns.map((col) => (
                       <td 
                         key={`cell-${idx}-${col}`} 
-                        className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono"
+                        className={cn(
+                          "px-4 py-2.5 whitespace-nowrap text-[11px] font-mono",
+                          col === 'RAW_FECHA_BACKEND' ? "text-red-700 bg-red-50/30" : "text-gray-600"
+                        )}
                       >
-                        {formatValueForDisplay(col, order[col])}
+                        {col === 'RAW_FECHA_BACKEND' 
+                          ? String(order['FECHAINICIO'] || 'N/A') 
+                          : formatValueForDisplay(col, order[col])}
                       </td>
                     ))}
                   </tr>

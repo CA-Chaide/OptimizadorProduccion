@@ -220,8 +220,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const dailyColumns = useMemo(() => {
     if (dailyOrders.length === 0) return [];
     const allKeys = Object.keys(dailyOrders[0]);
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'CANTIDAD', 'FECHAINICIO', 'FECHAFIN'];
-    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+    // Agregamos RAW_FECHA_BACKEND
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'RAW_FECHA_BACKEND', 'CANTIDAD', 'FECHAFIN'];
+    return [...priority.filter(k => allKeys.includes(k) || k === 'RAW_FECHA_BACKEND'), ...allKeys.filter(k => !priority.includes(k))];
   }, [dailyOrders]);
 
   const paginatedTiemposData = useMemo(() => {
@@ -359,11 +360,37 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="overflow-auto max-h-[60vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                      <tr>{dailyColumns.map(col => (<th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">{col}</th>))}</tr>
+                      <tr>
+                        {dailyColumns.map((col) => (
+                          <th 
+                            key={col} 
+                            className={cn(
+                              "px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b",
+                              col === 'RAW_FECHA_BACKEND' ? "text-red-600 bg-red-50" : "text-gray-600"
+                            )}
+                          >
+                            {col === 'RAW_FECHA_BACKEND' ? 'FECHA (RAW BACKEND)' : col}
+                          </th>
+                        ))}
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : dailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
-                        <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">{dailyColumns.map(col => (<td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{formatValueForDisplay(col, order[col])}</td>))}</tr>
+                        <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">
+                          {dailyColumns.map((col) => (
+                            <td 
+                              key={`cell-${idx}-${col}`} 
+                              className={cn(
+                                "px-4 py-2.5 whitespace-nowrap text-[11px] font-mono",
+                                col === 'RAW_FECHA_BACKEND' ? "text-red-700 bg-red-50/30" : "text-gray-600"
+                              )}
+                            >
+                              {col === 'RAW_FECHA_BACKEND' 
+                                ? String(order['FECHAINICIO'] || 'N/A') 
+                                : formatValueForDisplay(col, order[col])}
+                            </td>
+                          ))}
+                        </tr>
                       )) : (<tr><td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada.</td></tr>)}
                     </tbody>
                   </table>
