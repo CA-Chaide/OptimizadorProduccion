@@ -271,9 +271,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <div className="p-3 bg-green-600 rounded-2xl shadow-lg">
-        <Loader2 className="w-12 h-12 animate-spin text-white" />
-      </div>
       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Venta Externa...</p>
     </div>
   );
@@ -444,8 +441,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600' }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700' }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
@@ -465,10 +462,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
@@ -482,6 +480,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const minutesStandard = tMap.get(info.code) || 0;
                         const hoursPL = (qty * minutesStandard) / 60;
                         const calculatedCorteHours = (qty * 5) / 3600;
+
+                        // Cálculos de Volumen y Peso
+                        const l = parseFloat(info.largo) || 0;
+                        const w = parseFloat(info.ancho) || 0;
+                        const e = parseFloat(info.esp) || 0;
+                        const d = parseFloat(info.dens) || 0;
+                        const volume = (l * w * e) / 1000000;
+                        const weight = volume * d;
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -494,6 +500,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
                             <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
                             <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{volume.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{weight.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hoursPL.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
                               {calculatedCorteHours.toFixed(2)}

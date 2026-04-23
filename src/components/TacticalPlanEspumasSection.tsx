@@ -221,9 +221,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <div className="p-3 bg-primary rounded-2xl shadow-lg">
-        <Loader2 className="w-12 h-12 animate-spin text-white" />
-      </div>
       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Corte Espuma...</p>
     </div>
   );
@@ -336,13 +333,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600' }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700' }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
-              <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
-                <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t}
-              </h3>
+              <div className="flex items-center justify-between px-2">
+                <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
+                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
+                </h3>
+              </div>
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
@@ -358,38 +357,46 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
-                      {center.d.length === 0 ? (
-                        <tr><td colSpan={11} className="py-8 text-center text-gray-400 italic">Sin registros</td></tr>
-                      ) : (
-                        center.d.map((o, i) => {
-                          const info = extractMaterialInfo(o);
-                          const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                          const calculatedCorteHours = (qty * 5) / 3600;
-                          
-                          return (
-                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                              <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
-                              <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                              <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
-                              <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-                              <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
-                              <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
-                              <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
-                              <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
-                              <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
-                              <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
-                                {calculatedCorteHours.toFixed(2)}
-                              </td>
-                              <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || '—'}</td>
-                            </tr>
-                          );
-                        })
-                      )}
+                      {center.d.map((o, i) => {
+                        const info = extractMaterialInfo(o);
+                        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                        const calculatedCorteHours = (qty * 5) / 3600;
+
+                        // Cálculos de Volumen y Peso
+                        const l = parseFloat(info.largo) || 0;
+                        const w = parseFloat(info.ancho) || 0;
+                        const e = parseFloat(info.esp) || 0;
+                        const d = parseFloat(info.dens) || 0;
+                        const volume = (l * w * e) / 1000000;
+                        const weight = volume * d;
+                        
+                        return (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                            <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+                            <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
+                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{volume.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{weight.toFixed(2)}</td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
+                              {calculatedCorteHours.toFixed(2)}
+                            </td>
+                            <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || '—'}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -421,25 +428,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {center.d.length === 0 ? (
-                        <tr><td colSpan={5} className="py-6 text-center text-muted-foreground text-[10px] uppercase tracking-widest italic">Sin registros</td></tr>
-                      ) : (
-                        center.d.map((t, i) => {
-                          const info = extractMaterialInfo(t);
-                          return (
-                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                              <td className="px-4 py-2.5 font-mono font-semibold text-primary/80 text-center border-r border-dashed border-gray-50 tracking-tighter">{info.code}</td>
-                              <td className="px-4 py-2.5 text-left border-r border-dashed border-gray-50">
-                                <div className="font-semibold text-gray-600 uppercase leading-none text-[10px]">{t.Linea || '—'}</div>
-                                <div className="text-[8px] text-gray-400 mt-0.5 font-mono">{t.PuestoTrabajo || '—'}</div>
-                              </td>
-                              <td className="px-4 py-2.5 font-mono font-semibold text-blue-600/80 text-center border-r border-dashed border-gray-50">{Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
-                              <td className="px-4 py-2.5 font-mono text-center border-r border-dashed border-gray-50 text-gray-400 font-medium">{t.StockActual || 0}</td>
-                              <td className="px-4 py-2.5 font-mono text-center text-gray-300 font-medium">{t.StockSeguridad || 0}</td>
-                            </tr>
-                          );
-                        })
-                      )}
+                      {center.d.map((t, i) => {
+                        const info = extractMaterialInfo(t);
+                        return (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-4 py-2.5 font-mono font-semibold text-primary/80 text-center border-r border-dashed border-gray-50 tracking-tighter">{info.code}</td>
+                            <td className="px-4 py-2.5 text-left border-r border-dashed border-gray-50">
+                              <div className="font-semibold text-gray-600 uppercase leading-none text-[10px]">{t.Linea || '—'}</div>
+                              <div className="text-[8px] text-gray-400 mt-0.5 font-mono">{t.PuestoTrabajo || '—'}</div>
+                            </td>
+                            <td className="px-4 py-2.5 font-mono font-semibold text-blue-600/80 text-center border-r border-dashed border-gray-50">{Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
+                            <td className="px-4 py-2.5 font-mono text-center border-r border-dashed border-gray-50 text-gray-400 font-medium">{t.StockActual || 0}</td>
+                            <td className="px-4 py-2.5 font-mono text-center text-gray-300 font-medium">{t.StockSeguridad || 0}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
