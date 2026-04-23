@@ -70,9 +70,14 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         
         let dataArray = allData;
         
-        addNotification('info', `Mostrando todas las ${dataArray.length} órdenes FERT sin aplicar filtros.`);
-        setOrders(dataArray);
-        logger.log(`[OrdenesFertTab] Loaded ${dataArray.length} FERT orders.`, 'success');
+        // Filter for '019' and '006' in RESPCTRLPROD
+        const filteredData = dataArray.filter(order => 
+            order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006'
+        );
+        
+        addNotification('info', `Mostrando ${filteredData.length} de ${dataArray.length} órdenes FERT para responsables '019' y '006'.`);
+        setOrders(filteredData);
+        logger.log(`[OrdenesFertTab] Loaded and filtered ${filteredData.length} FERT orders.`, 'success');
 
       } catch (err) {
         const errorMessage = (err as Error).message;
