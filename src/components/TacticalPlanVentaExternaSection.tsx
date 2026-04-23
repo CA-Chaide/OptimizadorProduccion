@@ -267,13 +267,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     };
   }, [activeTab, ordenes, ordenesFert, tiemposEnsamblado, mounted]);
 
-  if (!mounted) {
-    return (
-      <div className="flex flex-col items-center justify-center p-20 gap-4">
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Cargando...</p>
-      </div>
-    );
-  }
+  // SAFE RENDER FOR HYDRATION
+  if (!mounted) return <div className="p-20" />;
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
@@ -410,7 +405,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="grupos">
+        <TabsContent value="grupos" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {grupos.map(g => (
               <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
@@ -423,7 +418,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="restricciones">
+        <TabsContent value="restricciones" className="mt-4">
           <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
             <table className="w-full border-collapse">
               <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
@@ -448,7 +443,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-8">
+        <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
             { t: 'Quito 1000', d: provC1000, s: scrollProv1000, c: 'text-green-700', b: 'bg-green-600' }, 
             { t: 'Guayaquil 2000', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
@@ -493,7 +488,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="ordenesFert" className="space-y-8">
+        <TabsContent value="ordenesFert" className="mt-4 space-y-8">
           {[ 
             { t: 'Quito 1000 (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600', m: getTiemposMap(tiemposC1000) }, 
             { t: 'Guayaquil 2000 (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600', m: getTiemposMap(tiemposC2000) } 
@@ -526,7 +521,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 text-center">Máquina</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-[10px]">
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const matchingTimeMin = center.m.get(info.code);
@@ -565,7 +560,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="tiempos" className="space-y-8">
+        <TabsContent value="tiempos" className="mt-4 space-y-8">
           {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
