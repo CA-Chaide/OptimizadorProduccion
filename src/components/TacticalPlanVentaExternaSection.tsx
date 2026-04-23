@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, Info, CheckCircle2, Search, Settings2, Wind, Scissors, LayoutDashboard } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, CheckCircle2, LayoutDashboard } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -26,7 +26,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para sincronización de scroll (7 pares de barras)
+  // Refs para sincronización de scroll
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollFert1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -151,7 +151,34 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
-  // Lógica de agregación para el Tab de Resumen
+  const extractMaterialInfo = (item: any) => {
+    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
+    const match = matStr.match(/^(\d+)\s+(.*)$/);
+    if (match) return { code: match[1].slice(-8), desc: match[2].trim() };
+    if (/^\d+$/.test(matStr)) return { code: matStr.slice(-8), desc: nameStr || '—' };
+    return { code: '—', desc: matStr || nameStr || '—' };
+  };
+
+  // Mapas de lookup para Tiempo PL
+  const tiemposMap1000 = useMemo(() => {
+    const map = new Map<string, number>();
+    tiemposC1000.forEach(t => {
+      const info = extractMaterialInfo(t);
+      if (info.code !== '—') map.set(info.code, t.Tiempo_Min || t.Tiempo || 0);
+    });
+    return map;
+  }, [tiemposC1000]);
+
+  const tiemposMap2000 = useMemo(() => {
+    const map = new Map<string, number>();
+    tiemposC2000.forEach(t => {
+      const info = extractMaterialInfo(t);
+      if (info.code !== '—') map.set(info.code, t.Tiempo_Min || t.Tiempo || 0);
+    });
+    return map;
+  }, [tiemposC2000]);
+
   const summaryData = useMemo(() => {
     const allFertFiltered = [...fertC1000, ...fertC2000];
     const map = new Map<string, { centro: string; maquina: string; categoria: string; totalOrdenes: number; totalCantidad: number }>();
@@ -177,28 +204,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     );
   }, [fertC1000, fertC2000]);
 
-  const extractMaterialInfo = (item: any) => {
-    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
-    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
-    const match = matStr.match(/^(\d+)\s+(.*)$/);
-    if (match) return { code: match[1].slice(-8), desc: match[2].trim() };
-    if (/^\d+$/.test(matStr)) return { code: matStr.slice(-8), desc: nameStr || '—' };
-    return { code: '—', desc: matStr || nameStr || '—' };
-  };
-
   const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
-    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = bottomContainer!.scrollLeft; };
-    
-    const topContainer = group.top.current;
-    const bottomContainer = group.bottom.current;
-
-    topContainer.addEventListener('scroll', syncB);
-    bottomContainer.addEventListener('scroll', syncT);
-    return () => { 
-      topContainer?.removeEventListener('scroll', syncB); 
-      bottomContainer?.removeEventListener('scroll', syncT); 
+    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
+    group.top.current.addEventListener('scroll', syncB);
+    group.bottom.current.addEventListener('scroll', syncT);
+    return () => {
+      group.top.current?.removeEventListener('scroll', syncB);
+      group.bottom.current?.removeEventListener('scroll', syncT);
     };
   };
 
@@ -219,7 +233,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   return (
     <div className="p-4 md:p-8 space-y-8 bg-gray-50/50 min-h-screen">
-      {/* Header Principal */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <div className="p-3 bg-green-600 rounded-2xl shadow-lg shadow-green-100">
@@ -350,7 +363,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         {/* ÓRDENES FERT */}
         <TabsContent value="ordenesFert" className="space-y-8">
-          {[ { t: 'Quito 1000 (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600' }, { t: 'Guayaquil 2000 (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600' } ].map((center, idx) => (
+          {[ 
+            { t: 'Quito 1000 (FERT)', d: fertC1000, s: scrollFert1000, c: 'text-indigo-700', b: 'bg-indigo-600' }, 
+            { t: 'Guayaquil 2000 (FERT)', d: fertC2000, s: scrollFert2000, c: 'text-blue-700', b: 'bg-blue-600' } 
+          ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.c)}>
@@ -374,6 +390,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-red-50/30 text-red-800">Rech.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-orange-50/30 text-orange-800">Pend.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">T. Pend (m)</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30 font-black">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Resp.</th>
                         <th className="px-3 py-4">Máquina</th>
@@ -382,6 +399,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-50 text-[10px]">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
+                        const matchingTime = center.t.includes('1000') 
+                          ? tiemposMap1000.get(info.code) 
+                          : tiemposMap2000.get(info.code);
+                        
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDEN || '—'}</td>
@@ -395,6 +416,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-black text-red-600 border-r border-dashed border-gray-100 text-center bg-red-50/10 text-xs">{o.CANTRECHAZO || 0}</td>
                             <td className="px-3 py-3 font-black text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10 text-xs">{o.CANTPENDIENTE || 0}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center">{o.TIEMPOPENDIENTE || 0}</td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
+                              {matchingTime !== undefined ? matchingTime.toFixed(4) : '—'}
+                            </td>
                             <td className="px-3 py-3 font-bold text-gray-600 border-r border-dashed border-gray-100 text-center whitespace-nowrap">{o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-black text-gray-400 border-r border-dashed border-gray-100 text-center">{o.RESPCTRLPROD || '—'}</td>
                             <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
@@ -462,7 +486,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             </div>
             
             <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-              {/* Barra de scroll superior sincronizada */}
               <div ref={scrollResumen.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b">
                 <div style={{ width: scrollResumen.width[0], height: '1px' }} />
               </div>
