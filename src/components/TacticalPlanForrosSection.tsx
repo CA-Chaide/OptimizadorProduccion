@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarCheck, Search } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -63,31 +63,35 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   // Obtener valor de Horizonte de Planificación
   const horizonValue = useMemo(() => {
-    const horizon = forrosRestricciones.find(r => 
-      r.nombre_restriccion.trim().toUpperCase() === 'HORIZONTE_PLANIFICACION' || 
-      r.nombre_restriccion.trim().toUpperCase() === 'HORIZONTE_PLANIFICACIÓN'
-    );
+    const horizon = forrosRestricciones.find(r => {
+      const name = r.nombre_restriccion.trim().toUpperCase();
+      return name === 'HORIZONTE_PLANIFICACION' || name === 'HORIZONTE_PLANIFICACIÓN';
+    });
     const val = horizon ? parseInt(horizon.valor_restriccion) : 1;
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
-  // Helper para fecha Hoy + Horizonte (sin fines de semana)
+  // Helper para fecha en formato YYYY-MM-DD local
+  const formatLocalDate = (date: Date): string => {
+    return date.getFullYear() + '-' + 
+      String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(date.getDate()).padStart(2, '0');
+  };
+
+  // Helper para obtener fecha objetivo (Hoy + Horizonte, sin fines de semana)
   const getTargetPlanningDate = useCallback((days: number) => {
     const date = new Date();
-    // Añadimos los días del horizonte
     date.setDate(date.getDate() + days);
     
     const day = date.getDay(); // 0: Dom, 6: Sab
-    
-    // Ajustar si cae en fin de semana (mover al Lunes)
     if (day === 6) date.setDate(date.getDate() + 2); // Sábado -> Lunes
     else if (day === 0) date.setDate(date.getDate() + 1); // Domingo -> Lunes
     
-    return date.toISOString().split('T')[0];
+    return formatLocalDate(date);
   }, []);
 
   const targetDate = useMemo(() => getTargetPlanningDate(horizonValue), [getTargetPlanningDate, horizonValue]);
-  const todayDate = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayDate = useMemo(() => formatLocalDate(new Date()), []);
 
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
@@ -136,7 +140,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
           if (!matchesExternal) return false;
 
-          // 2. Filtro de Fecha: Hoy + Horizonte Y Fecha Hoy
+          // 2. Filtro de Fecha: Hoy + Horizonte O Fecha Hoy
           const orderDateKey = Object.keys(order).find(k => k.toUpperCase() === 'FECHAINICIO');
           if (!orderDateKey) return false;
           
