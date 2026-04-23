@@ -417,7 +417,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-black text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10 text-xs">{o.CANTPENDIENTE || 0}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center">{o.TIEMPOPENDIENTE || 0}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
-                              {matchingTime !== undefined ? matchingTime.toFixed(4) : '—'}
+                              {matchingTime !== undefined ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-xs">
+                                    {((Number(o.CANTPENDIENTE || 0) * matchingTime) / 3600).toFixed(2)}h
+                                  </span>
+                                  <span className="text-[8px] text-gray-400 font-normal">
+                                    Base: {matchingTime.toFixed(1)}s
+                                  </span>
+                                </div>
+                              ) : '—'}
                             </td>
                             <td className="px-3 py-3 font-bold text-gray-600 border-r border-dashed border-gray-100 text-center whitespace-nowrap">{o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-black text-gray-400 border-r border-dashed border-gray-100 text-center">{o.RESPCTRLPROD || '—'}</td>
@@ -451,7 +460,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200">Línea Técnica</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">T. Estándar (Min)</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">T. Estándar (Seg)</th>
                         <th className="px-4 py-4 text-center">S. Actual / Seguridad</th>
                       </tr>
                     </thead>
@@ -463,7 +472,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-4 py-3 font-mono font-black text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 font-black text-gray-500 uppercase tracking-tighter truncate max-w-[280px]">{info.desc}</td>
                             <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-bold text-gray-400">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 text-center text-lg">{t.Tiempo_Min?.toFixed(4) || '—'}</td>
+                            <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 text-center text-lg">{t.Tiempo_Min?.toFixed(1) || t.Tiempo?.toFixed(1) || '—'}s</td>
                             <td className="px-4 py-3 text-center font-bold text-gray-400">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
