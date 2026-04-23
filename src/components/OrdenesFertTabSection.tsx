@@ -50,7 +50,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   // Define static columns to ensure order and completeness
   const COLUMNS_TO_DISPLAY = [
     'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
-    'MAQUINA', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
+    'MAQUINA', 'PEDIDO', 'POSICION', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
   ];
 
   useEffect(() => {
@@ -136,9 +136,9 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   const handleRowsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setPagination(prev => ({
-        ...prev,
-        rowsPerPage: Number(e.target.value),
-        currentPage: 1
+      ...prev,
+      rowsPerPage: Number(e.target.value),
+      currentPage: 1,
     }));
   };
   
