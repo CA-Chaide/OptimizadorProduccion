@@ -117,8 +117,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       });
   }, [orders, selectedDate]);
   
-  const totalCantidadProgramada = useMemo(() => {
-    return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPROGRAMADA) || 0), 0);
+  const totalCantidadPendiente = useMemo(() => {
+    return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [filteredOrders]);
   
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
@@ -241,8 +241,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm">
             <Package className="w-6 h-6 text-indigo-600" />
             <div>
-              <p className="text-xs text-indigo-800 font-semibold uppercase">Cant. Programada</p>
-              <p className="text-2xl font-bold text-indigo-900">{totalCantidadProgramada.toLocaleString()}</p>
+              <p className="text-xs text-indigo-800 font-semibold uppercase">Cant. Pendiente</p>
+              <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
             </div>
         </div>
       </div>
