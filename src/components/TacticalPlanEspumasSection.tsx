@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, CheckCircle2, Settings2 } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -18,7 +18,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState('grupos');
+  const [activeTab, setActiveTab] = useState('resumen');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
@@ -30,6 +30,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const scrollResumen1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const scrollResumen2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -161,6 +163,35 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dimensions };
   };
 
+  const calculateSummary = (data: any[], centroId: string) => {
+    const map = new Map<string, { centro: string; categoria: string; espesor: string; totalOrdenes: number; totalCantidad: number; totalTiempoCorte: number }>();
+    
+    data.forEach(o => {
+      const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || 'N/A').trim();
+      const info = extractMaterialInfo(o);
+      const espesor = info.esp || '—';
+      const key = `${categoria}|${espesor}`;
+      
+      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+      const corteHours = (qty * 5) / 3600;
+
+      if (!map.has(key)) {
+        map.set(key, { centro: centroId, categoria, espesor, totalOrdenes: 0, totalCantidad: 0, totalTiempoCorte: 0 });
+      }
+      const entry = map.get(key)!;
+      entry.totalOrdenes += 1;
+      entry.totalCantidad += qty;
+      entry.totalTiempoCorte += corteHours;
+    });
+    
+    return Array.from(map.values()).sort((a, b) => 
+      a.categoria.localeCompare(b.categoria) || a.espesor.localeCompare(b.espesor)
+    );
+  };
+
+  const summaryData1000 = useMemo(() => calculateSummary(provC1000, '1000'), [provC1000]);
+  const summaryData2000 = useMemo(() => calculateSummary(provC2000, '2000'), [provC2000]);
+
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
@@ -175,7 +206,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   useEffect(() => {
     if (!mounted) return;
-    const items = [scrollProv1000, scrollProv2000, scrollTiempos1000, scrollTiempos2000];
+    const items = [scrollProv1000, scrollProv2000, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
     const cleaners = items.map(setupScrollSync);
     const timer = setTimeout(() => {
       items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); });
@@ -207,12 +238,57 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-11 bg-muted/30 p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-5 h-11 bg-muted/30 p-1 rounded-lg">
+          <TabsTrigger value="resumen" className="gap-2 text-[10px] font-semibold uppercase"><LayoutDashboard className="w-3 h-3" /> Resumen</TabsTrigger>
           <TabsTrigger value="grupos" className="gap-2 text-[10px] font-semibold uppercase"><Users className="w-3 h-3" /> Grupos</TabsTrigger>
           <TabsTrigger value="restricciones" className="gap-2 text-[10px] font-semibold uppercase"><Lock className="w-3 h-3" /> Filtros</TabsTrigger>
           <TabsTrigger value="ordenes" className="gap-2 text-[10px] font-semibold uppercase"><Package className="w-3 h-3" /> Provisionales</TabsTrigger>
           <TabsTrigger value="tiempos" className="gap-2 text-[10px] font-semibold uppercase"><Clock className="w-3 h-3" /> Tiempos</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="resumen" className="space-y-8 mt-4">
+          {[ 
+            { t: 'Resumen Planta 1000 - Quito', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600' }, 
+            { t: 'Resumen Planta 2000 - Guayaquil', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
+          ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
+              <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t}
+              </h3>
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
+                  <table ref={center.s.table} className="w-full border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
+                      <tr>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Categoría Técnica</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Espesor</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Órdenes</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Unidades</th>
+                        <th className="px-4 py-4 text-center text-amber-700 bg-amber-50/20">T. Pl Corte</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                      {center.d.length === 0 ? (
+                        <tr><td colSpan={5} className="py-8 text-center text-gray-400 italic">Sin operaciones programadas</td></tr>
+                      ) : (
+                        center.d.map((row, i) => (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
+                            <td className="px-4 py-3 font-bold text-gray-700 border-r border-dashed border-gray-100 uppercase">{row.categoria}</td>
+                            <td className="px-4 py-3 font-mono font-semibold text-blue-600 border-r border-dashed border-gray-100">{row.espesor}</td>
+                            <td className="px-4 py-3 font-mono font-semibold text-purple-700 border-r border-dashed border-gray-100">{row.totalOrdenes}</td>
+                            <td className="px-4 py-3 font-mono font-semibold text-green-700 border-r border-dashed border-gray-100">{row.totalCantidad.toLocaleString()}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-amber-700 bg-amber-50/5">{row.totalTiempoCorte.toFixed(2)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
+        </TabsContent>
 
         <TabsContent value="grupos" className="mt-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -264,11 +340,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
-              <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
-                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
-                </h3>
-              </div>
+              <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t}
+              </h3>
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
@@ -328,11 +402,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Parámetros Técnicos - Guayaquil', d: tiemposC2000, s: scrollTiempos2000, c: 'text-indigo-600', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-2">
-              <div className="flex items-center gap-2 px-1">
-                <div className={cn("w-1.5 h-1.5 rounded-full", center.b)} />
-                <h3 className={cn("text-[10px] font-bold uppercase tracking-tight", center.c)}>{center.t}</h3>
-                <Badge variant="secondary" className="ml-1 text-[8px] h-3.5 px-1 font-semibold">{center.d.length} PRODUCTOS</Badge>
-              </div>
+              <h3 className={cn("text-[10px] font-bold uppercase tracking-tight px-1 flex items-center gap-2", center.c)}>
+                <div className={cn("w-1.5 h-1.5 rounded-full", center.b)} /> {center.t}
+              </h3>
               <Card className="shadow-sm overflow-hidden border-none rounded-xl bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/30 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
