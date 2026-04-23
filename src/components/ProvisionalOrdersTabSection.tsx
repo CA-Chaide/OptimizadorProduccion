@@ -48,7 +48,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
-  // Carga de datos estable
   const fetchData = useCallback(async () => {
     if (isLoading) return;
     
@@ -58,6 +57,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       
       if (response && response.data) {
+        // AUDITORÍA: Log de los datos crudos para el usuario
+        console.log('[DEBUG] Datos crudos recibidos del API (Primeros 5):', response.data.slice(0, 5));
+        
         setOrders(response.data);
         setPagination(prev => ({
           ...prev,
@@ -75,7 +77,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     }
   }, [addNotification, isLoading]);
 
-  // Cargar al montar una sola vez
   useEffect(() => {
     if (!isInitialLoadDone.current) {
       fetchData();
@@ -101,15 +102,12 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       });
     }
 
-    // 2. Filtros Locales por Columna (MATERIAL, CATEGORIA, FECHAINICIO, RESPCONTROLPROD, MAQUINA)
+    // 2. Filtros Locales por Columna
     result = result.filter(order => {
       return Object.entries(columnFilters).every(([filterKey, filterValue]) => {
         if (!filterValue) return true;
-        
-        // Encontrar la clave real en el objeto (case-insensitive)
         const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === filterKey);
         if (!orderKey) return true;
-
         const orderValue = String(order[orderKey] ?? '').toLowerCase();
         return orderValue.includes(filterValue.toLowerCase());
       });
@@ -118,10 +116,12 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     return result;
   }, [orders, externalFilters, columnFilters]);
 
-  // Columnas dinámicas
   const columns = useMemo(() => {
     if (filteredOrders.length === 0) return [];
-    return Object.keys(filteredOrders[0]);
+    // Priorizar columnas comunes al inicio
+    const allKeys = Object.keys(filteredOrders[0]);
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'FECHAINICIO', 'FECHAFIN'];
+    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [filteredOrders]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pagination.rowsPerPage));
@@ -131,14 +131,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     return filteredOrders.slice(start, start + pagination.rowsPerPage);
   }, [filteredOrders, pagination.currentPage, pagination.rowsPerPage]);
 
-  // Resetear a página 1 si cambian los filtros externos
-  useEffect(() => {
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
-  }, [externalFilters]);
-
   return (
     <div className="space-y-4">
-      {/* Tabla Dinámica con Scroll Doble y Filtros por Columna */}
+      {/* Tabla Dinámica con Scroll y Filtros */}
       <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
           <table className="min-w-full divide-y divide-gray-200 border-collapse">
@@ -153,7 +148,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                   </th>
                 ))}
               </tr>
-              {/* Fila de Filtros Locales */}
               <tr className="bg-gray-50/50">
                 {columns.map((col) => {
                   const upperCol = col.toUpperCase().trim();
@@ -166,7 +160,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                           <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
                           <input
                             type="text"
-                            placeholder={`Buscar...`}
+                            placeholder="Buscar..."
                             value={columnFilters[upperCol] || ''}
                             onChange={(e) => handleColumnFilterChange(upperCol, e.target.value)}
                             className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white"
@@ -182,10 +176,8 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
               {isLoading && orders.length === 0 ? (
                 <tr>
                   <td colSpan={columns.length || 1} className="py-24 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                      <span className="text-gray-500 font-medium">Cargando órdenes previsionales...</span>
-                    </div>
+                    <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-2" />
+                    <span className="text-gray-500 font-medium">Consultando servidor...</span>
                   </td>
                 </tr>
               ) : displayedOrders.length > 0 ? (
@@ -196,6 +188,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                         key={`cell-${idx}-${col}`} 
                         className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono"
                       >
+                        {/* NO MODIFICAMOS EL DATO: se muestra el valor crudo del objeto */}
                         {order[col] !== null && order[col] !== undefined ? String(order[col]) : '—'}
                       </td>
                     ))}
@@ -204,7 +197,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
               ) : (
                 <tr>
                   <td colSpan={columns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
-                    No se encontraron órdenes que coincidan con los criterios de filtrado.
+                    No se encontraron registros.
                   </td>
                 </tr>
               )}
@@ -213,74 +206,32 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
         </div>
       </div>
 
-      {/* Controles Inferiores de Paginación y Recarga */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Filas por página:</span>
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Filas:</span>
             <select
               value={pagination.rowsPerPage}
               onChange={(e) => setPagination(prev => ({ ...prev, rowsPerPage: Number(e.target.value), currentPage: 1 }))}
-              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
             >
-              {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              {[20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
-          <div className="h-4 w-px bg-gray-300 mx-2" />
-          <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">
-            Total {filteredOrders.length} filtrados
+          <div className="text-[10px] text-gray-400 font-bold tracking-widest">
+            {filteredOrders.length} REGISTROS FILTRADOS
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPagination(prev => ({ ...prev, currentPage: 1 }))}
-              disabled={pagination.currentPage === 1 || isLoading}
-              className="h-8 w-8"
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage - 1 }))}
-              disabled={pagination.currentPage === 1 || isLoading}
-              className="h-8 w-8"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            
-            <div className="px-4 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-white rounded shadow-sm">
-              Página {pagination.currentPage} de {totalPages}
-            </div>
-
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage + 1 }))}
-              disabled={pagination.currentPage === totalPages || isLoading}
-              className="h-8 w-8"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPagination(prev => ({ ...prev, currentPage: totalPages }))}
-              disabled={pagination.currentPage === totalPages || isLoading}
-              className="h-8 w-8"
-            >
-              <ChevronsRight className="h-4 w-4" />
-            </Button>
+            <Button variant="outline" size="icon" onClick={() => setPagination(prev => ({ ...prev, currentPage: 1 }))} disabled={pagination.currentPage === 1} className="h-8 w-8"><ChevronsLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage - 1 }))} disabled={pagination.currentPage === 1} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
+            <div className="px-4 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-white rounded">Página {pagination.currentPage} de {totalPages}</div>
+            <Button variant="outline" size="icon" onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage + 1 }))} disabled={pagination.currentPage === totalPages} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => setPagination(prev => ({ ...prev, currentPage: totalPages }))} disabled={pagination.currentPage === totalPages} className="h-8 w-8"><ChevronsRight className="h-4 w-4" /></Button>
           </div>
-          
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading} className="h-8 px-4 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all">
-            <RefreshCw className={cn("h-3 w-3 mr-2", isLoading && "animate-spin")} />
-            Actualizar Datos
-          </Button>
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoading && "animate-spin")} /> Actualizar</Button>
         </div>
       </div>
     </div>

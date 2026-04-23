@@ -24,11 +24,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // Paginación Tiempos
   const [tiemposPage, setTiemposPage] = useState(1);
   const [tiemposRowsPerPage, setTiemposRowsPerPage] = useState(20);
 
-  // Paginación Diaria
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
@@ -61,7 +59,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return restricciones.filter(r => forrosGroupIds.has(r.codigo_grupo));
   }, [forrosGruposList, restricciones]);
 
-  // Obtener valor de Horizonte de Planificación
   const horizonValue = useMemo(() => {
     const horizon = forrosRestricciones.find(r => {
       const name = r.nombre_restriccion.trim().toUpperCase();
@@ -71,63 +68,38 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
-  /**
-   * Normaliza una cadena de fecha de cualquier formato común (ISO, DD/MM/YYYY, etc.)
-   * a una cadena YYYY-MM-DD para comparaciones seguras.
-   */
   const normalizeDateForComparison = (dateInput: any): string | null => {
     if (!dateInput) return null;
-    
     try {
       const dateStr = String(dateInput).trim();
-      
-      // Caso 1: ISO String o YYYY-MM-DD
-      if (dateStr.includes('-')) {
-        return dateStr.split('T')[0];
-      }
-      
-      // Caso 2: Formato DD/MM/YYYY
+      if (dateStr.includes('-')) return dateStr.split('T')[0];
       if (dateStr.includes('/')) {
         const parts = dateStr.split(' ')[0].split('/');
         if (parts.length === 3) {
-          // Asumimos DD/MM/YYYY (común en el sistema)
           const [day, month, year] = parts;
-          if (year.length === 4) {
-            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-          }
+          if (year.length === 4) return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
         }
       }
-      
-      // Fallback: Intento de parseo nativo (cuidado con zonas horarias)
       const d = new Date(dateStr);
       if (!isNaN(d.getTime())) {
-        return d.getFullYear() + '-' + 
-          String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-          String(d.getDate()).padStart(2, '0');
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       }
     } catch (e) {
       console.error('Error normalizando fecha:', dateInput, e);
     }
-    
     return null;
   };
 
-  // Helper para fecha en formato YYYY-MM-DD local (basado en el reloj del sistema)
   const formatLocalDate = (date: Date): string => {
-    return date.getFullYear() + '-' + 
-      String(date.getMonth() + 1).padStart(2, '0') + '-' + 
-      String(date.getDate()).padStart(2, '0');
+    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
   };
 
-  // Helper para obtener fecha objetivo (Hoy + Horizonte, sin fines de semana)
   const getTargetPlanningDate = useCallback((days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    
-    const day = date.getDay(); // 0: Dom, 6: Sab
-    if (day === 6) date.setDate(date.getDate() + 2); // Sábado -> Lunes
-    else if (day === 0) date.setDate(date.getDate() + 1); // Domingo -> Lunes
-    
+    const day = date.getDay();
+    if (day === 6) date.setDate(date.getDate() + 2);
+    else if (day === 0) date.setDate(date.getDate() + 1);
     return formatLocalDate(date);
   }, []);
 
@@ -171,32 +143,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
-          // 1. Filtro de Restricciones (RespCtrlProd / ALMACEN)
           const matchesExternal = Object.entries(externalFilters).every(([key, allowed]) => {
             const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === key.toUpperCase().trim());
             if (!orderKey) return true;
             const val = String(order[orderKey] ?? '').trim().toUpperCase();
             return allowed.some(a => a.trim().toUpperCase() === val);
           });
-
           if (!matchesExternal) return false;
-
-          // 2. Filtro de Fecha normalizado
           const orderDateKey = Object.keys(order).find(k => k.toUpperCase() === 'FECHAINICIO');
           if (!orderDateKey) return false;
-          
-          const rawDateValue = order[orderDateKey];
-          const normalizedOrderDate = normalizeDateForComparison(rawDateValue);
-          
+          const normalizedOrderDate = normalizeDateForComparison(order[orderDateKey]);
           return normalizedOrderDate === targetDate || normalizedOrderDate === todayDate;
         });
-
         setDailyOrders(filtered);
         setDailyPage(1);
       }
     } catch (error) {
       console.error('Error fetching daily orders:', error);
-      addNotification('error', 'No se pudieron cargar las órdenes para programación diaria.');
+      addNotification('error', 'Error al cargar órdenes diarias.');
     } finally {
       setIsLoadingDaily(false);
     }
@@ -209,7 +173,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
-  // Tablas dinámicas helpers
   const tiemposColumns = useMemo(() => tiemposProduccion.length > 0 ? Object.keys(tiemposProduccion[0]) : [], [tiemposProduccion]);
   const dailyColumns = useMemo(() => dailyOrders.length > 0 ? Object.keys(dailyOrders[0]) : [], [dailyOrders]);
 
@@ -226,17 +189,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
 
-  if (isLoading) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-          <p className="text-gray-500 font-medium">Cargando datos de Programación Táctica...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-3">
@@ -247,41 +199,23 @@ export const TacticalPlanForrosSection: React.FC = () => {
       <Tabs defaultValue="grupos" className="w-full">
         <div className="relative border-b border-gray-200 mb-8">
           <TabsList className="flex w-full h-auto bg-transparent p-0 overflow-x-auto justify-start scrollbar-hide">
-            <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap">
-              <Users className="w-4 h-4" /> Grupos
-            </TabsTrigger>
-            <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap">
-              <Lock className="w-4 h-4" /> Restricciones
-            </TabsTrigger>
-            <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap">
-              <Timer className="w-4 h-4" /> Tiempos de Producción
-            </TabsTrigger>
-            <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap">
-              <Package className="w-4 h-4" /> Órdenes Previsionales
-            </TabsTrigger>
-            <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap">
-              <CalendarCheck className="w-4 h-4" /> Programación Diaria
-            </TabsTrigger>
+            <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
+            <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
+            <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
+            <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
+            <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><CalendarCheck className="w-4 h-4" /> Programación Diaria</TabsTrigger>
           </TabsList>
         </div>
 
         <TabsContent value="grupos">
           <Card>
-            <CardHeader>
-              <CardTitle>Grupos de Forros</CardTitle>
-              <CardDescription>Grupos operativos que contienen "Forros" en su nombre.</CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle>Grupos de Forros</CardTitle></CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Código</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Centro</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Nombre</th>
-                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Estado</th>
-                      </tr>
+                      <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Código</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Centro</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Nombre</th><th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Estado</th></tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {forrosGruposList.map((g) => (
@@ -289,11 +223,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{g.codigo_grupo}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{g.centro}</td>
                           <td className="px-6 py-4 whitespace-nowrap font-medium">{g.nombre_grupo}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
-                              {g.estado === 'A' ? 'Activo' : 'Inactivo'}
-                            </Badge>
-                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center"><Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>{g.estado === 'A' ? 'Activo' : 'Inactivo'}</Badge></td>
                         </tr>
                       ))}
                     </tbody>
@@ -306,20 +236,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="restricciones">
           <Card>
-            <CardHeader>
-              <CardTitle>Restricciones de Forros</CardTitle>
-              <CardDescription>Configuración técnica específica del grupo de Forros.</CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle>Restricciones de Forros</CardTitle></CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Nombre Restricción</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Valor</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Descripción</th>
-                      </tr>
+                      <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Nombre</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Valor</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Descripción</th></tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {forrosRestricciones.map((r) => (
@@ -340,43 +263,30 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="tiempos">
           <Card>
             <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex-1">
-                <CardTitle>Tiempos de Producción</CardTitle>
-                <CardDescription>Detalle dinámico de tiempos de ensamble ({tiemposProduccion.length} registros).</CardDescription>
-              </div>
+              <div className="flex-1"><CardTitle>Tiempos de Producción</CardTitle></div>
               {!isLoadingTiempos && tiemposProduccion.length > 0 && (
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(1)} disabled={tiemposPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(p => Math.max(1, p - 1))} disabled={tiemposPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="px-3 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-gray-50 rounded">Página {tiemposPage} de {totalTiemposPages}</span>
+                    <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-gray-50 rounded">Página {tiemposPage} de {totalTiemposPages}</span>
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(p => Math.min(totalTiemposPages, p + 1))} disabled={tiemposPage === totalTiemposPages}><ChevronRight className="h-4 w-4" /></Button>
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(totalTiemposPages)} disabled={tiemposPage === totalTiemposPages}><ChevronsRight className="h-4 w-4" /></Button>
                   </div>
-                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos}><RefreshCw className={cn("h-4 w-4 mr-2", isLoadingTiempos && "animate-spin")} /> Recargar</Button>
+                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos}><RefreshCw className={cn("h-4 w-4", isLoadingTiempos && "animate-spin")} /></Button>
                 </div>
               )}
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border bg-white shadow-sm overflow-hidden">
-                <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
-                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
+              <div className="rounded-md border bg-white overflow-hidden">
+                <div className="overflow-auto max-h-[60vh]">
+                  <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                      <tr>
-                        {tiemposColumns.map(col => (
-                          <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b bg-gray-50">{col}</th>
-                        ))}
-                      </tr>
+                      <tr>{tiemposColumns.map(col => (<th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">{col}</th>))}</tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {isLoadingTiempos ? (
-                        <tr><td colSpan={tiemposColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" /></td></tr>
-                      ) : paginatedTiemposData.map((t, idx) => (
-                        <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                          {tiemposColumns.map(col => (
-                            <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{t[col] !== null && t[col] !== undefined ? String(t[col]) : '—'}</td>
-                          ))}
-                        </tr>
+                      {isLoadingTiempos ? (<tr><td colSpan={tiemposColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : paginatedTiemposData.map((t, idx) => (
+                        <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">{tiemposColumns.map(col => (<td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{t[col] !== null && t[col] !== undefined ? String(t[col]) : '—'}</td>))}</tr>
                       ))}
                     </tbody>
                   </table>
@@ -388,84 +298,39 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="ordenes">
           <Card>
-            <CardHeader>
-              <CardTitle>Órdenes Previsionales Filtradas</CardTitle>
-              <CardDescription>Visualización de órdenes que cumplen con RespCtrlProd y ALMACEN del grupo de Forros.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ProvisionalOrdersTabSection externalFilters={externalFilters} />
-            </CardContent>
+            <CardHeader><CardTitle>Órdenes Previsionales Filtradas</CardTitle></CardHeader>
+            <CardContent><ProvisionalOrdersTabSection externalFilters={externalFilters} /></CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="diaria">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarCheck className="w-5 h-5 text-primary" />
-                Programación Diaria: {todayDate} y {targetDate}
-              </CardTitle>
-              <CardDescription>
-                Mostrando órdenes para el día de hoy y el día laborable objetivo (Horizonte: +{horizonValue} días).
-              </CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Diaria: {todayDate} y {targetDate}</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-md border bg-white shadow-sm overflow-hidden">
-                <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
-                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
+              <div className="rounded-md border bg-white overflow-hidden">
+                <div className="overflow-auto max-h-[60vh]">
+                  <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                      <tr>
-                        {dailyColumns.map(col => (
-                          <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap border-b bg-gray-50">{col}</th>
-                        ))}
-                      </tr>
+                      <tr>{dailyColumns.map(col => (<th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">{col}</th>))}</tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {isLoadingDaily ? (
-                        <tr><td colSpan={dailyColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" /></td></tr>
-                      ) : dailyOrders.length > 0 ? (
-                        paginatedDailyData.map((order, idx) => (
-                          <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                            {dailyColumns.map(col => (
-                              <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
-                                {order[col] !== null && order[col] !== undefined ? String(order[col]) : '—'}
-                              </td>
-                            ))}
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
-                            No se encontraron órdenes para las fechas seleccionadas con las restricciones actuales.
-                          </td>
-                        </tr>
-                      )}
+                    <tbody className="divide-y divide-gray-200">
+                      {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : dailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
+                        <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">{dailyColumns.map(col => (<td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{order[col] !== null && order[col] !== undefined ? String(order[col]) : '—'}</td>))}</tr>
+                      )) : (<tr><td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic">No hay órdenes para hoy o la fecha objetivo.</td></tr>)}
                     </tbody>
                   </table>
                 </div>
               </div>
-
-              {/* Controles de Navegación y Recarga en la parte inferior */}
-              {!isLoadingDaily && dailyOrders.length > 0 && (
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-2">
-                  <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="px-3 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-gray-50 rounded">Página {dailyPage} de {totalDailyPages}</span>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
-                  </div>
-                  
-                  <div className="flex items-center gap-4">
-                    <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">
-                      Total {dailyOrders.length} registros (Hoy + Horizonte)
-                    </div>
-                    <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8">
-                      <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Recargar
-                    </Button>
-                  </div>
+              <div className="flex items-center justify-between gap-4 pt-2">
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                  <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-gray-50 rounded">Página {dailyPage} de {totalDailyPages}</span>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
                 </div>
-              )}
+                <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8"><RefreshCw className={cn("h-4 w-4", isLoadingDaily && "animate-spin")} /> Recargar</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
