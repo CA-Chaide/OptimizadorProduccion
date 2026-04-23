@@ -210,21 +210,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   };
 
   const calculateSummary = (fertData: any[], tMap: Map<string, number>, centroId: string) => {
-    const map = new Map<string, { centro: string; maquina: string; categoria: string; totalOrdenes: number; totalCantidad: number; totalTiempo: number; totalTiempoCorte: number }>();
+    const map = new Map<string, { centro: string; maquina: string; categoria: string; espesor: string; totalOrdenes: number; totalCantidad: number; totalTiempo: number; totalTiempoCorte: number }>();
     
     fertData.forEach(o => {
       const maquina = String(o.MAQUINA || o.Maquina || o.maquina || 'SIN MÁQUINA').trim();
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || 'N/A').trim();
-      const key = `${maquina}|${categoria}`;
-      
       const info = extractMaterialInfo(o);
+      const espesor = info.esp || '—';
+      const key = `${maquina}|${categoria}|${espesor}`;
+      
       const matchingTimeMin = tMap.get(info.code) || 0;
       const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
       const hours = (cantPendiente * matchingTimeMin) / 60;
       const corteHours = (cantPendiente * 5) / 3600;
 
       if (!map.has(key)) {
-        map.set(key, { centro: centroId, maquina, categoria, totalOrdenes: 0, totalCantidad: 0, totalTiempo: 0, totalTiempoCorte: 0 });
+        map.set(key, { centro: centroId, maquina, categoria, espesor, totalOrdenes: 0, totalCantidad: 0, totalTiempo: 0, totalTiempoCorte: 0 });
       }
       const entry = map.get(key)!;
       entry.totalOrdenes += 1;
@@ -234,7 +235,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     });
     
     return Array.from(map.values()).sort((a, b) => 
-      a.maquina.localeCompare(b.maquina) || a.categoria.localeCompare(b.categoria)
+      a.maquina.localeCompare(b.maquina) || a.categoria.localeCompare(b.categoria) || a.espesor.localeCompare(b.espesor)
     );
   };
 
@@ -276,7 +277,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <div className="p-3 bg-green-600 rounded-2xl shadow-lg animate-pulse">
+      <div className="p-3 bg-green-600 rounded-2xl shadow-lg">
         <Loader2 className="w-12 h-12 animate-spin text-white" />
       </div>
       <p className="text-sm font-bold text-gray-500 uppercase tracking-widest animate-pulse">Sincronizando Venta Externa...</p>
@@ -367,6 +368,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       <tr>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Recurso / Máquina</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Categoría Técnica</th>
+                        <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Espesor</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Órdenes</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Unidades</th>
                         <th className="px-6 py-5 text-center text-teal-700 bg-teal-50/20 border-r border-dashed border-gray-200">Tiempo PL</th>
@@ -375,12 +377,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={6} className="py-12 text-center text-gray-400 font-medium italic">Sin operaciones programadas para esta planta y fecha</td></tr>
+                        <tr><td colSpan={7} className="py-12 text-center text-gray-400 font-medium italic">Sin operaciones programadas para esta planta y fecha</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/80 transition-all duration-200">
                             <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-100 text-center uppercase">{row.maquina}</td>
                             <td className="px-6 py-4 font-medium text-gray-500 border-r border-dashed border-gray-100 text-center uppercase">{row.categoria}</td>
+                            <td className="px-6 py-4 font-mono font-semibold text-blue-600 border-r border-dashed border-gray-100 text-center">{row.espesor}</td>
                             <td className="px-6 py-4 font-mono font-semibold text-purple-700 border-r border-dashed border-gray-100 text-center">{row.totalOrdenes}</td>
                             <td className="px-6 py-4 font-mono font-semibold text-green-700 border-r border-dashed border-gray-100 text-center">{row.totalCantidad.toLocaleString()}</td>
                             <td className="px-6 py-4 font-mono font-bold text-teal-700 text-center bg-teal-50/5 border-r border-dashed border-gray-100">{row.totalTiempo.toFixed(2)}</td>
@@ -392,7 +395,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     {center.d.length > 0 && (
                       <tfoot className="bg-gray-900 text-white font-bold text-[10px] uppercase">
                         <tr>
-                          <td colSpan={2} className="px-6 py-5 text-right border-r border-gray-800 tracking-widest">Totales Planta</td>
+                          <td colSpan={3} className="px-6 py-5 text-right border-r border-gray-800 tracking-widest">Totales Planta</td>
                           <td className="px-6 py-5 text-center border-r border-gray-800 text-purple-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalOrdenes, 0)}</td>
                           <td className="px-6 py-5 text-center border-r border-gray-800 text-green-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalCantidad, 0).toLocaleString()}</td>
                           <td className="px-6 py-5 text-center border-r border-gray-800 text-teal-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempo, 0).toFixed(2)}</td>
