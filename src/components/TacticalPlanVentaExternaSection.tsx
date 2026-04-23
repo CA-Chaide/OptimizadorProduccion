@@ -130,11 +130,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       
-      const itemAlm = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchAlm = almCodes.length === 0 || itemAlm === '' || almCodes.includes(itemAlm);
+      const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       
-      const itemSector = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
-      const matchSector = sectorCodes.length === 0 || sectorCodes.some(code => itemSector.includes(code));
+      const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
+      const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
 
       return matchResp && matchAlm && matchSector;
     });
@@ -162,7 +162,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
-    return () => { group.top.current?.removeEventListener('scroll', syncB); group.bottom.current?.removeEventListener('scroll', syncT); };
+    return () => { 
+      group.top.current?.removeEventListener('scroll', syncB); 
+      group.bottom.current?.removeEventListener('scroll', syncT); 
+    };
   };
 
   useEffect(() => {
