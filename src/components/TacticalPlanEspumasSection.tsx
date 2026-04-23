@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, CheckCircle2 } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, CheckCircle2, Settings2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -271,7 +271,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           const info = extractMaterialInfo(o);
                           return (
                             <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                              <td className="px-4 py-2.5 font-medium text-gray-800 text-center border-r border-dashed border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
+                              <td className="px-4 py-2.5 font-semibold text-gray-800 text-center border-r border-dashed border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
                               <td className="px-4 py-2.5 font-mono font-semibold text-primary/80 text-center border-r border-dashed border-gray-50 tracking-tighter">{info.code}</td>
                               <td className="px-4 py-2.5 text-left border-r border-dashed border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
                               <td className="px-4 py-2.5 font-mono font-semibold text-gray-800 text-center border-r border-dashed border-gray-50">{o.CANTIDAD || '0'}</td>
