@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, CheckCircle2, LayoutDashboard, Info } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -212,10 +212,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     );
   }, [fertC1000, fertC2000]);
 
-  const setupScroll = (group: any) => {
+  const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
-    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = bottom.scrollLeft; };
+    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
     return () => {
@@ -227,7 +227,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   useEffect(() => {
     if (!mounted) return;
     const items = [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000, scrollResumen];
-    const cleaners = items.map(setupScroll);
+    const cleaners = items.map(setupScrollSync);
     setTimeout(() => items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }), 500);
     return () => cleaners.forEach(c => c?.());
   }, [activeTab, ordenes, ordenesFert, tiemposEnsamblado, mounted]);
@@ -256,17 +256,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap h-auto w-full bg-transparent gap-3 mb-8 p-0">
           {[
-            { id: 'grupos', label: 'Grupos Operativos', icon: Users, color: 'hover:border-blue-500', active: 'data-[state=active]:bg-blue-600 data-[state=active]:text-white', desc: 'Grupos técnicos de Venta Externa por planta.' },
-            { id: 'restricciones', label: 'Restricciones Técnicas', icon: Lock, color: 'hover:border-amber-500', active: 'data-[state=active]:bg-amber-600 data-[state=active]:text-white', desc: 'Filtros de segmentación por Responsable, Almacén y Sector.' },
-            { id: 'ordenes', label: 'Órdenes Provisionales', icon: Package, color: 'hover:border-green-500', active: 'data-[state=active]:bg-green-600 data-[state=active]:text-white', desc: 'Listado de demanda sugerida filtrada por planta.' },
-            { id: 'ordenesFert', label: 'Órdenes FERT', icon: ShoppingCart, color: 'hover:border-indigo-500', active: 'data-[state=active]:bg-indigo-600 data-[state=active]:text-white', desc: 'Control de órdenes reales con estado de entrega y pendientes.' },
-            { id: 'tiempos', label: 'Tiempos Ensamblado', icon: Clock, color: 'hover:border-teal-500', active: 'data-[state=active]:bg-teal-600 data-[state=active]:text-white', desc: 'Catálogo de tiempos técnicos por material y línea.' },
-            { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, color: 'hover:border-purple-500', active: 'data-[state=active]:bg-purple-600 data-[state=active]:text-white', desc: 'Resumen consolidado por Centro, Máquina y Categoría.' },
+            { id: 'grupos', label: 'Grupos Operativos', icon: Users, color: 'hover:border-blue-500', active: 'data-[state=active]:bg-blue-600 data-[state=active]:text-white' },
+            { id: 'restricciones', label: 'Restricciones Técnicas', icon: Lock, color: 'hover:border-amber-500', active: 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' },
+            { id: 'ordenes', label: 'Órdenes Provisionales', icon: Package, color: 'hover:border-green-500', active: 'data-[state=active]:bg-green-600 data-[state=active]:text-white' },
+            { id: 'ordenesFert', label: 'Órdenes FERT', icon: ShoppingCart, color: 'hover:border-indigo-500', active: 'data-[state=active]:bg-indigo-600 data-[state=active]:text-white' },
+            { id: 'tiempos', label: 'Tiempos Ensamblado', icon: Clock, color: 'hover:border-teal-500', active: 'data-[state=active]:bg-teal-600 data-[state=active]:text-white' },
+            { id: 'resumen', label: 'Resumen', icon: LayoutDashboard, color: 'hover:border-purple-500', active: 'data-[state=active]:bg-purple-600 data-[state=active]:text-white' },
           ].map(tab => (
             <TabsTrigger 
               key={tab.id} 
               value={tab.id} 
-              title={tab.desc}
               className={cn(
                 "flex-1 min-w-[140px] flex items-center justify-center gap-2 py-4 px-6 rounded-2xl border-2 border-white bg-white shadow-sm transition-all duration-300 font-bold uppercase text-[10px] tracking-wider",
                 tab.color,
@@ -417,10 +416,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-black text-red-600 border-r border-dashed border-gray-100 text-center bg-red-50/10 text-xs">{o.CANTRECHAZO || 0}</td>
                             <td className="px-3 py-3 font-black text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10 text-xs">{cantPendiente}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center">{o.TIEMPOPENDIENTE || 0}</td>
-                            <td 
-                              className="px-3 py-3 font-mono font-black border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5 cursor-help"
-                              title={calculatedHours !== null ? `Procedimiento: (${cantPendiente} pendientes * ${matchingTimeMin.toFixed(2)} min) / 60 = ${calculatedHours.toFixed(2)}h` : "Sin tiempo estándar vinculado"}
-                            >
+                            <td className="px-3 py-3 font-mono font-black border-r border-dashed border-gray-100 text-center text-teal-600 bg-teal-50/5">
                               {calculatedHours !== null ? (
                                 <span className="flex items-center justify-center gap-1">
                                   {calculatedHours.toFixed(2)}h
