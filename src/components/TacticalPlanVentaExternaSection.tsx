@@ -112,7 +112,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     init();
   }, [mounted]);
 
-  // Lista única de fechas extraída de las órdenes FERT
   const fertDates = useMemo(() => {
     const dates = new Set<string>();
     ordenesFert.forEach(o => { 
@@ -173,7 +172,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
   const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones, selectedDate]);
   const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones, selectedDate]);
-  // Tiempos no se filtran por fecha ya que son maestros
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
@@ -183,7 +181,24 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-    return { code, desc };
+
+    // Extracción de dimensiones (Densidad, Ancho, Largo, Espesor)
+    const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—' };
+    if (desc) {
+      // Densidad: D12, D-20, etc.
+      const densMatch = desc.match(/D-?(\d+)/i);
+      if (densMatch) dimensions.dens = densMatch[1];
+
+      // Dimensiones: 100x200x1, 100*200*1, etc.
+      const dimMatch = desc.match(/(\d{2,})\s*[xX*]\s*(\d{2,})(?:\s*[xX*]\s*(\d+))?/);
+      if (dimMatch) {
+        dimensions.ancho = dimMatch[1];
+        dimensions.largo = dimMatch[2];
+        if (dimMatch[3]) dimensions.esp = dimMatch[3];
+      }
+    }
+
+    return { code, desc, ...dimensions };
   };
 
   const getTiemposMap = (tiempos: any[]) => {
@@ -314,7 +329,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <h3 className={cn("text-lg font-black uppercase tracking-tight", center.c)}>{center.t}</h3>
                 </div>
 
-                {/* Combobox de Selección de Fecha (Solo después del título de Planta 1000) */}
                 {idx === 0 && (
                   <div className="flex items-center gap-2 bg-white p-1 px-3 rounded-xl shadow-sm border border-gray-100 ml-4">
                     <div className="flex items-center gap-2 text-gray-400">
@@ -488,6 +502,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Prog.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Pend.</th>
@@ -508,6 +526,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 font-semibold border-r border-dashed border-gray-100 text-center">{o.ORDEN || '—'}</td>
                             <td className="px-3 py-3 font-mono font-semibold text-indigo-600 border-r border-dashed border-gray-100 text-center">{info.code}</td>
                             <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
                             <td className="px-3 py-3 text-gray-400 font-medium border-r border-dashed border-gray-100 text-center">{o.CATEGORIA || '—'}</td>
                             <td className="px-3 py-3 font-semibold text-blue-800 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{o.CANTPROGRAMADA || 0}</td>
                             <td className="px-3 py-3 font-semibold text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10">{cantPendiente}</td>
