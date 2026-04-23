@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Wind, Users, Lock, Package, Loader2, Clock, CheckCircle2, Info } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -11,6 +11,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
@@ -24,17 +25,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para sincronización de scroll - Provisionales
+  // Refs para sincronización de scroll
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  
-  // Refs para sincronización de scroll - Tiempos
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   const fetchGruposEspumas = async () => {
     try {
@@ -64,20 +61,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      // 1. Cargar Órdenes Provisionales
       const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
       const provData = resProv.data?.data || resProv.data || [];
       setOrders(Array.isArray(provData) ? provData : []);
 
-      // 2. Cargar Tiempos de Ensamblado por Centro y Grupo
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
         const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
         const actualData = res.data?.data || res.data || [];
-        if (Array.isArray(actualData)) {
-          allTiempos.push(...actualData);
-        }
+        if (Array.isArray(actualData)) allTiempos.push(...actualData);
       }
       setTiemposEnsamblado(allTiempos);
     } catch (error) {
@@ -98,14 +91,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     initData();
   }, [mounted]);
 
-  // Lógica de Filtrado General (Provisionales)
-  const getFilteredData = (data: any[], centro: string) => {
+  const filterData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
     
-    const group = grupos.find(g => String(g.centro) === centro);
-    if (!group) return data.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === centro);
+    const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
+    if (relevantGroups.length === 0) return [];
     
-    const groupRest = restricciones.filter(r => r.codigo_grupo === group.codigo_grupo);
+    const groupIds = relevantGroups.map(g => g.codigo_grupo);
+    const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
     
     const respCodes = groupRest
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
@@ -114,7 +107,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     
     const almCodes = groupRest
       .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .map(r => r.valor_restriccion.trim())
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
 
     const sectorCodes = groupRest
@@ -127,60 +120,34 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       if (itemCentro !== centro) return false;
 
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
-      const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp.includes(code));
+      const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
 
-      const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
-      const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
+      const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      const hasAlmField = o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen') || o.hasOwnProperty('almacen');
+      const matchAlm = !hasAlmField || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
 
-      const itemSector = String(o.Sector || o.SECTOR || '').trim();
-      const matchSector = sectorCodes.length === 0 || sectorCodes.includes(itemSector);
+      const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
+      const hasSectorField = o.hasOwnProperty('SECTORDESC') || o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
+      const matchSector = !hasSectorField || sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
 
       return matchResp && matchAlm && matchSector;
     });
   };
 
-  // Lógica de Filtrado Específica para Tiempos (Solo RESPCTRLPROD y ALMACEN)
-  const getFilteredTiemposData = (data: any[], centro: string) => {
-    if (!data || data.length === 0) return [];
-    
-    const group = grupos.find(g => String(g.centro) === centro);
-    if (!group) return data.filter(o => String(o.Centro || o.CENTRO || o.centro || '').trim() === centro);
-    
-    const groupRest = restricciones.filter(r => r.codigo_grupo === group.codigo_grupo);
-    
-    const respCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-    
-    const almCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .map(r => r.valor_restriccion.trim())
-      .filter(v => v !== '');
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones]);
+  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
+  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
-    return data.filter(o => {
-      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
-      if (itemCentro !== centro) return false;
-
-      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
-      const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp.includes(code));
-
-      // En Tiempos el almacén podría no estar presente en todas las filas, validar si existe el campo
-      const itemAlm = String(o.Almacen || o.ALMACEN || o.Almacen || '').trim();
-      const matchAlm = almCodes.length === 0 || itemAlm === '' || almCodes.includes(itemAlm);
-
-      return matchResp && matchAlm;
-    });
+  const extractMaterialInfo = (item: any) => {
+    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
+    const match = matStr.match(/^(\d+)\s+(.*)$/);
+    if (match) return { code: match[1].slice(-8), desc: match[2].trim() };
+    if (/^\d+$/.test(matStr)) return { code: matStr.slice(-8), desc: nameStr || '—' };
+    return { code: '—', desc: matStr || nameStr || '—' };
   };
 
-  // Datos Segmentados
-  const provC1000 = useMemo(() => getFilteredData(ordenes, '1000'), [ordenes, grupos, restricciones]);
-  const provC2000 = useMemo(() => getFilteredData(ordenes, '2000'), [ordenes, grupos, restricciones]);
-  
-  const tiemposC1000 = useMemo(() => getFilteredTiemposData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
-  const tiemposC2000 = useMemo(() => getFilteredTiemposData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
-
-  // Sincronización de Scroll
   const setupScroll = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
@@ -195,237 +162,239 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   useEffect(() => {
     if (!mounted) return;
-    const cleaners = [
-      setupScroll(scrollProv1000), setupScroll(scrollProv2000),
-      setupScroll(scrollTiempos1000), setupScroll(scrollTiempos2000)
-    ];
-    const updateWidths = () => {
-      [scrollProv1000, scrollProv2000, scrollTiempos1000, scrollTiempos2000].forEach(s => {
-        if (s.table.current) s.width[1](s.table.current.offsetWidth);
-      });
-    };
-    setTimeout(updateWidths, 400);
+    const items = [scrollProv1000, scrollProv2000, scrollTiempos1000, scrollTiempos2000];
+    const cleaners = items.map(setupScroll);
+    setTimeout(() => items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }), 500);
     return () => cleaners.forEach(c => c?.());
   }, [activeTab, ordenes, tiemposEnsamblado, mounted]);
 
   if (!mounted || isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
         <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
-        <p className="text-gray-500 font-black uppercase tracking-widest animate-pulse">Sincronizando Corte Espuma...</p>
+        <p className="text-sm font-bold text-gray-500 uppercase tracking-widest animate-pulse">Sincronizando Corte Espuma...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-6 md:p-8 space-y-6">
-      <div className="flex items-center space-x-3 mb-6">
-        <div className="bg-blue-600 p-3 rounded-2xl shadow-xl shadow-blue-100">
-          <Wind className="w-8 h-8 text-white" />
+    <div className="p-4 md:p-8 space-y-8 bg-gray-50/50 min-h-screen">
+      {/* Header Principal */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-4">
+          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-100">
+            <Wind className="w-8 h-8 text-white" />
+          </div>
+          <div>
+            <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase leading-none">Planificación Táctica Corte Espuma</h2>
+            <p className="text-sm text-gray-500 font-medium mt-1">Control técnico de segmentación de espumas y laminados</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">Planificación Táctica Corte Espuma</h2>
-          <p className="text-sm text-gray-400 font-medium">Segmentación Inteligente Quito (1000) / Guayaquil (2000)</p>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="bg-white border-gray-200 text-gray-600 py-1.5 px-4 rounded-full shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-blue-500 mr-2 animate-pulse" />
+            <span className="font-bold text-[10px] uppercase">Segmentación por Planta</span>
+          </Badge>
         </div>
       </div>
-      
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-12 bg-gray-100/50 border rounded-xl p-1 mb-8">
-          <TabsTrigger value="grupos" className="rounded-lg font-bold uppercase text-[10px]">Grupos</TabsTrigger>
-          <TabsTrigger value="restricciones" className="rounded-lg font-bold uppercase text-[10px]">Restricciones</TabsTrigger>
-          <TabsTrigger value="ordenes" className="rounded-lg font-bold uppercase text-[10px]">Órdenes Provisionales</TabsTrigger>
-          <TabsTrigger value="tiempos" className="rounded-lg font-bold uppercase text-[10px]">Tiempos de Ensamblado</TabsTrigger>
+        <TabsList className="flex flex-wrap h-auto w-full bg-transparent gap-3 mb-8 p-0">
+          {[
+            { id: 'grupos', label: 'Grupos Operativos', icon: Users, color: 'hover:border-blue-500', active: 'data-[state=active]:bg-blue-600 data-[state=active]:text-white', desc: 'Visualización de grupos técnicos asignados.' },
+            { id: 'restricciones', label: 'Restricciones', icon: Lock, color: 'hover:border-amber-500', active: 'data-[state=active]:bg-amber-600 data-[state=active]:text-white', desc: 'Configuración de filtros RESPCTRLPROD y ALMACEN.' },
+            { id: 'ordenes', label: 'Órdenes Provisionales', icon: Package, color: 'hover:border-green-500', active: 'data-[state=active]:bg-green-600 data-[state=active]:text-white', desc: 'Demanda sugerida segmentada por planta.' },
+            { id: 'tiempos', label: 'Catálogo de Tiempos', icon: Clock, color: 'hover:border-teal-500', active: 'data-[state=active]:bg-teal-600 data-[state=active]:text-white', desc: 'Tiempos estándar de ensamble por material.' },
+          ].map(tab => (
+            <TabsTrigger 
+              key={tab.id} 
+              value={tab.id} 
+              className={cn(
+                "flex-1 min-w-[150px] flex flex-col items-center justify-center gap-1 py-4 px-6 rounded-3xl border-2 border-white bg-white shadow-sm transition-all duration-300",
+                tab.color,
+                tab.active
+              )}
+            >
+              <tab.icon className="w-5 h-5 mb-1" />
+              <span className="font-black uppercase text-[10px] tracking-wider">{tab.label}</span>
+              <span className="text-[9px] opacity-60 font-medium normal-case hidden md:block">{tab.desc}</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="grupos">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {grupos.map(g => (
-              <Card key={g.codigo_grupo} className="p-6 border-2 border-dashed rounded-3xl bg-gray-50/30">
-                <Badge className="bg-blue-600 mb-3">Planta {g.centro}</Badge>
+              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
+                <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
+                <Badge className="w-fit bg-blue-600 mb-2">CENTRO {g.centro}</Badge>
                 <h4 className="font-black text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
-                <p className="text-xs text-gray-400 mt-2 font-mono">ID: {g.codigo_grupo}</p>
+                <div className="mt-4 pt-4 border-t border-dashed flex items-center justify-between text-xs">
+                  <span className="font-mono text-gray-400">ID: {g.codigo_grupo}</span>
+                  <div className="flex items-center gap-1 text-green-600 font-bold">
+                    <CheckCircle2 className="w-4 h-4" /> ACTIVO
+                  </div>
+                </div>
               </Card>
             ))}
           </div>
         </TabsContent>
 
         <TabsContent value="restricciones">
-          <Card className="rounded-3xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto border rounded-3xl">
-              <table className="w-full text-center border-collapse">
-                <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
-                  <tr>
-                    <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
-                    <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
-                    <th className="px-6 py-5">Descripción</th>
+          <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+            <table className="w-full border-collapse">
+              <thead className="bg-gray-50/50 text-[10px] font-black uppercase text-gray-400">
+                <tr>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
+                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-[11px]">
+                {restricciones.map(r => (
+                  <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20 transition-colors">
+                    <td className="px-6 py-4 font-black text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200 text-center">
+                      <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50">{r.valor_restriccion}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || 'Sin descripción técnica'}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {restricciones.map(r => (
-                    <tr key={r.codigo_restriccion} className="hover:bg-blue-50/20 transition-colors">
-                      <td className="px-6 py-4 font-black text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
-                      <td className="px-6 py-4 border-r border-dashed border-gray-200">
-                        <Badge variant="outline" className="font-mono text-blue-700 border-blue-200">{r.valor_restriccion}</Badge>
-                      </td>
-                      <td className="px-6 py-4 text-gray-400 italic">{r.descripcion || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </Card>
         </TabsContent>
 
+        {/* ÓRDENES PROVISIONALES */}
         <TabsContent value="ordenes" className="space-y-12">
-          {/* C1000 - Quito */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Quito - Planta 1000 ({provC1000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollProv1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollProv1000.width[0], height: '1px' }} /></div>
-              <div ref={scrollProv1000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollProv1000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3">Almacén</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {provC1000.map((o, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">
-                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                        </td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">
-                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                        </td>
-                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {[ 
+            { t: 'Quito - Planta 1000', d: provC1000, s: scrollProv1000, c: 'text-blue-700', b: 'bg-blue-600' }, 
+            { t: 'Guayaquil - Planta 2000', d: provC2000, s: scrollProv2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
+          ].map((center, idx) => (
+            <div key={idx} className="space-y-4">
+              <div className="flex items-center justify-between px-2">
+                <h3 className={cn("text-sm font-black uppercase flex items-center gap-2", center.c)}>
+                  <div className={cn("w-2.5 h-2.5 rounded-full animate-pulse", center.b)} /> {center.t}
+                  <Badge variant="secondary" className="ml-2 font-mono text-[10px]">{center.d.length} FILAS</Badge>
+                </h3>
               </div>
-            </Card>
-          </div>
-
-          {/* C2000 - Guayaquil */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-indigo-700 px-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" /> Guayaquil - Planta 2000 ({provC2000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollProv2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollProv2000.width[0], height: '1px' }} /></div>
-              <div ref={scrollProv2000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollProv2000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Orden</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Descripción</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Cantidad</th>
-                      <th className="px-4 py-3">Almacén</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {provC2000.map((o, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-bold border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center font-mono text-blue-600 font-black">
-                          {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                        </td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center text-gray-500 uppercase font-black truncate max-w-[200px]">
-                          {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                        </td>
-                        <td className="px-4 py-3 font-black border-r border-dashed border-gray-100 text-center">{o.CANTIDAD}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen}</td>
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
+                  <table ref={center.s.table} className="w-full border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400">
+                      <tr>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Orden</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Cantidad</th>
+                        <th className="px-4 py-4 text-center">Almacén</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[11px]">
+                      {center.d.length === 0 ? (
+                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay órdenes para este centro con los filtros actuales</td></tr>
+                      ) : (
+                        center.d.map((o, i) => {
+                          const info = extractMaterialInfo(o);
+                          return (
+                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-4 py-3 font-bold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
+                              <td className="px-4 py-3 font-mono font-black text-blue-600 border-r border-dashed border-gray-100 text-center text-xs">{info.code}</td>
+                              <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[320px] font-black text-gray-500 uppercase tracking-tighter">{info.desc}</td>
+                              <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 text-center text-sm">{o.CANTIDAD || '0'}</td>
+                              <td className="px-4 py-3 font-bold text-gray-400 text-center">{o.Almacen || '—'}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
         </TabsContent>
 
+        {/* CATÁLOGO DE TIEMPOS */}
         <TabsContent value="tiempos" className="space-y-12">
-          {/* Tiempos C1000 */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-blue-700 px-2 flex items-center gap-2">
-               <Clock className="w-4 h-4" /> Quito - Catálogo Técnico 1000 ({tiemposC1000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollTiempos1000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos1000.width[0], height: '1px' }} /></div>
-              <div ref={scrollTiempos1000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollTiempos1000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea Técnica</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
-                      <th className="px-4 py-3">Stock / Seg.</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {tiemposC1000.map((t, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                          <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
-                          <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {[ 
+            { t: 'Tiempos Estándar - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, 
+            { t: 'Tiempos Estándar - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } 
+          ].map((center, idx) => (
+            <div key={idx} className="space-y-4">
+              <div className="flex items-center justify-between px-2">
+                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2", center.c)}>
+                  <div className={cn("w-2.5 h-2.5 rounded-full animate-pulse", center.b)} /> {center.t}
+                  <Badge variant="outline" className="ml-2 font-mono text-[10px]">{center.d.length} MATERIALES</Badge>
+                </h3>
               </div>
-            </Card>
-          </div>
-
-          {/* Tiempos C2000 */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase text-indigo-700 px-2 flex items-center gap-2">
-               <Clock className="w-4 h-4" /> Guayaquil - Catálogo Técnico 2000 ({tiemposC2000.length})
-            </h3>
-            <Card className="rounded-3xl overflow-hidden shadow-sm">
-              <div ref={scrollTiempos2000.top} className="overflow-x-auto h-3 bg-gray-50"><div style={{ width: scrollTiempos2000.width[0], height: '1px' }} /></div>
-              <div ref={scrollTiempos2000.bottom} className="overflow-x-auto border-t max-h-[400px]">
-                <table ref={scrollTiempos2000.table} className="w-full text-center border-collapse">
-                  <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] uppercase font-black text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Material</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">Línea Técnica</th>
-                      <th className="px-4 py-3 border-r border-dashed border-gray-200">T. Estándar (Min)</th>
-                      <th className="px-4 py-3">Stock / Seg.</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px]">
-                    {tiemposC2000.map((t, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30">
-                        <td className="px-4 py-3 font-black text-gray-800 border-r border-dashed border-gray-100 text-center">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center">
-                          <div className="font-bold text-gray-700">{t.PuestoTrabajoLinea || t.Linea}</div>
-                          <div className="text-[9px] text-gray-400 font-mono">{t.PuestoTrabajo}</div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-blue-700 font-black border-r border-dashed border-gray-100 text-center">{t.Tiempo_Min?.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockActual} / {t.StockSeguridad}</td>
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
+                  <table ref={center.s.table} className="w-full border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-400">
+                      <tr>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Línea de Ensamble</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">T. Estándar (Min)</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Stock Actual</th>
+                        <th className="px-4 py-4 text-center">Seguridad</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[11px]">
+                      {center.d.length === 0 ? (
+                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No se encontraron datos técnicos para este centro</td></tr>
+                      ) : (
+                        center.d.map((t, i) => {
+                          const info = extractMaterialInfo(t);
+                          return (
+                            <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                              <td className="px-4 py-3 font-mono font-black text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+                              <td className="px-4 py-3 text-left border-r border-dashed border-gray-100">
+                                <div className="font-black text-gray-700 uppercase leading-none">{t.Linea || '—'}</div>
+                                <div className="text-[9px] text-gray-400 font-mono mt-1">{t.PuestoTrabajo || '—'}</div>
+                              </td>
+                              <td className="px-4 py-3 font-mono font-black text-blue-600 border-r border-dashed border-gray-100 text-center text-lg">{t.Tiempo_Min?.toFixed(4) || '—'}</td>
+                              <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 text-center">{t.StockActual || 0}</td>
+                              <td className="px-4 py-3 font-bold text-gray-400 text-center">{t.StockSeguridad || 0}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
         </TabsContent>
       </Tabs>
+
+      {/* Panel Informativo Inferior */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+        <Card className="rounded-3xl border-none shadow-sm bg-white p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Info className="w-5 h-5 text-blue-600" />
+            <h4 className="font-black uppercase text-xs text-gray-800">Criterios de Segmentación</h4>
+          </div>
+          <p className="text-xs text-gray-500 leading-relaxed font-medium">
+            La data visualizada en este módulo está filtrada dinámicamente mediante las restricciones configuradas en los grupos de <span className="text-blue-600 font-bold">Corte Espuma</span>. 
+            El sistema valida automáticamente los códigos de responsable (<span className="font-mono bg-gray-100 px-1 rounded">RESPCTRLPROD</span>) y almacenes para asegurar que cada planta visualice solo su carga operativa pertinente.
+          </p>
+        </Card>
+        <Card className="rounded-3xl border-none shadow-sm bg-white p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Settings2 className="w-5 h-5 text-blue-600" />
+            <h4 className="font-black uppercase text-xs text-gray-800">Control de Interfaz</h4>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">SCROLL SINCRO: ON</Badge>
+            <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">AUTO-FILTER: ACTIVE</Badge>
+            <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">DATA-DENSIY: HIGH</Badge>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 };
