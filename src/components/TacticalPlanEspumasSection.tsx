@@ -25,7 +25,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para sincronización de scroll
+  // Refs para sincronización de scroll (4 tablas: Prov x2, Tiempos x2)
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -284,8 +284,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <table ref={center.s.table} className="w-full border-collapse">
                     <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Orden</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Cantidad</th>
                         <th className="px-4 py-4 text-center">Almacén</th>
@@ -293,7 +293,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay órdenes para este centro con los filtros actuales</td></tr>
+                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic font-bold uppercase tracking-widest">Sin órdenes para este centro</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const info = extractMaterialInfo(o);
@@ -335,7 +335,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <table ref={center.s.table} className="w-full border-collapse">
                     <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-400">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Línea de Ensamble</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">T. Estándar (Min)</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Stock Actual</th>
@@ -344,7 +344,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No se encontraron datos técnicos para este centro</td></tr>
+                        <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic font-bold uppercase tracking-widest">Sin datos técnicos para este centro</td></tr>
                       ) : (
                         center.d.map((t, i) => {
                           const info = extractMaterialInfo(t);
@@ -391,7 +391,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">SCROLL SINCRO: ON</Badge>
             <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">AUTO-FILTER: ACTIVE</Badge>
-            <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">DATA-DENSIY: HIGH</Badge>
+            <Badge variant="outline" className="bg-gray-50 border-gray-100 text-[9px] font-bold py-1 px-3">DATA-DENSITY: HIGH</Badge>
           </div>
         </Card>
       </div>
