@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, Filter } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -87,8 +87,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         if (!g.centro) continue;
         try {
           const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-          const data = res.data?.data || res.data || [];
-          if (Array.isArray(data)) allTiempos.push(...data);
+          const actualData = res.data?.data || res.data || [];
+          if (Array.isArray(actualData)) allTiempos.push(...actualData);
         } catch (e) {
           console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`);
         }
@@ -231,10 +231,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
-    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = bottomContainerScrollLeft(); };
+    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
     
-    const bottomContainerScrollLeft = () => group.bottom.current ? group.bottom.current.scrollLeft : 0;
-
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
     return () => {
@@ -248,14 +246,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const items = [scrollProv1000, scrollProv2000, scrollFert1000, scrollFert2000, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
     const cleaners = items.map(setupScrollSync);
     
-    // Update widths after render
-    const updateWidths = () => {
-      items.forEach(s => { 
-        if (s.table.current) s.width[1](s.table.current.offsetWidth); 
-      });
-    };
+    const timer = setTimeout(() => {
+      items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); });
+    }, 500);
     
-    const timer = setTimeout(updateWidths, 500);
     return () => {
       clearTimeout(timer);
       cleaners.forEach(c => c?.());
@@ -271,7 +265,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   return (
     <div className="p-4 md:p-8 space-y-8 bg-gray-50/50 min-h-screen">
-      {/* Header con Filtro de Fecha Global */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <div className="p-3 bg-green-600 rounded-2xl shadow-lg shadow-green-100">
@@ -281,24 +274,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">Venta Externa</h2>
             <p className="text-sm text-gray-500 font-medium">Panel de Control de Programación Táctica</p>
           </div>
-        </div>
-
-        <div className="flex items-center gap-3 bg-white p-2 px-4 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 text-gray-400">
-            <CalendarIcon className="w-4 h-4" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Fecha FERT:</span>
-          </div>
-          <Select value={selectedDate} onValueChange={setSelectedDate}>
-            <SelectTrigger className="w-[200px] h-9 border-none font-bold text-xs bg-transparent focus:ring-0">
-              <SelectValue placeholder="Todas las fechas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">TODAS LAS FECHAS</SelectItem>
-              {fertDates.map(date => (
-                <SelectItem key={date} value={date}>{date}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </div>
 
@@ -327,24 +302,46 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsList>
 
-        {/* TAB RESUMEN EJECUTIVO CON DOBLE SCROLL Y SEGMENTACIÓN POR PLANTA */}
         <TabsContent value="resumen" className="space-y-10">
           {[ 
             { t: 'Planta 1000 - Quito', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600' }, 
             { t: 'Planta 2000 - Guayaquil', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <div className="flex items-center gap-3 px-1">
-                <div className={cn("w-3 h-3 rounded-full animate-pulse", center.b)} />
-                <h3 className={cn("text-lg font-black uppercase tracking-tight", center.c)}>{center.t}</h3>
-                <Badge variant="secondary" className="text-[10px] font-bold">{center.d.length} GRUPOS TÉCNICOS</Badge>
+              <div className="flex flex-wrap items-center gap-4 px-1">
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-3 h-3 rounded-full animate-pulse", center.b)} />
+                  <h3 className={cn("text-lg font-black uppercase tracking-tight", center.c)}>{center.t}</h3>
+                </div>
+
+                {/* Combobox de Selección de Fecha (Solo después del título de Planta 1000) */}
+                {idx === 0 && (
+                  <div className="flex items-center gap-2 bg-white p-1 px-3 rounded-xl shadow-sm border border-gray-100 ml-4">
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <CalendarIcon className="w-3.5 h-3.5" />
+                      <span className="text-[9px] font-bold uppercase tracking-wider">Filtrar por Fecha FERT:</span>
+                    </div>
+                    <Select value={selectedDate} onValueChange={setSelectedDate}>
+                      <SelectTrigger className="w-[180px] h-8 border-none font-bold text-[10px] bg-transparent focus:ring-0">
+                        <SelectValue placeholder="Todas las fechas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">TODAS LAS FECHAS</SelectItem>
+                        {fertDates.map(date => (
+                          <SelectItem key={date} value={date}>{date}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <Badge variant="secondary" className="text-[10px] font-bold ml-auto">{center.d.length} GRUPOS TÉCNICOS</Badge>
               </div>
+
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                {/* Scroll Superior */}
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100">
                   <div style={{ width: center.s.width[0], height: '1px' }} />
                 </div>
-                {/* Contenedor de Tabla con Scroll Inferior */}
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
                   <table ref={center.s.table} className="w-full border-collapse">
                     <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 border-b border-gray-100">
