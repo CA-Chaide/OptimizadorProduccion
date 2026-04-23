@@ -71,7 +71,48 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
-  // Helper para fecha en formato YYYY-MM-DD local
+  /**
+   * Normaliza una cadena de fecha de cualquier formato común (ISO, DD/MM/YYYY, etc.)
+   * a una cadena YYYY-MM-DD para comparaciones seguras.
+   */
+  const normalizeDateForComparison = (dateInput: any): string | null => {
+    if (!dateInput) return null;
+    
+    try {
+      const dateStr = String(dateInput).trim();
+      
+      // Caso 1: ISO String o YYYY-MM-DD
+      if (dateStr.includes('-')) {
+        return dateStr.split('T')[0];
+      }
+      
+      // Caso 2: Formato DD/MM/YYYY
+      if (dateStr.includes('/')) {
+        const parts = dateStr.split(' ')[0].split('/');
+        if (parts.length === 3) {
+          // Asumimos DD/MM/YYYY (común en el sistema)
+          const [day, month, year] = parts;
+          if (year.length === 4) {
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          }
+        }
+      }
+      
+      // Fallback: Intento de parseo nativo (cuidado con zonas horarias)
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        return d.getFullYear() + '-' + 
+          String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(d.getDate()).padStart(2, '0');
+      }
+    } catch (e) {
+      console.error('Error normalizando fecha:', dateInput, e);
+    }
+    
+    return null;
+  };
+
+  // Helper para fecha en formato YYYY-MM-DD local (basado en el reloj del sistema)
   const formatLocalDate = (date: Date): string => {
     return date.getFullYear() + '-' + 
       String(date.getMonth() + 1).padStart(2, '0') + '-' + 
@@ -140,12 +181,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
           if (!matchesExternal) return false;
 
-          // 2. Filtro de Fecha: Hoy + Horizonte O Fecha Hoy
+          // 2. Filtro de Fecha normalizado
           const orderDateKey = Object.keys(order).find(k => k.toUpperCase() === 'FECHAINICIO');
           if (!orderDateKey) return false;
           
-          const orderDate = String(order[orderDateKey] ?? '').split('T')[0];
-          return orderDate === targetDate || orderDate === todayDate;
+          const rawDateValue = order[orderDateKey];
+          const normalizedOrderDate = normalizeDateForComparison(rawDateValue);
+          
+          return normalizedOrderDate === targetDate || normalizedOrderDate === todayDate;
         });
 
         setDailyOrders(filtered);
