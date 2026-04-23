@@ -266,7 +266,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     };
   }, [activeTab, ordenes, ordenesFert, tiemposEnsamblado, mounted]);
 
-  if (!mounted || isLoading) return (
+  if (!mounted) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Cargando...</p>
+      </div>
+    );
+  }
+
+  if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <div className="p-3 bg-green-600 rounded-2xl shadow-lg animate-pulse">
         <Loader2 className="w-12 h-12 animate-spin text-white" />
@@ -362,7 +370,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Órdenes</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Unidades</th>
                         <th className="px-6 py-5 text-center text-teal-700 bg-teal-50/20 border-r border-dashed border-gray-200">Tiempo PL</th>
-                        <th className="px-6 py-5 text-center text-amber-700 bg-amber-50/20">T. Corte</th>
+                        <th className="px-6 py-5 text-center text-amber-700 bg-amber-50/20">T. Pl Corte</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[11px]">
@@ -497,7 +505,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[8px] font-bold uppercase text-gray-400">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-bold uppercase text-gray-400">
                       <tr>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
@@ -566,7 +574,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción Técnica</th>
