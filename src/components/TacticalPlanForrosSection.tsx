@@ -87,6 +87,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, []);
 
   const targetDate = useMemo(() => getTargetPlanningDate(horizonValue), [getTargetPlanningDate, horizonValue]);
+  const todayDate = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
@@ -135,12 +136,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
           if (!matchesExternal) return false;
 
-          // 2. Filtro de Fecha Hoy + Horizonte
+          // 2. Filtro de Fecha: Hoy + Horizonte Y Fecha Hoy
           const orderDateKey = Object.keys(order).find(k => k.toUpperCase() === 'FECHAINICIO');
           if (!orderDateKey) return false;
           
           const orderDate = String(order[orderDateKey] ?? '').split('T')[0];
-          return orderDate === targetDate;
+          return orderDate === targetDate || orderDate === todayDate;
         });
 
         setDailyOrders(filtered);
@@ -152,7 +153,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, targetDate, addNotification]);
+  }, [externalFilters, targetDate, todayDate, addNotification]);
 
   useEffect(() => {
     if (forrosGruposList.length > 0) {
@@ -355,10 +356,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CalendarCheck className="w-5 h-5 text-primary" />
-                Programación Diaria: {targetDate}
+                Programación Diaria: {todayDate} y {targetDate}
               </CardTitle>
               <CardDescription>
-                Horizonte: Hoy + {horizonValue} día(s). Órdenes para el día laborable objetivo.
+                Mostrando órdenes para el día de hoy y el día laborable objetivo (Horizonte: +{horizonValue} días).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -388,7 +389,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       ) : (
                         <tr>
                           <td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
-                            No se encontraron órdenes para la fecha {targetDate} con las restricciones actuales.
+                            No se encontraron órdenes para las fechas seleccionadas con las restricciones actuales.
                           </td>
                         </tr>
                       )}
@@ -410,7 +411,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   
                   <div className="flex items-center gap-4">
                     <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">
-                      Total {dailyOrders.length} registros para {targetDate}
+                      Total {dailyOrders.length} registros (Hoy + Horizonte)
                     </div>
                     <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8">
                       <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Recargar
