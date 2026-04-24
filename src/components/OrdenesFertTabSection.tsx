@@ -37,6 +37,7 @@ interface OrdenFert {
   MAQUINA: string;
   PEDIDO: string;
   CANTPROGPESONETO: number;
+  T_PROD?: number; // Nueva columna para tiempo de producción
   [key: string]: any;
 }
 
@@ -306,6 +307,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Material</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Categoría</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Nombre</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">T. Prod</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Prog.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Entreg.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase">Notif.</th>
@@ -326,6 +328,9 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500">{order.CATEGORIA}</td>
                         <td className="px-3 py-4 text-xs text-gray-600 max-w-xs truncate font-medium" title={order.NOMBRE}>{order.NOMBRE}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                          {order.T_PROD ? Number(order.T_PROD).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                        </td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-gray-900">{order.CANTPROGRAMADA}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
@@ -345,7 +350,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={15} className="px-6 py-12 text-center text-gray-400 italic">
+                        <td colSpan={16} className="px-6 py-12 text-center text-gray-400 italic">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <AlertCircle className="w-8 h-8 text-gray-300" />
                             <span>No hay órdenes para los filtros configurados (Centro + Responsables).</span>
