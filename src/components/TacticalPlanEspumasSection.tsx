@@ -100,7 +100,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
     const respCodes = groupRest.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
     const almCodes = groupRest.filter(r => r.nombre_restriccion === 'ALMACEN').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
-    const sectorCodes = groupRest.filter(r => r.nombre_restriccion === 'SECTOR').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
 
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
@@ -108,10 +107,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchAlm = !o.hasOwnProperty('ALMACEN') && !o.hasOwnProperty('Almacen') || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
-      const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
-      const matchSector = !o.hasOwnProperty('SECTORDESC') && !o.hasOwnProperty('Sector') && !o.hasOwnProperty('SECTOR') || sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
-      return matchResp && matchAlm && matchSector;
+      const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
+      return matchResp && matchAlm;
     });
   };
 
@@ -159,8 +156,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const groupTotals1000 = useMemo(() => calculateGroupTotals(provC1000), [provC1000]);
   const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
 
-  const calculateSummary = (data: any[], centroId: string) => {
-    const map = new Map<string, { centro: string; categoria: string; espesor: string; totalOrdenes: number; totalCantidad: number; totalTiempoCorte: number }>();
+  const calculateSummary = (data: any[]) => {
+    const map = new Map<string, { categoria: string; espesor: string; totalOrdenes: number; totalCantidad: number; totalTiempoCorte: number }>();
     data.forEach(o => {
       const categoria = String(o.CATEGORIA || o.Categoria || '').trim();
       if (!categoria || categoria === 'N/A') return;
@@ -171,7 +168,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const corteHours = (qty * 5) / 3600;
       if (!map.has(key)) {
-        map.set(key, { centro: centroId, categoria, espesor, totalOrdenes: 0, totalCantidad: 0, totalTiempoCorte: 0 });
+        map.set(key, { categoria, espesor, totalOrdenes: 0, totalCantidad: 0, totalTiempoCorte: 0 });
       }
       const entry = map.get(key)!;
       entry.totalOrdenes += 1;
@@ -181,8 +178,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return Array.from(map.values()).sort((a, b) => a.categoria.localeCompare(b.categoria) || a.espesor.localeCompare(b.espesor));
   };
 
-  const summaryData1000 = useMemo(() => calculateSummary(provC1000, '1000'), [provC1000]);
-  const summaryData2000 = useMemo(() => calculateSummary(provC2000, '2000'), [provC2000]);
+  const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
+  const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
 
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
@@ -233,10 +230,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         groupSum = gTotals.get(`${cat}-${date}`) || 0;
         alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
 
-        // Cálculo de subbloques basado en el grupo total (Categoria-Fecha)
+        // Cálculo de subbloques basado en la SUMA DEL GRUPO (Categoría-Fecha)
         nSub = groupSum / alturaUtil;
         cargasB7 = Math.floor(nSub / 7);
         residuo = nSub % 7;
+        
         if (residuo > 0) {
           if (residuo <= 2) {
             destino = "MÁQ. APOYO";
@@ -250,7 +248,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }
       
       return (
-        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
+        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
           <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
           <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
           <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
@@ -309,13 +307,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Categoría Técnica</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Espesor</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Órdenes</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Unidades</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Categoría Técnica</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Espesor</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Órdenes</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Unidades</th>
                         <th className="px-4 py-4 text-center text-amber-700 bg-amber-50/20">T. Pl Corte</th>
                       </tr>
                     </thead>
@@ -353,33 +351,33 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha Inicio</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Orden</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha Inicio</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center bg-orange-50/10">NRO SUBBL.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center bg-orange-50/10">CARGAS (B7)</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center bg-orange-50/10">CANT. APOYO</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
-                        <th className="px-3 py-4 text-center">Almacén</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ANCHO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">LARGO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ESP.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Cant.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-900 bg-blue-50/30">VOLUMEN</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-900 bg-blue-50/30">PESO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">NRO SUBBL.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">CARGAS (B7)</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">RESIDUO / DESTINO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">CANT. APOYO</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-700 bg-amber-50/30">T. Pl Corte</th>
+                        <th className="px-3 py-4">Almacén</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                    <tbody className="divide-y divide-gray-100">
                       {renderTableBody(center.d, center.gTotals)}
                     </tbody>
                   </table>
@@ -393,12 +391,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {grupos.map(g => (
               <Card key={g.codigo_grupo} className="shadow-sm border-l-2 border-l-primary/50 overflow-hidden">
-                <CardContent className="p-4">
+                <CardContent className="p-4 text-center">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[9px] font-semibold text-muted-foreground uppercase">Centro {g.centro}</span>
                     <Badge variant="outline" className="text-[8px] h-4 text-green-600 border-green-200 py-0 px-1">Activo</Badge>
                   </div>
-                  <h4 className="font-semibold text-gray-800 text-sm">{g.nombre_grupo}</h4>
+                  <h4 className="font-semibold text-gray-800 text-sm uppercase">{g.nombre_grupo}</h4>
                   <p className="text-[9px] font-mono text-gray-400 mt-2 tracking-widest">ID: {g.codigo_grupo}</p>
                 </CardContent>
               </Card>
@@ -409,22 +407,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         <TabsContent value="restricciones" className="mt-4">
           <Card className="shadow-sm overflow-hidden border-none rounded-xl bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs text-center">
                 <thead className="bg-gray-50/50 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100">
                   <tr>
-                    <th className="px-4 py-3 text-left">Parámetro Técnico</th>
-                    <th className="px-4 py-3 text-center">Valor</th>
-                    <th className="px-4 py-3 text-left">Descripción Operativa</th>
+                    <th className="px-4 py-3 border-r border-dashed border-gray-300">Parámetro Técnico</th>
+                    <th className="px-4 py-3 border-r border-dashed border-gray-300">Valor</th>
+                    <th className="px-4 py-3">Descripción Operativa</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {restricciones.map(r => (
                     <tr key={r.codigo_restriccion} className="hover:bg-gray-50/30">
-                      <td className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-tighter">{r.nombre_restriccion}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-tighter border-r border-dashed border-gray-100">{r.nombre_restriccion}</td>
+                      <td className="px-4 py-3 border-r border-dashed border-gray-100">
                         <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-primary font-medium">{r.valor_restriccion}</code>
                       </td>
-                      <td className="px-4 py-3 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
+                      <td className="px-4 py-3 text-gray-400 italic">{r.descripcion || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -446,14 +444,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <div style={{ width: center.s.width[0], height: '1px' }} />
                 </div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción Técnica</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Línea Prod.</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700 text-center">Estándar (Min)</th>
-                        <th className="px-4 py-4 text-center text-gray-400">Stock / Seguridad</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Línea Prod.</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">Estándar (Min)</th>
+                        <th className="px-4 py-4 text-gray-400">Stock / Seguridad</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
@@ -461,10 +459,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const info = extractMaterialInfo(t);
                         return (
                           <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                            <td className="px-4 py-3 font-mono font-semibold text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+                            <td className="px-4 py-3 font-mono font-semibold text-teal-700 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-200 text-center font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100 text-center">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
                             <td className="px-4 py-3 text-center font-medium text-gray-300">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
