@@ -11,6 +11,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -104,6 +105,45 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   }, [activeTab, ordenes, tiemposEnsamblado]);
 
+  const extractMaterialInfo = (item: any) => {
+    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
+    const match = matStr.match(/^(\d+)/);
+    const code = match ? match[1].slice(-8) : matStr.slice(-8);
+    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
+
+    const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—' };
+    if (desc) {
+      const densMatch = desc.match(/D-?(\d+)/i);
+      if (densMatch) dimensions.dens = densMatch[1];
+      const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
+      if (dimMatch) {
+        dimensions.ancho = dimMatch[1];
+        dimensions.largo = dimMatch[2];
+        if (dimMatch[3]) dimensions.esp = dimMatch[3];
+      }
+    }
+    return { code, desc, ...dimensions };
+  };
+
+  const calculateGroupTotals = (data: any[]) => {
+    const map = new Map<string, number>();
+    data.forEach(item => {
+      const cat = String(item.CATEGORIA || item.Categoria || '').trim();
+      if (!cat || cat === 'N/A') return;
+      const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
+      const key = `${cat}-${date}`;
+      const info = extractMaterialInfo(item);
+      const qty = Number(item.CANTPROGRAMADA || item.CANTIDAD || 0);
+      const esp = parseFloat(info.esp) || 0;
+      const alturaTotal = esp * qty;
+      map.set(key, (map.get(key) || 0) + alturaTotal);
+    });
+    return map;
+  };
+
+  const groupTotals = useMemo(() => calculateGroupTotals(ordenes), [ordenes]);
+
   const ordenesFiltradas = useMemo(() => {
     const respCodes = restricciones.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
     return ordenes.filter(o => {
@@ -167,32 +207,103 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="ordenes">
           <Card className="p-6">
-            <div className="overflow-x-auto h-3 bg-gray-50 border-x rounded-t-lg"><div style={{ width: scrollProv.width[0], height: '1px' }} /></div>
-            <div ref={scrollProv.bottom} className="overflow-x-auto border rounded-b-lg max-h-[400px]">
-              <table ref={scrollProv.table} className="w-full text-center border-collapse">
-                <thead className="bg-gray-100 sticky top-0 text-[10px] uppercase font-bold text-gray-500">
+            <div ref={scrollProv.top} className="overflow-x-auto h-3 bg-gray-50 border-x rounded-t-lg"><div style={{ width: scrollProv.width[0], height: '1px' }} /></div>
+            <div ref={scrollProv.bottom} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
+              <table ref={scrollProv.table} className="w-full border-collapse">
+                <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                   <tr>
-                    <th className="px-4 py-3 border-r border-dashed">Orden</th>
-                    <th className="px-4 py-3 border-r border-dashed">Material</th>
-                    <th className="px-4 py-3 border-r border-dashed">Descripción</th>
-                    <th className="px-4 py-3 border-r border-dashed">Cantidad</th>
-                    <th className="px-4 py-3">Almacén</th>
+                    <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
+                    <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha Inicio</th>
+                    <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
+                    <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
+                    <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
+                    <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">NRO SUBBL.</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CARGAS (B7)</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
+                    <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CANT. APOYO</th>
+                    <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
+                    <th className="px-3 py-4 text-center">Almacén</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-xs">
-                  {ordenesFiltradas.map((o, i) => (
-                    <tr key={i} className="hover:bg-red-50/30">
-                      <td className="px-4 py-4 font-bold border-r border-dashed">{o.ORDENPREVISIONAL}</td>
-                      <td className="px-4 py-4 border-r border-dashed font-mono text-red-600 font-bold">
-                        {String(o.MATERIAL || '').match(/^\d+/)?.[0]?.slice(-8) || '—'}
-                      </td>
-                      <td className="px-4 py-4 border-r border-dashed text-gray-500 uppercase font-black truncate max-w-[300px]">
-                        {String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—'}
-                      </td>
-                      <td className="px-4 py-4 font-black border-r border-dashed">{o.CANTIDAD}</td>
-                      <td className="px-4 py-4 font-bold text-gray-500">{o.Almacen}</td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-gray-100 text-[10px]">
+                  {ordenesFiltradas.map((o, i) => {
+                    const cat = String(o.CATEGORIA || o.Categoria || '').trim();
+                    const hasCategory = cat !== '' && cat !== 'N/A';
+                    const info = extractMaterialInfo(o);
+                    const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+
+                    let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', calculatedCorteHours = 0;
+                    let nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0;
+
+                    if (hasCategory) {
+                      const l = parseFloat(info.largo) || 0;
+                      const w = parseFloat(info.ancho) || 0;
+                      const e = parseFloat(info.esp) || 0;
+                      const d = parseFloat(info.dens) || 0;
+                      volume = (l * w * e) / 1000000;
+                      weight = volume * d;
+                      alturaTotal = e * qty;
+                      calculatedCorteHours = (qty * 5) / 3600;
+                      
+                      const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+                      groupSum = groupTotals.get(`${cat}-${date}`) || 0;
+                      alturaUtil = isNaN(d) ? '—' : (d < 30 ? 103 : 85);
+
+                      if (typeof alturaUtil === 'number') {
+                        nSub = alturaTotal / alturaUtil;
+                        cargasB7 = Math.floor(nSub / 7);
+                        residuo = nSub % 7;
+                        if (residuo > 0) {
+                          if (residuo <= 2) {
+                            destino = "MÁQ. APOYO";
+                            cantApoyo = residuo;
+                          } else {
+                            destino = "+1 CARGA PPAL.";
+                          }
+                        } else if (nSub > 0) {
+                          destino = "COMPLETO";
+                        }
+                      }
+                    }
+                    
+                    return (
+                      <tr key={i} className="hover:bg-red-50/30 transition-colors">
+                        <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                        <td className="px-3 py-3 font-mono font-semibold text-red-600 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+                        <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
+                        <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{hasCategory ? cat : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.dens : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.ancho : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
+                        <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? volume.toFixed(2) : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? weight.toFixed(2) : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 text-center bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? nSub.toFixed(2) : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? cargasB7 : '—'}</td>
+                        <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-center text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
+                        <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
+                        <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
+                          {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
+                        </td>
+                        <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -201,7 +312,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="tiempos">
           <Card className="p-6">
-            <div className="overflow-x-auto h-3 bg-gray-50 border-x rounded-t-lg"><div style={{ width: scrollTiempos.width[0], height: '1px' }} /></div>
+            <div ref={scrollTiempos.top} className="overflow-x-auto h-3 bg-gray-50 border-x rounded-t-lg"><div style={{ width: scrollTiempos.width[0], height: '1px' }} /></div>
             <div ref={scrollTiempos.bottom} className="overflow-x-auto border rounded-b-lg max-h-[400px]">
               <table ref={scrollTiempos.table} className="w-full text-center border-collapse">
                 <thead className="bg-gray-100 sticky top-0 text-[10px] uppercase font-bold text-gray-500">

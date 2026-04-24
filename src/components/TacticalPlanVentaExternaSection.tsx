@@ -202,7 +202,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     
     data.forEach(o => {
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || '').trim();
-      if (!categoria || categoria === 'N/A') return; // Skip if no category
+      if (!categoria || categoria === 'N/A') return;
 
       const maquina = String(o.MAQUINA || o.Maquina || o.maquina || 'SIN MÁQUINA').trim();
       const info = extractMaterialInfo(o);
@@ -229,18 +229,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     );
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones, selectedDate]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones, selectedDate]);
-  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
-  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
-
   const calculateGroupTotals = (data: any[]) => {
     const map = new Map<string, number>();
     data.forEach(item => {
       const cat = String(item.CATEGORIA || item.Categoria || '').trim();
-      if (!cat || cat === 'N/A') return; // Skip if no category
+      if (!cat || cat === 'N/A') return;
       const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
       const key = `${cat}-${date}`;
       const info = extractMaterialInfo(item);
@@ -252,16 +245,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return map;
   };
 
-  const groupTotals1000 = useMemo(() => calculateGroupTotals(provC1000), [provC1000]);
-  const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
-
-  const summaryData1000 = useMemo(() => calculateSummary(fertC1000, getTiemposMap(tiemposC1000), '1000'), [fertC1000, tiemposC1000]);
-  const summaryData2000 = useMemo(() => calculateSummary(fertC2000, getTiemposMap(tiemposC2000), '2000'), [fertC2000, tiemposC2000]);
-
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
     const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
-    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
+    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = bottomScrollCurrent; };
+    const bottomScrollCurrent = group.bottom.current.scrollLeft;
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
     return () => { group.top.current?.removeEventListener('scroll', syncB); group.bottom.current?.removeEventListener('scroll', syncT); };
@@ -274,6 +262,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const timer = setTimeout(() => { items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }); }, 500);
     return () => { clearTimeout(timer); };
   }, [activeTab, ordenes, tiemposEnsamblado, mounted]);
+
+  const groupTotals1000 = useMemo(() => calculateGroupTotals(provC1000), [provC1000]);
+  const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
+  const summaryData1000 = useMemo(() => calculateSummary(fertC1000, getTiemposMap(tiemposC1000), '1000'), [fertC1000, tiemposC1000]);
+  const summaryData2000 = useMemo(() => calculateSummary(fertC2000, getTiemposMap(tiemposC2000), '2000'), [fertC2000, tiemposC2000]);
 
   if (!mounted) return null;
 
@@ -390,17 +383,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         ))
                       )}
                     </tbody>
-                    {center.d.length > 0 && (
-                      <tfoot className="bg-gray-900 text-white font-bold text-[10px] uppercase">
-                        <tr>
-                          <td colSpan={3} className="px-6 py-5 text-right border-r border-gray-800 tracking-widest">Totales Planta</td>
-                          <td className="px-6 py-5 text-center border-r border-gray-800 text-purple-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalOrdenes, 0)}</td>
-                          <td className="px-6 py-5 text-center border-r border-gray-800 text-green-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalCantidad, 0).toLocaleString()}</td>
-                          <td className="px-6 py-5 text-center border-r border-gray-800 text-indigo-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempoPL, 0).toFixed(2)}</td>
-                          <td className="px-6 py-5 text-center text-amber-400 font-mono">{center.d.reduce((acc, curr) => acc + curr.totalTiempoCorte, 0).toFixed(2)}</td>
-                        </tr>
-                      </tfoot>
-                    )}
                   </table>
                 </div>
               </Card>
@@ -438,6 +420,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">NRO SUBBL.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CARGAS (B7)</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CANT. APOYO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
@@ -451,6 +437,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                         
                         let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', hoursPL = 0, calculatedCorteHours = 0;
+                        let nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0;
 
                         if (hasCategory) {
                           const tMap = getTiemposMap(idx === 0 ? tiemposC1000 : tiemposC2000);
@@ -469,6 +456,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
                           groupSum = center.gTotals.get(`${cat}-${date}`) || 0;
                           alturaUtil = isNaN(d) ? '—' : (d < 30 ? 103 : 85);
+
+                          if (typeof alturaUtil === 'number') {
+                            nSub = alturaTotal / alturaUtil;
+                            cargasB7 = Math.floor(nSub / 7);
+                            residuo = nSub % 7;
+                            if (residuo > 0) {
+                              if (residuo <= 2) {
+                                destino = "MÁQ. APOYO";
+                                cantApoyo = residuo;
+                              } else {
+                                destino = "+1 CARGA PPAL.";
+                              }
+                            } else {
+                              destino = "COMPLETO";
+                            }
+                          }
                         }
                         
                         return (
@@ -488,6 +491,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
                             <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 text-center bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
                             <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? nSub.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? cargasB7 : '—'}</td>
+                            <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-center text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hasCategory ? hoursPL.toFixed(2) : '—'}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
                               {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
@@ -532,6 +539,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">NRO SUBBL.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CARGAS (B7)</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CANT. APOYO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha</th>
@@ -546,6 +557,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
                         
                         let volume = 0, weight = 0, alturaTotal = 0, hoursPL = 0, calculatedCorteHours = 0;
+                        let nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0;
 
                         if (hasCategory) {
                           const tMap = getTiemposMap(idx === 0 ? tiemposC1000 : tiemposC2000);
@@ -560,6 +572,21 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           volume = (l * w * e) / 1000000;
                           weight = volume * d;
                           alturaTotal = e * cantPendiente;
+
+                          const altUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
+                          nSub = alturaTotal / altUtil;
+                          cargasB7 = Math.floor(nSub / 7);
+                          residuo = nSub % 7;
+                          if (residuo > 0) {
+                            if (residuo <= 2) {
+                              destino = "MÁQ. APOYO";
+                              cantApoyo = residuo;
+                            } else {
+                              destino = "+1 CARGA PPAL.";
+                            }
+                          } else if (nSub > 0) {
+                            destino = "COMPLETO";
+                          }
                         }
                         
                         return (
@@ -577,6 +604,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? volume.toFixed(2) : '—'}</td>
                             <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? weight.toFixed(2) : '—'}</td>
                             <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? nSub.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? cargasB7 : '—'}</td>
+                            <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-center text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hasCategory ? hoursPL.toFixed(2) : '—'}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
                               {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
@@ -633,7 +664,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
-          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
