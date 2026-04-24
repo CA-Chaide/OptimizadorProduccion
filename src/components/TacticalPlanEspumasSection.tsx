@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,11 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 // Constantes de ingeniería de tiempos (en segundos)
 const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico completo
@@ -111,7 +116,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
       if (d && d !== 'null' && d !== 'undefined') {
         try {
-          // Normalizar a YYYY-MM-DD para comparación
           const normalized = d.includes('T') ? d.split('T')[0] : d;
           dates.add(normalized);
         } catch(e) {}
@@ -275,17 +279,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return () => { clearTimeout(timer); cleaners.forEach(c => c?.()); };
   }, [activeTab, ordenes, tiemposEnsamblado, mounted]);
 
-  // Funciones auxiliares para el calendario
   const calendarDays = useMemo(() => {
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
-    
-    // Relleno para que el mes empiece el día correcto (Lunes=0 para este grid)
     const firstDayOfWeek = getDay(start); 
     const paddingCount = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
     const padding = Array.from({ length: paddingCount }, () => null);
-    
     return [...padding, ...days];
   }, [viewDate]);
 
@@ -304,29 +304,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const hasCategory = cat !== '' && cat !== 'N/A';
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-
       let alturaTotal = 0, groupSumHeight = 0, alturaUtil: any = 103, nCycles = 0, nSubItem = 0, cargasB7Item = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoLogistico = 0;
-
       if (hasCategory) {
         const e = parseFloat(info.esp) || 0;
         const d = parseFloat(info.dens) || 0;
         alturaTotal = qty * e;
-        
         const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
         const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
         const groupKey = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
         groupSumHeight = gTotals.get(groupKey) || 0;
-        
         alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
         nCycles = Math.floor(alturaUtil / (e || 1)) + 4;
         nSubItem = alturaTotal / alturaUtil;
         cargasB7Item = nSubItem / 7;
-        
         const nSubGroup = groupSumHeight / (alturaUtil || 1);
         residuo = nSubGroup % 7;
-        
         tiempoLogistico = calculateLogisticoTime(qty, e, nSubItem);
-
         if (residuo > 0) {
           if (residuo <= 2) {
             destino = "MÁQ. APOYO";
@@ -338,7 +331,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           destino = "COMPLETO";
         }
       }
-      
       return (
         <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
           <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
@@ -384,92 +376,114 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <TabsTrigger value="tiempos" className="gap-2 text-[10px] font-semibold uppercase"><Clock className="w-3 h-3" /> Tiempos</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="resumen" className="space-y-8 mt-4">
+        <TabsContent value="resumen" className="space-y-6 mt-4">
           
-          {/* Selector de Fecha Estilo Calendario */}
-          <div className="flex justify-center">
-            <Card className="w-full max-w-sm rounded-3xl border-none shadow-xl bg-white p-6 transition-all duration-500 hover:shadow-2xl">
-              <div className="flex flex-col space-y-6">
-                
-                {/* Header Selector */}
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Horizonte de Planificación</span>
-                    <h3 className="text-lg font-black text-gray-800 capitalize">
-                      {format(viewDate, 'MMMM yyyy', { locale: es })}
-                    </h3>
-                  </div>
-                  <div className="flex gap-1 bg-gray-50 rounded-xl p-1">
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="rounded-lg hover:bg-white hover:shadow-sm h-8 w-8">
-                      <ChevronLeft className="w-4 h-4 text-gray-600" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="rounded-lg hover:bg-white hover:shadow-sm h-8 w-8">
-                      <ChevronRight className="w-4 h-4 text-gray-600" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Grid de Días */}
-                <div className="grid grid-cols-7 gap-y-2 text-center">
-                  {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map(day => (
-                    <div key={day} className="text-[10px] font-bold text-gray-400 uppercase py-2">
-                      {day}
-                    </div>
-                  ))}
-                  
-                  {calendarDays.map((day, idx) => {
-                    if (!day) return <div key={`empty-${idx}`} className="p-2" />;
-                    
-                    const dateStr = format(day, 'yyyy-MM-dd');
-                    const isSelected = selectedDate === dateStr;
-                    const hasData = datesWithOrders.has(dateStr);
-                    const isTodayDate = isToday(day);
-
-                    return (
-                      <button
-                        key={dateStr}
-                        onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)}
-                        className={cn(
-                          "relative p-2 h-10 w-10 mx-auto rounded-full flex flex-col items-center justify-center transition-all duration-200 group",
-                          isSelected ? "bg-primary text-white shadow-lg shadow-primary/30" : "hover:bg-gray-50",
-                          isTodayDate && !isSelected ? "ring-1 ring-primary/30 ring-inset" : ""
-                        )}
-                      >
-                        <span className={cn(
-                          "text-xs font-bold",
-                          isSelected ? "text-white" : isTodayDate ? "text-primary" : "text-gray-700",
-                          !hasData && !isSelected ? "text-gray-300 font-normal" : ""
-                        )}>
-                          {format(day, 'd')}
-                        </span>
-                        
-                        {/* Indicador de Datos (Punto) */}
-                        {hasData && (
-                          <div className={cn(
-                            "absolute bottom-1.5 w-1 h-1 rounded-full",
-                            isSelected ? "bg-white" : "bg-primary/40 group-hover:bg-primary"
-                          )} />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
-                  <Badge variant="outline" className="rounded-full text-[9px] font-bold uppercase tracking-tight bg-gray-50 text-gray-400 border-gray-100">
-                    {selectedDate === 'all' ? 'Vista Consolidada' : `Filtrado: ${selectedDate}`}
-                  </Badge>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => setSelectedDate('all')}
-                    className="text-[9px] font-black uppercase text-primary hover:bg-primary/5 rounded-xl h-7"
-                  >
-                    Ver Todo el Plan
-                  </Button>
-                </div>
+          {/* Cabecera de Selección de Fecha Desplegable */}
+          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-primary/10 rounded-xl">
+                <CalendarIcon className="w-5 h-5 text-primary" />
               </div>
-            </Card>
+              <div>
+                <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Fecha de Planificación</p>
+                <h3 className="text-sm font-black text-gray-800 uppercase">
+                  {selectedDate === 'all' ? 'Vista Consolidada' : format(parseISO(selectedDate), 'd MMMM yyyy', { locale: es })}
+                </h3>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {selectedDate !== 'all' && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setSelectedDate('all')}
+                  className="h-9 px-4 text-[10px] font-black uppercase text-primary hover:bg-primary/5 rounded-xl border border-primary/20"
+                >
+                  Ver Todo el Plan
+                </Button>
+              )}
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="h-10 px-4 rounded-xl border-2 hover:bg-gray-50 gap-2 font-bold text-xs uppercase shadow-sm">
+                    <Filter className="w-3.5 h-3.5" />
+                    Cambiar Fecha
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 border-none shadow-2xl rounded-3xl overflow-hidden" align="end">
+                  <Card className="w-full max-w-sm rounded-3xl border-none bg-white p-6">
+                    <div className="flex flex-col space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-black text-gray-800 capitalize">
+                          {format(viewDate, 'MMMM yyyy', { locale: es })}
+                        </h3>
+                        <div className="flex gap-1 bg-gray-50 rounded-xl p-1">
+                          <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="rounded-lg h-7 w-7">
+                            <ChevronLeft className="w-4 h-4 text-gray-600" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="rounded-lg h-7 w-7">
+                            <ChevronRight className="w-4 h-4 text-gray-600" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-7 gap-y-1 text-center">
+                        {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map(day => (
+                          <div key={day} className="text-[9px] font-bold text-gray-400 uppercase py-2">
+                            {day}
+                          </div>
+                        ))}
+                        
+                        {calendarDays.map((day, idx) => {
+                          if (!day) return <div key={`empty-${idx}`} className="p-2" />;
+                          const dateStr = format(day, 'yyyy-MM-dd');
+                          const isSelected = selectedDate === dateStr;
+                          const hasData = datesWithOrders.has(dateStr);
+                          const isTodayDate = isToday(day);
+                          return (
+                            <button
+                              key={dateStr}
+                              onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)}
+                              className={cn(
+                                "relative p-2 h-9 w-9 mx-auto rounded-full flex flex-col items-center justify-center transition-all duration-200 group",
+                                isSelected ? "bg-primary text-white shadow-lg shadow-primary/30" : "hover:bg-gray-50",
+                                isTodayDate && !isSelected ? "ring-1 ring-primary/30 ring-inset" : ""
+                              )}
+                            >
+                              <span className={cn(
+                                "text-[11px] font-bold",
+                                isSelected ? "text-white" : isTodayDate ? "text-primary" : "text-gray-700",
+                                !hasData && !isSelected ? "text-gray-300 font-normal" : ""
+                              )}>
+                                {format(day, 'd')}
+                              </span>
+                              {hasData && (
+                                <div className={cn(
+                                  "absolute bottom-1 w-1 h-1 rounded-full",
+                                  isSelected ? "bg-white" : "bg-primary/40 group-hover:bg-primary"
+                                )} />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="pt-4 border-t border-gray-100">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="w-full text-[10px] font-black uppercase text-primary hover:bg-primary/5 rounded-xl h-9"
+                          onClick={() => setSelectedDate('all')}
+                        >
+                          Limpiar Filtros
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
           {[ 
