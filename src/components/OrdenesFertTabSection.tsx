@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -6,9 +5,13 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { Package } from 'lucide-react';
+import { Package, Check, ChevronsUpDown } from 'lucide-react';
 import type { OrdenFert, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
@@ -23,6 +26,79 @@ interface PaginationState {
 }
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100];
+
+// MultiSelect component
+const MultiSelect: React.FC<{
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  placeholder?: string;
+}> = ({ options, selected, onChange, placeholder }) => {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (value: string) => {
+    const newSelected = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : [...selected, value];
+    onChange(newSelected);
+  };
+
+  return (
+    <div className="flex flex-col items-start w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between h-9 text-sm font-normal"
+          >
+            <span className="truncate">
+              {selected.length === 0
+                ? placeholder || 'Seleccionar...'
+                : `${selected.length} seleccionada(s)`}
+            </span>
+            <ChevronsUpDown className="ml-1 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[250px] p-0">
+          <Command>
+            <CommandInput placeholder="Buscar fecha..." className="h-9" />
+            <CommandEmpty>No se encontraron fechas.</CommandEmpty>
+            <CommandGroup className="max-h-60 overflow-y-auto">
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={() => {
+                    handleSelect(option.value);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      selected.includes(option.value) ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      <div className="pt-1 text-left w-full min-h-[22px]">
+        {selected.slice(0, 3).map(value => (
+          <Badge key={value} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={value}>
+            {value}
+          </Badge>
+        ))}
+        {selected.length > 3 && <Badge variant="secondary">+{selected.length - 3}</Badge>}
+      </div>
+    </div>
+  );
+};
+
 
 export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones }) => {
   const inspector = useRuntimeInspector('OrdenesFertTab');
@@ -39,7 +115,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
 
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -86,7 +162,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
       } catch (err) {
         const errorMessage = (err as Error).message;
-        logger.log(`[OrdenesFertTab] Error fetching data: ${errorMessage}`, 'error');
+        logger.error(`[OrdenesFertTab] Error fetching data: ${errorMessage}`, 'error');
         setError(errorMessage);
         addNotification('error', `Error al cargar datos: ${errorMessage}`);
       } finally {
@@ -112,10 +188,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         order.CENTRO === '1000'
       )
       .filter(order => {
-        if (!selectedDate) return true;
-        return order.FECHA === selectedDate;
+        if (selectedDates.length === 0) return true;
+        return selectedDates.includes(order.FECHA);
       });
-  }, [orders, selectedDate]);
+  }, [orders, selectedDates]);
   
   const totalCantidadPendiente = useMemo(() => {
     return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
@@ -142,8 +218,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }));
   };
   
-  const handleDateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedDate(e.target.value);
+  const handleDateChange = (dates: string[]) => {
+    setSelectedDates(dates);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
   
@@ -223,27 +299,24 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha:</label>
-          <select
-            id="date-filter"
-            value={selectedDate}
-            onChange={handleDateChange}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">Todas</option>
-            {uniqueDates.map(date => (
-              <option key={date} value={date}>{date}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm">
-            <Package className="w-6 h-6 text-indigo-600" />
-            <div>
-              <p className="text-xs text-indigo-800 font-semibold uppercase">Cant. Pendiente</p>
-              <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start space-x-2">
+            <div className="w-56">
+                <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
+                <MultiSelect
+                    options={uniqueDates.map(d => ({ value: d, label: d }))}
+                    selected={selectedDates}
+                    onChange={handleDateChange}
+                    placeholder="Todas las fechas"
+                />
             </div>
+          <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm mt-6">
+              <Package className="w-6 h-6 text-indigo-600" />
+              <div>
+                <p className="text-xs text-indigo-800 font-semibold uppercase">Cant. Pendiente</p>
+                <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
+              </div>
+          </div>
         </div>
       </div>
 
