@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck, Calendar as CalendarIcon } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 // Constantes de ingeniería de tiempos (en segundos)
 const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico completo
@@ -31,6 +33,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
+  
+  // Estado para el calendario
+  const [viewDate, setViewDate] = useState(new Date());
 
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -99,17 +104,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     initData();
   }, [mounted]);
 
-  // Extraer fechas únicas de las órdenes
-  const uniqueDates = useMemo(() => {
+  // Extraer fechas únicas que tienen órdenes
+  const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null' && d !== 'undefined') dates.add(d);
+      if (d && d !== 'null' && d !== 'undefined') {
+        try {
+          // Normalizar a YYYY-MM-DD para comparación
+          const normalized = d.includes('T') ? d.split('T')[0] : d;
+          dates.add(normalized);
+        } catch(e) {}
+      }
     });
-    return Array.from(dates).sort().reverse();
+    return dates;
   }, [ordenes]);
 
-  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
+  const filterData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
@@ -126,7 +137,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       
-      const itemDate = String(o.FECHAINICIO || o.FECHA || '').trim();
+      const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
+      const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       const matchDate = selectedDate === 'all' || itemDate === selectedDate;
       
       return matchResp && matchAlm && matchDate;
@@ -164,7 +176,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const cat = String(item.CATEGORIA || item.Categoria || '').trim();
       if (!cat || cat === 'N/A') return;
       const info = extractMaterialInfo(item);
-      const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
+      const dateRaw = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
+      const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       const key = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
       const qty = Number(item.CANTPROGRAMADA || item.CANTIDAD || 0);
       const esp = parseFloat(info.esp) || 0;
@@ -175,18 +188,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const groupTotals1000 = useMemo(() => calculateGroupTotals(provC1000), [provC1000]);
   const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
-
-  const getTiemposMap = (tiempos: any[]) => {
-    const map = new Map<string, number>();
-    tiempos.forEach(t => {
-      const info = extractMaterialInfo(t);
-      if (info.code) {
-        const timeVal = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
-        map.set(info.code, timeVal);
-      }
-    });
-    return map;
-  };
 
   const calculateLogisticoTime = (qty: number, esp: number, nroSubbloques: number) => {
     if (qty <= 0) return 0;
@@ -200,11 +201,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return (timeCarga + timeDescarga + timeCarts) / 3600;
   };
 
-  const calculateSummary = (data: any[], tMap: Map<string, number>) => {
+  const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; categoria: string; ancho: string; largo: string; espesor: string; items: any[] }>();
     
     data.forEach(o => {
-      const fecha = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+      const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+      const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       const categoria = String(o.CATEGORIA || o.Categoria || '').trim();
       if (!categoria || categoria === 'N/A') return;
       const info = extractMaterialInfo(o);
@@ -253,8 +255,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.categoria.localeCompare(b.categoria));
   };
 
-  const summaryData1000 = useMemo(() => calculateSummary(provC1000, getTiemposMap(tiemposC1000)), [provC1000, tiemposC1000]);
-  const summaryData2000 = useMemo(() => calculateSummary(provC2000, getTiemposMap(tiemposC2000)), [provC2000, tiemposC2000]);
+  const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
+  const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
 
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
@@ -273,6 +275,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return () => { clearTimeout(timer); cleaners.forEach(c => c?.()); };
   }, [activeTab, ordenes, tiemposEnsamblado, mounted]);
 
+  // Funciones auxiliares para el calendario
+  const calendarDays = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    
+    // Relleno para que el mes empiece el día correcto (Lunes=0 para este grid)
+    const firstDayOfWeek = getDay(start); 
+    const paddingCount = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+    const padding = Array.from({ length: paddingCount }, () => null);
+    
+    return [...padding, ...days];
+  }, [viewDate]);
+
   if (!mounted) return null;
 
   if (isLoading) return (
@@ -282,7 +298,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     </div>
   );
 
-  const renderTableBody = (data: any[], gTotals: Map<string, number>, tMap: Map<string, number>) => {
+  const renderTableBody = (data: any[], gTotals: Map<string, number>) => {
     return data.map((o, i) => {
       const cat = String(o.CATEGORIA || o.Categoria || '').trim();
       const hasCategory = cat !== '' && cat !== 'N/A';
@@ -296,7 +312,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const d = parseFloat(info.dens) || 0;
         alturaTotal = qty * e;
         
-        const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+        const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+        const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
         const groupKey = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
         groupSumHeight = gTotals.get(groupKey) || 0;
         
@@ -368,43 +385,91 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-8 mt-4">
-          {/* Barra de Selección de Fecha por Chips */}
-          <div className="flex flex-wrap items-center gap-2 p-3 bg-white rounded-3xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-2 px-3 mr-2 border-r border-gray-100">
-              <CalendarIcon className="w-4 h-4 text-gray-400" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Filtrar Plan:</span>
-            </div>
-            
-            <Button
-              variant={selectedDate === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSelectedDate('all')}
-              className={cn(
-                "rounded-2xl text-[10px] font-bold uppercase h-8 px-4 transition-all duration-200",
-                selectedDate === 'all' 
-                  ? "bg-primary text-white shadow-md shadow-primary/20" 
-                  : "bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100"
-              )}
-            >
-              TODAS LAS FECHAS
-            </Button>
+          
+          {/* Selector de Fecha Estilo Calendario */}
+          <div className="flex justify-center">
+            <Card className="w-full max-w-sm rounded-3xl border-none shadow-xl bg-white p-6 transition-all duration-500 hover:shadow-2xl">
+              <div className="flex flex-col space-y-6">
+                
+                {/* Header Selector */}
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Horizonte de Planificación</span>
+                    <h3 className="text-lg font-black text-gray-800 capitalize">
+                      {format(viewDate, 'MMMM yyyy', { locale: es })}
+                    </h3>
+                  </div>
+                  <div className="flex gap-1 bg-gray-50 rounded-xl p-1">
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="rounded-lg hover:bg-white hover:shadow-sm h-8 w-8">
+                      <ChevronLeft className="w-4 h-4 text-gray-600" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="rounded-lg hover:bg-white hover:shadow-sm h-8 w-8">
+                      <ChevronRight className="w-4 h-4 text-gray-600" />
+                    </Button>
+                  </div>
+                </div>
 
-            {uniqueDates.map(date => (
-              <Button
-                key={date}
-                variant={selectedDate === date ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedDate(date)}
-                className={cn(
-                  "rounded-2xl text-[10px] font-bold uppercase h-8 px-4 transition-all duration-200",
-                  selectedDate === date 
-                    ? "bg-primary text-white shadow-md shadow-primary/20 scale-105" 
-                    : "bg-white border-gray-200 text-gray-500 hover:border-primary/50 hover:text-primary"
-                )}
-              >
-                {date}
-              </Button>
-            ))}
+                {/* Grid de Días */}
+                <div className="grid grid-cols-7 gap-y-2 text-center">
+                  {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map(day => (
+                    <div key={day} className="text-[10px] font-bold text-gray-400 uppercase py-2">
+                      {day}
+                    </div>
+                  ))}
+                  
+                  {calendarDays.map((day, idx) => {
+                    if (!day) return <div key={`empty-${idx}`} className="p-2" />;
+                    
+                    const dateStr = format(day, 'yyyy-MM-dd');
+                    const isSelected = selectedDate === dateStr;
+                    const hasData = datesWithOrders.has(dateStr);
+                    const isTodayDate = isToday(day);
+
+                    return (
+                      <button
+                        key={dateStr}
+                        onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)}
+                        className={cn(
+                          "relative p-2 h-10 w-10 mx-auto rounded-full flex flex-col items-center justify-center transition-all duration-200 group",
+                          isSelected ? "bg-primary text-white shadow-lg shadow-primary/30" : "hover:bg-gray-50",
+                          isTodayDate && !isSelected ? "ring-1 ring-primary/30 ring-inset" : ""
+                        )}
+                      >
+                        <span className={cn(
+                          "text-xs font-bold",
+                          isSelected ? "text-white" : isTodayDate ? "text-primary" : "text-gray-700",
+                          !hasData && !isSelected ? "text-gray-300 font-normal" : ""
+                        )}>
+                          {format(day, 'd')}
+                        </span>
+                        
+                        {/* Indicador de Datos (Punto) */}
+                        {hasData && (
+                          <div className={cn(
+                            "absolute bottom-1.5 w-1 h-1 rounded-full",
+                            isSelected ? "bg-white" : "bg-primary/40 group-hover:bg-primary"
+                          )} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+                  <Badge variant="outline" className="rounded-full text-[9px] font-bold uppercase tracking-tight bg-gray-50 text-gray-400 border-gray-100">
+                    {selectedDate === 'all' ? 'Vista Consolidada' : `Filtrado: ${selectedDate}`}
+                  </Badge>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setSelectedDate('all')}
+                    className="text-[9px] font-black uppercase text-primary hover:bg-primary/5 rounded-xl h-7"
+                  >
+                    Ver Todo el Plan
+                  </Button>
+                </div>
+              </div>
+            </Card>
           </div>
 
           {[ 
@@ -466,8 +531,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', gTotals: groupTotals1000, tMap: getTiemposMap(tiemposC1000) }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', gTotals: groupTotals2000, tMap: getTiemposMap(tiemposC2000) } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', gTotals: groupTotals1000 }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', gTotals: groupTotals2000 } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
@@ -502,7 +567,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {renderTableBody(center.d, center.gTotals, center.tMap)}
+                      {renderTableBody(center.d, center.gTotals)}
                     </tbody>
                   </table>
                 </div>
