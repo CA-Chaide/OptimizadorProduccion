@@ -146,7 +146,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const map = new Map<string, number>();
     data.forEach(item => {
       const cat = String(item.CATEGORIA || item.Categoria || '').trim();
-      if (!cat || cat === 'N/A') return; // Skip if no category
+      if (!cat || cat === 'N/A') return;
       const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
       const key = `${cat}-${date}`;
       const info = extractMaterialInfo(item);
@@ -165,7 +165,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const map = new Map<string, { centro: string; categoria: string; espesor: string; totalOrdenes: number; totalCantidad: number; totalTiempoCorte: number }>();
     data.forEach(o => {
       const categoria = String(o.CATEGORIA || o.Categoria || '').trim();
-      if (!categoria || categoria === 'N/A') return; // Skip if no category
+      if (!categoria || categoria === 'N/A') return;
       
       const info = extractMaterialInfo(o);
       const espesor = info.esp || '—';
@@ -210,6 +210,75 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Corte Espuma...</p>
     </div>
   );
+
+  const renderTableBody = (data: any[], gTotals: Map<string, number>) => {
+    return data.map((o, i) => {
+      const cat = String(o.CATEGORIA || o.Categoria || '').trim();
+      const hasCategory = cat !== '' && cat !== 'N/A';
+      const info = extractMaterialInfo(o);
+      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+
+      let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', calculatedCorteHours = 0;
+      let nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0;
+
+      if (hasCategory) {
+        const l = parseFloat(info.largo) || 0;
+        const w = parseFloat(info.ancho) || 0;
+        const e = parseFloat(info.esp) || 0;
+        const d = parseFloat(info.dens) || 0;
+        volume = (l * w * e) / 1000000;
+        weight = volume * d;
+        alturaTotal = e * qty;
+        calculatedCorteHours = (qty * 5) / 3600;
+        
+        const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+        groupSum = gTotals.get(`${cat}-${date}`) || 0;
+        alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
+
+        nSub = alturaTotal / alturaUtil;
+        cargasB7 = Math.floor(nSub / 7);
+        residuo = nSub % 7;
+        if (residuo > 0) {
+          if (residuo <= 2) {
+            destino = "MÁQ. APOYO";
+            cantApoyo = residuo;
+          } else {
+            destino = "+1 CARGA PPAL.";
+          }
+        } else if (nSub > 0) {
+          destino = "COMPLETO";
+        }
+      }
+      
+      return (
+        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+          <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+          <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
+          <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+          <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
+          <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{hasCategory ? cat : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.dens : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.ancho : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
+          <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? volume.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? weight.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 text-center bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? nSub.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? cargasB7 : '—'}</td>
+          <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-center text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
+          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
+            {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
+          </td>
+          <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
+        </tr>
+      );
+    });
+  };
 
   return (
     <div className="p-4 md:p-8 space-y-6 bg-gray-50/50 min-h-screen">
@@ -303,58 +372,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">NRO SUBBL.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CARGAS (B7)</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CANT. APOYO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
-                      {center.d.map((o, i) => {
-                        const cat = String(o.CATEGORIA || o.Categoria || '').trim();
-                        const hasCategory = cat !== '' && cat !== 'N/A';
-                        const info = extractMaterialInfo(o);
-                        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-
-                        let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', calculatedCorteHours = 0;
-
-                        if (hasCategory) {
-                          const l = parseFloat(info.largo) || 0;
-                          const w = parseFloat(info.ancho) || 0;
-                          const e = parseFloat(info.esp) || 0;
-                          const d = parseFloat(info.dens) || 0;
-                          volume = (l * w * e) / 1000000;
-                          weight = volume * d;
-                          alturaTotal = e * qty;
-                          calculatedCorteHours = (qty * 5) / 3600;
-                          
-                          const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
-                          groupSum = center.gTotals.get(`${cat}-${date}`) || 0;
-                          alturaUtil = isNaN(d) ? '—' : (d < 30 ? 103 : 85);
-                        }
-                        
-                        return (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                            <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
-                            <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{hasCategory ? cat : '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.dens : '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.ancho : '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
-                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? volume.toFixed(2) : '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? weight.toFixed(2) : '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 text-center bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
-                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
-                              {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
-                            </td>
-                            <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
-                          </tr>
-                        );
-                      })}
+                      {renderTableBody(center.d, center.gTotals)}
                     </tbody>
                   </table>
                 </div>
@@ -408,7 +435,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
-          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
