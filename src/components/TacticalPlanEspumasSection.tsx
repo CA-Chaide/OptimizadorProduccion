@@ -154,7 +154,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const esp = parseFloat(info.esp) || 0;
       const a = parseFloat(info.ancho) || 0;
       
-      // Cálculo de subbloques por ancho (2000 cm = 20 metros)
       const nSubbloquesItem = (a * qty) / 2000;
       const alturaTotalItem = nSubbloquesItem * esp;
       
@@ -180,13 +179,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const calculateLogisticoTime = (qty: number, esp: number, nroSubbloques: number) => {
     if (qty <= 0) return 0;
-    // 1 bloque físico = lote de 7 subbloques técnicos
     const blocksCount = Math.ceil(nroSubbloques / 7);
     const timeCarga = blocksCount * SECONDS_LOAD_BLOCK;
     const sheetsPerRep = esp > 10 ? 4 : 3;
     const repetitions = Math.ceil(qty / sheetsPerRep);
     const timeDescarga = repetitions * SECONDS_REPETITION;
-    // 1 coche = 2 bloques apilados
     const cartsNeeded = Math.ceil(blocksCount / 2);
     const timeCarts = cartsNeeded * SECONDS_CART_SWAP;
     return (timeCarga + timeDescarga + timeCarts) / 3600;
@@ -220,7 +217,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const totalUnidades = infoItems.reduce((sum, i) => sum + i.qty, 0);
       const aVal = infoItems[0]?.ancho || 0;
       
-      // Cálculo de subbloques basado en el Ancho Referencial (bloque de 20m)
       const nroSubbloques = (aVal * totalUnidades) / 2000;
       const totalAltura = nroSubbloques * parseFloat(group.espesor);
       
@@ -230,8 +226,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const nCycles = Math.floor(alturaUtil / espVal) + 4;
       
       const tiempoLogistico = calculateLogisticoTime(totalUnidades, espVal, nroSubbloques);
-
-      // Perímetro de Ocupación: (Ancho * Cantidad) / 100
       const metrosBloque = (aVal * totalUnidades) / 100;
       const ocupacion20m = metrosBloque / 20;
 
@@ -297,7 +291,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const d = parseFloat(info.dens) || 0;
         const a = parseFloat(info.ancho) || 0;
         
-        // Cálculo de subbloques para el ítem basado en ancho
         nSubItem = (a * qty) / 2000;
         alturaTotal = nSubItem * e;
         
@@ -309,7 +302,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nCycles = Math.floor(alturaUtil / (e || 1)) + 4;
         cargasB7Item = nSubItem / 7;
         
-        // Cálculo de residuo sobre la sumatoria del grupo para logística
         const nSubGroup = groupSumHeight / (e || 1);
         residuo = nSubGroup % 7;
         
@@ -488,7 +480,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="grupos" className="mt-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {grupos.map(g => (
               <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
                 <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
