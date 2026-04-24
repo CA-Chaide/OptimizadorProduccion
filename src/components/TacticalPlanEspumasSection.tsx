@@ -139,7 +139,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
+      const hasAlmField = o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen') || o.hasOwnProperty('almacen');
+      const matchAlm = !hasAlmField || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       
       const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -160,6 +161,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
+
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—' };
     if (desc) {
       const densMatch = desc.match(/D-?(\d+)/i);
@@ -193,74 +195,70 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const groupTotals1000 = useMemo(() => calculateGroupTotals(provC1000), [provC1000]);
   const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
 
-  const calculateLogisticoTime = (qty: number, esp: number, nroSubbloques: number) => {
-    if (qty <= 0) return 0;
-    const blocksCount = Math.ceil(nroSubbloques / 7);
-    const timeCarga = blocksCount * SECONDS_LOAD_BLOCK;
-    const sheetsPerRep = esp > 10 ? 4 : 3;
-    const repetitions = Math.ceil(qty / sheetsPerRep);
-    const timeDescarga = repetitions * SECONDS_REPETITION;
-    const cartsNeeded = Math.ceil(blocksCount / 2);
-    const timeCarts = cartsNeeded * SECONDS_CART_SWAP;
-    return (timeCarga + timeDescarga + timeCarts) / 3600;
-  };
-
+  // Resumen Ejecutivo Unificado
   const calculateSummary = (data: any[]) => {
-    const groupsMap = new Map<string, { fecha: string; categoria: string; ancho: string; largo: string; espesor: string; items: any[] }>();
+    const groupsMap = new Map<string, { fecha: string; categoria: string; units: number; subbloques: number; bloques20m: number; timeLog: number }>();
     
     data.forEach(o => {
       const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
       const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       const categoria = String(o.CATEGORIA || o.Categoria || '').trim();
       if (!categoria || categoria === 'N/A') return;
+      
+      const key = `${fecha}|${categoria}`;
+      
       const info = extractMaterialInfo(o);
-      const key = `${fecha}|${categoria}|${info.ancho}|${info.largo}|${info.esp}`;
+      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+      const ancho = parseFloat(info.ancho) || 0;
+      const esp = parseFloat(info.esp) || 0;
+      
+      // Cálculo de subbloques basado en ancho referencial (20m = 2000cm)
+      const subbloques = (ancho * qty) / 2000;
+      
+      // Cálculo de bloques físicos (batch de 7 subbloques)
+      const bloquesFisicos = Math.ceil(subbloques / 7);
+      
+      // Tiempo Carga/Descarga (Segundos)
+      const tCarga = bloquesFisicos * SECONDS_LOAD_BLOCK;
+      const sheetsPerRep = esp > 10 ? 4 : 3;
+      const tDescarga = Math.ceil(qty / sheetsPerRep) * SECONDS_REPETITION;
+      const tCoches = Math.ceil(bloquesFisicos / 2) * SECONDS_CART_SWAP;
+      const itemTimeLog = (tCarga + tDescarga + tCoches) / 3600;
+
       if (!groupsMap.has(key)) {
-        groupsMap.set(key, { fecha, categoria, ancho: info.ancho, largo: info.largo, espesor: info.esp, items: [] });
+        groupsMap.set(key, { fecha, categoria, units: 0, subbloques: 0, bloques20m: 0, timeLog: 0 });
       }
-      groupsMap.get(key)!.items.push(o);
+      
+      const entry = groupsMap.get(key)!;
+      entry.units += qty;
+      entry.subbloques += subbloques;
+      entry.bloques20m += (subbloques / 7);
+      entry.timeLog += itemTimeLog;
     });
 
-    return Array.from(groupsMap.values()).map(group => {
-      const infoItems = group.items.map(o => {
-        const info = extractMaterialInfo(o);
-        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-        const esp = parseFloat(info.esp) || 0;
-        const dens = parseFloat(info.dens) || 0;
-        return { qty, esp, dens };
-      });
-
-      const totalUnidades = infoItems.reduce((sum, i) => sum + i.qty, 0);
-      const totalAltura = infoItems.reduce((sum, i) => sum + (i.qty * i.esp), 0);
-      
-      const firstDens = infoItems[0]?.dens || 0;
-      const alturaUtil = firstDens < 30 ? 103 : 85;
-      const nroSubbloques = totalAltura / alturaUtil;
-      
-      const espVal = parseFloat(group.espesor) || 1;
-      const nCycles = Math.floor(alturaUtil / espVal) + 4;
-      
-      const tiempoLogistico = calculateLogisticoTime(totalUnidades, espVal, nroSubbloques);
-
-      return {
-        fecha: group.fecha,
-        categoria: group.categoria,
-        ancho: group.ancho,
-        largo: group.largo,
-        espesor: group.espesor,
-        totalUnidades,
-        totalAltura,
-        alturaUtil,
-        nroSubbloques,
-        cargasB7: nroSubbloques / 7,
-        nCycles,
-        tiempoLogistico
-      };
-    }).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.categoria.localeCompare(b.categoria));
+    return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.categoria.localeCompare(b.categoria));
   };
 
   const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
+
+  const summaryTotals1000 = useMemo(() => {
+    return summaryData1000.reduce((acc, row) => ({
+      units: acc.units + row.units,
+      subbloques: acc.subbloques + row.subbloques,
+      bloques20m: acc.bloques20m + row.bloques20m,
+      timeLog: acc.timeLog + row.timeLog
+    }), { units: 0, subbloques: 0, bloques20m: 0, timeLog: 0 });
+  }, [summaryData1000]);
+
+  const summaryTotals2000 = useMemo(() => {
+    return summaryData2000.reduce((acc, row) => ({
+      units: acc.units + row.units,
+      subbloques: acc.subbloques + row.subbloques,
+      bloques20m: acc.bloques20m + row.bloques20m,
+      timeLog: acc.timeLog + row.timeLog
+    }), { units: 0, subbloques: 0, bloques20m: 0, timeLog: 0 });
+  }, [summaryData2000]);
 
   const setupScrollSync = (group: any) => {
     if (!group.top.current || !group.bottom.current) return;
@@ -317,9 +315,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nCycles = Math.floor(alturaUtil / (e || 1)) + 4;
         nSubItem = alturaTotal / alturaUtil;
         cargasB7Item = nSubItem / 7;
+        
+        const bloquesFisicos = Math.ceil(nSubItem / 7);
+        const tCarga = bloquesFisicos * SECONDS_LOAD_BLOCK;
+        const sheetsPerRep = e > 10 ? 4 : 3;
+        const tDescarga = Math.ceil(qty / sheetsPerRep) * SECONDS_REPETITION;
+        const tCoches = Math.ceil(bloquesFisicos / 2) * SECONDS_CART_SWAP;
+        tiempoLogistico = (tCarga + tDescarga + tCoches) / 3600;
+
         const nSubGroup = groupSumHeight / (alturaUtil || 1);
         residuo = nSubGroup % 7;
-        tiempoLogistico = calculateLogisticoTime(qty, e, nSubItem);
         if (residuo > 0) {
           if (residuo <= 2) {
             destino = "MÁQ. APOYO";
@@ -378,7 +383,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="resumen" className="space-y-6 mt-4">
           
-          {/* Cabecera de Selección de Fecha Desplegable */}
           <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-primary/10 rounded-xl">
@@ -393,17 +397,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              {selectedDate !== 'all' && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setSelectedDate('all')}
-                  className="h-9 px-4 text-[10px] font-black uppercase text-primary hover:bg-primary/5 rounded-xl border border-primary/20"
-                >
-                  Ver Todo el Plan
-                </Button>
-              )}
-              
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="h-10 px-4 rounded-xl border-2 hover:bg-gray-50 gap-2 font-bold text-xs uppercase shadow-sm">
@@ -440,44 +433,29 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           const dateStr = format(day, 'yyyy-MM-dd');
                           const isSelected = selectedDate === dateStr;
                           const hasData = datesWithOrders.has(dateStr);
-                          const isTodayDate = isToday(day);
                           return (
                             <button
                               key={dateStr}
                               onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)}
                               className={cn(
                                 "relative p-2 h-9 w-9 mx-auto rounded-full flex flex-col items-center justify-center transition-all duration-200 group",
-                                isSelected ? "bg-primary text-white shadow-lg shadow-primary/30" : "hover:bg-gray-50",
-                                isTodayDate && !isSelected ? "ring-1 ring-primary/30 ring-inset" : ""
+                                isSelected ? "bg-primary text-white shadow-lg shadow-primary/30" : "hover:bg-gray-50"
                               )}
                             >
                               <span className={cn(
                                 "text-[11px] font-bold",
-                                isSelected ? "text-white" : isTodayDate ? "text-primary" : "text-gray-700",
+                                isSelected ? "text-white" : isToday(day) ? "text-primary" : "text-gray-700",
                                 !hasData && !isSelected ? "text-gray-300 font-normal" : ""
                               )}>
                                 {format(day, 'd')}
                               </span>
-                              {hasData && (
-                                <div className={cn(
-                                  "absolute bottom-1 w-1 h-1 rounded-full",
-                                  isSelected ? "bg-white" : "bg-primary/40 group-hover:bg-primary"
-                                )} />
-                              )}
+                              {hasData && <div className={cn("absolute bottom-1 w-1 h-1 rounded-full", isSelected ? "bg-white" : "bg-primary/40 group-hover:bg-primary")} />}
                             </button>
                           );
                         })}
                       </div>
-
                       <div className="pt-4 border-t border-gray-100">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="w-full text-[10px] font-black uppercase text-primary hover:bg-primary/5 rounded-xl h-9"
-                          onClick={() => setSelectedDate('all')}
-                        >
-                          Limpiar Filtros
-                        </Button>
+                        <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-primary hover:bg-primary/5 rounded-xl h-9" onClick={() => setSelectedDate('all')}>Ver Todo el Plan</Button>
                       </div>
                     </div>
                   </Card>
@@ -487,8 +465,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
 
           {[ 
-            { t: 'Resumen Logístico Planta 1000', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600' }, 
-            { t: 'Resumen Logístico Planta 2000', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
+            { t: 'Resumen Ejecutivo Planta 1000', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600', totals: summaryTotals1000 }, 
+            { t: 'Resumen Ejecutivo Planta 2000', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000 } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
@@ -501,41 +479,38 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Ancho</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Largo</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Espesor</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría (Dens)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Unidades</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-indigo-700 bg-indigo-50/10">Altura Total</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/10">Altura Útil</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-900 bg-teal-50/5">Nro Ciclos</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-purple-700 bg-purple-50/10">Nro Subbloques</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/20 font-black">Cargas (B7)</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-purple-700 bg-purple-50/10">Subbloques</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/20 font-black">Bloques (20m)</th>
                         <th className="px-4 py-4 text-center text-teal-700 bg-teal-50/30 font-black"><Truck className="w-3 h-3 inline mr-1"/> Carga/Desc. (h)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={12} className="py-8 text-center text-gray-400 italic">Sin bloques programados para esta selección</td></tr>
+                        <tr><td colSpan={6} className="py-8 text-center text-gray-400 italic">Sin datos programados</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
                             <td className="px-3 py-3 font-mono text-gray-500 border-r border-dashed border-gray-100">{row.fecha}</td>
                             <td className="px-3 py-3 font-bold text-gray-700 border-r border-dashed border-gray-100 uppercase">{row.categoria}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.ancho}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.largo}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.espesor}</td>
-                            <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.totalUnidades.toLocaleString()}</td>
-                            <td className="px-3 py-3 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/5">{row.totalAltura.toFixed(2)}</td>
-                            <td className="px-3 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100 bg-teal-50/5">{row.alturaUtil}</td>
-                            <td className="px-3 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/5">{row.nCycles}</td>
-                            <td className="px-3 py-3 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5">{row.nroSubbloques.toFixed(2)}</td>
-                            <td className="px-3 py-3 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/10">{row.cargasB7.toFixed(1)}</td>
-                            <td className="px-4 py-3 font-mono font-bold text-teal-600 text-center bg-teal-50/10">{row.tiempoLogistico.toFixed(2)}</td>
+                            <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.units.toLocaleString()}</td>
+                            <td className="px-3 py-3 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5">{row.subbloques.toFixed(2)}</td>
+                            <td className="px-3 py-3 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/10">{row.bloques20m.toFixed(1)}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-teal-600 text-center bg-teal-50/10">{row.timeLog.toFixed(2)}</td>
                           </tr>
                         ))
                       )}
                     </tbody>
+                    <tfoot className="bg-gray-800 text-white text-[10px] font-bold sticky bottom-0">
+                      <tr>
+                        <td colSpan={2} className="px-3 py-3 text-right">TOTALES FILTRADOS</td>
+                        <td className="px-3 py-3 font-mono">{center.totals.units.toLocaleString()}</td>
+                        <td className="px-3 py-3 font-mono">{center.totals.subbloques.toFixed(2)}</td>
+                        <td className="px-3 py-3 font-mono">{center.totals.bloques20m.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono">{center.totals.timeLog.toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               </Card>
