@@ -10,6 +10,7 @@ import { Loader2 } from 'lucide-react';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
+import { CuboInventariosTab } from './CuboInventariosTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -155,12 +156,13 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="ordenes" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="grupos">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
               <TabsTrigger value="ordenes">Órdenes Previsionales</TabsTrigger>
               <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
               <TabsTrigger value="tiemposMuebles">Tiempos Muebles</TabsTrigger>
+              <TabsTrigger value="inventario">Inventario</TabsTrigger>
           </TabsList>
           <TabsContent value="grupos" className="mt-4">
               <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
@@ -196,6 +198,19 @@ export const TacticalPlanMueblesSection: React.FC = () => {
           </TabsContent>
           <TabsContent value="tiemposMuebles" className="mt-4">
               <TiemposEnsambladoTab grupos={gruposMuebles} />
+          </TabsContent>
+          <TabsContent value="inventario" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Datos de Cubo de Inventarios</CardTitle>
+                      <CardDescription>
+                          Visualización de los datos de inventario.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <CuboInventariosTab />
+                  </CardContent>
+              </Card>
           </TabsContent>
       </Tabs>
     </div>

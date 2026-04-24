@@ -20,10 +20,11 @@ export const serviciosService = {
     return response.json();
   },
 
-  async getCuboInventarios(): Promise<BodyResponse<any>> {
+  async getCuboInventarios(page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/cuboInventarios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({page: page, rowsPerPage: rows}),
     });
     if (!response.ok) {
       const errorBody = await response
