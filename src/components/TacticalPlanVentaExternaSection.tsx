@@ -277,7 +277,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       }
       
       return (
-        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
+        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
           <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
           <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
           <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
@@ -375,9 +375,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100">
                   <div style={{ width: center.s.width[0], height: '1px' }} />
                 </div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
                   <table ref={center.s.table} className="w-full border-collapse text-center">
-                    <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 border-b border-gray-100">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200">Recurso / Máquina</th>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200">Categoría Técnica</th>
@@ -442,7 +442,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                    <tbody className="divide-y divide-gray-100">
                       {renderTableBody(center.d, center.tMap)}
                     </tbody>
                   </table>
@@ -482,7 +482,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                    <tbody className="divide-y divide-gray-100">
                       {renderTableBody(center.d, center.tMap)}
                     </tbody>
                   </table>
