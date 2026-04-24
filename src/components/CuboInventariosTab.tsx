@@ -60,7 +60,24 @@ export const CuboInventariosTab: React.FC = () => {
                 addNotification('success', `Se cargaron ${fetchedData.length} registros de inventario.`);
 
                 if (fetchedData.length > 0 && columns.length === 0) {
-                    setColumns(Object.keys(fetchedData[0]));
+                    let originalColumns = Object.keys(fetchedData[0]);
+                    const stockActualCol = 'StockActual';
+                    const descripcionCol = 'Descripcion';
+
+                    // Remove 'StockActual' from its current position to re-insert it
+                    const stockActualIndex = originalColumns.indexOf(stockActualCol);
+                    if (stockActualIndex > -1) {
+                        originalColumns.splice(stockActualIndex, 1);
+                    }
+
+                    // Find the position of 'Descripcion'
+                    const descripcionIndex = originalColumns.indexOf(descripcionCol);
+                    
+                    // Insert 'StockActual' after 'Descripcion', or as the third column if Descripcion is not found
+                    const targetIndex = descripcionIndex !== -1 ? descripcionIndex + 1 : 2;
+                    originalColumns.splice(targetIndex, 0, stockActualCol);
+                    
+                    setColumns(originalColumns);
                 }
 
             } catch (error) {
