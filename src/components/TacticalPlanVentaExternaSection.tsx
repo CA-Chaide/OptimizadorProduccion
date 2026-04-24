@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, Ruler } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -236,8 +236,44 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
+  // Cálculos de sumas grupales (Categoría-Fecha) para Provisionales
+  const calculateGroupTotals = (data: any[]) => {
+    const map = new Map<string, number>();
+    data.forEach(item => {
+      const cat = String(item.CATEGORIA || item.Categoria || 'N/A').trim();
+      const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
+      const key = `${cat}-${date}`;
+      const info = extractMaterialInfo(item);
+      const qty = Number(item.CANTPROGRAMADA || item.CANTIDAD || 0);
+      const esp = parseFloat(info.esp) || 0;
+      const alturaTotal = esp * qty;
+      map.set(key, (map.get(key) || 0) + alturaTotal);
+    });
+    return map;
+  };
+
+  const groupTotals1000 = useMemo(() => calculateGroupTotals(provC1000), [provC1000]);
+  const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
+
   const summaryData1000 = useMemo(() => calculateSummary(fertC1000, getTiemposMap(tiemposC1000), '1000'), [fertC1000, tiemposC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(fertC2000, getTiemposMap(tiemposC2000), '2000'), [fertC2000, tiemposC2000]);
+
+  const setupScrollSync = (group: any) => {
+    if (!group.top.current || !group.bottom.current) return;
+    const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
+    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
+    group.top.current.addEventListener('scroll', syncB);
+    group.bottom.current.addEventListener('scroll', syncT);
+    return () => { group.top.current?.removeEventListener('scroll', syncB); group.bottom.current?.removeEventListener('scroll', syncT); };
+  };
+
+  useEffect(() => {
+    if (!mounted) return;
+    const items = [scrollProv, scrollFert, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
+    items.forEach(setupScrollSync);
+    const timer = setTimeout(() => { items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }); }, 500);
+    return () => { clearTimeout(timer); };
+  }, [activeTab, ordenes, tiemposEnsamblado, mounted]);
 
   if (!mounted) return null;
 
@@ -372,48 +408,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="grupos" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {grupos.map(g => (
-              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
-                <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
-                <Badge className="w-fit bg-blue-600 mb-2">PLANTA {g.centro}</Badge>
-                <h4 className="font-bold text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
-                <p className="text-[10px] font-mono text-gray-400 mt-1 uppercase">Código Interno: {g.codigo_grupo}</p>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="restricciones" className="mt-4">
-          <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-            <table className="w-full border-collapse">
-              <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Parámetro Técnico</th>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Valor Configurado</th>
-                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-[11px]">
-                {restricciones.map(r => (
-                  <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20">
-                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase text-center">{r.nombre_restriccion}</td>
-                    <td className="px-6 py-4 border-r border-dashed border-gray-200 text-center">
-                      <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50">{r.valor_restriccion}</Badge>
-                    </td>
-                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv, b: 'bg-green-600', c: 'text-green-700' }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv, b: 'bg-indigo-600', c: 'text-indigo-700' } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv, b: 'bg-green-600', c: 'text-green-700', gTotals: groupTotals1000 }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv, b: 'bg-indigo-600', c: 'text-indigo-700', gTotals: groupTotals2000 } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
@@ -438,6 +436,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
@@ -460,13 +460,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const weight = volume * d;
                         const alturaTotal = e * qty;
                         
+                        const cat = String(o.CATEGORIA || o.Categoria || 'N/A').trim();
+                        const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+                        const groupSum = center.gTotals.get(`${cat}-${date}`) || 0;
+                        const alturaUtil = d < 30 ? 103 : 85;
+                        
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                             <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
                             <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{o.CATEGORIA || '—'}</td>
+                            <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{cat}</td>
                             <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
                             <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
                             <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
@@ -475,6 +480,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{volume.toFixed(2)}</td>
                             <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{weight.toFixed(2)}</td>
                             <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{alturaTotal.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 text-center bg-purple-50/5">{groupSum.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{alturaUtil}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hoursPL.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
                               {calculatedCorteHours.toFixed(2)}
@@ -574,6 +581,44 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </Card>
             </div>
           ))}
+        </TabsContent>
+
+        <TabsContent value="grupos" className="mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {grupos.map(g => (
+              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
+                <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
+                <Badge className="w-fit bg-blue-600 mb-2">PLANTA {g.centro}</Badge>
+                <h4 className="font-bold text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
+                <p className="text-[10px] font-mono text-gray-400 mt-1 uppercase">Código Interno: {g.codigo_grupo}</p>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="restricciones" className="mt-4">
+          <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+            <table className="w-full border-collapse">
+              <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Parámetro Técnico</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Valor Configurado</th>
+                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-[11px]">
+                {restricciones.map(r => (
+                  <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20">
+                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase text-center">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200 text-center">
+                      <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50">{r.valor_restriccion}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
