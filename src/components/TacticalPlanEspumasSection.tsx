@@ -108,11 +108,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const hasAlmField = o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen') || o.hasOwnProperty('almacen');
-      const matchAlm = !hasAlmField || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
+      const matchAlm = !o.hasOwnProperty('ALMACEN') && !o.hasOwnProperty('Almacen') || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
-      const hasSectorField = o.hasOwnProperty('SECTORDESC') || o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
-      const matchSector = !hasSectorField || sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
+      const matchSector = !o.hasOwnProperty('SECTORDESC') && !o.hasOwnProperty('Sector') && !o.hasOwnProperty('SECTOR') || sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
       return matchResp && matchAlm && matchSector;
     });
   };
@@ -352,7 +350,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
               </h3>
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">

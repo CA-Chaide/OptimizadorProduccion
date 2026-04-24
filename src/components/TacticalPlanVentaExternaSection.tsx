@@ -277,22 +277,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       }
       
       return (
-        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-          <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-          <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
-          <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
+          <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+          <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
+          <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
           <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-          <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{hasCategory ? cat : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.dens : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.ancho : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
-          <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
-          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hasCategory ? hoursPL.toFixed(2) : '—'}</td>
-          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
+          <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 uppercase">{hasCategory ? cat : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.dens : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.ancho : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
+          <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 font-mono">{qty}</td>
+          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-indigo-600">{hasCategory ? hoursPL.toFixed(2) : '—'}</td>
+          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-amber-600 bg-amber-50/5">
             {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
           </td>
-          <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
+          <td className="px-3 py-3 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
         </tr>
       );
     });
@@ -376,15 +376,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <div style={{ width: center.s.width[0], height: '1px' }} />
                 </div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
                     <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Recurso / Máquina</th>
-                        <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Categoría Técnica</th>
-                        <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Espesor</th>
-                        <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Órdenes</th>
-                        <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Unidades</th>
-                        <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
+                        <th className="px-6 py-5 border-r border-dashed border-gray-200">Recurso / Máquina</th>
+                        <th className="px-6 py-5 border-r border-dashed border-gray-200">Categoría Técnica</th>
+                        <th className="px-6 py-5 border-r border-dashed border-gray-200">Espesor</th>
+                        <th className="px-6 py-5 border-r border-dashed border-gray-200">Órdenes</th>
+                        <th className="px-6 py-5 border-r border-dashed border-gray-200">Unidades</th>
+                        <th className="px-6 py-5 border-r border-dashed border-gray-200">Tiempo PL</th>
                         <th className="px-6 py-5 text-center text-amber-700 bg-amber-50/20">T. Pl Corte</th>
                       </tr>
                     </thead>
@@ -394,12 +394,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/80 transition-all duration-200">
-                            <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-100 text-center uppercase">{row.maquina}</td>
-                            <td className="px-6 py-4 font-medium text-gray-500 border-r border-dashed border-gray-100 text-center uppercase">{row.categoria}</td>
-                            <td className="px-6 py-4 font-mono font-semibold text-blue-600 border-r border-dashed border-gray-100 text-center">{row.espesor}</td>
-                            <td className="px-6 py-4 font-mono font-semibold text-purple-700 border-r border-dashed border-gray-100 text-center">{row.totalOrdenes}</td>
-                            <td className="px-6 py-4 font-mono font-semibold text-green-700 border-r border-dashed border-gray-100 text-center">{row.totalCantidad.toLocaleString()}</td>
-                            <td className="px-6 py-4 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100 text-center">{row.totalTiempoPL.toFixed(2)}</td>
+                            <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-100 uppercase">{row.maquina}</td>
+                            <td className="px-6 py-4 font-medium text-gray-500 border-r border-dashed border-gray-100 uppercase">{row.categoria}</td>
+                            <td className="px-6 py-4 font-mono font-semibold text-blue-600 border-r border-dashed border-gray-100">{row.espesor}</td>
+                            <td className="px-6 py-4 font-mono font-semibold text-purple-700 border-r border-dashed border-gray-100">{row.totalOrdenes}</td>
+                            <td className="px-6 py-4 font-mono font-semibold text-green-700 border-r border-dashed border-gray-100">{row.totalCantidad.toLocaleString()}</td>
+                            <td className="px-6 py-4 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100">{row.totalTiempoPL.toFixed(2)}</td>
                             <td className="px-6 py-4 font-mono font-bold text-amber-700 text-center bg-amber-50/5">{row.totalTiempoCorte.toFixed(2)}</td>
                           </tr>
                         ))
