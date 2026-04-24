@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck, Calendar as CalendarIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -12,13 +13,6 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 // Constantes de ingeniería de tiempos (en segundos)
 const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico completo
@@ -115,7 +109,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return Array.from(dates).sort().reverse();
   }, [ordenes]);
 
-  const filterData = (data: any[], centro: string) => {
+  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
     if (!data || data.length === 0) return [];
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
@@ -374,28 +368,43 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-8 mt-4">
-          {/* Selector de Fecha */}
-          <div className="flex items-center gap-4 bg-white p-3 rounded-2xl shadow-sm border border-gray-100 w-fit">
-            <div className="flex items-center gap-2 text-gray-400">
-              <CalendarIcon className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Filtrar Plan por Fecha:</span>
+          {/* Barra de Selección de Fecha por Chips */}
+          <div className="flex flex-wrap items-center gap-2 p-3 bg-white rounded-3xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 px-3 mr-2 border-r border-gray-100">
+              <CalendarIcon className="w-4 h-4 text-gray-400" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Filtrar Plan:</span>
             </div>
-            <Select value={selectedDate} onValueChange={setSelectedDate}>
-              <SelectTrigger className="w-[200px] h-9 border-none font-bold text-xs bg-gray-50 rounded-xl focus:ring-0">
-                <SelectValue placeholder="Todas las fechas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">TODAS LAS FECHAS</SelectItem>
-                {uniqueDates.map(date => (
-                  <SelectItem key={date} value={date}>{date}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedDate !== 'all' && (
-              <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-[10px] font-bold">
-                FECHA ACTIVA: {selectedDate}
-              </Badge>
-            )}
+            
+            <Button
+              variant={selectedDate === 'all' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelectedDate('all')}
+              className={cn(
+                "rounded-2xl text-[10px] font-bold uppercase h-8 px-4 transition-all duration-200",
+                selectedDate === 'all' 
+                  ? "bg-primary text-white shadow-md shadow-primary/20" 
+                  : "bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100"
+              )}
+            >
+              TODAS LAS FECHAS
+            </Button>
+
+            {uniqueDates.map(date => (
+              <Button
+                key={date}
+                variant={selectedDate === date ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedDate(date)}
+                className={cn(
+                  "rounded-2xl text-[10px] font-bold uppercase h-8 px-4 transition-all duration-200",
+                  selectedDate === date 
+                    ? "bg-primary text-white shadow-md shadow-primary/20 scale-105" 
+                    : "bg-white border-gray-200 text-gray-500 hover:border-primary/50 hover:text-primary"
+                )}
+              >
+                {date}
+              </Button>
+            ))}
           </div>
 
           {[ 
@@ -428,7 +437,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={12} className="py-8 text-center text-gray-400 italic">Sin bloques programados para esta fecha</td></tr>
+                        <tr><td colSpan={12} className="py-8 text-center text-gray-400 italic">Sin bloques programados para esta selección</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
@@ -558,8 +567,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <tr>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción Técnica</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Línea Prod.</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">Estándar (Seg)</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Línea Prod.</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">Estándar (Min)</th>
                         <th className="px-4 py-4 text-center text-gray-400">Stock / Seguridad</th>
                       </tr>
                     </thead>
