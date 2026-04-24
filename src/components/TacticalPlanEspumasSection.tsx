@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -12,6 +12,11 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+
+// Constantes de tiempo para el método de Carga/Descarga (en minutos)
+const TIME_LOAD_BLOCK = 5;      // 5 min por subir un bloque
+const TIME_UNLOAD_PAIR = 0.75;  // 45 seg por descargar una pareja
+const TIME_CART_SWAP = 1;       // 1 min por cambiar de coche
 
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
@@ -168,6 +173,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return map;
   };
 
+  const calculateCargaDescargaTime = (qty: number, espesor: number, cargasB7: number) => {
+    if (qty <= 0) return 0;
+    // Carga: 5 min por cada carga de lote (B7)
+    const loadTime = (Math.max(1, Math.ceil(cargasB7))) * TIME_LOAD_BLOCK;
+    // Descarga: pareja de láminas
+    const unloadMoves = Math.ceil(qty / 2);
+    // Capacidad de coche
+    const movesPerCart = espesor > 10 ? 4 : 3;
+    const cartsNeeded = Math.ceil(unloadMoves / movesPerCart);
+    // Tiempo descarga = (movimientos * tiempo_mov) + (coches * tiempo_cambio)
+    const unloadTime = (unloadMoves * TIME_UNLOAD_PAIR) + (cartsNeeded * TIME_CART_SWAP);
+    return (loadTime + unloadTime) / 60; // Retorna en Horas
+  };
+
   const calculateSummary = (data: any[], tMap: Map<string, number>) => {
     const groupsMap = new Map<string, { fecha: string; categoria: string; ancho: string; largo: string; espesor: string; items: any[] }>();
     
@@ -211,9 +230,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const nCycles = Math.floor(alturaUtil / espVal) + 4;
       
       const totalTimeCatalog = infoItems.reduce((sum, i) => sum + (i.qty * i.timePerUnit), 0) / 60;
+      const tiempoCorteCalculado = (nCycles * totalTimeCatalog) * (cargasB7 || 1);
       
-      // TIEMPO CORTE = (nro de ciclos * T. Pl Corte) * ( nro de sub bloques / 7 )
-      const tiempoCorteCalculado = (nCycles * totalTimeCatalog) * cargasB7;
+      const tiempoLogistico = calculateCargaDescargaTime(totalUnidades, espVal, cargasB7);
 
       return {
         fecha: group.fecha,
@@ -230,7 +249,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         cargaExtraPrincipal,
         nCycles,
         totalTimeCatalog,
-        tiempoCorteCalculado
+        tiempoCorteCalculado,
+        tiempoLogistico
       };
     }).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.categoria.localeCompare(b.categoria));
   };
@@ -270,7 +290,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
 
-      let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', nCycles = 0, timeCatalog = 0, nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoCorte = 0;
+      let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = 103, nCycles = 0, timeCatalog = 0, nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoCorte = 0, tiempoLogistico = 0;
 
       if (hasCategory) {
         const l = parseFloat(info.largo) || 0;
@@ -293,9 +313,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         
         const minutesStandard = tMap.get(info.code) || 0;
         timeCatalog = (qty * minutesStandard) / 60;
-        
-        // TIEMPO CORTE = (nro de ciclos * T. Pl Corte) * ( nro de sub bloques / 7 )
-        tiempoCorte = (nCycles * timeCatalog) * cargasB7;
+        tiempoCorte = (nCycles * timeCatalog) * (cargasB7 || 1);
+        tiempoLogistico = calculateCargaDescargaTime(qty, e, cargasB7);
 
         if (residuo > 0) {
           if (residuo <= 2) {
@@ -329,6 +348,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? cargasB7.toFixed(1) : '—'}</td>
           <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
+          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-teal-600 bg-teal-50/5">
+            {hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}
+          </td>
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-amber-600 bg-amber-50/5">
             {hasCategory && timeCatalog > 0 ? timeCatalog.toFixed(2) : '—'}
           </td>
@@ -385,13 +407,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/20 font-black">Cargas (B7)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-blue-700 bg-blue-50/20">Máq. Apoyo</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-red-700 bg-red-50/20">Carga Extra PPAL</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30"><Truck className="w-3 h-3 inline mr-1"/> Carga/Desc.</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/20">T. Pl Corte</th>
                         <th className="px-4 py-4 text-center text-amber-900 bg-amber-100/20">Tiempo Corte</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={15} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
+                        <tr><td colSpan={16} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
@@ -408,6 +431,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-3 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/10">{row.cargasB7.toFixed(1)}</td>
                             <td className="px-3 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/10">{row.cantApoyo > 0 ? row.cantApoyo.toFixed(2) : '—'}</td>
                             <td className="px-3 py-3 font-mono font-bold text-red-700 border-r border-dashed border-gray-100 bg-red-50/10">{row.cargaExtraPrincipal > 0 ? 'SÍ (1)' : '—'}</td>
+                            <td className="px-3 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10">{row.tiempoLogistico.toFixed(2)}</td>
                             <td className="px-4 py-3 font-mono font-bold text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/5">{row.totalTimeCatalog.toFixed(2)}</td>
                             <td className="px-4 py-3 font-mono font-bold text-amber-900 text-center bg-amber-100/10">{row.tiempoCorteCalculado.toFixed(2)}</td>
                           </tr>
@@ -454,6 +478,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">CARGAS (B7)</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">RESIDUO / DESTINO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">CANT. APOYO</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-100 text-teal-700 bg-teal-50/30 text-center">Carga/Desc.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-900 bg-amber-100/30 text-center">TIEMPO CORTE</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
