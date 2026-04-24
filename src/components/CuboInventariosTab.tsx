@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
 import { Package, Loader2 } from 'lucide-react';
@@ -22,6 +23,13 @@ export const CuboInventariosTab: React.FC = () => {
     const [totalRecords, setTotalRecords] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[0]);
 
+    // Refs and state for double scrollbar
+    const topScrollRef = useRef<HTMLDivElement>(null);
+    const tableScrollRef = useRef<HTMLDivElement>(null);
+    const tableRef = useRef<HTMLTableElement>(null);
+    const [tableWidth, setTableWidth] = useState(0);
+    const lastScrolledRef = useRef<'top' | 'table' | null>(null);
+
     const fetchInventario = useCallback(async (page: number, limit: number) => {
         setIsLoading(true);
         try {
@@ -31,7 +39,7 @@ export const CuboInventariosTab: React.FC = () => {
                 const dataArray = Array.isArray(response.data) ? response.data : [response.data];
                 setData(dataArray);
 
-                if (response.totalRegistros && totalRecords === 0) {
+                if (response.totalRegistros && totalRecords !== response.totalRegistros) {
                     setTotalRecords(response.totalRegistros);
                 }
 
@@ -69,6 +77,51 @@ export const CuboInventariosTab: React.FC = () => {
         setCurrentPage(1);
     };
 
+    // Double scrollbar logic
+    useEffect(() => {
+        const calculateWidth = () => {
+            if (tableRef.current) {
+                setTableWidth(tableRef.current.offsetWidth);
+            }
+        };
+        calculateWidth();
+        window.addEventListener('resize', calculateWidth);
+        
+        const resizeObserver = new ResizeObserver(calculateWidth);
+        if (tableRef.current) {
+            resizeObserver.observe(tableRef.current);
+        }
+
+        return () => {
+            window.removeEventListener('resize', calculateWidth);
+            if (tableRef.current) {
+                resizeObserver.unobserve(tableRef.current);
+            }
+        };
+    }, [data]);
+
+    const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (lastScrolledRef.current === 'table') {
+            lastScrolledRef.current = null;
+            return;
+        }
+        if (tableScrollRef.current) {
+            lastScrolledRef.current = 'top';
+            tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+        }
+    };
+
+    const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (lastScrolledRef.current === 'top') {
+            lastScrolledRef.current = null;
+            return;
+        }
+        if (topScrollRef.current) {
+            lastScrolledRef.current = 'table';
+            topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+        }
+    };
+
     if (isLoading && data.length === 0) {
         return (
             <div className="flex justify-center items-center py-8">
@@ -89,27 +142,12 @@ export const CuboInventariosTab: React.FC = () => {
     
     return (
         <div className="space-y-4">
-             <div className="flex items-center justify-between">
-                 <div className="flex items-center space-x-2">
-                     <span className="text-sm text-gray-600">Filas por página:</span>
-                     <select
-                         value={rowsPerPage}
-                         onChange={handleRowsPerPageChange}
-                         className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                     >
-                         {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
-                     </select>
-                 </div>
-                 <div className="flex items-center space-x-2">
-                     <span className="text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
-                     <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={currentPage === 1}>Primera</Button>
-                     <Button variant="outline" size="sm" onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>Anterior</Button>
-                     <Button variant="outline" size="sm" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages}>Siguiente</Button>
-                     <Button variant="outline" size="sm" onClick={() => goToPage(totalPages)} disabled={currentPage >= totalPages}>Última</Button>
-                 </div>
+             {/* Top Scrollbar */}
+             <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
+                <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
             </div>
-             <div className="border rounded-lg overflow-auto max-h-[60vh]">
-                 <Table>
+             <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh]">
+                 <Table ref={tableRef}>
                      <TableHeader className="bg-gray-100 sticky top-0">
                          <TableRow>
                              {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
@@ -118,14 +156,40 @@ export const CuboInventariosTab: React.FC = () => {
                      <TableBody>
                         {data.map((row, idx) => (
                            <TableRow key={idx}>
-                                {columns.map(col => (
-                                   <TableCell key={`${idx}-${col}`}>{String(row[col] ?? '-')}</TableCell>
-                               ))}
+                                {columns.map(col => {
+                                    let displayValue = String(row[col] ?? '-');
+                                    if (col === 'Material') {
+                                        displayValue = displayValue.slice(-8);
+                                    }
+                                    return (
+                                        <TableCell key={`${idx}-${col}`}>{displayValue}</TableCell>
+                                    );
+                                })}
                            </TableRow>
                         ))}
                      </TableBody>
                  </Table>
             </div>
+            {/* Pagination Controls */}
+            <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600">Filas por página:</span>
+                    <select
+                        value={rowsPerPage}
+                        onChange={handleRowsPerPageChange}
+                        className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    >
+                        {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
+                    </select>
+                </div>
+                <div className="flex items-center space-x-2">
+                     <span className="text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+                     <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={currentPage === 1}>Primera</Button>
+                     <Button variant="outline" size="sm" onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>Anterior</Button>
+                     <Button variant="outline" size="sm" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages}>Siguiente</Button>
+                     <Button variant="outline" size="sm" onClick={() => goToPage(totalPages)} disabled={currentPage >= totalPages}>Última</Button>
+                </div>
+           </div>
         </div>
     );
 };
