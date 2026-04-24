@@ -424,22 +424,22 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha Inicio</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Orden</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha Inicio</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
-                        <th className="px-3 py-4 text-center">Almacén</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ANCHO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">LARGO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ESP.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Cant.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Tiempo PL</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30">T. Pl Corte</th>
+                        <th className="px-3 py-4">Almacén</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -464,7 +464,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
@@ -507,19 +507,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="restricciones" className="mt-4">
           <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-            <table className="w-full border-collapse">
+            <table className="w-full border-collapse text-center">
               <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Parámetro Técnico</th>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200 text-center">Valor Configurado</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro Técnico</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor Configurado</th>
                   <th className="px-6 py-5 text-left">Descripción Operativa</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-[11px]">
                 {restricciones.map(r => (
                   <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20">
-                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase text-center">{r.nombre_restriccion}</td>
-                    <td className="px-6 py-4 border-r border-dashed border-gray-200 text-center">
+                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
                       <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50">{r.valor_restriccion}</Badge>
                     </td>
                     <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
@@ -546,10 +546,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <table ref={center.s.table} className="w-full border-collapse text-center">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción Técnica</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Línea Prod.</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700 text-center">Estándar (Min)</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Línea Prod.</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">Estándar (Min)</th>
                         <th className="px-4 py-4 text-center text-gray-400">Stock / Seguridad</th>
                       </tr>
                     </thead>
@@ -558,10 +558,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const info = extractMaterialInfo(t);
                         return (
                           <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                            <td className="px-4 py-3 font-mono font-semibold text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+                            <td className="px-4 py-3 font-mono font-semibold text-teal-700 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-200 text-center font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100 text-center">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
                             <td className="px-4 py-3 text-center font-medium text-gray-300">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
