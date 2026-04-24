@@ -31,7 +31,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
-  // Fechas dinámicas cargadas solo en el cliente
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
 
@@ -55,11 +54,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!value) return null;
     const str = String(value).trim();
     
-    // Formato ISO o SQL YYYY-MM-DD
     const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
     
-    // Formato Latino DD/MM/YYYY
     const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
     
@@ -88,7 +85,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const getTargetPlanningDate = useCallback((days: number) => {
     const todayStr = getEcuadorTodayString();
     const [y, m, d] = todayStr.split('-').map(Number);
-    const date = new Date(y, m - 1, d); // Mes es 0-indexed en Date
+    const date = new Date(y, m - 1, d);
     
     date.setDate(date.getDate() + days);
     
@@ -120,7 +117,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, []);
 
-  // Hydration guard y carga inicial
   useEffect(() => {
     setIsMounted(true);
     fetchData();
@@ -144,7 +140,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
-  // Actualizar fechas objetivo cuando cambien las restricciones o se monte el componente
   useEffect(() => {
     if (isMounted) {
       setTodayDate(getEcuadorTodayString());
@@ -228,8 +223,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const dailyColumns = useMemo(() => {
     if (dailyOrders.length === 0) return [];
     const allKeys = Object.keys(dailyOrders[0]);
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'RAW_FECHA_BACKEND', 'CANTIDAD', 'FECHAFIN'];
-    return [...priority.filter(k => allKeys.includes(k) || k === 'RAW_FECHA_BACKEND'), ...allKeys.filter(k => !priority.includes(k))];
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'FECHAFIN'];
+    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [dailyOrders]);
 
   const paginatedTiemposData = useMemo(() => {
@@ -245,7 +240,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
 
-  // No renderizar hasta que esté montado para evitar Hydration Error
   if (!isMounted) return null;
 
   return (
@@ -374,12 +368,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         {dailyColumns.map((col) => (
                           <th 
                             key={col} 
-                            className={cn(
-                              "px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b",
-                              col === 'RAW_FECHA_BACKEND' ? "text-red-600 bg-red-50" : "text-gray-600"
-                            )}
+                            className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600"
                           >
-                            {col === 'RAW_FECHA_BACKEND' ? 'FECHA (RAW JSON)' : col}
+                            {col}
                           </th>
                         ))}
                       </tr>
@@ -390,14 +381,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           {dailyColumns.map((col) => (
                             <td 
                               key={`cell-${idx}-${col}`} 
-                              className={cn(
-                                "px-4 py-2.5 whitespace-nowrap text-[11px] font-mono",
-                                col === 'RAW_FECHA_BACKEND' ? "text-red-700 bg-red-50/30" : "text-gray-600"
-                              )}
+                              className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
                             >
-                              {col === 'RAW_FECHA_BACKEND' 
-                                ? JSON.stringify(order['FECHAINICIO']) 
-                                : formatValueForDisplay(col, order[col])}
+                              {formatValueForDisplay(col, order[col])}
                             </td>
                           ))}
                         </tr>
