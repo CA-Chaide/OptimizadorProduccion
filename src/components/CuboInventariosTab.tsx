@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -147,7 +146,7 @@ export const CuboInventariosTab: React.FC = () => {
                 <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
             </div>
              <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh]">
-                 <Table ref={tableRef}>
+                 <table ref={tableRef} className="min-w-full text-xs divide-y divide-gray-200">
                      <TableHeader className="bg-gray-100 sticky top-0">
                          <TableRow>
                              {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
@@ -168,7 +167,7 @@ export const CuboInventariosTab: React.FC = () => {
                            </TableRow>
                         ))}
                      </TableBody>
-                 </Table>
+                 </table>
             </div>
             {/* Pagination Controls */}
             <div className="flex items-center justify-between mt-4">
