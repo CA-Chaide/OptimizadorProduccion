@@ -15,11 +15,10 @@ const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 200];
 
 export const CuboInventariosTab: React.FC = () => {
     const { addNotification } = useAppContext();
-    const [data, setData] = useState<CuboInventariosItem[]>([]);
+    const [allData, setAllData] = useState<CuboInventariosItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [columns, setColumns] = useState<string[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
-    const [totalRecords, setTotalRecords] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[0]);
 
     // Refs and state for double scrollbar
@@ -29,43 +28,65 @@ export const CuboInventariosTab: React.FC = () => {
     const [tableWidth, setTableWidth] = useState(0);
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
-    const fetchInventario = useCallback(async (page: number, limit: number) => {
-        setIsLoading(true);
-        try {
-            const response = await serviciosService.getCuboInventarios(page, limit);
-            
-            if (response && response.data) {
-                const dataArray = Array.isArray(response.data) ? response.data : [response.data];
-                setData(dataArray);
-
-                if (response.totalRegistros && totalRecords !== response.totalRegistros) {
-                    setTotalRecords(response.totalRegistros);
-                }
-
-                if (dataArray.length > 0 && columns.length === 0) {
-                    setColumns(Object.keys(dataArray[0]));
-                }
-
-                if (dataArray.length === 0 && page === 1) {
-                    addNotification('info', 'No se encontraron datos en Cubo de Inventarios.');
-                }
-            } else {
-                setData([]);
-                addNotification('warning', 'No se recibieron datos del Cubo de Inventarios.');
-            }
-        } catch (error) {
-            addNotification('error', `Error al cargar datos de inventario: ${(error as Error).message}`);
-            setData([]);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [addNotification, columns.length, totalRecords]);
-
     useEffect(() => {
-        fetchInventario(currentPage, rowsPerPage);
-    }, [currentPage, rowsPerPage, fetchInventario]);
+        const fetchAllInventario = async () => {
+            setIsLoading(true);
+            try {
+                // 1. Exploratory call to get total records
+                const exploreResponse = await serviciosService.getCuboInventarios(1, 1);
+                const totalRecords = exploreResponse.totalRegistros || 0;
 
+                if (totalRecords === 0) {
+                    setAllData([]);
+                    addNotification('info', 'No se encontraron datos en Cubo de Inventarios.');
+                    setIsLoading(false);
+                    return;
+                }
+                
+                // 2. Fetch all data in batches
+                const BATCH_SIZE = 10000;
+                const totalPagesToFetch = Math.ceil(totalRecords / BATCH_SIZE);
+                let fetchedData: CuboInventariosItem[] = [];
+
+                for (let i = 1; i <= totalPagesToFetch; i++) {
+                    addNotification('info', `Cargando lote ${i} de ${totalPagesToFetch} de inventario...`);
+                    const pageResponse = await serviciosService.getCuboInventarios(i, BATCH_SIZE);
+                    if (pageResponse.data && Array.isArray(pageResponse.data)) {
+                        fetchedData = fetchedData.concat(pageResponse.data);
+                    }
+                }
+
+                setAllData(fetchedData);
+                addNotification('success', `Se cargaron ${fetchedData.length} registros de inventario.`);
+
+                if (fetchedData.length > 0 && columns.length === 0) {
+                    setColumns(Object.keys(fetchedData[0]));
+                }
+
+            } catch (error) {
+                addNotification('error', `Error al cargar datos de inventario: ${(error as Error).message}`);
+                setAllData([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchAllInventario();
+    }, [addNotification, columns.length]);
+
+    const filteredData = useMemo(() => {
+        return allData.filter(row => 
+            row.Descripcion && String(row.Descripcion).toUpperCase().includes('CASCO')
+        );
+    }, [allData]);
+
+    const totalRecords = filteredData.length;
     const totalPages = totalRecords > 0 ? Math.ceil(totalRecords / rowsPerPage) : 1;
+
+    const displayedData = useMemo(() => {
+        const start = (currentPage - 1) * rowsPerPage;
+        return filteredData.slice(start, start + rowsPerPage);
+    }, [filteredData, currentPage, rowsPerPage]);
 
     const goToPage = (page: number) => {
         setCurrentPage(Math.max(1, Math.min(page, totalPages)));
@@ -97,7 +118,7 @@ export const CuboInventariosTab: React.FC = () => {
                 resizeObserver.unobserve(tableRef.current);
             }
         };
-    }, [data]);
+    }, [displayedData]);
 
     const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (lastScrolledRef.current === 'table') {
@@ -121,7 +142,7 @@ export const CuboInventariosTab: React.FC = () => {
         }
     };
 
-    if (isLoading && data.length === 0) {
+    if (isLoading && allData.length === 0) {
         return (
             <div className="flex justify-center items-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
@@ -130,7 +151,7 @@ export const CuboInventariosTab: React.FC = () => {
         );
     }
 
-    if (!isLoading && data.length === 0) {
+    if (!isLoading && allData.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-12 text-gray-500">
               <Package className="w-12 h-12 mb-4 text-gray-300" />
@@ -153,7 +174,7 @@ export const CuboInventariosTab: React.FC = () => {
                          </TableRow>
                      </TableHeader>
                      <TableBody>
-                        {data.map((row, idx) => (
+                        {displayedData.map((row, idx) => (
                            <TableRow key={idx}>
                                 {columns.map(col => {
                                     let displayValue = String(row[col] ?? '-');
