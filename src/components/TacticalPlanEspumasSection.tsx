@@ -176,13 +176,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const calculateLogisticoTime = (qty: number, esp: number, nroSubbloques: number) => {
     if (qty <= 0) return 0;
     const blocksCount = Math.ceil(nroSubbloques / 7);
-    const loadSeconds = blocksCount * SECONDS_LOAD_BLOCK;
+    const timeCarga = blocksCount * SECONDS_LOAD_BLOCK;
     const sheetsPerRep = esp > 10 ? 4 : 3;
     const repetitions = Math.ceil(qty / sheetsPerRep);
-    const unloadSeconds = repetitions * SECONDS_REPETITION;
+    const timeDescarga = repetitions * SECONDS_REPETITION;
     const cartsNeeded = Math.ceil(blocksCount / 2);
-    const cartSwapSeconds = cartsNeeded * SECONDS_CART_SWAP;
-    return (loadSeconds + unloadSeconds + cartSwapSeconds) / 3600;
+    const timeCarts = cartsNeeded * SECONDS_CART_SWAP;
+    return (timeCarga + timeDescarga + timeCarts) / 3600;
   };
 
   const calculateSummary = (data: any[], tMap: Map<string, number>) => {
@@ -206,8 +206,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
         const esp = parseFloat(info.esp) || 0;
         const dens = parseFloat(info.dens) || 0;
-        const timeInSeconds = tMap.get(info.code) || 0;
-        return { qty, esp, dens, timeInSeconds };
+        return { qty, esp, dens };
       });
 
       const totalUnidades = infoItems.reduce((sum, i) => sum + i.qty, 0);
@@ -219,6 +218,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const nCycles = Math.floor(alturaUtil / espVal) + 4;
       
       const tiempoLogistico = calculateLogisticoTime(totalUnidades, espVal, nroSubbloques);
+
+      // Perímetro de Ocupación: (Ancho * Cantidad) / 100
+      const anchoVal = parseFloat(group.ancho) || 0;
+      const metrosBloque = (anchoVal * totalUnidades) / 100;
+      const ocupacion20m = metrosBloque / 20;
 
       return {
         fecha: group.fecha,
@@ -232,7 +236,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nroSubbloques,
         cargasB7: nroSubbloques / 7,
         nCycles,
-        tiempoLogistico
+        tiempoLogistico,
+        metrosBloque,
+        ocupacion20m
       };
     }).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.categoria.localeCompare(b.categoria));
   };
@@ -273,11 +279,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
 
-      let alturaTotal = 0, groupSum = 0, alturaUtil: any = 103, nCycles = 0, nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoLogistico = 0;
+      let alturaTotal = 0, groupSum = 0, alturaUtil: any = 103, nCycles = 0, nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoLogistico = 0, metrosBloque = 0, ocupacion20m = 0;
 
       if (hasCategory) {
         const e = parseFloat(info.esp) || 0;
         const d = parseFloat(info.dens) || 0;
+        const a = parseFloat(info.ancho) || 0;
         alturaTotal = e * qty;
         const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
         const groupKey = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
@@ -289,6 +296,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         residuo = nSub % 7;
         const itemSubbloques = alturaTotal / alturaUtil;
         tiempoLogistico = calculateLogisticoTime(qty, e, itemSubbloques);
+
+        metrosBloque = (a * qty) / 100;
+        ocupacion20m = metrosBloque / 20;
 
         if (residuo > 0) {
           if (residuo <= 2) {
@@ -314,6 +324,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
           <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 font-mono">{qty}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 bg-blue-50/10">{hasCategory ? metrosBloque.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 bg-blue-50/10">{hasCategory ? ocupacion20m.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
@@ -368,6 +380,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Largo</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Espesor</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Unidades</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-blue-900 bg-blue-50/10">Metros Bloque</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-blue-900 bg-blue-50/10 font-black">Ocup. (20m)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-indigo-700 bg-indigo-50/10">Altura Total</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/10">Altura Útil</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-900 bg-teal-50/5">Nro Ciclos</th>
@@ -378,7 +392,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={12} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
+                        <tr><td colSpan={14} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
@@ -388,6 +402,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-2 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.largo}</td>
                             <td className="px-2 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.espesor}</td>
                             <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.totalUnidades.toLocaleString()}</td>
+                            <td className="px-3 py-3 font-mono font-bold text-blue-800 border-r border-dashed border-gray-100 bg-blue-50/5">{row.metrosBloque.toFixed(2)}</td>
+                            <td className="px-3 py-3 font-mono font-black text-blue-900 border-r border-dashed border-gray-100 bg-blue-50/10">{row.ocupacion20m.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/5">{row.totalAltura.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100 bg-teal-50/5">{row.alturaUtil}</td>
                             <td className="px-3 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/5">{row.nCycles}</td>
@@ -430,6 +446,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-900 bg-blue-50/10">METROS BLOQUE</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-900 bg-blue-50/10">OCUP. (20m)</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
