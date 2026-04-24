@@ -36,8 +36,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const scrollProv = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollFert = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  const scrollTiempos2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollResumen1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollResumen2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
 
@@ -203,8 +201,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const map = new Map<string, { centro: string; maquina: string; categoria: string; espesor: string; totalOrdenes: number; totalCantidad: number; totalTiempoPL: number; totalTiempoCorte: number }>();
     
     data.forEach(o => {
+      const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || '').trim();
+      if (!categoria || categoria === 'N/A') return; // Skip if no category
+
       const maquina = String(o.MAQUINA || o.Maquina || o.maquina || 'SIN MÁQUINA').trim();
-      const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || 'N/A').trim();
       const info = extractMaterialInfo(o);
       const espesor = info.esp || '—';
       const key = `${maquina}|${categoria}|${espesor}`;
@@ -236,11 +236,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
-  // Cálculos de sumas grupales (Categoría-Fecha) para Provisionales
   const calculateGroupTotals = (data: any[]) => {
     const map = new Map<string, number>();
     data.forEach(item => {
-      const cat = String(item.CATEGORIA || item.Categoria || 'N/A').trim();
+      const cat = String(item.CATEGORIA || item.Categoria || '').trim();
+      if (!cat || cat === 'N/A') return; // Skip if no category
       const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
       const key = `${cat}-${date}`;
       const info = extractMaterialInfo(item);
@@ -269,7 +269,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   useEffect(() => {
     if (!mounted) return;
-    const items = [scrollProv, scrollFert, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
+    const items = [scrollProv, scrollFert, scrollResumen1000, scrollResumen2000];
     items.forEach(setupScrollSync);
     const timer = setTimeout(() => { items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }); }, 500);
     return () => { clearTimeout(timer); };
@@ -418,7 +418,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
               </h3>
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
@@ -445,25 +445,31 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.map((o, i) => {
+                        const cat = String(o.CATEGORIA || o.Categoria || '').trim();
+                        const hasCategory = cat !== '' && cat !== 'N/A';
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                        const tMap = getTiemposMap(idx === 0 ? tiemposC1000 : tiemposC2000);
-                        const minutesStandard = tMap.get(info.code) || 0;
-                        const hoursPL = (qty * minutesStandard) / 60;
-                        const calculatedCorteHours = (qty * 5) / 3600;
-
-                        const l = parseFloat(info.largo) || 0;
-                        const w = parseFloat(info.ancho) || 0;
-                        const e = parseFloat(info.esp) || 0;
-                        const d = parseFloat(info.dens) || 0;
-                        const volume = (l * w * e) / 1000000;
-                        const weight = volume * d;
-                        const alturaTotal = e * qty;
                         
-                        const cat = String(o.CATEGORIA || o.Categoria || 'N/A').trim();
-                        const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
-                        const groupSum = center.gTotals.get(`${cat}-${date}`) || 0;
-                        const alturaUtil = d < 30 ? 103 : 85;
+                        let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', hoursPL = 0, calculatedCorteHours = 0;
+
+                        if (hasCategory) {
+                          const tMap = getTiemposMap(idx === 0 ? tiemposC1000 : tiemposC2000);
+                          const minutesStandard = tMap.get(info.code) || 0;
+                          hoursPL = (qty * minutesStandard) / 60;
+                          calculatedCorteHours = (qty * 5) / 3600;
+
+                          const l = parseFloat(info.largo) || 0;
+                          const w = parseFloat(info.ancho) || 0;
+                          const e = parseFloat(info.esp) || 0;
+                          const d = parseFloat(info.dens) || 0;
+                          volume = (l * w * e) / 1000000;
+                          weight = volume * d;
+                          alturaTotal = e * qty;
+                          
+                          const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+                          groupSum = center.gTotals.get(`${cat}-${date}`) || 0;
+                          alturaUtil = isNaN(d) ? '—' : (d < 30 ? 103 : 85);
+                        }
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -471,20 +477,20 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
                             <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{cat}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
+                            <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{hasCategory ? cat : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.dens : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.ancho : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
                             <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{volume.toFixed(2)}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{weight.toFixed(2)}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{alturaTotal.toFixed(2)}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 text-center bg-purple-50/5">{groupSum.toFixed(2)}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{alturaUtil}</td>
-                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hoursPL.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? volume.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? weight.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 text-center bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hasCategory ? hoursPL.toFixed(2) : '—'}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
-                              {calculatedCorteHours.toFixed(2)}
+                              {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
                             </td>
                             <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
@@ -508,9 +514,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
               </h3>
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100">
-                  <div style={{ width: center.s.width[0], height: '1px' }} />
-                </div>
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
                   <table ref={center.s.table} className="w-full border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
@@ -536,39 +540,46 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.map((o, i) => {
+                        const cat = String(o.CATEGORIA || o.Categoria || '').trim();
+                        const hasCategory = cat !== '' && cat !== 'N/A';
                         const info = extractMaterialInfo(o);
                         const cantPendiente = Number(o.CANTPENDIENTE ?? 0);
-                        const tMap = getTiemposMap(idx === 0 ? tiemposC1000 : tiemposC2000);
-                        const minutesStandard = tMap.get(info.code) || 0;
-                        const hoursPL = (cantPendiente * minutesStandard) / 60;
-                        const calculatedCorteHours = (cantPendiente * 5) / 3600;
+                        
+                        let volume = 0, weight = 0, alturaTotal = 0, hoursPL = 0, calculatedCorteHours = 0;
 
-                        const l = parseFloat(info.largo) || 0;
-                        const w = parseFloat(info.ancho) || 0;
-                        const e = parseFloat(info.esp) || 0;
-                        const d = parseFloat(info.dens) || 0;
-                        const volume = (l * w * e) / 1000000;
-                        const weight = volume * d;
-                        const alturaTotal = e * cantPendiente;
+                        if (hasCategory) {
+                          const tMap = getTiemposMap(idx === 0 ? tiemposC1000 : tiemposC2000);
+                          const minutesStandard = tMap.get(info.code) || 0;
+                          hoursPL = (cantPendiente * minutesStandard) / 60;
+                          calculatedCorteHours = (cantPendiente * 5) / 3600;
+
+                          const l = parseFloat(info.largo) || 0;
+                          const w = parseFloat(info.ancho) || 0;
+                          const e = parseFloat(info.esp) || 0;
+                          const d = parseFloat(info.dens) || 0;
+                          volume = (l * w * e) / 1000000;
+                          weight = volume * d;
+                          alturaTotal = e * cantPendiente;
+                        }
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-3 font-semibold border-r border-dashed border-gray-100 text-center">{o.ORDEN || '—'}</td>
                             <td className="px-3 py-3 font-mono font-semibold text-indigo-600 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
                             <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-3 text-gray-400 font-medium border-r border-dashed border-gray-100 text-center">{o.CATEGORIA || '—'}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
+                            <td className="px-3 py-3 text-gray-400 font-medium border-r border-dashed border-gray-100 text-center">{hasCategory ? cat : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.dens : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.ancho : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
                             <td className="px-3 py-3 font-semibold text-blue-800 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{o.CANTPROGRAMADA || 0}</td>
                             <td className="px-3 py-3 font-semibold text-orange-600 border-r border-dashed border-gray-100 text-center bg-orange-50/10">{cantPendiente}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{volume.toFixed(2)}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{weight.toFixed(2)}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{alturaTotal.toFixed(2)}</td>
-                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hoursPL.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? volume.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? weight.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hasCategory ? hoursPL.toFixed(2) : '—'}</td>
                             <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
-                              {calculatedCorteHours.toFixed(2)}
+                              {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
                             </td>
                             <td className="px-3 py-3 font-medium text-gray-600 border-r border-dashed border-gray-100 text-center">{o.FECHA || '—'}</td>
                             <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.MAQUINA || '—'}</td>
