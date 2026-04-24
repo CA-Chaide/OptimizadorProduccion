@@ -14,9 +14,9 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 // Constantes de ingeniería de tiempos (en segundos)
-const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico
-const SECONDS_REPETITION = 45;      // 45 seg por movimiento de descarga
-const SECONDS_CART_SWAP = 60;       // 1 min por cambio de coche (cada 2 bloques)
+const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico (1 bloque = 7 subbloques)
+const SECONDS_REPETITION = 45;       // 45 seg por movimiento de descarga manual
+const SECONDS_CART_SWAP = 60;        // 1 min por cambio de coche (2 bloques por coche)
 
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
@@ -167,27 +167,31 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(t);
       if (info.code) {
         const timeVal = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
-        map.set(info.code, timeVal); // TIEMPO EN SEGUNDOS
+        map.set(info.code, timeVal);
       }
     });
     return map;
   };
 
-  const calculateLogisticoTime = (qty: number, esp: number, cargasB7: number) => {
+  const calculateLogisticoTime = (qty: number, esp: number, nroSubbloques: number) => {
     if (qty <= 0) return 0;
-    // 1. Tiempo de Carga (5 min por bloque subido)
-    const loadSeconds = Math.ceil(cargasB7 || 1) * SECONDS_LOAD_BLOCK;
     
-    // 2. Tiempo de Descarga por Repeticiones Técnicas
-    const nSheetsPerRep = esp > 10 ? 4 : 3;
-    const repetitions = Math.ceil(qty / nSheetsPerRep);
+    // 1. Tiempo de Carga (5 min por cada bloque físico subido)
+    // 1 Bloque físico = Lote de 7 subbloques
+    const blocksCount = Math.ceil(nroSubbloques / 7);
+    const loadSeconds = blocksCount * SECONDS_LOAD_BLOCK;
+    
+    // 2. Tiempo de Descarga por Repeticiones Técnicas (Manual)
+    // Para espesores > 10: Se toman 4 láminas por vez. Para el resto: 3 láminas.
+    const sheetsPerRep = esp > 10 ? 4 : 3;
+    const repetitions = Math.ceil(qty / sheetsPerRep);
     const unloadSeconds = repetitions * SECONDS_REPETITION;
     
     // 3. Tiempo de Coches (2 bloques por coche)
-    const cartsNeeded = Math.ceil(Math.ceil(cargasB7 || 1) / 2);
+    const cartsNeeded = Math.ceil(blocksCount / 2);
     const cartSwapSeconds = cartsNeeded * SECONDS_CART_SWAP;
     
-    return (loadSeconds + unloadSeconds + cartSwapSeconds) / 3600; // Horas
+    return (loadSeconds + unloadSeconds + cartSwapSeconds) / 3600; // Resultado final en Horas
   };
 
   const calculateSummary = (data: any[], tMap: Map<string, number>) => {
@@ -223,7 +227,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const alturaUtil = firstDens < 30 ? 103 : 85;
 
       const nroSubbloques = totalAltura / (alturaUtil || 1);
-      const cargasB7 = nroSubbloques / 7;
       const espVal = parseFloat(group.espesor) || 1;
       const nCycles = Math.floor(alturaUtil / espVal) + 4;
       
@@ -234,7 +237,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }, 0);
 
       const tiempoCorteCalculado = timeCorteGroupSeconds / 3600;
-      const tiempoLogistico = calculateLogisticoTime(totalUnidades, espVal, nroSubbloques / 7);
+      const tiempoLogistico = calculateLogisticoTime(totalUnidades, espVal, nroSubbloques);
 
       return {
         fecha: group.fecha,
@@ -246,7 +249,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         totalAltura,
         alturaUtil,
         nroSubbloques,
-        cargasB7,
+        cargasB7: nroSubbloques / 7,
         nCycles,
         tiempoCorteCalculado,
         tiempoLogistico
@@ -311,7 +314,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const itemSubbloques = alturaTotal / alturaUtil;
         tiempoCorte = ((nCycles * timeInSeconds) * (itemSubbloques / 7)) / 3600;
         
-        tiempoLogistico = calculateLogisticoTime(qty, e, itemSubbloques / 7);
+        tiempoLogistico = calculateLogisticoTime(qty, e, itemSubbloques);
 
         if (residuo > 0) {
           if (residuo <= 2) {
@@ -452,7 +455,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha Inicio</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ANCHO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">LARGO</th>
