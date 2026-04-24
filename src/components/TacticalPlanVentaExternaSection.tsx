@@ -207,39 +207,23 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const espesor = info.esp || '—';
       const key = `${maquina}|${categoria}|${espesor}`;
       
-      const cantPendiente = Number(o.CANTPENDIENTE ?? o.CANTPROGRAMADA ?? o.CANTIDAD ?? 0);
+      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const minutesStandard = tMap.get(info.code) || 0;
-      const hoursPL = (cantPendiente * minutesStandard) / 60;
-      const corteHours = (cantPendiente * 5) / 3600;
+      const hoursPL = (qty * minutesStandard) / 60;
+      const corteHours = (qty * 5) / 3600;
 
       if (!map.has(key)) {
         map.set(key, { centro: centroId, maquina, categoria, espesor, totalOrdenes: 0, totalCantidad: 0, totalTiempoPL: 0, totalTiempoCorte: 0 });
       }
       const entry = map.get(key)!;
       entry.totalOrdenes += 1;
-      entry.totalCantidad += Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+      entry.totalCantidad += qty;
       entry.totalTiempoPL += hoursPL;
       entry.totalTiempoCorte += corteHours;
     });
     return Array.from(map.values()).sort((a, b) => 
       a.maquina.localeCompare(b.maquina) || a.categoria.localeCompare(b.categoria) || a.espesor.localeCompare(b.espesor)
     );
-  };
-
-  const calculateGroupTotals = (data: any[]) => {
-    const map = new Map<string, number>();
-    data.forEach(item => {
-      const cat = String(item.CATEGORIA || item.Categoria || '').trim();
-      if (!cat || cat === 'N/A') return;
-      const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
-      const key = `${cat}-${date}`;
-      const info = extractMaterialInfo(item);
-      const qty = Number(item.CANTPROGRAMADA || item.CANTIDAD || 0);
-      const esp = parseFloat(info.esp) || 0;
-      const alturaTotal = esp * qty;
-      map.set(key, (map.get(key) || 0) + alturaTotal);
-    });
-    return map;
   };
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
@@ -249,8 +233,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
-  const groupTotals1000 = useMemo(() => calculateGroupTotals(provC1000), [provC1000]);
-  const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
   const summaryData1000 = useMemo(() => calculateSummary(fertC1000, getTiemposMap(tiemposC1000), '1000'), [fertC1000, tiemposC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(fertC2000, getTiemposMap(tiemposC2000), '2000'), [fertC2000, tiemposC2000]);
 
@@ -279,46 +261,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     </div>
   );
 
-  const renderTableBody = (data: any[], tMap: Map<string, number>, gTotals: Map<string, number>) => {
+  const renderTableBody = (data: any[], tMap: Map<string, number>) => {
     return data.map((o, i) => {
       const cat = String(o.CATEGORIA || o.Categoria || '').trim();
       const hasCategory = cat !== '' && cat !== 'N/A';
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       
-      let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', hoursPL = 0, calculatedCorteHours = 0;
-      let nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0;
+      let hoursPL = 0, calculatedCorteHours = 0;
 
       if (hasCategory) {
         const minutesStandard = tMap.get(info.code) || 0;
         hoursPL = (qty * minutesStandard) / 60;
         calculatedCorteHours = (qty * 5) / 3600;
-
-        const l = parseFloat(info.largo) || 0;
-        const w = parseFloat(info.ancho) || 0;
-        const e = parseFloat(info.esp) || 0;
-        const d = parseFloat(info.dens) || 0;
-        volume = (l * w * e) / 1000000;
-        weight = volume * d;
-        alturaTotal = e * qty;
-        
-        const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
-        groupSum = gTotals.get(`${cat}-${date}`) || 0;
-        alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
-
-        nSub = alturaTotal / alturaUtil;
-        cargasB7 = Math.floor(nSub / 7);
-        residuo = nSub % 7;
-        if (residuo > 0) {
-          if (residuo <= 2) {
-            destino = "MÁQ. APOYO";
-            cantApoyo = residuo;
-          } else {
-            destino = "+1 CARGA PPAL.";
-          }
-        } else if (nSub > 0) {
-          destino = "COMPLETO";
-        }
       }
       
       return (
@@ -333,15 +288,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
           <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
-          <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? volume.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{hasCategory ? weight.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 text-center bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? nSub.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? cargasB7 : '—'}</td>
-          <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-center text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-indigo-600">{hasCategory ? hoursPL.toFixed(2) : '—'}</td>
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
             {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
@@ -468,8 +414,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv, b: 'bg-green-600', c: 'text-green-700', tMap: getTiemposMap(tiemposC1000), gTotals: groupTotals1000 }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv, b: 'bg-indigo-600', c: 'text-indigo-700', tMap: getTiemposMap(tiemposC2000), gTotals: groupTotals2000 } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv, b: 'bg-green-600', c: 'text-green-700', tMap: getTiemposMap(tiemposC1000) }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv, b: 'bg-indigo-600', c: 'text-indigo-700', tMap: getTiemposMap(tiemposC2000) } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
@@ -491,22 +437,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">NRO SUBBL.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CARGAS (B7)</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CANT. APOYO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
-                      {renderTableBody(center.d, center.tMap, center.gTotals)}
+                      {renderTableBody(center.d, center.tMap)}
                     </tbody>
                   </table>
                 </div>
@@ -517,8 +454,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenesFert" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (FERT)', d: fertC1000, s: scrollFert, b: 'bg-indigo-600', c: 'text-indigo-700', tMap: getTiemposMap(tiemposC1000), gTotals: groupTotals1000 }, 
-            { t: 'Planta 2000 - Guayaquil (FERT)', d: fertC2000, s: scrollFert, b: 'bg-blue-600', c: 'text-blue-700', tMap: getTiemposMap(tiemposC2000), gTotals: groupTotals2000 } 
+            { t: 'Planta 1000 - Quito (FERT)', d: fertC1000, s: scrollFert, b: 'bg-indigo-600', c: 'text-indigo-700', tMap: getTiemposMap(tiemposC1000) }, 
+            { t: 'Planta 2000 - Guayaquil (FERT)', d: fertC2000, s: scrollFert, b: 'bg-blue-600', c: 'text-blue-700', tMap: getTiemposMap(tiemposC2000) } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
@@ -537,26 +474,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">NRO SUBBL.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CARGAS (B7)</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CANT. APOYO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
-                      {renderTableBody(center.d, center.tMap, center.gTotals)}
+                      {renderTableBody(center.d, center.tMap)}
                     </tbody>
                   </table>
                 </div>
