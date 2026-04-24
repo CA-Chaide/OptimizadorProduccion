@@ -25,7 +25,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para sincronización de scroll
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -95,43 +94,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const filterData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
-    
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
-    
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
-    
-    const respCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-    
-    const almCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
-    const sectorCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'SECTOR')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
+    const respCodes = groupRest.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
+    const almCodes = groupRest.filter(r => r.nombre_restriccion === 'ALMACEN').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
+    const sectorCodes = groupRest.filter(r => r.nombre_restriccion === 'SECTOR').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
 
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
-
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
-
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const hasAlmField = o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen') || o.hasOwnProperty('almacen');
       const matchAlm = !hasAlmField || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
-
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
       const hasSectorField = o.hasOwnProperty('SECTORDESC') || o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
       const matchSector = !hasSectorField || sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
-
       return matchResp && matchAlm && matchSector;
     });
   };
@@ -147,12 +128,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—' };
     if (desc) {
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
-      // Mejorado para capturar decimales y espesores de un dígito
       const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
       if (dimMatch) {
         dimensions.ancho = dimMatch[1];
@@ -160,22 +139,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         if (dimMatch[3]) dimensions.esp = dimMatch[3];
       }
     }
-
     return { code, desc, ...dimensions };
   };
 
   const calculateSummary = (data: any[], centroId: string) => {
     const map = new Map<string, { centro: string; categoria: string; espesor: string; totalOrdenes: number; totalCantidad: number; totalTiempoCorte: number }>();
-    
     data.forEach(o => {
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || 'N/A').trim();
       const info = extractMaterialInfo(o);
       const espesor = info.esp || '—';
       const key = `${categoria}|${espesor}`;
-      
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const corteHours = (qty * 5) / 3600;
-
       if (!map.has(key)) {
         map.set(key, { centro: centroId, categoria, espesor, totalOrdenes: 0, totalCantidad: 0, totalTiempoCorte: 0 });
       }
@@ -184,10 +159,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       entry.totalCantidad += qty;
       entry.totalTiempoCorte += corteHours;
     });
-    
-    return Array.from(map.values()).sort((a, b) => 
-      a.categoria.localeCompare(b.categoria) || a.espesor.localeCompare(b.espesor)
-    );
+    return Array.from(map.values()).sort((a, b) => a.categoria.localeCompare(b.categoria) || a.espesor.localeCompare(b.espesor));
   };
 
   const summaryData1000 = useMemo(() => calculateSummary(provC1000, '1000'), [provC1000]);
@@ -199,23 +171,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
     group.top.current.addEventListener('scroll', syncB);
     group.bottom.current.addEventListener('scroll', syncT);
-    return () => {
-      group.top.current?.removeEventListener('scroll', syncB);
-      group.bottom.current?.removeEventListener('scroll', syncT);
-    };
+    return () => { group.top.current?.removeEventListener('scroll', syncB); group.bottom.current?.removeEventListener('scroll', syncT); };
   };
 
   useEffect(() => {
     if (!mounted) return;
     const items = [scrollProv1000, scrollProv2000, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
     const cleaners = items.map(setupScrollSync);
-    const timer = setTimeout(() => {
-      items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); });
-    }, 500);
-    return () => {
-      clearTimeout(timer);
-      cleaners.forEach(c => c?.());
-    };
+    const timer = setTimeout(() => { items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }); }, 500);
+    return () => { clearTimeout(timer); cleaners.forEach(c => c?.()); };
   }, [activeTab, ordenes, tiemposEnsamblado, mounted]);
 
   if (!mounted) return null;
@@ -288,6 +252,82 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsContent>
 
+        <TabsContent value="ordenes" className="mt-4 space-y-8">
+          {[ 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700' }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
+          ].map((center, idx) => (
+            <div key={idx} className="space-y-3">
+              <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
+              </h3>
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
+                  <table ref={center.s.table} className="w-full border-collapse">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
+                      <tr>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha Inicio</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
+                        <th className="px-3 py-4 text-center">Almacén</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                      {center.d.map((o, i) => {
+                        const info = extractMaterialInfo(o);
+                        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                        const calculatedCorteHours = (qty * 5) / 3600;
+                        const l = parseFloat(info.largo) || 0;
+                        const w = parseFloat(info.ancho) || 0;
+                        const e = parseFloat(info.esp) || 0;
+                        const d = parseFloat(info.dens) || 0;
+                        const volume = (l * w * e) / 1000000;
+                        const weight = volume * d;
+                        const alturaTotal = e * qty;
+                        
+                        return (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                            <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
+                            <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
+                            <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 text-center uppercase">{o.CATEGORIA || '—'}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
+                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{volume.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{weight.toFixed(2)}</td>
+                            <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 text-center bg-indigo-50/10">{alturaTotal.toFixed(2)}</td>
+                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
+                              {calculatedCorteHours.toFixed(2)}
+                            </td>
+                            <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
+        </TabsContent>
+
+        {/* ... Resto de los tabs se mantienen igual ... */}
         <TabsContent value="grupos" className="mt-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {grupos.map(g => (
@@ -330,80 +370,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </table>
             </div>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="ordenes" className="mt-4 space-y-8">
-          {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700' }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
-          ].map((center, idx) => (
-            <div key={idx} className="space-y-3">
-              <div className="flex items-center justify-between px-2">
-                <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
-                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t} ({center.d.length} órdenes)
-                </h3>
-              </div>
-              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse">
-                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
-                      <tr>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Fecha Inicio</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
-                        <th className="px-3 py-4 text-center">Almacén</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 text-[10px]">
-                      {center.d.map((o, i) => {
-                        const info = extractMaterialInfo(o);
-                        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                        const calculatedCorteHours = (qty * 5) / 3600;
-
-                        // Cálculos verificados: Volumen en m3 y Peso en kg
-                        const l = parseFloat(info.largo) || 0;
-                        const w = parseFloat(info.ancho) || 0;
-                        const e = parseFloat(info.esp) || 0;
-                        const d = parseFloat(info.dens) || 0;
-                        const volume = (l * w * e) / 1000000;
-                        const weight = volume * d;
-                        
-                        return (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center">{o.ORDENPREVISIONAL || '—'}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center font-mono text-[9px] text-gray-500">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                            <td className="px-3 py-3 font-mono font-semibold text-primary border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
-                            <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.dens}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.ancho}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.largo}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center bg-blue-50/5">{info.esp}</td>
-                            <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 text-center font-mono">{qty}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{volume.toFixed(2)}</td>
-                            <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 text-center bg-blue-50/10">{weight.toFixed(2)}</td>
-                            <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
-                              {calculatedCorteHours.toFixed(2)}
-                            </td>
-                            <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || '—'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            </div>
-          ))}
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
