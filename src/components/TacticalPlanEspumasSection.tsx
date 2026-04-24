@@ -207,7 +207,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const cantApoyo = (residuo > 0 && residuo <= 2) ? residuo : 0;
       const cargaExtraPrincipal = (residuo > 2) ? 1 : 0;
       
-      const nCycles = (parseFloat(group.espesor) || 0) / (alturaUtil || 1);
+      // Corregido: nCycles = ENTERO(Altura Util / Espesor) + 4
+      const espVal = parseFloat(group.espesor) || 1;
+      const nCycles = Math.floor(alturaUtil / espVal) + 4;
+      
       const totalTimeCatalog = infoItems.reduce((sum, i) => sum + (i.qty * i.timePerUnit), 0) / 60;
 
       return {
@@ -281,7 +284,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         groupSum = gTotals.get(groupKey) || 0;
         alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
         
-        nCycles = e / (alturaUtil || 1);
+        // Corregido: nCycles = ENTERO(Altura Util / Espesor) + 4
+        nCycles = Math.floor(alturaUtil / (e || 1)) + 4;
+        
         nSub = groupSum / (alturaUtil || 1);
         cargasB7 = nSub / 7;
         residuo = nSub % 7;
@@ -316,7 +321,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold border-r border-dashed border-gray-100 bg-teal-50/5 text-teal-600">{hasCategory ? nCycles.toFixed(4) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold border-r border-dashed border-gray-100 bg-teal-50/5 text-teal-600">{hasCategory ? nCycles : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? nSub.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? cargasB7.toFixed(1) : '—'}</td>
           <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
@@ -391,7 +396,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.totalUnidades.toLocaleString()}</td>
                             <td className="px-3 py-3 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/5">{row.totalAltura.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100 bg-teal-50/5">{row.alturaUtil}</td>
-                            <td className="px-3 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/5">{row.nCycles.toFixed(4)}</td>
+                            <td className="px-3 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/5">{row.nCycles}</td>
                             <td className="px-3 py-3 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5">{row.nroSubbloques.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/10">{row.cargasB7.toFixed(1)}</td>
                             <td className="px-3 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/10">{row.cantApoyo > 0 ? row.cantApoyo.toFixed(2) : '—'}</td>
