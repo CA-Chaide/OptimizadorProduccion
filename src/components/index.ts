@@ -26,6 +26,7 @@ export * from './NeedsCalculationC2000Section';
 export * from './OrdenesFertTabSection';
 export * from './TiemposEnsambladoTab';
 export * from './CuboInventariosTab';
+export * from './CuboInventariosTelasTab';
 
 // Widgets y paneles
 export { default as FloatingChatWidget } from './FloatingChatWidget';
