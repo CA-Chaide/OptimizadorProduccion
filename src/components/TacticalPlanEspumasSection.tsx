@@ -369,14 +369,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">VOLUMEN</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-900 bg-blue-50/30">PESO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">NRO SUBBL.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CARGAS (B7)</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CANT. APOYO</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center bg-orange-50/10">NRO SUBBL.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center bg-orange-50/10">CARGAS (B7)</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-center bg-orange-50/10">CANT. APOYO</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
