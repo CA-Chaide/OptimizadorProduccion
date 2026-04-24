@@ -47,14 +47,13 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   }, []);
 
   /**
-   * FUNCIÓN MAESTRA: Extrae las partes de la fecha SIN usar el objeto Date de JS.
-   * Esto garantiza que el día sea el mismo que está en la base de datos (p.ej. 2026-04-29).
+   * Extrae las partes de la fecha SIN usar el objeto Date de JS para evitar offsets.
    */
   const safeParseDateParts = useCallback((value: any) => {
     if (!value) return null;
     const str = String(value).trim();
     
-    // Intenta formato YYYY-MM-DD (captura los primeros 10 caracteres)
+    // Intenta formato YYYY-MM-DD
     const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
     
@@ -72,7 +71,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
       if (parts) {
-        // Retornamos el formato legible DD/MM/YYYY extraído directamente del texto
         return `${parts.d}/${parts.m}/${parts.y}`;
       }
       return String(value);
