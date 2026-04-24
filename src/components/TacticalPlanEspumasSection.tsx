@@ -175,11 +175,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const calculateCargaDescargaTime = (qty: number, espesor: number, cargasB7: number) => {
     if (qty <= 0) return 0;
-    // Carga: 5 min por cada carga de lote (B7)
+    // Carga: 5 min por cada carga de bloque (lote B7)
     const loadTime = (Math.max(1, Math.ceil(cargasB7))) * TIME_LOAD_BLOCK;
     // Descarga: pareja de láminas
     const unloadMoves = Math.ceil(qty / 2);
-    // Capacidad de coche
+    // Capacidad de coche: depende del espesor
     const movesPerCart = espesor > 10 ? 4 : 3;
     const cartsNeeded = Math.ceil(unloadMoves / movesPerCart);
     // Tiempo descarga = (movimientos * tiempo_mov) + (coches * tiempo_cambio)
@@ -354,7 +354,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-amber-600 bg-amber-50/5">
             {hasCategory && timeCatalog > 0 ? timeCatalog.toFixed(2) : '—'}
           </td>
-          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-amber-800 bg-amber-100/30">
+          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-amber-900 bg-amber-100/30">
             {hasCategory && tiempoCorte > 0 ? tiempoCorte.toFixed(2) : '—'}
           </td>
           <td className="px-3 py-3 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
@@ -407,7 +407,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/20 font-black">Cargas (B7)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-blue-700 bg-blue-50/20">Máq. Apoyo</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-red-700 bg-red-50/20">Carga Extra PPAL</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30"><Truck className="w-3 h-3 inline mr-1"/> Carga/Desc.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/30"><Truck className="w-3 h-3 inline mr-1"/> Carga/Desc. (h)</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/20">T. Pl Corte</th>
                         <th className="px-4 py-4 text-center text-amber-900 bg-amber-100/20">Tiempo Corte</th>
                       </tr>
@@ -478,7 +478,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">CARGAS (B7)</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">RESIDUO / DESTINO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">CANT. APOYO</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-100 text-teal-700 bg-teal-50/30 text-center">Carga/Desc.</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-100 text-teal-700 bg-teal-50/30 text-center">Carga/Desc. (h)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-900 bg-amber-100/30 text-center">TIEMPO CORTE</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
