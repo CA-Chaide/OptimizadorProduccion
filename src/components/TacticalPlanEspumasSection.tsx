@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck, Calendar as CalendarIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -12,6 +12,13 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Constantes de ingeniería de tiempos (en segundos)
 const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico completo
@@ -29,6 +36,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string>('all');
 
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -97,6 +105,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     initData();
   }, [mounted]);
 
+  // Extraer fechas únicas de las órdenes
+  const uniqueDates = useMemo(() => {
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null' && d !== 'undefined') dates.add(d);
+    });
+    return Array.from(dates).sort().reverse();
+  }, [ordenes]);
+
   const filterData = (data: any[], centro: string) => {
     if (!data || data.length === 0) return [];
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
@@ -113,12 +131,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
-      return matchResp && matchAlm;
+      
+      const itemDate = String(o.FECHAINICIO || o.FECHA || '').trim();
+      const matchDate = selectedDate === 'all' || itemDate === selectedDate;
+      
+      return matchResp && matchAlm && matchDate;
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000'), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000'), [tiemposEnsamblado, grupos, restricciones]);
 
@@ -352,6 +374,30 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-8 mt-4">
+          {/* Selector de Fecha */}
+          <div className="flex items-center gap-4 bg-white p-3 rounded-2xl shadow-sm border border-gray-100 w-fit">
+            <div className="flex items-center gap-2 text-gray-400">
+              <CalendarIcon className="w-4 h-4" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Filtrar Plan por Fecha:</span>
+            </div>
+            <Select value={selectedDate} onValueChange={setSelectedDate}>
+              <SelectTrigger className="w-[200px] h-9 border-none font-bold text-xs bg-gray-50 rounded-xl focus:ring-0">
+                <SelectValue placeholder="Todas las fechas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">TODAS LAS FECHAS</SelectItem>
+                {uniqueDates.map(date => (
+                  <SelectItem key={date} value={date}>{date}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedDate !== 'all' && (
+              <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-[10px] font-bold">
+                FECHA ACTIVA: {selectedDate}
+              </Badge>
+            )}
+          </div>
+
           {[ 
             { t: 'Resumen Logístico Planta 1000', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600' }, 
             { t: 'Resumen Logístico Planta 2000', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
@@ -382,7 +428,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={12} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
+                        <tr><td colSpan={12} className="py-8 text-center text-gray-400 italic">Sin bloques programados para esta fecha</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
