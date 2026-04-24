@@ -207,11 +207,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const cantApoyo = (residuo > 0 && residuo <= 2) ? residuo : 0;
       const cargaExtraPrincipal = (residuo > 2) ? 1 : 0;
       
-      // Corregido: nCycles = ENTERO(Altura Util / Espesor) + 4
       const espVal = parseFloat(group.espesor) || 1;
       const nCycles = Math.floor(alturaUtil / espVal) + 4;
       
       const totalTimeCatalog = infoItems.reduce((sum, i) => sum + (i.qty * i.timePerUnit), 0) / 60;
+      
+      // TIEMPO CORTE = (nro de ciclos * T. Pl Corte) * ( nro de sub bloques / 7 )
+      const tiempoCorteCalculado = (nCycles * totalTimeCatalog) * cargasB7;
 
       return {
         fecha: group.fecha,
@@ -227,7 +229,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         cantApoyo,
         cargaExtraPrincipal,
         nCycles,
-        totalTimeCatalog
+        totalTimeCatalog,
+        tiempoCorteCalculado
       };
     }).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.categoria.localeCompare(b.categoria));
   };
@@ -267,8 +270,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
 
-      let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', nCycles = 0, timeCatalog = 0;
-      let nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0;
+      let volume = 0, weight = 0, alturaTotal = 0, groupSum = 0, alturaUtil: any = '—', nCycles = 0, timeCatalog = 0, nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoCorte = 0;
 
       if (hasCategory) {
         const l = parseFloat(info.largo) || 0;
@@ -284,15 +286,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         groupSum = gTotals.get(groupKey) || 0;
         alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
         
-        // Corregido: nCycles = ENTERO(Altura Util / Espesor) + 4
         nCycles = Math.floor(alturaUtil / (e || 1)) + 4;
-        
         nSub = groupSum / (alturaUtil || 1);
         cargasB7 = nSub / 7;
         residuo = nSub % 7;
         
         const minutesStandard = tMap.get(info.code) || 0;
         timeCatalog = (qty * minutesStandard) / 60;
+        
+        // TIEMPO CORTE = (nro de ciclos * T. Pl Corte) * ( nro de sub bloques / 7 )
+        tiempoCorte = (nCycles * timeCatalog) * cargasB7;
 
         if (residuo > 0) {
           if (residuo <= 2) {
@@ -328,6 +331,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-amber-600 bg-amber-50/5">
             {hasCategory && timeCatalog > 0 ? timeCatalog.toFixed(2) : '—'}
+          </td>
+          <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-amber-800 bg-amber-100/30">
+            {hasCategory && tiempoCorte > 0 ? tiempoCorte.toFixed(2) : '—'}
           </td>
           <td className="px-3 py-3 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
         </tr>
@@ -379,12 +385,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/20 font-black">Cargas (B7)</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-blue-700 bg-blue-50/20">Máq. Apoyo</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-red-700 bg-red-50/20">Carga Extra PPAL</th>
-                        <th className="px-4 py-4 text-center text-amber-700 bg-amber-50/20">T. Pl Corte</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/20">T. Pl Corte</th>
+                        <th className="px-4 py-4 text-center text-amber-900 bg-amber-100/20">Tiempo Corte</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={14} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
+                        <tr><td colSpan={15} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
@@ -401,7 +408,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-3 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/10">{row.cargasB7.toFixed(1)}</td>
                             <td className="px-3 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/10">{row.cantApoyo > 0 ? row.cantApoyo.toFixed(2) : '—'}</td>
                             <td className="px-3 py-3 font-mono font-bold text-red-700 border-r border-dashed border-gray-100 bg-red-50/10">{row.cargaExtraPrincipal > 0 ? 'SÍ (1)' : '—'}</td>
-                            <td className="px-4 py-3 font-mono font-bold text-amber-700 bg-amber-50/5">{row.totalTimeCatalog.toFixed(2)}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/5">{row.totalTimeCatalog.toFixed(2)}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-amber-900 text-center bg-amber-100/10">{row.tiempoCorteCalculado.toFixed(2)}</td>
                           </tr>
                         ))
                       )}
@@ -447,6 +455,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">RESIDUO / DESTINO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">CANT. APOYO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-100 text-amber-900 bg-amber-100/30 text-center">TIEMPO CORTE</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
