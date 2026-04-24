@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 // Constantes de ingeniería de tiempos (en segundos)
-const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico (1 bloque = 7 subbloques)
+const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico completo
 const SECONDS_REPETITION = 45;       // 45 seg por movimiento de descarga manual
 const SECONDS_CART_SWAP = 60;        // 1 min por cambio de coche (2 bloques por coche)
 
@@ -152,8 +152,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const key = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
       const qty = Number(item.CANTPROGRAMADA || item.CANTIDAD || 0);
       const esp = parseFloat(info.esp) || 0;
-      const alturaTotal = esp * qty;
-      map.set(key, (map.get(key) || 0) + alturaTotal);
+      const a = parseFloat(info.ancho) || 0;
+      
+      // Cálculo de subbloques por ancho (2000 cm = 20 metros)
+      const nSubbloquesItem = (a * qty) / 2000;
+      const alturaTotalItem = nSubbloquesItem * esp;
+      
+      map.set(key, (map.get(key) || 0) + alturaTotalItem);
     });
     return map;
   };
@@ -175,11 +180,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const calculateLogisticoTime = (qty: number, esp: number, nroSubbloques: number) => {
     if (qty <= 0) return 0;
+    // 1 bloque físico = lote de 7 subbloques técnicos
     const blocksCount = Math.ceil(nroSubbloques / 7);
     const timeCarga = blocksCount * SECONDS_LOAD_BLOCK;
     const sheetsPerRep = esp > 10 ? 4 : 3;
     const repetitions = Math.ceil(qty / sheetsPerRep);
     const timeDescarga = repetitions * SECONDS_REPETITION;
+    // 1 coche = 2 bloques apilados
     const cartsNeeded = Math.ceil(blocksCount / 2);
     const timeCarts = cartsNeeded * SECONDS_CART_SWAP;
     return (timeCarga + timeDescarga + timeCarts) / 3600;
@@ -206,22 +213,26 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
         const esp = parseFloat(info.esp) || 0;
         const dens = parseFloat(info.dens) || 0;
-        return { qty, esp, dens };
+        const ancho = parseFloat(info.ancho) || 0;
+        return { qty, esp, dens, ancho };
       });
 
       const totalUnidades = infoItems.reduce((sum, i) => sum + i.qty, 0);
-      const totalAltura = infoItems.reduce((sum, i) => sum + (i.esp * i.qty), 0);
+      const aVal = infoItems[0]?.ancho || 0;
+      
+      // Cálculo de subbloques basado en el Ancho Referencial (bloque de 20m)
+      const nroSubbloques = (aVal * totalUnidades) / 2000;
+      const totalAltura = nroSubbloques * parseFloat(group.espesor);
+      
       const firstDens = infoItems[0]?.dens || 0;
       const alturaUtil = firstDens < 30 ? 103 : 85;
-      const nroSubbloques = totalAltura / (alturaUtil || 1);
       const espVal = parseFloat(group.espesor) || 1;
       const nCycles = Math.floor(alturaUtil / espVal) + 4;
       
       const tiempoLogistico = calculateLogisticoTime(totalUnidades, espVal, nroSubbloques);
 
       // Perímetro de Ocupación: (Ancho * Cantidad) / 100
-      const anchoVal = parseFloat(group.ancho) || 0;
-      const metrosBloque = (anchoVal * totalUnidades) / 100;
+      const metrosBloque = (aVal * totalUnidades) / 100;
       const ocupacion20m = metrosBloque / 20;
 
       return {
@@ -279,24 +290,30 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
 
-      let alturaTotal = 0, groupSum = 0, alturaUtil: any = 103, nCycles = 0, nSub = 0, cargasB7 = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoLogistico = 0, metrosBloque = 0, ocupacion20m = 0;
+      let alturaTotal = 0, groupSumHeight = 0, alturaUtil: any = 103, nCycles = 0, nSubItem = 0, cargasB7Item = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoLogistico = 0, metrosBloque = 0, ocupacion20m = 0;
 
       if (hasCategory) {
         const e = parseFloat(info.esp) || 0;
         const d = parseFloat(info.dens) || 0;
         const a = parseFloat(info.ancho) || 0;
-        alturaTotal = e * qty;
+        
+        // Cálculo de subbloques para el ítem basado en ancho
+        nSubItem = (a * qty) / 2000;
+        alturaTotal = nSubItem * e;
+        
         const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
         const groupKey = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
-        groupSum = gTotals.get(groupKey) || 0;
+        groupSumHeight = gTotals.get(groupKey) || 0;
+        
         alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
         nCycles = Math.floor(alturaUtil / (e || 1)) + 4;
-        nSub = groupSum / (alturaUtil || 1);
-        cargasB7 = nSub / 7;
-        residuo = nSub % 7;
-        const itemSubbloques = alturaTotal / alturaUtil;
-        tiempoLogistico = calculateLogisticoTime(qty, e, itemSubbloques);
-
+        cargasB7Item = nSubItem / 7;
+        
+        // Cálculo de residuo sobre la sumatoria del grupo para logística
+        const nSubGroup = groupSumHeight / (e || 1);
+        residuo = nSubGroup % 7;
+        
+        tiempoLogistico = calculateLogisticoTime(qty, e, nSubItem);
         metrosBloque = (a * qty) / 100;
         ocupacion20m = metrosBloque / 20;
 
@@ -307,7 +324,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           } else {
             destino = "+1 CARGA PPAL.";
           }
-        } else if (nSub > 0) {
+        } else if (nSubGroup > 0) {
           destino = "COMPLETO";
         }
       }
@@ -327,11 +344,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 bg-blue-50/10">{hasCategory ? metrosBloque.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-900 border-r border-dashed border-gray-100 bg-blue-50/10">{hasCategory ? ocupacion20m.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 bg-purple-50/5">{hasCategory ? groupSum.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 bg-purple-50/5">{hasCategory ? groupSumHeight.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold border-r border-dashed border-gray-100 bg-teal-50/5 text-teal-600">{hasCategory ? nCycles : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? nSub.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? cargasB7.toFixed(1) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold border-r border-dashed border-gray-100 bg-teal-50/10 text-teal-700">{hasCategory ? nCycles : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? cargasB7Item.toFixed(1) : '—'}</td>
           <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-teal-600 bg-teal-50/5">
