@@ -498,8 +498,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {grupos.map(g => (
               <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
-                <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
-                <Badge className="w-fit bg-blue-600 mb-2">PLANTA {g.centro}</Badge>
+                <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
+                <Badge className="w-fit bg-primary mb-2">PLANTA {g.centro}</Badge>
                 <h4 className="font-bold text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
                 <p className="text-[10px] font-mono text-gray-400 mt-1 uppercase">Código Interno: {g.codigo_grupo}</p>
               </Card>

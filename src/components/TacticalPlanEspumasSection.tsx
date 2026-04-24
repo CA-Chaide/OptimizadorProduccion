@@ -144,7 +144,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       if (!cat || cat === 'N/A') return;
       const info = extractMaterialInfo(item);
       const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
-      const key = `${cat}-${date}-${info.ancho}-${info.largo}`;
+      const key = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
       const qty = Number(item.CANTPROGRAMADA || item.CANTIDAD || 0);
       const esp = parseFloat(info.esp) || 0;
       const alturaTotal = esp * qty;
@@ -157,7 +157,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
 
   const calculateSummary = (data: any[]) => {
-    const groupsMap = new Map<string, { fecha: string; categoria: string; ancho: string; largo: string; items: any[] }>();
+    const groupsMap = new Map<string, { fecha: string; categoria: string; ancho: string; largo: string; espesor: string; items: any[] }>();
     
     data.forEach(o => {
       const fecha = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
@@ -165,10 +165,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       if (!categoria || categoria === 'N/A') return;
       
       const info = extractMaterialInfo(o);
-      const key = `${fecha}|${categoria}|${info.ancho}|${info.largo}`;
+      const key = `${fecha}|${categoria}|${info.ancho}|${info.largo}|${info.esp}`;
       
       if (!groupsMap.has(key)) {
-        groupsMap.set(key, { fecha, categoria, ancho: info.ancho, largo: info.largo, items: [] });
+        groupsMap.set(key, { fecha, categoria, ancho: info.ancho, largo: info.largo, espesor: info.esp, items: [] });
       }
       groupsMap.get(key)!.items.push(o);
     });
@@ -200,6 +200,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         categoria: group.categoria,
         ancho: group.ancho,
         largo: group.largo,
+        espesor: group.espesor,
         totalUnidades,
         totalAltura,
         alturaUtil,
@@ -261,7 +262,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         calculatedCorteHours = (qty * 5) / 3600;
         
         const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
-        const groupKey = `${cat}-${date}-${info.ancho}-${info.largo}`;
+        const groupKey = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
         groupSum = gTotals.get(groupKey) || 0;
         alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
 
@@ -346,6 +347,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Ancho</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Largo</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Espesor</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Unidades</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-indigo-700 bg-indigo-50/10">Altura Total</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/10">Altura Útil</th>
@@ -358,7 +360,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={12} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
+                        <tr><td colSpan={13} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
@@ -366,6 +368,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-3 font-bold text-gray-700 border-r border-dashed border-gray-100 uppercase">{row.categoria}</td>
                             <td className="px-3 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.ancho}</td>
                             <td className="px-3 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.largo}</td>
+                            <td className="px-3 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.espesor}</td>
                             <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.totalUnidades.toLocaleString()}</td>
                             <td className="px-3 py-3 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/5">{row.totalAltura.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100 bg-teal-50/5">{row.alturaUtil}</td>
@@ -434,46 +437,40 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="grupos" className="mt-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {grupos.map(g => (
-              <Card key={g.codigo_grupo} className="shadow-sm border-l-2 border-l-primary/50 overflow-hidden">
-                <CardContent className="p-4 text-center">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-[9px] font-semibold text-muted-foreground uppercase">Centro {g.centro}</span>
-                    <Badge variant="outline" className="text-[8px] h-4 text-green-600 border-green-200 py-0 px-1">Activo</Badge>
-                  </div>
-                  <h4 className="font-semibold text-gray-800 text-sm uppercase">{g.nombre_grupo}</h4>
-                  <p className="text-[9px] font-mono text-gray-400 mt-2 tracking-widest">ID: {g.codigo_grupo}</p>
-                </CardContent>
+              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-none rounded-3xl bg-white p-6">
+                <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
+                <Badge className="w-fit bg-primary mb-2">PLANTA {g.centro}</Badge>
+                <h4 className="font-bold text-gray-800 uppercase text-lg leading-tight">{g.nombre_grupo}</h4>
+                <p className="text-[10px] font-mono text-gray-400 mt-1 uppercase">Código Interno: {g.codigo_grupo}</p>
               </Card>
             ))}
           </div>
         </TabsContent>
 
         <TabsContent value="restricciones" className="mt-4">
-          <Card className="shadow-sm overflow-hidden border-none rounded-xl bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-center border-collapse">
-                <thead className="bg-gray-50/50 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100">
-                  <tr>
-                    <th className="px-4 py-3 border-r border-dashed border-gray-300">Parámetro Técnico</th>
-                    <th className="px-4 py-3 border-r border-dashed border-gray-300">Valor</th>
-                    <th className="px-4 py-3">Descripción Operativa</th>
+          <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+            <table className="w-full border-collapse text-center">
+              <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro Técnico</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor Configurado</th>
+                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-[11px]">
+                {restricciones.map(r => (
+                  <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20">
+                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
+                      <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50">{r.valor_restriccion}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {restricciones.map(r => (
-                    <tr key={r.codigo_restriccion} className="hover:bg-gray-50/30">
-                      <td className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-tighter border-r border-dashed border-gray-100">{r.nombre_restriccion}</td>
-                      <td className="px-4 py-3 border-r border-dashed border-gray-100">
-                        <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-primary font-medium">{r.valor_restriccion}</code>
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 italic">{r.descripcion || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </Card>
         </TabsContent>
 
