@@ -13,7 +13,7 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   Popover,
@@ -51,12 +51,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   useEffect(() => { setMounted(true); }, []);
 
-  const fetchGruposEspumas = async () => {
+  const fetchGruposRelevantes = async () => {
     try {
       const res = await grupoService.getAll();
-      const filtered = (res.data || []).filter(g => 
-        g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('espuma')
-      );
+      const filtered = (res.data || []).filter(g => {
+        const name = (g.nombre_grupo || '').toLowerCase();
+        return name.includes('espuma') || name.includes('corte y laminado');
+      });
       setGrupos(filtered);
       return filtered;
     } catch (error) {
@@ -100,7 +101,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (!mounted) return;
     const initData = async () => {
       setIsLoading(true);
-      const filteredGroups = await fetchGruposEspumas();
+      const filteredGroups = await fetchGruposRelevantes();
       const groupsIds = filteredGroups.map(g => g.codigo_grupo);
       await fetchRestricciones(groupsIds);
       await loadData(filteredGroups);
@@ -176,26 +177,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dimensions };
   };
 
-  const calculateGroupTotals = (data: any[]) => {
-    const map = new Map<string, number>();
-    data.forEach(item => {
-      const cat = String(item.CATEGORIA || item.Categoria || '').trim();
-      if (!cat || cat === 'N/A') return;
-      const info = extractMaterialInfo(item);
-      const dateRaw = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
-      const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
-      const key = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
-      const qty = Number(item.CANTPROGRAMADA || item.CANTIDAD || 0);
-      const esp = parseFloat(info.esp) || 0;
-      map.set(key, (map.get(key) || 0) + (qty * esp));
-    });
-    return map;
-  };
-
-  const groupTotals1000 = useMemo(() => calculateGroupTotals(provC1000), [provC1000]);
-  const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
-
-  // Resumen Ejecutivo Unificado
+  // Resumen Ejecutivo Estructurado por Fecha y Categoría (Unificado)
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; categoria: string; units: number; subbloques: number; bloques20m: number; timeLog: number }>();
     
@@ -211,18 +193,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const ancho = parseFloat(info.ancho) || 0;
       const esp = parseFloat(info.esp) || 0;
+      const dens = parseFloat(info.dens) || 0;
       
-      // Cálculo de subbloques basado en ancho referencial (20m = 2000cm)
-      const subbloques = (ancho * qty) / 2000;
+      // Cálculo de Subbloques (Vertical)
+      const usefulHeight = isNaN(dens) ? 103 : (dens < 30 ? 103 : 85);
+      const itemSubbloques = (qty * esp) / usefulHeight;
+
+      // Cálculo de Bloques 20m (Lineal por Ancho)
+      const itemBloques20m = (ancho * qty) / 2000;
       
-      // Cálculo de bloques físicos (batch de 7 subbloques)
-      const bloquesFisicos = Math.ceil(subbloques / 7);
-      
-      // Tiempo Carga/Descarga (Segundos)
-      const tCarga = bloquesFisicos * SECONDS_LOAD_BLOCK;
+      // Cálculo de Tiempos Logísticos
+      const physicalBlocksCount = Math.ceil(itemBloques20m);
+      const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
       const sheetsPerRep = esp > 10 ? 4 : 3;
       const tDescarga = Math.ceil(qty / sheetsPerRep) * SECONDS_REPETITION;
-      const tCoches = Math.ceil(bloquesFisicos / 2) * SECONDS_CART_SWAP;
+      const tCoches = Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP;
       const itemTimeLog = (tCarga + tDescarga + tCoches) / 3600;
 
       if (!groupsMap.has(key)) {
@@ -231,8 +216,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       const entry = groupsMap.get(key)!;
       entry.units += qty;
-      entry.subbloques += subbloques;
-      entry.bloques20m += (subbloques / 7);
+      entry.subbloques += itemSubbloques;
+      entry.bloques20m += itemBloques20m;
       entry.timeLog += itemTimeLog;
     });
 
@@ -296,35 +281,31 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     </div>
   );
 
-  const renderTableBody = (data: any[], gTotals: Map<string, number>) => {
+  const renderTableBody = (data: any[]) => {
     return data.map((o, i) => {
       const cat = String(o.CATEGORIA || o.Categoria || '').trim();
       const hasCategory = cat !== '' && cat !== 'N/A';
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      let alturaTotal = 0, groupSumHeight = 0, alturaUtil: any = 103, nCycles = 0, nSubItem = 0, cargasB7Item = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoLogistico = 0;
+      let alturaTotal = 0, usefulHeight = 103, nCycles = 0, nSubItem = 0, bloques20mItem = 0, residuo = 0, destino = '—', cantApoyo = 0, tiempoLogistico = 0;
       if (hasCategory) {
         const e = parseFloat(info.esp) || 0;
         const d = parseFloat(info.dens) || 0;
+        const w = parseFloat(info.ancho) || 0;
         alturaTotal = qty * e;
-        const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
-        const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
-        const groupKey = `${cat}-${date}-${info.ancho}-${info.largo}-${info.esp}`;
-        groupSumHeight = gTotals.get(groupKey) || 0;
-        alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
-        nCycles = Math.floor(alturaUtil / (e || 1)) + 4;
-        nSubItem = alturaTotal / alturaUtil;
-        cargasB7Item = nSubItem / 7;
+        usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
+        nCycles = Math.floor(usefulHeight / (e || 1)) + 4;
+        nSubItem = alturaTotal / usefulHeight;
+        bloques20mItem = (w * qty) / 2000;
         
-        const bloquesFisicos = Math.ceil(nSubItem / 7);
-        const tCarga = bloquesFisicos * SECONDS_LOAD_BLOCK;
+        const physicalBlocksCount = Math.ceil(bloques20mItem);
+        const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
         const sheetsPerRep = e > 10 ? 4 : 3;
         const tDescarga = Math.ceil(qty / sheetsPerRep) * SECONDS_REPETITION;
-        const tCoches = Math.ceil(bloquesFisicos / 2) * SECONDS_CART_SWAP;
+        const tCoches = Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP;
         tiempoLogistico = (tCarga + tDescarga + tCoches) / 3600;
 
-        const nSubGroup = groupSumHeight / (alturaUtil || 1);
-        residuo = nSubGroup % 7;
+        residuo = nSubItem % 7;
         if (residuo > 0) {
           if (residuo <= 2) {
             destino = "MÁQ. APOYO";
@@ -332,7 +313,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           } else {
             destino = "+1 CARGA PPAL.";
           }
-        } else if (nSubGroup > 0) {
+        } else if (nSubItem > 0) {
           destino = "COMPLETO";
         }
       }
@@ -349,11 +330,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
           <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 font-mono">{qty}</td>
           <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-purple-900 border-r border-dashed border-gray-100 bg-purple-50/5">{hasCategory ? groupSumHeight.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/10">{hasCategory ? usefulHeight : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold border-r border-dashed border-gray-100 bg-teal-50/10 text-teal-700">{hasCategory ? nCycles : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? cargasB7Item.toFixed(1) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
           <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-teal-600 bg-teal-50/5">
@@ -520,8 +500,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', gTotals: groupTotals1000 }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', gTotals: groupTotals2000 } 
+            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700' }, 
+            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
@@ -544,11 +524,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-purple-900 bg-purple-50/20">SUMA ALT. GRP</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-teal-50/10 text-teal-700">NRO CICLOS</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">NRO SUBBL.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10 font-black">CARGAS (B7)</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10 font-black">BLOQUES 20M</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">RESIDUO / DESTINO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">CANT. APOYO</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-100 text-teal-700 bg-teal-50/30 text-center">Carga/Desc. (h)</th>
@@ -556,7 +535,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {renderTableBody(center.d, center.gTotals)}
+                      {renderTableBody(center.d)}
                     </tbody>
                   </table>
                 </div>
