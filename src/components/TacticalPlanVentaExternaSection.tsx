@@ -36,6 +36,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const scrollProv = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollFert = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const scrollTiempos2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollResumen1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollResumen2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
 
@@ -247,7 +249,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   useEffect(() => {
     if (!mounted) return;
-    const items = [scrollProv, scrollFert, scrollResumen1000, scrollResumen2000];
+    const items = [scrollProv, scrollFert, scrollTiempos1000, scrollTiempos2000, scrollResumen1000, scrollResumen2000];
     const cleaners = items.map(setupScrollSync);
     const timer = setTimeout(() => { items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }); }, 500);
     return () => { clearTimeout(timer); cleaners.forEach(c => c?.()); };
@@ -546,7 +548,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   <table ref={center.s.table} className="w-full border-collapse text-center">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción Técnica</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200">Línea Prod.</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">Estándar (Min)</th>

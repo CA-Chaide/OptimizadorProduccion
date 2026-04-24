@@ -142,9 +142,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     data.forEach(item => {
       const cat = String(item.CATEGORIA || item.Categoria || '').trim();
       if (!cat || cat === 'N/A') return;
-      const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
-      const key = `${cat}-${date}`;
       const info = extractMaterialInfo(item);
+      const date = String(item.FECHAINICIO || item.FECHA || 'N/A').trim();
+      const key = `${cat}-${date}-${info.ancho}-${info.largo}`;
       const qty = Number(item.CANTPROGRAMADA || item.CANTIDAD || 0);
       const esp = parseFloat(info.esp) || 0;
       const alturaTotal = esp * qty;
@@ -157,16 +157,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const groupTotals2000 = useMemo(() => calculateGroupTotals(provC2000), [provC2000]);
 
   const calculateSummary = (data: any[]) => {
-    const groupsMap = new Map<string, { fecha: string; categoria: string; items: any[] }>();
+    const groupsMap = new Map<string, { fecha: string; categoria: string; ancho: string; largo: string; items: any[] }>();
     
     data.forEach(o => {
       const fecha = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
       const categoria = String(o.CATEGORIA || o.Categoria || '').trim();
       if (!categoria || categoria === 'N/A') return;
       
-      const key = `${fecha}|${categoria}`;
+      const info = extractMaterialInfo(o);
+      const key = `${fecha}|${categoria}|${info.ancho}|${info.largo}`;
+      
       if (!groupsMap.has(key)) {
-        groupsMap.set(key, { fecha, categoria, items: [] });
+        groupsMap.set(key, { fecha, categoria, ancho: info.ancho, largo: info.largo, items: [] });
       }
       groupsMap.get(key)!.items.push(o);
     });
@@ -196,6 +198,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       return {
         fecha: group.fecha,
         categoria: group.categoria,
+        ancho: group.ancho,
+        largo: group.largo,
         totalUnidades,
         totalAltura,
         alturaUtil,
@@ -257,7 +261,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         calculatedCorteHours = (qty * 5) / 3600;
         
         const date = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
-        groupSum = gTotals.get(`${cat}-${date}`) || 0;
+        const groupKey = `${cat}-${date}-${info.ancho}-${info.largo}`;
+        groupSum = gTotals.get(groupKey) || 0;
         alturaUtil = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
 
         nSub = groupSum / (alturaUtil || 1);
@@ -339,6 +344,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <tr>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Ancho</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/20">Largo</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Unidades</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-indigo-700 bg-indigo-50/10">Altura Total</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-teal-700 bg-teal-50/10">Altura Útil</th>
@@ -351,12 +358,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={10} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
+                        <tr><td colSpan={12} className="py-8 text-center text-gray-400 italic">Sin bloques programados</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
                             <td className="px-3 py-3 font-mono text-gray-500 border-r border-dashed border-gray-100">{row.fecha}</td>
                             <td className="px-3 py-3 font-bold text-gray-700 border-r border-dashed border-gray-100 uppercase">{row.categoria}</td>
+                            <td className="px-3 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.ancho}</td>
+                            <td className="px-3 py-3 font-mono font-bold text-blue-600 border-r border-dashed border-gray-100 bg-blue-50/5">{row.largo}</td>
                             <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.totalUnidades.toLocaleString()}</td>
                             <td className="px-3 py-3 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/5">{row.totalAltura.toFixed(2)}</td>
                             <td className="px-3 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100 bg-teal-50/5">{row.alturaUtil}</td>
@@ -469,7 +478,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
-          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
@@ -487,7 +496,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción Técnica</th>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Línea Prod.</th>
-                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700 text-center">Estándar (Min)</th>
+                        <th className="px-4 py-4 border-r border-dashed border-gray-200 text-teal-700">Estándar (Min)</th>
                         <th className="px-4 py-4 text-center text-gray-400">Stock / Seguridad</th>
                       </tr>
                     </thead>
@@ -498,8 +507,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <tr key={i} className="hover:bg-teal-50/20 transition-colors">
                             <td className="px-4 py-3 font-mono font-semibold text-teal-700 border-r border-dashed border-gray-100 text-center tracking-tighter">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-200 text-center font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100 text-center">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-dashed border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}</td>
                             <td className="px-4 py-3 text-center font-medium text-gray-300">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
                           </tr>
                         );
