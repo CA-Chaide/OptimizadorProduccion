@@ -126,70 +126,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return dates;
   }, [ordenes]);
 
-  // Motor de filtrado con lógica de segregación para Almacén 1006 y Alias "Resp. Control"
-  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
-    if (!data || data.length === 0) return [];
-    
-    const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
-    if (relevantGroups.length === 0) return [];
-
-    // Buscar lista de responsables especial (Carrusel)
-    const carruselRespCodes = restricciones
-      .filter(r => (r.nombre_restriccion === 'Resp. Control' || r.nombre_restriccion === 'RespCtrlProd_Carrusel'))
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
-    const groupIds = relevantGroups.map(g => g.codigo_grupo);
-    const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
-    
-    const respCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-    
-    const sectorCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'SECTOR')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
-    return data.filter(o => {
-      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
-      if (itemCentro !== centro) return false;
-
-      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
-      const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      
-      // Lógica de segregación Carrusel (Almacén 1006) para Centro 1000
-      if (centro === '1000' && itemAlmValue === '1006') {
-        if (carruselRespCodes.length > 0 && !carruselRespCodes.includes(itemResp)) return false;
-      } else {
-        const allAllowedResps = [...respCodes, ...carruselRespCodes];
-        if (allAllowedResps.length > 0 && !allAllowedResps.includes(itemResp)) return false;
-      }
-
-      // Validación de Sector
-      const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
-      if (sectorCodes.length > 0 && itemSectorValue !== '') {
-        const matchSector = sectorCodes.some(code => itemSectorValue.includes(code));
-        if (!matchSector) return false;
-      }
-
-      if (applyDateFilter) {
-        const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
-        const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
-        const matchDate = selectedDate === 'all' || itemDate === selectedDate;
-        if (!matchDate) return false;
-      }
-      
-      return true;
-    });
-  };
-
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
-  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
-  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
-
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -210,6 +146,79 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
     return { code, desc, ...dimensions };
   };
+
+  // Motor de filtrado REESTRUCTURADO para excluir Producto Terminado y filtrar por par (Resp+Sector)
+  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
+    if (!data || data.length === 0) return [];
+    
+    const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
+    if (relevantGroups.length === 0) return [];
+
+    return data.filter(o => {
+      const info = extractMaterialInfo(o);
+      
+      // REGLA MAESTRA 1: Excluir Producto Terminado (Códigos que inician con '1')
+      if (info.code.startsWith('1')) return false;
+
+      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+      if (itemCentro !== centro) return false;
+
+      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
+      const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
+
+      // REGLA MAESTRA 2: El material debe coincidir con AL MENOS UN GRUPO en su combinación (Resp + Sector)
+      const matchesAnyGroup = relevantGroups.some(g => {
+        const groupRest = restricciones.filter(r => r.codigo_grupo === g.codigo_grupo);
+        
+        const respCodes = groupRest
+          .filter(r => r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Resp. Control' || r.nombre_restriccion === 'RespCtrlProd_Carrusel')
+          .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+          .filter(v => v !== '');
+        
+        const sectorCodes = groupRest
+          .filter(r => r.nombre_restriccion === 'SECTOR')
+          .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+          .filter(v => v !== '');
+
+        // Validación de Responsable
+        const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
+        
+        // Validación de Sector
+        const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
+        
+        // Validación especial Almacén 1006 (Carrusel) para Planta 1000
+        if (centro === '1000' && itemAlmValue === '1006') {
+          const carruselResps = groupRest
+            .filter(r => r.nombre_restriccion === 'Resp. Control' || r.nombre_restriccion === 'RespCtrlProd_Carrusel')
+            .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
+          
+          if (carruselResps.length > 0) {
+            return carruselResps.includes(itemResp) && matchSector;
+          }
+        }
+
+        return matchResp && matchSector;
+      });
+
+      if (!matchesAnyGroup) return false;
+
+      // Filtro de Fecha
+      if (applyDateFilter) {
+        const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
+        const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
+        const matchDate = selectedDate === 'all' || itemDate === selectedDate;
+        if (!matchDate) return false;
+      }
+      
+      return true;
+    });
+  };
+
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
+  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
+  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
   const calculateResponsiblesAudit = (data: any[]) => {
     const map = new Map<string, { code: string; orders: number; units: number }>();
@@ -661,7 +670,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, 
             { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } 
           ].map(center => {
-            const list = (restrictionsByCenter?.get?.(center.id)) || [];
+            const list = restrictionsByCenter.get(center.id) || [];
             return (
               <div key={center.id} className="space-y-3">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.color)}>
