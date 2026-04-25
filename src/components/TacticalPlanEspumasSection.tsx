@@ -145,7 +145,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
       
-      // Apertura del bloque (específicos solicitados: 194.5, 206, 219)
       const aperturaMatch = desc.match(/194\.5|206|219/);
       if (aperturaMatch) dimensions.apertura = aperturaMatch[0];
 
@@ -222,7 +221,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
   const calculateSummary = (data: any[]) => {
-    // Agrupación por Fecha | Densidad | Apertura
     const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; timeLog: number }>();
     
     data.forEach(o => {
@@ -239,8 +237,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       const usefulHeight = isNaN(dens) ? 103 : (dens < 30 ? 103 : 85);
       const itemSubbloques = (qty * esp) / usefulHeight;
-
-      // FÓRMULA DE INGENIERÍA: (Ancho * Subbloques) / 2000
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
       const physicalBlocksCount = Math.ceil(itemBloques20m);
@@ -343,8 +339,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
         nCycles = Math.floor(usefulHeight / (e || 1)) + 4;
         nSubItem = alturaTotal / usefulHeight;
-        
-        // FÓRMULA DE INGENIERÍA: (Ancho * Subbloques) / 2000
         bloques20mItem = (w * nSubItem) / 2000;
         
         const physicalBlocksCount = Math.ceil(bloques20mItem);
@@ -354,20 +348,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const tCoches = Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP;
         tiempoLogistico = (tCarga + tDescarga + tCoches) / 3600;
 
-        residuo = nSubItem % 7;
-        if (residuo > 0) {
-          if (centroId === '2000') {
-             destino = "+1 CARGA PPAL.";
-          } else {
+        // LÓGICA DE DESTINO DIFERENCIADA POR PLANTA
+        if (centroId === '2000') {
+          // Planta 2000 maneja carga única
+          destino = "CARGA PPAL.";
+          cantApoyo = 0;
+        } else {
+          // Planta 1000 permite máquinas de apoyo para residuos pequeños
+          residuo = nSubItem % 7;
+          if (residuo > 0) {
             if (residuo <= 2) {
               destino = "MÁQ. APOYO";
               cantApoyo = residuo;
             } else {
               destino = "+1 CARGA PPAL.";
             }
+          } else if (nSubItem > 0) {
+            destino = "COMPLETO";
           }
-        } else if (nSubItem > 0) {
-          destino = "COMPLETO";
         }
       }
       return (
@@ -388,7 +386,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
           <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100">
+            {hasCategory && centroId !== '2000' && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}
+          </td>
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-teal-600 bg-teal-50/5">
             {hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}
           </td>
@@ -617,7 +617,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, 
             { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } 
           ].map(center => {
-            const list = (restrictionsByCenter as Map<string, Restriccion[]>).get(center.id) || [];
+            const list = restrictionsByCenter.get(center.id) || [];
             return (
               <div key={center.id} className="space-y-3">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.color)}>
