@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/popover";
 
 // Constantes de ingeniería de carrusel (Solo aplican para Quito 1000)
-const CARRUSEL_DIAMETER_CM = 700; // 7 metros
+const CARRUSEL_RADIUS_CM = 350; // 3.5 metros de radio
+const CARRUSEL_CIRCUMFERENCE = 2 * Math.PI * CARRUSEL_RADIUS_CM; // ~2199.11 cm
 const SECONDS_LOAD_BLOCK = 300;   // 5 min
 const SECONDS_REPETITION = 45;    // 45 seg
 const SECONDS_CART_SWAP = 60;     // 1 min
@@ -133,6 +134,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
     
+    // Extracción mandatoria de Apertura desde la columna CATEGORIA
     if (catStr) {
       const apertureMatch = catStr.match(/194\.5|206|219/);
       if (apertureMatch) dimensions.apertura = apertureMatch[0];
@@ -202,7 +204,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const calculateSummary = (data: any[], centroId: string) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
-    const circ = CARRUSEL_DIAMETER_CM * Math.PI;
 
     data.forEach(o => {
       const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
@@ -218,8 +219,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemSubbloques = (qty * esp) / usefulHeight;
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
-      // Cálculo de cargas basado en ANCHO según criterio de ocupación
-      const capPorCarga = ancho > 0 ? Math.max(1, Math.floor(circ / ancho) - 1) : 1;
+      // Cálculo de cargas basado en ANCHO según criterio de radio 3.5m (C = 2199.11 cm)
+      const capPorCarga = ancho > 0 ? Math.max(1, Math.floor(CARRUSEL_CIRCUMFERENCE / ancho) - 1) : 1;
       const itemCargas = Math.ceil(itemSubbloques / capPorCarga);
       
       const physicalBlocksCount = Math.ceil(itemBloques20m);
@@ -282,7 +283,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   if (!mounted) return null;
 
   const renderTableBody = (data: any[], centroId: string) => {
-    const circ = CARRUSEL_DIAMETER_CM * Math.PI;
     return data.map((o, i) => {
       const cat = String(o.CATEGORIA || o.Categoria || '').trim();
       const hasCategory = cat !== '' && cat !== 'N/A';
@@ -300,8 +300,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nSubItem = alturaTotal / usefulHeight;
         bloques20mItem = (w * nSubItem) / 2000;
         
-        // Cálculo basado en ANCHO del subbloque para ocupación de carrusel
-        capPorCarga = w > 0 ? Math.max(1, Math.floor(circ / w) - 1) : 1;
+        // Cálculo basado en ANCHO del subbloque para ocupación de carrusel (Radio 3.5m)
+        capPorCarga = w > 0 ? Math.max(1, Math.floor(CARRUSEL_CIRCUMFERENCE / w) - 1) : 1;
         nCargasItem = Math.ceil(nSubItem / capPorCarga);
 
         const physicalBlocks = Math.ceil(bloques20mItem);
@@ -350,7 +350,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
-          <div><h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight font-sans">Plan Táctico Corte Espuma</h2><p className="text-xs text-gray-500 font-medium font-sans">Gestión de Cargas Carrusel (Ø 7m) - Ocupación por Ancho</p></div>
+          <div><h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight font-sans">Plan Táctico Corte Espuma</h2><p className="text-xs text-gray-500 font-medium font-sans">Gestión de Cargas Carrusel (Radio 3.5m) - Ocupación por Ancho</p></div>
         </div>
       </div>
 
@@ -503,7 +503,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         
                         {center.id === '1000' && (
                           <>
-                            <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Número de subbloques que se pueden cargar por batch basado en ancho">BL./CARGA</th>
+                            <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Número de subbloques que se pueden cargar por batch basado en ancho">SUBBL./CARGA</th>
                             <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Bloques 20m</th>
                             <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase">Cargas</th>
                           </>
