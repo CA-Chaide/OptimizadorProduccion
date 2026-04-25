@@ -21,6 +21,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Constantes de ingeniería de tiempos (en segundos)
 const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico completo
@@ -147,7 +154,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dimensions };
   };
 
-  // Motor de filtrado REESTRUCTURADO para excluir Producto Terminado y filtrar por par (Resp+Sector)
   const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
     if (!data || data.length === 0) return [];
     
@@ -167,7 +173,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
 
-      // REGLA MAESTRA 2: El material debe coincidir con AL MENOS UN GRUPO en su combinación (Resp + Sector)
+      // REGLA MAESTRA 2: El material debe coincidir simultáneamente con Responsable Y Sector de un grupo
       const matchesAnyGroup = relevantGroups.some(g => {
         const groupRest = restricciones.filter(r => r.codigo_grupo === g.codigo_grupo);
         
@@ -181,12 +187,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
           .filter(v => v !== '');
 
-        // Validación de Responsable
-        const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
-        
-        // Validación de Sector
-        const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
-        
         // Validación especial Almacén 1006 (Carrusel) para Planta 1000
         if (centro === '1000' && itemAlmValue === '1006') {
           const carruselResps = groupRest
@@ -194,16 +194,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
           
           if (carruselResps.length > 0) {
-            return carruselResps.includes(itemResp) && matchSector;
+            return carruselResps.includes(itemResp);
           }
         }
+
+        const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
+        const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
 
         return matchResp && matchSector;
       });
 
       if (!matchesAnyGroup) return false;
 
-      // Filtro de Fecha
       if (applyDateFilter) {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -219,22 +221,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
-
-  const calculateResponsiblesAudit = (data: any[]) => {
-    const map = new Map<string, { code: string; orders: number; units: number }>();
-    data.forEach(o => {
-      const code = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '—').trim();
-      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      if (!map.has(code)) map.set(code, { code, orders: 0, units: 0 });
-      const entry = map.get(code)!;
-      entry.orders += 1;
-      entry.units += qty;
-    });
-    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code));
-  };
-
-  const audit1000 = useMemo(() => calculateResponsiblesAudit(provC1000), [provC1000]);
-  const audit2000 = useMemo(() => calculateResponsiblesAudit(provC2000), [provC2000]);
 
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; categoria: string; units: number; subbloques: number; bloques20m: number; timeLog: number }>();
@@ -340,13 +326,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   }, [restricciones, grupos]);
 
   if (!mounted) return null;
-
-  if (isLoading) return (
-    <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Corte Espuma...</p>
-    </div>
-  );
 
   const renderTableBody = (data: any[], centroId: string) => {
     return data.map((o, i) => {
@@ -518,90 +497,56 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
 
           {[ 
-            { t: 'Resumen Ejecutivo Planta 1000', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600', totals: summaryTotals1000, audit: audit1000 }, 
-            { t: 'Resumen Ejecutivo Planta 2000', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000, audit: audit2000 } 
+            { t: 'Resumen Ejecutivo Planta 1000', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600', totals: summaryTotals1000 }, 
+            { t: 'Resumen Ejecutivo Planta 2000', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000 } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className={cn("text-xs font-black uppercase flex items-center gap-2 px-1", center.c)}>
-                  <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t}
-                </h3>
-              </div>
+              <h3 className={cn("text-xs font-black uppercase flex items-center gap-2 px-1", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t}
+              </h3>
               
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <div className="lg:col-span-1">
-                  <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white h-full">
-                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                      <h4 className="text-[9px] font-black uppercase text-gray-400">Auditoría de Carga por Responsable</h4>
-                    </div>
-                    <div className="max-h-[350px] overflow-y-auto">
-                      <table className="w-full text-center border-collapse">
-                        <thead className="bg-gray-100 sticky top-0 text-[8px] font-black uppercase text-gray-500">
-                          <tr>
-                            <th className="px-2 py-3 border-r border-dashed">Resp.</th>
-                            <th className="px-2 py-3 border-r border-dashed">Órd.</th>
-                            <th className="px-2 py-3">Units</th>
+              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
+                      <tr>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría (Dens)</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Unidades</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-purple-700 bg-purple-50/10">Subbloques</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/20 font-black">Bloques (20m)</th>
+                        <th className="px-4 py-4 text-center text-teal-700 bg-teal-50/30 font-black"><Truck className="w-3 h-3 inline mr-1"/> Carga/Desc. (h)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                      {center.d.length === 0 ? (
+                        <tr><td colSpan={6} className="py-8 text-center text-gray-400 italic">Sin datos programados</td></tr>
+                      ) : (
+                        center.d.map((row, i) => (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
+                            <td className="px-3 py-3 font-mono text-gray-500 border-r border-dashed border-gray-100">{row.fecha}</td>
+                            <td className="px-3 py-3 font-bold text-gray-700 border-r border-dashed border-gray-100 uppercase">{row.categoria}</td>
+                            <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.units.toLocaleString()}</td>
+                            <td className="px-3 py-3 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5">{row.subbloques.toFixed(2)}</td>
+                            <td className="px-3 py-3 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/10">{row.bloques20m.toFixed(1)}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-teal-600 text-center bg-teal-50/10">{row.timeLog.toFixed(2)}</td>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50 text-[10px]">
-                          {center.audit.map(a => (
-                            <tr key={a.code} className="hover:bg-gray-50">
-                              <td className="px-2 py-2 font-bold text-gray-700 border-r border-dashed">{a.code}</td>
-                              <td className="px-2 py-2 text-gray-400 border-r border-dashed">{a.orders}</td>
-                              <td className="px-2 py-2 font-mono font-bold text-primary">{a.units.toLocaleString()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card>
+                        ))
+                      )}
+                    </tbody>
+                    <tfoot className="bg-gray-800 text-white text-[10px] font-bold sticky bottom-0">
+                      <tr>
+                        <td colSpan={2} className="px-3 py-3 text-right">TOTALES FILTRADOS</td>
+                        <td className="px-3 py-3 font-mono">{center.totals.units.toLocaleString()}</td>
+                        <td className="px-3 py-3 font-mono">{center.totals.subbloques.toFixed(2)}</td>
+                        <td className="px-3 py-3 font-mono">{center.totals.bloques20m.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono">{center.totals.timeLog.toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
-
-                <div className="lg:col-span-3">
-                  <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                    <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                    <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
-                      <table ref={center.s.table} className="w-full border-collapse text-center">
-                        <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
-                          <tr>
-                            <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha</th>
-                            <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría (Dens)</th>
-                            <th className="px-3 py-4 border-r border-dashed border-gray-200">Unidades</th>
-                            <th className="px-3 py-4 border-r border-dashed border-gray-200 text-purple-700 bg-purple-50/10">Subbloques</th>
-                            <th className="px-3 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/20 font-black">Bloques (20m)</th>
-                            <th className="px-4 py-4 text-center text-teal-700 bg-teal-50/30 font-black"><Truck className="w-3 h-3 inline mr-1"/> Carga/Desc. (h)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 text-[10px]">
-                          {center.d.length === 0 ? (
-                            <tr><td colSpan={6} className="py-8 text-center text-gray-400 italic">Sin datos programados</td></tr>
-                          ) : (
-                            center.d.map((row, i) => (
-                              <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
-                                <td className="px-3 py-3 font-mono text-gray-500 border-r border-dashed border-gray-100">{row.fecha}</td>
-                                <td className="px-3 py-3 font-bold text-gray-700 border-r border-dashed border-gray-100 uppercase">{row.categoria}</td>
-                                <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.units.toLocaleString()}</td>
-                                <td className="px-3 py-3 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5">{row.subbloques.toFixed(2)}</td>
-                                <td className="px-3 py-3 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/10">{row.bloques20m.toFixed(1)}</td>
-                                <td className="px-4 py-3 font-mono font-bold text-teal-600 text-center bg-teal-50/10">{row.timeLog.toFixed(2)}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                        <tfoot className="bg-gray-800 text-white text-[10px] font-bold sticky bottom-0">
-                          <tr>
-                            <td colSpan={2} className="px-3 py-3 text-right">TOTALES FILTRADOS</td>
-                            <td className="px-3 py-3 font-mono">{center.totals.units.toLocaleString()}</td>
-                            <td className="px-3 py-3 font-mono">{center.totals.subbloques.toFixed(2)}</td>
-                            <td className="px-3 py-3 font-mono">{center.totals.bloques20m.toFixed(1)}</td>
-                            <td className="px-4 py-3 font-mono">{center.totals.timeLog.toFixed(2)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </Card>
-                </div>
-              </div>
+              </Card>
             </div>
           ))}
         </TabsContent>
@@ -708,7 +653,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
-          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
