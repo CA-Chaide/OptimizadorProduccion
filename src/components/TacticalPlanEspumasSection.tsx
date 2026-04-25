@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Truck, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, AlertTriangle } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday, parseISO, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   Popover,
@@ -27,7 +27,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/select";
 
 // Constantes de ingeniería de tiempos (en segundos)
 const SECONDS_LOAD_BLOCK = 300;      // 5 min por subir un bloque físico completo
@@ -439,18 +439,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       {format(viewDate, 'MMMM yyyy', { locale: es })}
                     </h3>
                     <div className="flex gap-1 bg-gray-50 rounded-lg p-0.5">
-                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 w-6">
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6">
                         <ChevronLeft className="w-3 h-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 w-6">
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6">
                         <ChevronRight className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-7 gap-y-0.5 text-center mb-2">
-                    {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(day => (
-                      <div key={day} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>
+                    {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((day, idx) => (
+                      <div key={`head-${day}-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>
                     ))}
                     {calendarDays.map((day, idx) => {
                       if (!day) return <div key={`empty-${idx}`} className="p-1" />;
@@ -638,7 +638,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
-          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
