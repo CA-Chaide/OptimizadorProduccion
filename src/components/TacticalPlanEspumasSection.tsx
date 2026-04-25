@@ -165,15 +165,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     return data.filter(o => {
       const info = extractMaterialInfo(o);
-      
-      // REGLA 1: Excluir Producto Terminado (Códigos que inician con '1')
       if (info.code.startsWith('1')) return false;
 
-      // REGLA 2: Validar Centro
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
 
-      // REGLA 3: Filtrado ESTRICTO por Almacén y Centro
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (centro === '1000' && itemAlmValue !== '1006') return false;
       if (centro === '2000' && itemAlmValue !== '2006') return false;
@@ -183,7 +179,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       const matchesAnyGroup = relevantGroups.some(g => {
         const groupRest = restricciones.filter(r => r.codigo_grupo === g.codigo_grupo);
-        
         const respCodes = groupRest
           .filter(r => r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Resp. Control' || r.nombre_restriccion === 'RespCtrlProd_Carrusel')
           .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -196,7 +191,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
         const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
-
         return matchResp && matchSector;
       });
 
@@ -208,7 +202,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const matchDate = selectedDate === 'all' || itemDate === selectedDate;
         if (!matchDate) return false;
       }
-      
       return true;
     });
   };
@@ -219,7 +212,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
   const calculateSummary = (data: any[]) => {
-    const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; timeLog: number }>();
+    const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
     
     data.forEach(o => {
       const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
@@ -230,12 +223,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const ancho = parseFloat(info.ancho) || 0;
+      const largo = parseFloat(info.largo) || 0;
       const esp = parseFloat(info.esp) || 0;
       const dens = parseFloat(info.dens) || 0;
+      const apertura = parseFloat(info.apertura) || 0;
       
       const usefulHeight = isNaN(dens) ? 103 : (dens < 30 ? 103 : 85);
       const itemSubbloques = (qty * esp) / usefulHeight;
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
+      
+      // Lógica de Cargas: Diámetro útil (Apertura) * PI / Largo
+      let itemCargas = 0;
+      if (!isNaN(apertura) && largo > 0) {
+        const circ = apertura * Math.PI; // Apertura en cm
+        const blPorVuelta = Math.floor(circ / (largo / 10)); // Largo mm -> cm
+        if (blPorVuelta > 0) {
+          itemCargas = itemSubbloques / blPorVuelta;
+        }
+      }
       
       const physicalBlocksCount = Math.ceil(itemBloques20m);
       const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
@@ -245,13 +250,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemTimeLog = (tCarga + tDescarga + tCoches) / 3600;
 
       if (!groupsMap.has(key)) {
-        groupsMap.set(key, { fecha, dens: info.dens, apertura: info.apertura, units: 0, subbloques: 0, bloques20m: 0, timeLog: 0 });
+        groupsMap.set(key, { fecha, dens: info.dens, apertura: info.apertura, units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
       }
       
       const entry = groupsMap.get(key)!;
       entry.units += qty;
       entry.subbloques += itemSubbloques;
       entry.bloques20m += itemBloques20m;
+      entry.cargas += itemCargas;
       entry.timeLog += itemTimeLog;
     });
 
@@ -268,8 +274,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       units: acc.units + row.units,
       subbloques: acc.subbloques + row.subbloques,
       bloques20m: acc.bloques20m + row.bloques20m,
+      cargas: acc.cargas + row.cargas,
       timeLog: acc.timeLog + row.timeLog
-    }), { units: 0, subbloques: 0, bloques20m: 0, timeLog: 0 });
+    }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
   }, [summaryData1000]);
 
   const summaryTotals2000 = useMemo(() => {
@@ -277,8 +284,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       units: acc.units + row.units,
       subbloques: acc.subbloques + row.subbloques,
       bloques20m: acc.bloques20m + row.bloques20m,
+      cargas: acc.cargas + row.cargas,
       timeLog: acc.timeLog + row.timeLog
-    }), { units: 0, subbloques: 0, bloques20m: 0, timeLog: 0 });
+    }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
   }, [summaryData2000]);
 
   const setupScrollSync = (group: any) => {
@@ -327,18 +335,27 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const hasCategory = cat !== '' && cat !== 'N/A';
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      let alturaTotal = 0, usefulHeight = 103, nCycles = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0;
+      let alturaTotal = 0, usefulHeight = 103, nCycles = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0, nCargasItem = 0;
       
       if (hasCategory) {
         const e = parseFloat(info.esp) || 0;
         const d = parseFloat(info.dens) || 0;
         const w = parseFloat(info.ancho) || 0;
+        const l = parseFloat(info.largo) || 0;
+        const aperture = parseFloat(info.apertura) || 0;
+
         alturaTotal = qty * e;
         usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
         nCycles = Math.floor(usefulHeight / (e || 1)) + 4;
         nSubItem = alturaTotal / usefulHeight;
         bloques20mItem = (w * nSubItem) / 2000;
         
+        if (!isNaN(aperture) && l > 0) {
+          const circ = aperture * Math.PI;
+          const blVuelta = Math.floor(circ / (l / 10));
+          if (blVuelta > 0) nCargasItem = nSubItem / blVuelta;
+        }
+
         const physicalBlocksCount = Math.ceil(bloques20mItem);
         const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
         const sheetsPerRep = e > 10 ? 4 : 3;
@@ -354,15 +371,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-3 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
           <td className="px-3 py-3 font-medium text-gray-400 border-r border-dashed border-gray-100 uppercase">{hasCategory ? cat : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.dens : '—'}</td>
+          <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.apertura : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.ancho : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.largo : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{hasCategory ? info.esp : '—'}</td>
           <td className="px-3 py-3 font-semibold text-gray-900 border-r border-dashed border-gray-100 font-mono">{qty}</td>
           <td className="px-2 py-3 font-mono font-bold text-indigo-900 border-r border-dashed border-gray-100 bg-indigo-50/10">{hasCategory ? alturaTotal.toFixed(2) : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 bg-teal-50/10">{hasCategory ? usefulHeight : '—'}</td>
-          <td className="px-2 py-3 font-mono font-bold border-r border-dashed border-gray-100 bg-teal-50/10 text-teal-700">{hasCategory ? nCycles : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
+          <td className="px-2 py-3 font-mono font-black text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5">{hasCategory ? nCargasItem.toFixed(1) : '—'}</td>
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-teal-600 bg-teal-50/5">
             {hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}
           </td>
@@ -427,7 +444,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-7 gap-y-0.5 text-center mb-2">
-                    {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((day, idx) => (
+                    {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day, idx) => (
                       <div key={`head-day-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>
                     ))}
                     {calendarDays.map((day, idx) => {
@@ -478,12 +495,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-3 border-r border-dashed border-gray-200">Unidades</th>
                         <th className="px-2 py-3 border-r border-dashed border-gray-200 text-purple-700">Subbloques</th>
                         <th className="px-2 py-3 border-r border-dashed border-gray-200 text-orange-700 font-black">Bloques (20m)</th>
+                        <th className="px-2 py-3 border-r border-dashed border-gray-200 text-purple-800 bg-purple-50/20">Nro Cargas</th>
                         <th className="px-2 py-3 text-center text-teal-700 bg-teal-50/30">Carga/Desc. (h)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={7} className="py-6 text-center text-gray-400 italic">Sin datos programados</td></tr>
+                        <tr><td colSpan={8} className="py-6 text-center text-gray-400 italic">Sin datos programados</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -493,6 +511,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-2 py-2 font-mono border-r border-dashed border-gray-100">{row.units.toLocaleString()}</td>
                             <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100">{row.subbloques.toFixed(2)}</td>
                             <td className="px-2 py-2 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
+                            <td className="px-2 py-2 font-mono font-black text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5">{row.cargas.toFixed(1)}</td>
                             <td className="px-2 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
                           </tr>
                         ))
@@ -504,6 +523,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="px-2 py-2.5 font-mono">{center.totals.units.toLocaleString()}</td>
                         <td className="px-2 py-2.5 font-mono">{center.totals.subbloques.toFixed(2)}</td>
                         <td className="px-2 py-2.5 font-mono">{center.totals.bloques20m.toFixed(1)}</td>
+                        <td className="px-2 py-2.5 font-mono">{center.totals.cargas.toFixed(1)}</td>
                         <td className="px-2 py-2.5 font-mono">{center.totals.timeLog.toFixed(2)}</td>
                       </tr>
                     </tfoot>
@@ -526,7 +546,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                  <table ref={center.s.table} className="w-full border-collapse text-center font-serif">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Orden</th>
@@ -535,15 +555,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">APERT.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ANCHO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 text-indigo-900 bg-indigo-50/30">ALTURA TOT.</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 text-teal-900 bg-teal-50/20">ALTURA UTIL</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-teal-50/10 text-teal-700">NRO CICLOS</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10">NRO SUBBL.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-orange-50/10 font-black">BLOQUES 20M</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-100 bg-purple-50/10 font-black">NRO CARGAS</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-100 text-teal-700 bg-teal-50/30 text-center">Carga/Desc. (h)</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
@@ -583,7 +603,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <div className={cn("w-2 h-2 rounded-full", center.border)} /> Planta {center.label}
                 </h3>
                 <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                  <table className="w-full border-collapse text-center">
+                  <table className="w-full border-collapse text-center font-serif">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro Técnico</th>
@@ -626,7 +646,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <div style={{ width: center.s.width[0], height: '1px' }} />
                 </div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                  <table ref={center.s.table} className="w-full border-collapse text-center font-serif">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-4 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
