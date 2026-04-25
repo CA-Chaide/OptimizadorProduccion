@@ -78,12 +78,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
   };
 
-  const loadData = async (filteredGroups: Grupo[]) => {
+  const fetchOrdenes = async () => {
     try {
       const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
       const provData = resProv.data?.data || resProv.data || [];
       setOrders(Array.isArray(provData) ? provData : []);
+    } catch (error) {
+      console.error('Error cargando órdenes:', error);
+    }
+  };
 
+  const fetchTiemposEnsamblado = async (filteredGroups: Grupo[]) => {
+    try {
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
@@ -93,7 +99,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }
       setTiemposEnsamblado(allTiempos);
     } catch (error) {
-      console.error('Error cargando datos:', error);
+      console.error('Error cargando tiempos:', error);
     }
   };
 
@@ -162,12 +168,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
     
-    // Perímetro interior útil para evitar colisiones
+    // El radio útil es la distancia desde el centro del carrusel hasta el inicio del bloque
     const innerRadius = CARRUSEL_RADIUS_CM - largo;
     if (innerRadius <= 0) return { subbloquesPorCarga: 1, totalCargas: Math.ceil(totalSubblocks) };
 
     const innerCircumference = 2 * Math.PI * innerRadius;
-    const subbloquesPorCarga = Math.max(1, Math.floor(innerCircumference / ancho));
+    const subbloquesPorCarga = Math.max(1, Math.floor(innerCircumference / ancho) - 1); // Holgura de 1 unidad
     const totalCargas = Math.ceil(totalSubblocks / subbloquesPorCarga);
 
     return { subbloquesPorCarga, totalCargas };
@@ -328,7 +334,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
           <td className="px-2 py-2 font-mono font-bold text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{hasCategory ? alturaTotal.toFixed(1) : '—'}</td>
           <td className="px-2 py-2 font-mono font-bold text-orange-700 border-r border-gray-100 bg-orange-50/10">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5" title="Capacidad física del carrusel según radio útil">{hasCategory ? subbloquesPorCarga : '—'}</td>
+          <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5" title="Capacidad física del carrusel según radio útil de carga interior">{hasCategory ? subbloquesPorCarga : '—'}</td>
           
           {centroId === '1000' && (
             <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
@@ -342,6 +348,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
+  if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -349,7 +357,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Motor de Carga Industrial | Diámetro 7m (R 3.5m) | Utilización Física de Subbloques</p>
+            <p className="text-xs text-gray-500 font-medium">Motor de Carga Industrial | Radio Útil 3.5m | Evitación de Colisiones Radiales</p>
           </div>
         </div>
       </div>
@@ -482,7 +490,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30">ALT. TOT.</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 uppercase">Subbl.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Capacidad física del carrusel según radio útil">SUBBL./CARGA</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Capacidad física del carrusel según radio útil de carga interior">SUBBL./CARGA</th>
                         
                         {center.id === '1000' && (
                           <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Bloques 20m</th>
