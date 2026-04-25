@@ -220,6 +220,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemSubbloques = (qty * esp) / usefulHeight;
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
+      // Aplicación del criterio de carga: (Circunferencia / Largo) - 1 de holgura
       const capPorCarga = largo > 0 ? Math.max(1, Math.floor(circ / largo) - 1) : 1;
       const itemCargas = Math.ceil(itemSubbloques / capPorCarga);
       
@@ -265,7 +266,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
     const firstDay = getDay(start); 
-    const padding = Array.from({ length: firstDay === 0 ? 6 : firstDay - 1 }, () => null);
+    const padding = Array.from({ length: firstDay === 0 ? 6 : firstDay - 1 }, (_, i) => null);
     return [...padding, ...days];
   }, [viewDate]);
 
@@ -289,7 +290,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const hasCategory = cat !== '' && cat !== 'N/A';
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      let alturaTotal = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0, nCargasItem = 0;
+      let alturaTotal = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0, nCargasItem = 0, capPorCarga = 0;
       
       if (hasCategory) {
         const e = parseFloat(info.esp) || 0;
@@ -302,7 +303,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nSubItem = alturaTotal / usefulHeight;
         bloques20mItem = (w * nSubItem) / 2000;
         
-        const capPorCarga = l > 0 ? Math.max(1, Math.floor(circ / l) - 1) : 1;
+        // Aplicación del criterio de carga solicitado: (Circunferencia / Largo) - 1
+        capPorCarga = l > 0 ? Math.max(1, Math.floor(circ / l) - 1) : 1;
         nCargasItem = Math.ceil(nSubItem / capPorCarga);
 
         const physicalBlocks = Math.ceil(bloques20mItem);
@@ -333,6 +335,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           
           {isQuito && (
             <>
+              <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5" title="Bloques que caben en un batch/carga de carrusel">{hasCategory ? capPorCarga : '—'}</td>
               <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
               <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? Math.ceil(nCargasItem) : '—'}</td>
             </>
@@ -503,7 +506,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         
                         {center.id === '1000' && (
                           <>
-                            <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Bloques</th>
+                            <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Número de bloques que se pueden cargar por batch/ciclo">BLOQUES/CARGA</th>
+                            <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Bloques 20m</th>
                             <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase">Cargas</th>
                           </>
                         )}
