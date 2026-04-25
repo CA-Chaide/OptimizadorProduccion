@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -42,6 +43,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // Estado para el calendario
   const [viewDate, setViewDate] = useState(new Date());
 
+  // Refs para sincronización de scroll y anchos de tabla
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollTiempos1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -124,23 +126,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return dates;
   }, [ordenes]);
 
-  // Motor de filtrado con lógica de segregación para Almacén 1006
+  // Motor de filtrado con lógica de segregación para Almacén 1006 y Alias "Resp. Control"
   const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
     if (!data || data.length === 0) return [];
     
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
 
-    const groupCorteLaminado = relevantGroups.find(g => g.nombre_grupo?.toLowerCase().includes('corte y laminado'));
-    const carruselRespCodes = groupCorteLaminado 
-      ? restricciones
-          .filter(r => r.codigo_grupo === groupCorteLaminado.codigo_grupo && (r.nombre_restriccion === 'Resp. Control' || r.nombre_restriccion === 'RespCtrlProd_Carrusel'))
-          .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-          .filter(v => v !== '')
-      : [];
+    // Buscar lista de responsables especial (Carrusel)
+    const carruselRespCodes = restricciones
+      .filter(r => (r.nombre_restriccion === 'Resp. Control' || r.nombre_restriccion === 'RespCtrlProd_Carrusel'))
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
 
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
+    
     const respCodes = groupRest
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -155,9 +156,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
 
-      const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
+      const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       
+      // Lógica de segregación Carrusel (Almacén 1006) para Centro 1000
       if (centro === '1000' && itemAlmValue === '1006') {
         if (carruselRespCodes.length > 0 && !carruselRespCodes.includes(itemResp)) return false;
       } else {
@@ -165,6 +167,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         if (allAllowedResps.length > 0 && !allAllowedResps.includes(itemResp)) return false;
       }
 
+      // Validación de Sector
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
       if (sectorCodes.length > 0 && itemSectorValue !== '') {
         const matchSector = sectorCodes.some(code => itemSectorValue.includes(code));
@@ -614,7 +617,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS..</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS.</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ANCHO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ESP.</th>
@@ -658,7 +661,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, 
             { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } 
           ].map(center => {
-            const list = restrictionsByCenter.get(center.id) || [];
+            const list = (restrictionsByCenter?.get?.(center.id)) || [];
             return (
               <div key={center.id} className="space-y-3">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.color)}>
@@ -696,7 +699,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
-          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
