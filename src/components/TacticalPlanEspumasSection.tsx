@@ -124,15 +124,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return dates;
   }, [ordenes]);
 
-  // Motor de filtrado corregido con reglas de segregación para Almacén 1006
+  // Motor de filtrado con lógica de segregación para Almacén 1006
   const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
     if (!data || data.length === 0) return [];
     
-    // Grupos relevantes para este centro
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
 
-    // Obtener restricciones del grupo "Corte y Laminado" para el Carrusel
     const groupCorteLaminado = relevantGroups.find(g => g.nombre_grupo?.toLowerCase().includes('corte y laminado'));
     const carruselRespCodes = groupCorteLaminado 
       ? restricciones
@@ -141,7 +139,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           .filter(v => v !== '')
       : [];
 
-    // Códigos generales de responsable para todos los grupos de este centro
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
     const respCodes = groupRest
@@ -155,31 +152,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       .filter(v => v !== '');
 
     return data.filter(o => {
-      // 1. Validar Centro
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
 
-      // 2. REGLA CRÍTICA CARRUSEL (PLANA 1000 + ALMACÉN 1006)
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       
       if (centro === '1000' && itemAlmValue === '1006') {
-        // Solo permitir si el responsable está en la lista de Carrusel
         if (carruselRespCodes.length > 0 && !carruselRespCodes.includes(itemResp)) return false;
       } else {
-        // Para otros almacenes o centros, validar contra la lista general
         const allAllowedResps = [...respCodes, ...carruselRespCodes];
         if (allAllowedResps.length > 0 && !allAllowedResps.includes(itemResp)) return false;
       }
 
-      // 3. Validar Sector
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
       if (sectorCodes.length > 0 && itemSectorValue !== '') {
         const matchSector = sectorCodes.some(code => itemSectorValue.includes(code));
         if (!matchSector) return false;
       }
 
-      // 4. Validar Fecha (opcional según el tab)
       if (applyDateFilter) {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -217,7 +208,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dimensions };
   };
 
-  // Auditoría de responsables (Visualización complementaria)
   const calculateResponsiblesAudit = (data: any[]) => {
     const map = new Map<string, { code: string; orders: number; units: number }>();
     data.forEach(o => {
@@ -234,7 +224,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const audit1000 = useMemo(() => calculateResponsiblesAudit(provC1000), [provC1000]);
   const audit2000 = useMemo(() => calculateResponsiblesAudit(provC2000), [provC2000]);
 
-  // Resumen Ejecutivo con nueva fórmula de Bloque (20m)
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; categoria: string; units: number; subbloques: number; bloques20m: number; timeLog: number }>();
     
@@ -252,14 +241,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const esp = parseFloat(info.esp) || 0;
       const dens = parseFloat(info.dens) || 0;
       
-      // Cálculo de Subbloques (Vertical)
       const usefulHeight = isNaN(dens) ? 103 : (dens < 30 ? 103 : 85);
       const itemSubbloques = (qty * esp) / usefulHeight;
 
-      // Cálculo de Bloques 20m (CORREGIDO: Ancho * Subbloques / 2000)
+      // FÓRMULA CORREGIDA: (Ancho * Subbloques) / 2000
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
-      // Cálculo de Tiempos Logísticos
       const physicalBlocksCount = Math.ceil(itemBloques20m);
       const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
       const sheetsPerRep = esp > 10 ? 4 : 3;
@@ -329,7 +316,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [...padding, ...days];
   }, [viewDate]);
 
-  // Agrupar restricciones por centro para el tab de Filtros
   const restrictionsByCenter = useMemo(() => {
     const map = new Map<string, Restriccion[]>();
     restricciones.forEach(r => {
@@ -367,7 +353,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nCycles = Math.floor(usefulHeight / (e || 1)) + 4;
         nSubItem = alturaTotal / usefulHeight;
         
-        // CORRECCIÓN: Fórmula (Ancho * Subbloques) / 2000
+        // FÓRMULA CORREGIDA: (Ancho * Subbloques) / 2000
         bloques20mItem = (w * nSubItem) / 2000;
         
         const physicalBlocksCount = Math.ceil(bloques20mItem);
@@ -379,7 +365,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         residuo = nSubItem % 7;
         if (residuo > 0) {
-          // REGLA CENTRO 2000: No aplica máquinas de apoyo
           if (centroId === '2000') {
              destino = "+1 CARGA PPAL.";
           } else {
@@ -532,7 +517,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </div>
               
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {/* Auditoría por responsable */}
                 <div className="lg:col-span-1">
                   <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white h-full">
                     <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
@@ -561,7 +545,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </Card>
                 </div>
 
-                {/* Tabla de Resumen Técnico */}
                 <div className="lg:col-span-3">
                   <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
                     <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
@@ -631,7 +614,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS..</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ANCHO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ESP.</th>
