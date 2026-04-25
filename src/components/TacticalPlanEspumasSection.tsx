@@ -135,7 +135,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
     
-    // Extraer apertura de la columna CATEGORIA
+    // Extraer apertura de la columna CATEGORIA prioritariamente
     if (catStr) {
       const apertureMatch = catStr.match(/194\.5|206|219/);
       if (apertureMatch) dimensions.apertura = apertureMatch[0];
@@ -150,6 +150,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         dimensions.ancho = dimMatch[1];
         dimensions.largo = dimMatch[2];
         if (dimMatch[3]) dimensions.esp = dimMatch[3];
+      }
+      
+      // Fallback para apertura si no estaba en categoría
+      if (dimensions.apertura === '—') {
+        const apertureMatch = desc.match(/194\.5|206|219/);
+        if (apertureMatch) dimensions.apertura = apertureMatch[0];
       }
     }
     return { code, desc, ...dimensions };
@@ -228,8 +234,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       const usefulHeight = isNaN(dens) ? 103 : (dens < 30 ? 103 : 85);
       const itemSubbloques = (qty * esp) / usefulHeight;
-      
-      // Bloques (20m) = (Ancho * Subbloques) / 2000
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
       let itemCargas = 0;
@@ -346,8 +350,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         alturaTotal = qty * e;
         usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
         nSubItem = alturaTotal / usefulHeight;
-        
-        // Bloques (20m) = (Ancho * Subbloques) / 2000
         bloques20mItem = (w * nSubItem) / 2000;
         
         if (!isNaN(aperture) && l > 0) {
@@ -364,7 +366,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         tiempoLogistico = (tCarga + tDescarga + tCoches) / 3600;
       }
       return (
-        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
+        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px] font-sans">
           <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
           <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
           <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
@@ -414,7 +416,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { v: 'ordenes', l: 'Provisionales', i: Package },
             { v: 'tiempos', l: 'Tiempos', i: Clock }
           ].map(tab => (
-            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm font-sans">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
             </TabsTrigger>
           ))}
@@ -422,7 +424,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
           <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 font-sans">
               <div className="p-2 bg-primary/10 rounded-xl">
                 <CalendarIcon className="w-4 h-4 text-primary" />
               </div>
@@ -436,12 +438,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm">
+                <Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm font-sans">
                   <Filter className="w-3 h-3" /> Fecha
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-                <div className="bg-white p-3">
+                <div className="bg-white p-3 font-sans">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-[10px] font-bold text-gray-800 capitalize">
                       {format(viewDate, 'MMMM yyyy', { locale: es })}
@@ -493,14 +495,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Planta 2000 - Guayaquil (Almacén 2006)', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000 } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 tracking-wider px-1", center.c)}>
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 tracking-wider px-1 font-sans", center.c)}>
                 <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}
               </h3>
               
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                  <table ref={center.s.table} className="w-full border-collapse text-center font-sans">
                     <thead className="bg-gray-50/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                       <tr>
                         <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
@@ -550,17 +552,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-0 space-y-10 animate-in fade-in duration-400">
           {[ 
-            { t: 'Quito - Carrusel 1006', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', tMap: getTiemposMap(tiemposC1000) }, 
-            { t: 'Guayaquil - Laminado 2006', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', tMap: getTiemposMap(tiemposC2000) } 
+            { t: 'Quito - Carrusel 1006', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700' }, 
+            { t: 'Guayaquil - Laminado 2006', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 font-sans", center.c)}>
                 <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                  <table ref={center.s.table} className="w-full border-collapse text-center font-sans">
                     <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-gray-100">Orden</th>
@@ -583,7 +585,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {renderTableBody(center.d, center.tMap)}
+                      {renderTableBody(center.d)}
                     </tbody>
                   </table>
                 </div>
@@ -593,7 +595,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="grupos">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">
             {grupos.map(g => (
               <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
                 <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
@@ -605,7 +607,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="restricciones" className="mt-0 space-y-8">
+        <TabsContent value="restricciones" className="mt-0 space-y-8 animate-in slide-in-from-bottom-2 duration-400">
           {[ 
             { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, 
             { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } 
@@ -613,11 +615,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             const list = restrictionsByCenter?.get(center.id) || [];
             return (
               <div key={center.id} className="space-y-4">
-                <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.color)}>
+                <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider font-sans", center.color)}>
                   <div className={cn("w-2 h-2 rounded-full", center.border)} /> Parámetros {center.label}
                 </h3>
                 <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-                  <table className="w-full border-collapse text-center">
+                  <table className="w-full border-collapse text-center font-sans">
                     <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-6 py-4 border-r border-gray-50">Restricción</th>
@@ -653,13 +655,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Catálogo Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.c)}>
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider font-sans", center.c)}>
                 <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                  <table ref={center.s.table} className="w-full border-collapse text-center font-sans">
                     <thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-6 py-4 border-r border-gray-50">Material</th>
@@ -692,18 +694,4 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </Tabs>
     </div>
   );
-};
-
-const getTiemposMap = (tiempos: any[]) => {
-  const map = new Map<string, number>();
-  tiempos.forEach(t => {
-    const matStr = String(t.CodMaterial || '').trim();
-    const match = matStr.match(/^(\d+)/);
-    const code = match ? match[1].slice(-8) : matStr.slice(-8);
-    if (code) {
-      const timeVal = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
-      map.set(code, timeVal);
-    }
-  });
-  return map;
 };
