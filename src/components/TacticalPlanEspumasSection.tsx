@@ -21,7 +21,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-// Constantes de ingeniería de carrusel
+// Constantes de ingeniería de carrusel (Solo aplican para Quito 1000)
 const CARRUSEL_DIAMETER_CM = 700; // 7 metros
 const SECONDS_LOAD_BLOCK = 300;   // 5 min
 const SECONDS_REPETITION = 45;    // 45 seg
@@ -133,6 +133,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
     
+    // Extracción estricta de Apertura desde Categoría
     if (catStr) {
       const apertureMatch = catStr.match(/194\.5|206|219/);
       if (apertureMatch) dimensions.apertura = apertureMatch[0];
@@ -181,6 +182,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
           .filter(v => v !== '');
         const sectorCodes = groupRest.filter(r => r.nombre_restriccion === 'SECTOR').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
+        
+        // Validación obligatoria por Binomio: Responsable Y Sector
         return (respCodes.length === 0 || respCodes.includes(itemResp)) && (sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code)));
       });
 
@@ -199,7 +202,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
-  const calculateSummary = (data: any[]) => {
+  const calculateSummary = (data: any[], centroId: string) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
     const circ = CARRUSEL_DIAMETER_CM * Math.PI;
 
@@ -235,8 +238,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.dens.localeCompare(b.dens) || a.apertura.localeCompare(b.apertura));
   };
 
-  const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
-  const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
+  const summaryData1000 = useMemo(() => calculateSummary(provC1000, '1000'), [provC1000]);
+  const summaryData2000 = useMemo(() => calculateSummary(provC2000, '2000'), [provC2000]);
 
   const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
   const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
@@ -280,7 +283,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   if (!mounted) return null;
 
-  const renderTableBody = (data: any[]) => {
+  const renderTableBody = (data: any[], centroId: string) => {
     const circ = CARRUSEL_DIAMETER_CM * Math.PI;
     return data.map((o, i) => {
       const cat = String(o.CATEGORIA || o.Categoria || '').trim();
@@ -306,6 +309,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const physicalBlocks = Math.ceil(bloques20mItem);
         tiempoLogistico = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
       }
+
+      const isQuito = centroId === '1000';
+
       return (
         <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px] font-sans">
           <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
@@ -314,15 +320,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
           <td className="px-3 py-2 text-gray-400 border-r border-gray-100 uppercase text-[9px]">{hasCategory ? cat : '—'}</td>
           <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100 bg-gray-50/10">{hasCategory ? info.dens : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-gray-100 bg-blue-50/10">{hasCategory ? info.apertura : '—'}</td>
+          
+          {isQuito && (
+            <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-gray-100 bg-blue-50/10">{hasCategory ? info.apertura : '—'}</td>
+          )}
+          
           <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.ancho : '—'}</td>
           <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.largo : '—'}</td>
           <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.esp : '—'}</td>
           <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
           <td className="px-2 py-2 font-mono font-bold text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{hasCategory ? alturaTotal.toFixed(1) : '—'}</td>
           <td className="px-2 py-2 font-mono font-bold text-orange-700 border-r border-gray-100 bg-orange-50/10">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? nCargasItem.toFixed(1) : '—'}</td>
+          
+          {isQuito && (
+            <>
+              <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
+              <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? nCargasItem.toFixed(1) : '—'}</td>
+            </>
+          )}
+
           <td className="px-3 py-2 font-mono font-bold border-r border-gray-100 text-teal-600 bg-teal-50/10">{hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}</td>
           <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
         </tr>
@@ -374,7 +390,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Popover>
           </div>
 
-          {[ { t: 'Planta 1000 - Quito (Almacén 1006)', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600', totals: summaryTotals1000 }, { t: 'Planta 2000 - Guayaquil (Almacén 2006)', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000 } ].map((center, idx) => (
+          {[ 
+            { t: 'Planta 1000 - Quito (Almacén 1006)', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600', totals: summaryTotals1000, id: '1000' }, 
+            { t: 'Planta 2000 - Guayaquil (Almacén 2006)', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000, id: '2000' } 
+          ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 tracking-wider px-1 font-sans", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}</h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
@@ -385,25 +404,45 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <tr>
                         <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
                         <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
-                        <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
+                        
+                        {center.id === '1000' && (
+                          <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
+                        )}
+                        
                         <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
                         <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Subbloques</th>
-                        <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Bloques (20m)</th>
-                        <th className="px-4 py-3 border-r border-gray-100 text-purple-800 bg-purple-50/10 font-bold">Cargas</th>
+                        
+                        {center.id === '1000' && (
+                          <>
+                            <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Bloques (20m)</th>
+                            <th className="px-4 py-3 border-r border-gray-100 text-purple-800 bg-purple-50/10 font-bold">Cargas</th>
+                          </>
+                        )}
+                        
                         <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">H. Logísticas</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[11px]">
-                      {center.d.length === 0 ? (<tr><td colSpan={8} className="py-10 text-center text-gray-300 italic">Sin demanda para el período</td></tr>) : (
+                      {center.d.length === 0 ? (<tr><td colSpan={center.id === '1000' ? 8 : 5} className="py-10 text-center text-gray-300 italic">Sin demanda para el período</td></tr>) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                             <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
                             <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
-                            <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
+                            
+                            {center.id === '1000' && (
+                              <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
+                            )}
+                            
                             <td className="px-4 py-2 font-mono border-r border-gray-50">{row.units.toLocaleString()}</td>
                             <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
-                            <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
-                            <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{row.cargas.toFixed(1)}</td>
+                            
+                            {center.id === '1000' && (
+                              <>
+                                <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
+                                <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{row.cargas.toFixed(1)}</td>
+                              </>
+                            )}
+
                             <td className="px-4 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
                           </tr>
                         ))
@@ -411,11 +450,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </tbody>
                     <tfoot className="bg-gray-800 text-white text-[11px] font-bold sticky bottom-0">
                       <tr>
-                        <td colSpan={3} className="px-4 py-2.5 text-right uppercase tracking-wider">Totales</td>
+                        <td colSpan={center.id === '1000' ? 3 : 2} className="px-4 py-2.5 text-right uppercase tracking-wider">Totales</td>
                         <td className="px-4 py-2.5 font-mono">{center.totals.units.toLocaleString()}</td>
                         <td className="px-4 py-2.5 font-mono">{center.totals.subbloques.toFixed(1)}</td>
-                        <td className="px-4 py-2.5 font-mono text-orange-300">{center.totals.bloques20m.toFixed(1)}</td>
-                        <td className="px-4 py-2.5 font-mono text-purple-300">{center.totals.cargas.toFixed(1)}</td>
+                        
+                        {center.id === '1000' && (
+                          <>
+                            <td className="px-4 py-2.5 font-mono text-orange-300">{center.totals.bloques20m.toFixed(1)}</td>
+                            <td className="px-4 py-2.5 font-mono text-purple-300">{center.totals.cargas.toFixed(1)}</td>
+                          </>
+                        )}
+
                         <td className="px-4 py-2.5 font-mono text-teal-300">{center.totals.timeLog.toFixed(2)}</td>
                       </tr>
                     </tfoot>
@@ -427,7 +472,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="mt-0 space-y-10 animate-in fade-in duration-400">
-          {[ { t: 'Quito - Carrusel 1006', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700' }, { t: 'Guayaquil - Laminado 2006', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700' } ].map((center, idx) => (
+          {[ 
+            { t: 'Quito - Carrusel 1006', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', id: '1000' }, 
+            { t: 'Guayaquil - Laminado 2006', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000' } 
+          ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 font-sans", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)</h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
@@ -442,20 +490,30 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-gray-100">Categoría</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-gray-800 bg-gray-50/20">DENS.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-blue-800 bg-blue-50/20">APERT.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800">ANCHO</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800">LARGO</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800">ESP.</th>
+                        
+                        {center.id === '1000' && (
+                          <th className="px-2 py-4 border-r border-gray-100 text-blue-800 bg-blue-50/20 uppercase">Apert.</th>
+                        )}
+                        
+                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800 uppercase">Ancho</th>
+                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800 uppercase">Largo</th>
+                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800 uppercase">Esp.</th>
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30">ALT. TOT.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10">SUBBL.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold">BLOQUES</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold">CARGAS</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 uppercase">Subbl.</th>
+                        
+                        {center.id === '1000' && (
+                          <>
+                            <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Bloques</th>
+                            <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase">Cargas</th>
+                          </>
+                        )}
+                        
                         <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">H. LOG.</th>
                         <th className="px-3 py-4">Alm.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">{renderTableBody(center.d)}</tbody>
+                    <tbody className="divide-y divide-gray-50">{renderTableBody(center.d, center.id)}</tbody>
                   </table>
                 </div>
               </Card>
