@@ -182,7 +182,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
 
-      // REGLA 4: El material debe coincidir simultáneamente con Responsable Y Sector de un grupo
       const matchesAnyGroup = relevantGroups.some(g => {
         const groupRest = restricciones.filter(r => r.codigo_grupo === g.codigo_grupo);
         
@@ -348,13 +347,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const tCoches = Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP;
         tiempoLogistico = (tCarga + tDescarga + tCoches) / 3600;
 
-        // LÓGICA DE DESTINO DIFERENCIADA POR PLANTA
         if (centroId === '2000') {
-          // Planta 2000 maneja carga única
           destino = "CARGA PPAL.";
           cantApoyo = 0;
         } else {
-          // Planta 1000 permite máquinas de apoyo para residuos pequeños
           residuo = nSubItem % 7;
           if (residuo > 0) {
             if (residuo <= 2) {
@@ -385,7 +381,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-3 font-mono font-bold border-r border-dashed border-gray-100 bg-teal-50/10 text-teal-700">{hasCategory ? nCycles : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 bg-orange-50/5">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
-          <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
+          <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-[8px]", hasCategory && (destino.includes('APOYO') || destino.includes('PPAL')) ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
           <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100">
             {hasCategory && centroId !== '2000' && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}
           </td>
@@ -400,150 +396,137 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   return (
     <div className="p-4 md:p-8 space-y-6 bg-gray-50/50 min-h-screen">
-      <div className="flex items-center space-x-3 pb-2 border-b border-gray-100">
-        <Wind className="w-6 h-6 text-primary" />
-        <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tighter">Planificación Táctica Corte Espuma</h2>
+      <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+        <div className="flex items-center space-x-3">
+          <Wind className="w-6 h-6 text-primary" />
+          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tighter">Planificación Táctica Corte Espuma</h2>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 h-11 bg-muted/30 p-1 rounded-lg">
-          <TabsTrigger value="resumen" className="gap-2 text-[10px] font-semibold uppercase"><LayoutDashboard className="w-3 h-3" /> Resumen</TabsTrigger>
-          <TabsTrigger value="grupos" className="gap-2 text-[10px] font-semibold uppercase"><Users className="w-3 h-3" /> Grupos</TabsTrigger>
-          <TabsTrigger value="restricciones" className="gap-2 text-[10px] font-semibold uppercase"><Lock className="w-3 h-3" /> Filtros</TabsTrigger>
-          <TabsTrigger value="ordenes" className="gap-2 text-[10px] font-semibold uppercase"><Package className="w-3 h-3" /> Provisionales</TabsTrigger>
-          <TabsTrigger value="tiempos" className="gap-2 text-[10px] font-semibold uppercase"><Clock className="w-3 h-3" /> Tiempos</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-5 h-10 bg-muted/30 p-1 rounded-lg">
+          <TabsTrigger value="resumen" className="gap-2 text-[10px] font-bold uppercase"><LayoutDashboard className="w-3.5 h-3.5" /> Resumen</TabsTrigger>
+          <TabsTrigger value="grupos" className="gap-2 text-[10px] font-bold uppercase"><Users className="w-3.5 h-3.5" /> Grupos</TabsTrigger>
+          <TabsTrigger value="restricciones" className="gap-2 text-[10px] font-bold uppercase"><Lock className="w-3.5 h-3.5" /> Filtros</TabsTrigger>
+          <TabsTrigger value="ordenes" className="gap-2 text-[10px] font-bold uppercase"><Package className="w-3.5 h-3.5" /> Provisionales</TabsTrigger>
+          <TabsTrigger value="tiempos" className="gap-2 text-[10px] font-bold uppercase"><Clock className="w-3.5 h-3.5" /> Tiempos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 mt-4">
-          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
+          <div className="flex justify-between items-center bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-primary/10 rounded-xl">
-                <CalendarIcon className="w-5 h-5 text-primary" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <CalendarIcon className="w-4 h-4 text-primary" />
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Fecha de Planificación</p>
-                <h3 className="text-sm font-black text-gray-800 uppercase">
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Plan del Día</p>
+                <h3 className="text-xs font-black text-gray-800 uppercase">
                   {selectedDate === 'all' ? 'Vista Consolidada' : format(parseISO(selectedDate), 'd MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="h-10 px-4 rounded-xl border-2 hover:bg-gray-50 gap-2 font-bold text-xs uppercase shadow-sm">
-                    <Filter className="w-3.5 h-3.5" />
-                    Cambiar Fecha
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 border-none shadow-2xl rounded-3xl overflow-hidden" align="end">
-                  <Card className="w-full max-w-sm rounded-3xl border-none bg-white p-6">
-                    <div className="flex flex-col space-y-6">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-black text-gray-800 capitalize">
-                          {format(viewDate, 'MMMM yyyy', { locale: es })}
-                        </h3>
-                        <div className="flex gap-1 bg-gray-50 rounded-xl p-1">
-                          <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="rounded-lg h-7 w-7">
-                            <ChevronLeft className="w-4 h-4 text-gray-600" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="rounded-lg h-7 w-7">
-                            <ChevronRight className="w-4 h-4 text-gray-600" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-7 gap-y-1 text-center">
-                        {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map(day => (
-                          <div key={day} className="text-[9px] font-bold text-gray-400 uppercase py-2">
-                            {day}
-                          </div>
-                        ))}
-                        
-                        {calendarDays.map((day, idx) => {
-                          if (!day) return <div key={`empty-${idx}`} className="p-2" />;
-                          const dateStr = format(day, 'yyyy-MM-dd');
-                          const isSelected = selectedDate === dateStr;
-                          const hasData = datesWithOrders.has(dateStr);
-                          return (
-                            <button
-                              key={dateStr}
-                              onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)}
-                              className={cn(
-                                "relative p-2 h-9 w-9 mx-auto rounded-full flex flex-col items-center justify-center transition-all duration-200 group",
-                                isSelected ? "bg-primary text-white shadow-lg shadow-primary/30" : "hover:bg-gray-50"
-                              )}
-                            >
-                              <span className={cn(
-                                "text-[11px] font-bold",
-                                isSelected ? "text-white" : isToday(day) ? "text-primary" : "text-gray-700",
-                                !hasData && !isSelected ? "text-gray-300 font-normal" : ""
-                              )}>
-                                {format(day, 'd')}
-                              </span>
-                              {hasData && <div className={cn("absolute bottom-1 w-1 h-1 rounded-full", isSelected ? "bg-white" : "bg-primary/40 group-hover:bg-primary")} />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="pt-4 border-t border-gray-100">
-                        <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-primary hover:bg-primary/5 rounded-xl h-9" onClick={() => setSelectedDate('all')}>Ver Todo el Plan</Button>
-                      </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="h-8 px-3 rounded-lg border hover:bg-gray-50 gap-2 font-bold text-[10px] uppercase shadow-sm">
+                  <Filter className="w-3 h-3" /> Seleccionar Fecha
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden" align="end">
+                <div className="bg-white p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xs font-black text-gray-800 capitalize">
+                      {format(viewDate, 'MMMM yyyy', { locale: es })}
+                    </h3>
+                    <div className="flex gap-1 bg-gray-50 rounded-lg p-0.5">
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 w-6">
+                        <ChevronLeft className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 w-6">
+                        <ChevronRight className="w-3 h-3" />
+                      </Button>
                     </div>
-                  </Card>
-                </PopoverContent>
-              </Popover>
-            </div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-y-0.5 text-center mb-2">
+                    {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(day => (
+                      <div key={day} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>
+                    ))}
+                    {calendarDays.map((day, idx) => {
+                      if (!day) return <div key={`empty-${idx}`} className="p-1" />;
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const isSelected = selectedDate === dateStr;
+                      const hasData = datesWithOrders.has(dateStr);
+                      return (
+                        <button
+                          key={dateStr}
+                          onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)}
+                          className={cn(
+                            "relative h-7 w-7 mx-auto rounded-full flex items-center justify-center transition-all",
+                            isSelected ? "bg-primary text-white" : "hover:bg-gray-100"
+                          )}
+                        >
+                          <span className={cn("text-[10px] font-bold", !hasData && !isSelected ? "text-gray-300" : "")}>
+                            {format(day, 'd')}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Button variant="ghost" size="sm" className="w-full text-[9px] font-black uppercase text-primary h-7 mt-2" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {[ 
             { t: 'Resumen Ejecutivo Planta 1000', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600', totals: summaryTotals1000 }, 
             { t: 'Resumen Ejecutivo Planta 2000', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000 } 
           ].map((center, idx) => (
-            <div key={idx} className="space-y-6">
-              <h3 className={cn("text-xs font-black uppercase flex items-center gap-2 px-1", center.c)}>
-                <div className={cn("w-2 h-2 rounded-full animate-pulse", center.b)} /> {center.t}
+            <div key={idx} className="space-y-4">
+              <h3 className={cn("text-[11px] font-serif font-black uppercase flex items-center gap-2", center.c)}>
+                <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", center.b)} /> {center.t}
               </h3>
               
-              <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-3 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center">
-                    <thead className="bg-gray-100 sticky top-0 z-10 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100">
+              <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
+                  <table ref={center.s.table} className="w-full border-collapse text-center font-serif">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b">
                       <tr>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Fecha</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Densidad</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 bg-blue-50/20 text-blue-800">Apertura</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Unidades</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-purple-700 bg-purple-50/10">Subbloques</th>
-                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/20 font-black">Bloques (20m)</th>
-                        <th className="px-4 py-4 text-center text-teal-700 bg-teal-50/30 font-black"><Truck className="w-3 h-3 inline mr-1"/> Carga/Desc. (h)</th>
+                        <th className="px-2 py-3 border-r border-dashed border-gray-200">Fecha</th>
+                        <th className="px-2 py-3 border-r border-dashed border-gray-200">Densidad</th>
+                        <th className="px-2 py-3 border-r border-dashed border-gray-200 bg-blue-50/30 text-blue-800">Apertura</th>
+                        <th className="px-2 py-3 border-r border-dashed border-gray-200">Unidades</th>
+                        <th className="px-2 py-3 border-r border-dashed border-gray-200 text-purple-700">Subbloques</th>
+                        <th className="px-2 py-3 border-r border-dashed border-gray-200 text-orange-700 font-black">Bloques (20m)</th>
+                        <th className="px-2 py-3 text-center text-teal-700 bg-teal-50/30">Carga/Desc. (h)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                    <tbody className="divide-y divide-gray-100 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={7} className="py-8 text-center text-gray-400 italic">Sin datos programados</td></tr>
+                        <tr><td colSpan={7} className="py-6 text-center text-gray-400 italic">Sin datos programados</td></tr>
                       ) : (
                         center.d.map((row, i) => (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center">
-                            <td className="px-3 py-3 font-mono text-gray-500 border-r border-dashed border-gray-100">{row.fecha}</td>
-                            <td className="px-3 py-3 font-bold text-gray-700 border-r border-dashed border-gray-100 uppercase">{row.dens}</td>
-                            <td className="px-3 py-3 font-black text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{row.apertura}</td>
-                            <td className="px-3 py-3 font-mono font-semibold border-r border-dashed border-gray-100">{row.units.toLocaleString()}</td>
-                            <td className="px-3 py-3 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5">{row.subbloques.toFixed(2)}</td>
-                            <td className="px-3 py-3 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/10">{row.bloques20m.toFixed(1)}</td>
-                            <td className="px-4 py-3 font-mono font-bold text-teal-600 text-center bg-teal-50/10">{row.timeLog.toFixed(2)}</td>
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-2 py-2 font-mono text-gray-500 border-r border-dashed border-gray-100">{row.fecha}</td>
+                            <td className="px-2 py-2 font-bold text-gray-700 border-r border-dashed border-gray-100">{row.dens}</td>
+                            <td className="px-2 py-2 font-black text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5">{row.apertura}</td>
+                            <td className="px-2 py-2 font-mono border-r border-dashed border-gray-100">{row.units.toLocaleString()}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100">{row.subbloques.toFixed(2)}</td>
+                            <td className="px-2 py-2 font-mono font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
                           </tr>
                         ))
                       )}
                     </tbody>
                     <tfoot className="bg-gray-800 text-white text-[10px] font-bold sticky bottom-0">
                       <tr>
-                        <td colSpan={3} className="px-3 py-3 text-right">TOTALES FILTRADOS</td>
-                        <td className="px-3 py-3 font-mono">{center.totals.units.toLocaleString()}</td>
-                        <td className="px-3 py-3 font-mono">{center.totals.subbloques.toFixed(2)}</td>
-                        <td className="px-3 py-3 font-mono">{center.totals.bloques20m.toFixed(1)}</td>
-                        <td className="px-4 py-3 font-mono">{center.totals.timeLog.toFixed(2)}</td>
+                        <td colSpan={3} className="px-2 py-2.5 text-right">TOTALES FILTRADOS</td>
+                        <td className="px-2 py-2.5 font-mono">{center.totals.units.toLocaleString()}</td>
+                        <td className="px-2 py-2.5 font-mono">{center.totals.subbloques.toFixed(2)}</td>
+                        <td className="px-2 py-2.5 font-mono">{center.totals.bloques20m.toFixed(1)}</td>
+                        <td className="px-2 py-2.5 font-mono">{center.totals.timeLog.toFixed(2)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -655,7 +638,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4 space-y-8">
-          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
+          {[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollTiempos1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollTiempos2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
@@ -702,11 +685,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </Card>
             </div>
           ))}
-          <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
-             <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest flex items-center gap-2">
-               <Clock className="w-3 h-3" /> Nota de Ingeniería: Los tiempos mostrados son segundos por unidad ( lámina ) y están sincronizados con los filtros de Responsable y Sector de cada planta. Solo se muestran materiales semielaborados (códigos 3x/4x) pertenecientes a los almacenes 1006 (Quito) y 2006 (Guayaquil).
-             </p>
-          </div>
         </TabsContent>
       </Tabs>
     </div>
