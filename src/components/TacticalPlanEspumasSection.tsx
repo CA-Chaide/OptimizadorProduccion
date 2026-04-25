@@ -163,20 +163,26 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return data.filter(o => {
       const info = extractMaterialInfo(o);
       
-      // REGLA MAESTRA 1: Excluir Producto Terminado (Códigos que inician con '1')
+      // REGLA 1: Excluir Producto Terminado (Códigos que inician con '1')
       if (info.code.startsWith('1')) return false;
 
+      // REGLA 2: Validar Centro
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
 
-      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
+      // REGLA 3: Filtrado ESTRICTO por Almacén y Centro
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      if (centro === '1000' && itemAlmValue !== '1006') return false;
+      if (centro === '2000' && itemAlmValue !== '2006') return false;
+
+      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
 
-      // REGLA MAESTRA 2: El material debe coincidir simultáneamente con Responsable Y Sector de un grupo
+      // REGLA 4: El material debe coincidir simultáneamente con Responsable Y Sector de un grupo
       const matchesAnyGroup = relevantGroups.some(g => {
         const groupRest = restricciones.filter(r => r.codigo_grupo === g.codigo_grupo);
         
+        // Unificar responsables: RESPCTRLPROD + alias "Resp. Control" (RespCtrlProd_Carrusel)
         const respCodes = groupRest
           .filter(r => r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Resp. Control' || r.nombre_restriccion === 'RespCtrlProd_Carrusel')
           .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -186,17 +192,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           .filter(r => r.nombre_restriccion === 'SECTOR')
           .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
           .filter(v => v !== '');
-
-        // Validación especial Almacén 1006 (Carrusel) para Planta 1000
-        if (centro === '1000' && itemAlmValue === '1006') {
-          const carruselResps = groupRest
-            .filter(r => r.nombre_restriccion === 'Resp. Control' || r.nombre_restriccion === 'RespCtrlProd_Carrusel')
-            .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
-          
-          if (carruselResps.length > 0) {
-            return carruselResps.includes(itemResp);
-          }
-        }
 
         const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
         const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
@@ -242,7 +237,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const usefulHeight = isNaN(dens) ? 103 : (dens < 30 ? 103 : 85);
       const itemSubbloques = (qty * esp) / usefulHeight;
 
-      // FÓRMULA CORREGIDA: (Ancho * Subbloques) / 2000
+      // FÓRMULA DE INGENIERÍA: (Ancho * Subbloques) / 2000
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
       const physicalBlocksCount = Math.ceil(itemBloques20m);
@@ -344,7 +339,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nCycles = Math.floor(usefulHeight / (e || 1)) + 4;
         nSubItem = alturaTotal / usefulHeight;
         
-        // FÓRMULA CORREGIDA: (Ancho * Subbloques) / 2000
+        // FÓRMULA DE INGENIERÍA: (Ancho * Subbloques) / 2000
         bloques20mItem = (w * nSubItem) / 2000;
         
         const physicalBlocksCount = Math.ceil(bloques20mItem);
@@ -553,8 +548,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="mt-4 space-y-8">
           {[ 
-            { t: 'Planta 1000 - Quito (Provisionales)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', id: '1000' }, 
-            { t: 'Planta 2000 - Guayaquil (Provisionales)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000' } 
+            { t: 'Planta 1000 - Quito (Almacén 1006)', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', id: '1000' }, 
+            { t: 'Planta 2000 - Guayaquil (Almacén 2006)', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2", center.c)}>
@@ -615,7 +610,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, 
             { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } 
           ].map(center => {
-            const list = restrictionsByCenter.get(center.id) || [];
+            const list = restrictionsByCenter?.get(center.id) || [];
             return (
               <div key={center.id} className="space-y-3">
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.color)}>
@@ -702,7 +697,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
           <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest flex items-center gap-2">
-               <Clock className="w-3 h-3" /> Nota de Ingeniería: Los tiempos mostrados son segundos por unidad ( lámina ) y están sincronizados con los filtros de Responsable y Sector de cada planta.
+               <Clock className="w-3 h-3" /> Nota de Ingeniería: Los tiempos mostrados son segundos por unidad ( lámina ) y están sincronizados con los filtros de Responsable y Sector de cada planta. Solo se muestran materiales semielaborados (códigos 3x/4x) pertenecientes a los almacenes 1006 (Quito) y 2006 (Guayaquil).
              </p>
           </div>
         </TabsContent>
