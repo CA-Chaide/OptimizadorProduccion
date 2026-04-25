@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/popover";
 
 // CONSTANTES TÉCNICAS DEL CARRUSEL (PLANTA 1000)
-const CARRUSEL_RADIUS_CM = 350; // 3.5 metros de radio
+const CARRUSEL_RADIUS_CM = 350; // Radio de 3.5 metros
 const SECONDS_LOAD_BLOCK = 300;   // 5 min por bloque físico
 const SECONDS_REPETITION = 45;    // 45 seg por repetición de corte
 const SECONDS_CART_SWAP = 60;     // 1 min por cambio de coche
@@ -134,6 +134,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
     
+    // Extracción de apertura PRIORITARIA desde CATEGORIA
     if (catStr) {
       const apertureMatch = catStr.match(/194\.5|206|219/);
       if (apertureMatch) dimensions.apertura = apertureMatch[0];
@@ -148,6 +149,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         dimensions.largo = dimMatch[2];
         if (dimMatch[3]) dimensions.esp = dimMatch[3];
       }
+      // Fallback de apertura desde descripción si no estaba en categoría
       if (dimensions.apertura === '—') {
         const apertureMatch = desc.match(/194\.5|206|219/);
         if (apertureMatch) dimensions.apertura = apertureMatch[0];
@@ -162,7 +164,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
    * Calcula cuántos subbloques caben físicamente en un ciclo basándose en la circunferencia interior
    * para evitar que los bloques colisionen en el centro.
    */
-  const calculateCargasLogic = (qty: number, ancho: number, largo: number) => {
+  const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
     
     // Los bloques rectangulares al girar sobre un eje central chocan en su radio interior.
@@ -170,8 +172,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const innerRadius = CARRUSEL_RADIUS_CM - largo;
     
     if (innerRadius <= 0) {
-      // Caso teórico: el bloque es más largo que el radio del carrusel
-      return { subbloquesPorCarga: 1, totalCargas: qty };
+      return { subbloquesPorCarga: 1, totalCargas: Math.ceil(totalSubblocks) };
     }
 
     // Circunferencia disponible en el borde interior del bloque
@@ -180,9 +181,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // Cuántos anchos caben en ese perímetro interior
     const theoreticalCap = Math.floor(innerCircumference / ancho);
     
-    // Aplicamos una holgura técnica de seguridad (mínimo 1 unidad)
+    // Capacidad por carga (vueltas)
     const subbloquesPorCarga = Math.max(1, theoreticalCap);
-    const totalCargas = Math.ceil(qty / subbloquesPorCarga);
+    // Nro de cargas basado en subbloques de utilización (no en piezas)
+    const totalCargas = Math.ceil(totalSubblocks / subbloquesPorCarga);
 
     return { subbloquesPorCarga, totalCargas };
   };
@@ -250,8 +252,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemSubbloques = (qty * esp) / usefulHeight;
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
-      // Cálculo de cargas usando la nueva lógica de radio interior
-      const { totalCargas } = calculateCargasLogic(qty, ancho, largo);
+      // Cálculo de cargas basado en utilización de subbloques físicos
+      const { totalCargas } = calculateCargasLogic(itemSubbloques, ancho, largo);
       
       const physicalBlocksCount = Math.ceil(itemBloques20m);
       const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
@@ -320,8 +322,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nSubItem = alturaTotal / usefulHeight;
         bloques20mItem = (w * nSubItem) / 2000;
         
-        // Cálculo de ingeniería basado en el radio interno de colisión
-        const logic = calculateCargasLogic(qty, w, l);
+        // Cálculo basado en radio interior y utilización de subbloques
+        const logic = calculateCargasLogic(nSubItem, w, l);
         subbloquesPorCarga = logic.subbloquesPorCarga;
         totalCargas = logic.totalCargas;
 
@@ -332,7 +334,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const isQuito = centroId === '1000';
 
       return (
-        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
+        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px] font-sans">
           <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
           <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
           <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
@@ -353,7 +355,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           
           {isQuito && (
             <>
-              <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5" title="Máximo de subbloques que caben físicamente sin colisionar en el centro">{hasCategory ? subbloquesPorCarga : '—'}</td>
+              <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5" title="Subbloques físicos que caben en una vuelta del carrusel">{hasCategory ? subbloquesPorCarga : '—'}</td>
               <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
               <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? totalCargas : '—'}</td>
             </>
@@ -369,11 +371,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
-            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight font-sans">Plan Táctico Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium font-sans text-left">Capacidad por Radio Útil (3.5m) | Limitación por colisión interior</p>
+            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Espuma</h2>
+            <p className="text-xs text-gray-500 font-medium">Motor de Carga Industrial | Diámetro 7m (R 3.5m) | Utilización Física de Subbloques</p>
           </div>
         </div>
       </div>
@@ -381,7 +383,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, { v: 'grupos', l: 'Grupos', i: Users }, { v: 'restricciones', l: 'Filtros', i: Lock }, { v: 'ordenes', l: 'Provisionales', i: Package }, { v: 'tiempos', l: 'Tiempos', i: Clock } ].map(tab => (
-            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm font-sans">
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
             </TabsTrigger>
           ))}
@@ -389,25 +391,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
           <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
-            <div className="flex items-center gap-4 font-sans text-left">
+            <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-primary" /></div>
-              <div><p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p><h3 className="text-xs font-bold text-gray-700 uppercase font-sans">{selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}</h3></div>
+              <div><p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p><h3 className="text-xs font-bold text-gray-700 uppercase">{selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}</h3></div>
             </div>
             <Popover>
-              <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm font-sans"><Filter className="w-3 h-3" /> Fecha</Button></PopoverTrigger>
+              <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm"><Filter className="w-3 h-3" /> Fecha</Button></PopoverTrigger>
               <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
                 <div className="bg-white p-3 font-sans">
-                  <div className="flex items-center justify-between mb-3 text-left"><h3 className="text-[10px] font-bold text-gray-800 capitalize font-sans">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3><div className="flex gap-1 bg-gray-50 rounded-lg p-1"><Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-3 h-3" /></Button><Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronRight className="w-3 h-3" /></Button></div></div>
+                  <div className="flex items-center justify-between mb-3 text-left"><h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3><div className="flex gap-1 bg-gray-50 rounded-lg p-1"><Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-3 h-3" /></Button><Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronRight className="w-3 h-3" /></Button></div></div>
                   <div className="grid grid-cols-7 gap-y-1 text-center mb-2">
-                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1 font-sans">{day}</div>)}
+                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
                     {calendarDays.map((day, idx) => {
                       if (!day) return <div key={`cal-pad-${idx}`} className="p-1" />;
                       const dateStr = format(day, 'yyyy-MM-dd');
                       const isSelected = selectedDate === dateStr;
-                      return <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}><span className={cn("text-[10px] font-bold font-sans", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>{datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}</button>;
+                      return <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}><span className={cn("text-[10px] font-bold", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>{datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}</button>;
                     })}
                   </div>
-                  <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-primary h-7 mt-1 rounded-lg hover:bg-primary/5 font-sans" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
+                  <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-primary h-7 mt-1 rounded-lg hover:bg-primary/5" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
                 </div>
               </PopoverContent>
             </Popover>
@@ -418,12 +420,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Planta 2000 - Guayaquil (Almacén 2006)', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000, id: '2000' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 tracking-wider px-1 font-sans", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}</h3>
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 tracking-wider px-1 text-left", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}</h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
                   <table ref={center.s.table} className="w-full border-collapse text-center font-sans">
-                    <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100 font-sans">
+                    <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                       <tr>
                         <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
                         <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
@@ -445,10 +447,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">H. Logísticas</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-[11px] font-sans">
-                      {center.d.length === 0 ? (<tr><td colSpan={center.id === '1000' ? 8 : 5} className="py-10 text-center text-gray-300 italic font-sans">Sin demanda para el período</td></tr>) : (
+                    <tbody className="divide-y divide-gray-50 text-[11px]">
+                      {center.d.length === 0 ? (<tr><td colSpan={center.id === '1000' ? 8 : 5} className="py-10 text-center text-gray-300 italic">Sin demanda para el período</td></tr>) : (
                         center.d.map((row, i) => (
-                          <tr key={i} className="hover:bg-gray-50/80 transition-colors font-sans">
+                          <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                             <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
                             <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
                             
@@ -471,9 +473,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         ))
                       )}
                     </tbody>
-                    <tfoot className="bg-gray-800 text-white text-[11px] font-bold sticky bottom-0 font-sans">
+                    <tfoot className="bg-gray-800 text-white text-[11px] font-bold sticky bottom-0">
                       <tr>
-                        <td colSpan={center.id === '1000' ? 3 : 2} className="px-4 py-2.5 text-right uppercase tracking-wider font-sans">Totales</td>
+                        <td colSpan={center.id === '1000' ? 3 : 2} className="px-4 py-2.5 text-right uppercase tracking-wider">Totales</td>
                         <td className="px-4 py-2.5 font-mono">{center.totals.units.toLocaleString()}</td>
                         <td className="px-4 py-2.5 font-mono">{center.totals.subbloques.toFixed(1)}</td>
                         
@@ -500,12 +502,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Guayaquil - Laminado 2006', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 font-sans text-left", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)</h3>
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)</h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center font-sans">
-                    <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100 font-sans">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                    <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-gray-100">Orden</th>
                         <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
@@ -527,9 +529,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         
                         {center.id === '1000' && (
                           <>
-                            <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Número de subbloques que caben físicamente en una carga basada en el radio interior para evitar colisión">SUBBL./CARGA</th>
+                            <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Número de subbloques físicos requeridos para corte que caben en el radio interior útil">SUBBL./CARGA</th>
                             <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Bloques 20m</th>
-                            <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase">Cargas</th>
+                            <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase" title="Vueltas completas requeridas según subbloques de utilización vs capacidad por ciclo">Cargas</th>
                           </>
                         )}
                         
@@ -545,11 +547,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="grupos"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">{grupos.map(g => (<Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6 font-sans text-left"><div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" /><Badge className="bg-gray-100 text-gray-600 mb-2 font-bold text-[9px] uppercase font-sans">PLANTA {g.centro}</Badge><h4 className="font-bold text-gray-800 uppercase text-sm font-sans">{g.nombre_grupo}</h4><p className="text-[9px] font-mono text-gray-400 mt-2">ID: {g.codigo_grupo}</p></Card>))}</div></TabsContent>
+        <TabsContent value="grupos"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{grupos.map(g => (<Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6 text-left"><div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" /><Badge className="bg-gray-100 text-gray-600 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge><h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4><p className="text-[9px] font-mono text-gray-400 mt-2">ID: {g.codigo_grupo}</p></Card>))}</div></TabsContent>
 
-        <TabsContent value="restricciones" className="mt-0 space-y-8 animate-in slide-in-from-bottom-2 duration-400 font-sans">{[ { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } ].map(center => { const list = restricciones.filter(r => grupos.some(g => g.codigo_grupo === r.codigo_grupo && String(g.centro) === center.id)); return (<div key={center.id} className="space-y-4 font-sans text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider font-sans", center.color)}><div className={cn("w-2 h-2 rounded-full", center.border)} /> Parámetros {center.label}</h3><Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white font-sans"><table className="w-full border-collapse text-center font-sans"><thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100 font-sans"><tr><th className="px-6 py-4 border-r border-gray-50">Restricción</th><th className="px-6 py-4 border-r border-gray-50">Valor</th><th className="px-6 py-4 text-left font-sans">Referencia</th></tr></thead><tbody className="divide-y divide-gray-50 text-[11px] font-sans">{list.length === 0 ? (<tr><td colSpan={3} className="py-10 text-center text-gray-300 italic font-sans">Sin restricciones configuradas</td></tr>) : (list.map(r => (<tr key={r.codigo_restriccion} className="hover:bg-gray-50/50 transition-colors font-sans"><td className="px-6 py-3 font-bold text-gray-700 border-r border-gray-50 uppercase font-sans">{r.nombre_restriccion}</td><td className="px-6 py-3 border-r border-gray-50 font-sans"><Badge variant="outline" className="font-mono text-primary bg-primary/5 border-primary/20">{r.valor_restriccion}</Badge></td><td className="px-6 py-3 text-gray-500 italic text-left font-sans">{r.descripcion || '—'}</td></tr>)))}</tbody></table></Card></div>);})}</TabsContent>
+        <TabsContent value="restricciones" className="mt-0 space-y-8 animate-in slide-in-from-bottom-2 duration-400">{[ { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } ].map(center => { const list = restricciones.filter(r => grupos.some(g => g.codigo_grupo === r.codigo_grupo && String(g.centro) === center.id)); return (<div key={center.id} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.color)}><div className={cn("w-2 h-2 rounded-full", center.border)} /> Parámetros {center.label}</h3><Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white"><table className="w-full border-collapse text-center"><thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Restricción</th><th className="px-6 py-4 border-r border-gray-50">Valor</th><th className="px-6 py-4 text-left">Referencia</th></tr></thead><tbody className="divide-y divide-gray-50 text-[11px]">{list.length === 0 ? (<tr><td colSpan={3} className="py-10 text-center text-gray-300 italic">Sin restricciones configuradas</td></tr>) : (list.map(r => (<tr key={r.codigo_restriccion} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-bold text-gray-700 border-r border-gray-50 uppercase">{r.nombre_restriccion}</td><td className="px-6 py-3 border-r border-gray-50"><Badge variant="outline" className="font-mono text-primary bg-primary/5 border-primary/20">{r.valor_restriccion}</Badge></td><td className="px-6 py-3 text-gray-500 italic text-left">{r.descripcion || '—'}</td></tr>)))}</tbody></table></Card></div>);})}</TabsContent>
 
-        <TabsContent value="tiempos" className="space-y-10 font-sans">{[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (<div key={idx} className="space-y-4 font-sans text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider font-sans", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)</h3><Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white font-sans"><div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div><div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]"><table ref={center.s.table} className="w-full border-collapse text-center font-sans"><thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100 font-sans"><tr><th className="px-6 py-4 border-r border-gray-50 font-sans">Material</th><th className="px-6 py-4 border-r border-gray-50 text-left font-sans">Descripción Técnica</th><th className="px-6 py-4 border-r border-gray-50 font-sans">Línea Prod.</th><th className="px-6 py-4 border-r border-gray-50 text-teal-700 font-sans">Estándar (Min)</th><th className="px-6 py-4 font-sans">Stock / Seguridad</th></tr></thead><tbody className="divide-y divide-gray-50 text-[10px] font-sans">{center.d.map((t, i) => { const info = extractMaterialInfo(t); return (<tr key={i} className="hover:bg-gray-50/50 transition-colors font-sans"><td className="px-6 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td><td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px] font-sans">{info.desc}</td><td className="px-6 py-3 border-r border-gray-50 text-gray-400 uppercase font-medium font-sans">{t.Linea || '—'}</td><td className="px-6 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td><td className="px-6 py-3 text-gray-400 font-mono">{(t.StockActual || 0).toLocaleString()} / {(t.StockSeguridad || 0).toLocaleString()}</td></tr>);})}</tbody></table></div></Card></div>))}</TabsContent>
+        <TabsContent value="tiempos" className="space-y-10">{[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (<div key={idx} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)</h3><Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white"><div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div><div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]"><table ref={center.s.table} className="w-full border-collapse text-center"><thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Material</th><th className="px-6 py-4 border-r border-gray-50 text-left">Descripción Técnica</th><th className="px-6 py-4 border-r border-gray-50">Línea Prod.</th><th className="px-6 py-4 border-r border-gray-50 text-teal-700">Estándar (Min)</th><th className="px-6 py-4">Stock / Seguridad</th></tr></thead><tbody className="divide-y divide-gray-50 text-[10px]">{center.d.map((t, i) => { const info = extractMaterialInfo(t); return (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td><td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td><td className="px-6 py-3 border-r border-gray-50 text-gray-400 uppercase font-medium">{t.Linea || '—'}</td><td className="px-6 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td><td className="px-6 py-3 text-gray-400 font-mono">{(t.StockActual || 0).toLocaleString()} / {(t.StockSeguridad || 0).toLocaleString()}</td></tr>);})}</tbody></table></div></Card></div>))}</TabsContent>
       </Tabs>
     </div>
   );
