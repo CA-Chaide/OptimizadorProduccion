@@ -183,7 +183,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           .filter(v => v !== '');
         const sectorCodes = groupRest.filter(r => r.nombre_restriccion === 'SECTOR').flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
         
-        // Validación obligatoria por Binomio: Responsable Y Sector
         return (respCodes.length === 0 || respCodes.includes(itemResp)) && (sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code)));
       });
 
@@ -222,7 +221,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
       const capPorCarga = largo > 0 ? Math.max(1, Math.floor(circ / largo) - 1) : 1;
-      const itemCargas = itemSubbloques / capPorCarga;
+      const itemCargas = Math.ceil(itemSubbloques / capPorCarga);
       
       const physicalBlocksCount = Math.ceil(itemBloques20m);
       const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
@@ -304,7 +303,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         bloques20mItem = (w * nSubItem) / 2000;
         
         const capPorCarga = l > 0 ? Math.max(1, Math.floor(circ / l) - 1) : 1;
-        nCargasItem = nSubItem / capPorCarga;
+        nCargasItem = Math.ceil(nSubItem / capPorCarga);
 
         const physicalBlocks = Math.ceil(bloques20mItem);
         tiempoLogistico = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
@@ -335,7 +334,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {isQuito && (
             <>
               <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
-              <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? nCargasItem.toFixed(1) : '—'}</td>
+              <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? Math.ceil(nCargasItem) : '—'}</td>
             </>
           )}
 
@@ -439,7 +438,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             {center.id === '1000' && (
                               <>
                                 <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
-                                <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{row.cargas.toFixed(1)}</td>
+                                <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
                               </>
                             )}
 
@@ -457,7 +456,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         {center.id === '1000' && (
                           <>
                             <td className="px-4 py-2.5 font-mono text-orange-300">{center.totals.bloques20m.toFixed(1)}</td>
-                            <td className="px-4 py-2.5 font-mono text-purple-300">{center.totals.cargas.toFixed(1)}</td>
+                            <td className="px-4 py-2.5 font-mono text-purple-300">{Math.ceil(center.totals.cargas)}</td>
                           </>
                         )}
 
