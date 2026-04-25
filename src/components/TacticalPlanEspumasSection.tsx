@@ -143,7 +143,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
     
-    // Extracción mandatoria de Apertura desde CATEGORIA
     if (catStr) {
       const apertureMatch = catStr.match(/194\.5|206|219/);
       if (apertureMatch) dimensions.apertura = apertureMatch[0];
@@ -158,7 +157,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         dimensions.largo = dimMatch[2];
         if (dimMatch[3]) dimensions.esp = dimMatch[3];
       }
-      // Fallback a descripción si CATEGORIA no tenía la apertura
       if (dimensions.apertura === '—') {
         const apertureMatch = desc.match(/194\.5|206|219/);
         if (apertureMatch) dimensions.apertura = apertureMatch[0];
@@ -170,12 +168,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0 || totalSubblocks <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
     
-    // El radio útil es la distancia desde el centro del carrusel hasta el inicio del bloque para evitar colisión
     const innerRadius = MACHINE_RADIO_CM - largo;
     if (innerRadius <= 0) return { subbloquesPorCarga: 1, totalCargas: Math.ceil(totalSubblocks) };
 
     const innerCircumference = 2 * Math.PI * innerRadius;
-    const subbloquesPorCarga = Math.max(1, Math.floor(innerCircumference / ancho) - 1); // Holgura de 1 unidad
+    const subbloquesPorCarga = Math.max(1, Math.floor(innerCircumference / ancho) - 1);
     const totalCargas = Math.ceil(totalSubblocks / subbloquesPorCarga);
 
     return { subbloquesPorCarga, totalCargas };
@@ -420,14 +417,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
                         <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
                         <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
-                        <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Subbloques</th>
+                        <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Nro. Subbloque</th>
                         
                         {center.id === '1000' && (
-                          <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Bloques (20m)</th>
+                          <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Nro. Bloque Formulado</th>
                         )}
 
-                        <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Cargas</th>
-                        <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">H. Logísticas</th>
+                        <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Nro. Cargas Subbloque</th>
+                        <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">Tiempo Operativo</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[11px]">
@@ -496,15 +493,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-100 text-gray-800 uppercase">Esp.</th>
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30">ALT. TOT.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 uppercase">Subbl.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Capacidad física del carrusel según radio útil de carga interior">SUBBL./CARGA</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 uppercase">Nro. Subbloque</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Capacidad física del carrusel según radio útil de carga interior">Batch. Carga Carrusel</th>
                         
                         {center.id === '1000' && (
-                          <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Bloques 20m</th>
+                          <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Nro. Bloque Formulado</th>
                         )}
 
-                        <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase" title="Vueltas completas requeridas">Cargas</th>
-                        <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">H. LOG.</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase" title="Vueltas completas requeridas">Nro. Cargas Subbloque</th>
+                        <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">Tiempo Operativo</th>
                         <th className="px-3 py-4">Alm.</th>
                       </tr>
                     </thead>
@@ -520,7 +517,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="restricciones" className="mt-0 space-y-8 animate-in slide-in-from-bottom-2 duration-400 text-left">{[ { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } ].map(center => { const list = restricciones.filter(r => grupos.some(g => g.codigo_grupo === r.codigo_grupo && String(g.centro) === center.id)); return (<div key={center.id} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.color)}><div className={cn("w-2 h-2 rounded-full", center.border)} /> Parámetros {center.label}</h3><Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white"><table className="w-full border-collapse text-center"><thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Restricción</th><th className="px-6 py-4 border-r border-gray-50">Valor</th><th className="px-6 py-4 text-left">Referencia</th></tr></thead><tbody className="divide-y divide-gray-100 text-[11px]">{list.length === 0 ? (<tr><td colSpan={3} className="py-10 text-center text-gray-300 italic">Sin restricciones configuradas</td></tr>) : (list.map(r => (<tr key={r.codigo_restriccion} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-bold text-gray-700 border-r border-gray-50 uppercase">{r.nombre_restriccion}</td><td className="px-6 py-3 border-r border-gray-50"><Badge variant="outline" className="font-mono text-primary bg-primary/5 border-primary/20">{r.valor_restriccion}</Badge></td><td className="px-6 py-3 text-gray-500 italic text-left">{r.descripcion || '—'}</td></tr>)))}</tbody></table></Card></div>);})}</TabsContent>
 
-        <TabsContent value="tiempos" className="space-y-10 text-left">{[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (<div key={idx} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)</h3><Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white"><div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div><div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]"><table ref={center.s.table} className="w-full border-collapse text-center"><thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Material</th><th className="px-6 py-4 border-r border-gray-50 text-left">Descripción Técnica</th><th className="px-6 py-4 border-r border-gray-50">Línea Prod.</th><th className="px-6 py-4 border-r border-gray-50 text-teal-700">Estándar (Min)</th><th className="px-6 py-4">Stock / Seguridad</th></tr></thead><tbody className="divide-y divide-gray-50 text-[10px]">{center.d.map((t, i) => { const info = extractMaterialInfo(t); return (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td><td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td><td className="px-6 py-3 border-r border-gray-50 text-gray-400 uppercase font-medium">{t.Linea || '—'}</td><td className="px-6 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td><td className="px-6 py-3 text-gray-400 font-mono">{(t.StockActual || 0).toLocaleString()} / {(t.StockSeguridad || 0).toLocaleString()}</td></tr>);})}</tbody></table></div></Card></div>))}</TabsContent>
+        <TabsContent value="tiempos" className="space-y-10 text-left">{[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (<div key={idx} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)</h3><Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white"><div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div><div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]"><table ref={center.s.table} className="w-full border-collapse text-center"><thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Material</th><th className="px-6 py-4 border-r border-gray-50 text-left">Descripción Técnica</th><th className="px-6 py-4 border-r border-gray-50">Línea Prod.</th><th className="px-6 py-4 border-r border-gray-50 text-teal-700">Estándar (Min)</th><th className="px-6 py-4">Stock / Seguridad</th></tr></thead><tbody className="divide-y divide-gray-100 text-[10px]">{center.d.map((t, i) => { const info = extractMaterialInfo(t); return (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td><td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td><td className="px-6 py-3 border-r border-gray-50 text-gray-400 uppercase font-medium">{t.Linea || '—'}</td><td className="px-6 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td><td className="px-6 py-3 text-gray-400 font-mono">{(t.StockActual || 0).toLocaleString()} / {(t.StockSeguridad || 0).toLocaleString()}</td></tr>);})}</tbody></table></div></Card></div>))}</TabsContent>
       </Tabs>
     </div>
   );
