@@ -218,7 +218,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemSubbloques = (qty * esp) / usefulHeight;
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
       
-      // Cálculo de cargas basado en ANCHO según nueva instrucción
+      // Cálculo de cargas basado en ANCHO según criterio de ocupación
       const capPorCarga = ancho > 0 ? Math.max(1, Math.floor(circ / ancho) - 1) : 1;
       const itemCargas = Math.ceil(itemSubbloques / capPorCarga);
       
@@ -300,7 +300,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nSubItem = alturaTotal / usefulHeight;
         bloques20mItem = (w * nSubItem) / 2000;
         
-        // Cálculo basado en ANCHO del subbloque
+        // Cálculo basado en ANCHO del subbloque para ocupación de carrusel
         capPorCarga = w > 0 ? Math.max(1, Math.floor(circ / w) - 1) : 1;
         nCargasItem = Math.ceil(nSubItem / capPorCarga);
 
@@ -311,7 +311,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const isQuito = centroId === '1000';
 
       return (
-        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px] font-sans">
+        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
           <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
           <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
           <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
@@ -503,7 +503,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         
                         {center.id === '1000' && (
                           <>
-                            <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Número de subbloques que se pueden cargar por batch basado en ancho">SUBBL./CARGA</th>
+                            <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Número de subbloques que se pueden cargar por batch basado en ancho">BL./CARGA</th>
                             <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold uppercase">Bloques 20m</th>
                             <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase">Cargas</th>
                           </>
