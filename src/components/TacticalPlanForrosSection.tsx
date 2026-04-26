@@ -138,14 +138,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
-  // Inicialización de fechas LABORABLES
+  // Inicialización de fechas LABORABLES (Saltando fines de semana)
   useEffect(() => {
     if (isMounted) {
       const todayStr = getEcuadorTodayString();
       const [y, m, d] = todayStr.split('-').map(Number);
       let baseDate = new Date(y, m - 1, d);
       
-      // 1. Asegurar que 'Hoy' sea día laborable (L-V)
+      // Asegurar que 'Hoy' sea día laborable (L-V)
       const dayOfWeek = baseDate.getDay();
       if (dayOfWeek === 6) baseDate.setDate(baseDate.getDate() + 2); // Sábado -> Lunes
       else if (dayOfWeek === 0) baseDate.setDate(baseDate.getDate() + 1); // Domingo -> Lunes
@@ -157,12 +157,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
         day: '2-digit'
       }).format(baseDate);
 
-      // 2. Calcular 'Target' saltando fines de semana
+      // Calcular 'Target' saltando fines de semana
       let targetDateObj = new Date(baseDate);
       let businessDaysAdded = 0;
       while (businessDaysAdded < horizonValue) {
         targetDateObj.setDate(targetDateObj.getDate() + 1);
-        // Si no es Sábado (6) ni Domingo (0), sumamos día laborable
         if (targetDateObj.getDay() !== 0 && targetDateObj.getDay() !== 6) {
           businessDaysAdded++;
         }
@@ -203,7 +202,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const responses = await Promise.all(promises);
       const allData = responses.flatMap(res => res.data || []);
       setTiemposProduccion(allData);
-      setTiemposPage(1); 
     } catch (error) {
       console.error('Error al cargar tiempos de producción:', error);
     } finally {
@@ -271,18 +269,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return dailyOrders.slice(start, start + dailyRowsPerPage);
   }, [dailyOrders, dailyPage, dailyRowsPerPage]);
 
+  /**
+   * Resumen de producción diaria alimentado directamente de la información de programación diaria.
+   */
   const productionSummary = useMemo(() => {
-    const summaryMap = new Map<string, { date: string; category: string; quantity: number; count: number }>();
+    const summaryMap = new Map<string, { date: string; dateSort: string; category: string; quantity: number; count: number }>();
     
     dailyOrders.forEach(order => {
-      const rawDate = order['FECHAINICIO'];
-      const dateDisplay = formatValueForDisplay('FECHA', rawDate);
+      const normDate = normalizeDateForFilter(order['FECHAINICIO']);
+      if (!normDate) return;
+      
+      const dateDisplay = formatValueForDisplay('FECHA', normDate);
       const category = String(order['CATEGORIA'] || 'General').trim();
-      const key = `${dateDisplay}-${category}`;
+      const key = `${normDate}-${category}`;
       
       if (!summaryMap.has(key)) {
         summaryMap.set(key, {
           date: dateDisplay,
+          dateSort: normDate,
           category: category,
           quantity: 0,
           count: 0
@@ -295,9 +299,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
     
     return Array.from(summaryMap.values()).sort((a, b) => {
-      return a.date.localeCompare(b.date) || a.category.localeCompare(b.category);
+      return a.dateSort.localeCompare(b.dateSort) || a.category.localeCompare(b.category);
     });
-  }, [dailyOrders, formatValueForDisplay]);
+  }, [dailyOrders, formatValueForDisplay, normalizeDateForFilter]);
 
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
@@ -400,7 +404,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </div>
               </div>
               
-              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
                 <div className="flex items-center gap-1">
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(1)} disabled={tiemposPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(p => Math.max(1, p - 1))} disabled={tiemposPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
@@ -458,7 +462,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </div>
               </div>
               
-              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
                 <div className="flex items-center gap-1">
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
@@ -477,21 +481,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-primary" />
-                Resumen de Carga de Producción
+                Resumen de Carga de Producción (Hoy y Objetivo)
               </CardTitle>
               <CardDescription>
-                Consolidado de unidades a producir para las fechas seleccionadas ({formattedToday} y {formattedTarget}). No se consideran fines de semana.
+                Consolidado de unidades a producir basado en la programación diaria de Ecuador Continental ({formattedToday} y {formattedTarget}).
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border overflow-hidden">
+              <div className="rounded-md border overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha</th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Categoría</th>
-                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cantidad de Órdenes</th>
+                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
                         <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
                       </tr>
                     </thead>
@@ -514,7 +518,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       ) : (
                         <tr>
                           <td colSpan={4} className="py-12 text-center text-gray-400 italic">
-                            No hay datos para resumir.
+                            No hay datos en la programación diaria para resumir.
                           </td>
                         </tr>
                       )}
