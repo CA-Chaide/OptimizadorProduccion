@@ -61,15 +61,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, []);
 
   /**
-   * Extracción pura de partes de fecha desde el texto para evitar desplazamientos.
+   * Extrae las partes de la fecha SIN usar el objeto Date de JS para evitar offsets.
    */
   const safeParseDateParts = useCallback((value: any) => {
     if (!value) return null;
     const str = String(value).trim();
     
+    // Intenta formato YYYY-MM-DD
     const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
     
+    // Intenta formato DD/MM/YYYY
     const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
     
@@ -88,31 +90,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
-      if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
+      if (parts) {
+        return `${parts.d}/${parts.m}/${parts.y}`;
+      }
       return String(value);
     }
     
     return String(value);
   }, [safeParseDateParts]);
-
-  const getTargetPlanningDate = useCallback((days: number) => {
-    const todayStr = getEcuadorTodayString();
-    const [y, m, d] = todayStr.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
-    
-    date.setDate(date.getDate() + days);
-    
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek === 6) date.setDate(date.getDate() + 2); // Sábado -> Lunes
-    else if (dayOfWeek === 0) date.setDate(date.getDate() + 1); // Domingo -> Lunes
-    
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Guayaquil',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(date);
-  }, [getEcuadorTodayString]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -153,12 +138,47 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
+  // Inicialización de fechas LABORABLES
   useEffect(() => {
     if (isMounted) {
-      setTodayDate(getEcuadorTodayString());
-      setTargetDate(getTargetPlanningDate(horizonValue));
+      const todayStr = getEcuadorTodayString();
+      const [y, m, d] = todayStr.split('-').map(Number);
+      let baseDate = new Date(y, m - 1, d);
+      
+      // 1. Asegurar que 'Hoy' sea día laborable (L-V)
+      const dayOfWeek = baseDate.getDay();
+      if (dayOfWeek === 6) baseDate.setDate(baseDate.getDate() + 2); // Sábado -> Lunes
+      else if (dayOfWeek === 0) baseDate.setDate(baseDate.getDate() + 1); // Domingo -> Lunes
+      
+      const planningToday = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Guayaquil',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(baseDate);
+
+      // 2. Calcular 'Target' saltando fines de semana
+      let targetDateObj = new Date(baseDate);
+      let businessDaysAdded = 0;
+      while (businessDaysAdded < horizonValue) {
+        targetDateObj.setDate(targetDateObj.getDate() + 1);
+        // Si no es Sábado (6) ni Domingo (0), sumamos día laborable
+        if (targetDateObj.getDay() !== 0 && targetDateObj.getDay() !== 6) {
+          businessDaysAdded++;
+        }
+      }
+
+      const planningTarget = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Guayaquil',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(targetDateObj);
+
+      setTodayDate(planningToday);
+      setTargetDate(planningTarget);
     }
-  }, [isMounted, horizonValue, getEcuadorTodayString, getTargetPlanningDate]);
+  }, [isMounted, horizonValue, getEcuadorTodayString]);
 
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
@@ -181,7 +201,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
         serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo)
       );
       const responses = await Promise.all(promises);
-      setTiemposProduccion(responses.flatMap(res => res.data || []));
+      const allData = responses.flatMap(res => res.data || []);
+      setTiemposProduccion(allData);
       setTiemposPage(1); 
     } catch (error) {
       console.error('Error al cargar tiempos de producción:', error);
@@ -459,7 +480,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 Resumen de Carga de Producción
               </CardTitle>
               <CardDescription>
-                Consolidado de unidades a producir para las fechas seleccionadas ({formattedToday} y {formattedTarget}).
+                Consolidado de unidades a producir para las fechas seleccionadas ({formattedToday} y {formattedTarget}). No se consideran fines de semana.
               </CardDescription>
             </CardHeader>
             <CardContent>
