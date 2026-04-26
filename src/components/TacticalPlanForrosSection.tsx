@@ -1,7 +1,21 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { CalendarClock, Loader2, Users, Lock, Package, Timer, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarCheck } from 'lucide-react';
+import { 
+  CalendarClock, 
+  Loader2, 
+  Users, 
+  Lock, 
+  Package, 
+  Timer, 
+  RefreshCw, 
+  ChevronLeft, 
+  ChevronRight, 
+  ChevronsLeft, 
+  ChevronsRight, 
+  CalendarCheck,
+  BarChart3
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -236,6 +250,34 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return dailyOrders.slice(start, start + dailyRowsPerPage);
   }, [dailyOrders, dailyPage, dailyRowsPerPage]);
 
+  const productionSummary = useMemo(() => {
+    const summaryMap = new Map<string, { date: string; category: string; quantity: number; count: number }>();
+    
+    dailyOrders.forEach(order => {
+      const rawDate = order['FECHAINICIO'];
+      const dateDisplay = formatValueForDisplay('FECHA', rawDate);
+      const category = String(order['CATEGORIA'] || 'General').trim();
+      const key = `${dateDisplay}-${category}`;
+      
+      if (!summaryMap.has(key)) {
+        summaryMap.set(key, {
+          date: dateDisplay,
+          category: category,
+          quantity: 0,
+          count: 0
+        });
+      }
+      
+      const entry = summaryMap.get(key)!;
+      entry.quantity += Number(order['CANTIDAD'] || 0);
+      entry.count += 1;
+    });
+    
+    return Array.from(summaryMap.values()).sort((a, b) => {
+      return a.date.localeCompare(b.date) || a.category.localeCompare(b.category);
+    });
+  }, [dailyOrders, formatValueForDisplay]);
+
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
 
@@ -259,6 +301,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
             <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><CalendarCheck className="w-4 h-4" /> Programación Diaria</TabsTrigger>
+            <TabsTrigger value="resumen-diario" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><BarChart3 className="w-4 h-4" /> Resumen de producción diaria</TabsTrigger>
           </TabsList>
         </div>
 
@@ -403,6 +446,73 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Actualizar</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="resumen-diario">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-primary" />
+                Resumen de Carga de Producción
+              </CardTitle>
+              <CardDescription>
+                Consolidado de unidades a producir para las fechas seleccionadas ({formattedToday} y {formattedTarget}).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Categoría</th>
+                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cantidad de Órdenes</th>
+                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {isLoadingDaily ? (
+                        <tr>
+                          <td colSpan={4} className="py-12 text-center">
+                            <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                          </td>
+                        </tr>
+                      ) : productionSummary.length > 0 ? (
+                        productionSummary.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-900">{item.date}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{item.category}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="py-12 text-center text-gray-400 italic">
+                            No hay datos para resumir.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    {productionSummary.length > 0 && (
+                      <tfoot className="bg-gray-50 font-bold border-t-2">
+                        <tr>
+                          <td colSpan={2} className="px-6 py-3 text-right text-xs text-gray-600 uppercase">Totales Generales:</td>
+                          <td className="px-6 py-3 text-right font-mono text-sm">
+                            {productionSummary.reduce((acc, curr) => acc + curr.count, 0)}
+                          </td>
+                          <td className="px-6 py-3 text-right font-mono text-sm text-blue-800">
+                            {productionSummary.reduce((acc, curr) => acc + curr.quantity, 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
               </div>
             </CardContent>
           </Card>
