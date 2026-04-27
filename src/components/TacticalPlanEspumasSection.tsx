@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, Scissors } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -59,9 +59,9 @@ const ScheduleControlPanel = ({
   const rendParam = getParam(restrictions, isQuito ? 'RENDIMIENTO_PROCESO' : 'RENDIMIENTO_PROCESO_GYE', isQuito ? 70 : 65);
   const shiftHoursParam = getParam(restrictions, 'HORAS_TRABAJO', 9);
   const maxExtrasParam = getParam(restrictions, 'MAX_EXTRAS_HORAS', 2);
-  const paroParam = getParam(restrictions, 'PARO_PROGRAMADO', 0.68); // 40 mins aprox
+  const paroParam = getParam(restrictions, 'PARO_PROGRAMADO', 0.68); 
 
-  // Procesamiento de recursos con sus horarios específicos o heredados
+  // Procesamiento de recursos
   const processedResources = resources.map(m => {
     const t1 = getParam(restrictions, `${m.id}_T1`, m.defaultT1 ?? shiftHoursParam.value);
     const t2 = getParam(restrictions, `${m.id}_T2`, m.defaultT2 ?? 8);
@@ -616,7 +616,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             plannedHours={summaryTotals2000.timeLog} 
             restrictions={restricciones}
             resources={[
-              { id: 'CARRUSEL_G', name: 'Carrusel' },
               { id: 'FEMA', name: 'Fema' },
               { id: 'MAQUINA_3_G', name: 'Máquina 3' },
               { id: 'REPOTENCIADO', name: 'Repotenciado', defaultT1: 6 }
@@ -726,10 +725,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100">CANT.</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30 font-black">ALT. TOT.</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-black">NRO. SUBBLOQUE</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold" title="Capacidad física del carrusel">BATCH. CARGA CARRUSEL</th>
-                        {center.id === '1000' && <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold">NRO. BLOQUE FORMULADO</th>}
-                        <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold">NRO. CARGAS SUBBLOQUE</th>
-                        <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">TIEMPO OPERATIVO</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold" title="Capacidad física del carrusel">Batch. Carga Carrusel</th>
+                        {center.id === '1000' && <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold">Nro. Bloque Formulado</th>}
+                        <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold">Nro. Cargas Subbloque</th>
+                        <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">Tiempo Operativo</th>
                         <th className="px-3 py-4 font-black">ALM.</th>
                       </tr>
                     </thead>
