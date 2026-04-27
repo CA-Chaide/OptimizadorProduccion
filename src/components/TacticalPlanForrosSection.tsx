@@ -51,12 +51,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
   
-  // Estado para asignaciones manuales de Hojas de Ruta
   const [manualRouteAssignments, setManualRouteAssignments] = useState<Record<string, string>>({});
 
-  /**
-   * Obtiene la fecha de "hoy" en Ecuador (America/Guayaquil) formateada como YYYY-MM-DD.
-   */
+  const normalizeMaterialCode = useCallback((code: string | number): string => {
+    const codeStr = String(code).trim();
+    return codeStr.slice(-8);
+  }, []);
+
   const getEcuadorTodayString = useCallback((): string => {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Guayaquil',
@@ -66,21 +67,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }).format(new Date());
   }, []);
 
-  /**
-   * Extrae las partes de la fecha SIN usar el objeto Date de JS para evitar offsets.
-   */
   const safeParseDateParts = useCallback((value: any) => {
     if (!value) return null;
     const str = String(value).trim();
-    
-    // Intenta formato YYYY-MM-DD
     const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
-    
-    // Intenta formato DD/MM/YYYY
     const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
-    
     return null;
   }, []);
 
@@ -93,15 +86,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const formatValueForDisplay = useCallback((col: string, value: any): string => {
     if (value === null || value === undefined) return '—';
     const upperCol = col.toUpperCase().trim();
-    
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
-      if (parts) {
-        return `${parts.d}/${parts.m}/${parts.y}`;
-      }
+      if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
       return String(value);
     }
-    
     return String(value);
   }, [safeParseDateParts]);
 
@@ -124,8 +113,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   useEffect(() => {
     setIsMounted(true);
     fetchData();
-    
-    // Cargar asignaciones manuales desde localStorage
     const saved = localStorage.getItem('forros_manual_routes');
     if (saved) {
       try {
@@ -269,7 +256,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
     const allKeys = Object.keys(tiemposProduccion[0]);
-    // Prioridad para las columnas principales, inyectando HOJA DE RUTA
     const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'HOJA DE RUTA', 'Tiempo'];
     return [...priority.filter(k => k === 'HOJA DE RUTA' || allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [tiemposProduccion]);
@@ -277,9 +263,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const dailyColumns = useMemo(() => {
     if (dailyOrders.length === 0) return [];
     const allKeys = Object.keys(dailyOrders[0]);
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'MAQUINA', 'FECHAFIN'];
-    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
+    return [...priority.filter(k => k === 'TIEMPOS DE PRODUCCIÓN' || (allKeys.includes(k) && k !== 'CATEGORIA')), ...allKeys.filter(k => !priority.includes(k) && k !== 'CATEGORIA')];
   }, [dailyOrders]);
+
+  const calculateProductionTime = useCallback((material: string, quantity: number) => {
+    const norm = normalizeMaterialCode(material);
+    const matches = tiemposProduccion.filter(t => normalizeMaterialCode(t.CodMaterial || t.Material) === norm);
+    if (matches.length === 0) return '—';
+    const unitTime = Math.max(...matches.map(m => Number(m.Tiempo || 0)));
+    return (unitTime * quantity).toFixed(2) + ' min';
+  }, [tiemposProduccion, normalizeMaterialCode]);
 
   const paginatedTiemposData = useMemo(() => {
     const start = (tiemposPage - 1) * tiemposRowsPerPage;
@@ -330,8 +324,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       seen.add(pId);
       return true;
     });
-
-    // Ordenar ascendentemente por PuestoTrabajo
     return filtered.sort((a, b) => 
       String(a.PuestoTrabajo || '').localeCompare(String(b.PuestoTrabajo || ''))
     );
@@ -544,7 +536,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               key={`cell-${idx}-${col}`} 
                               className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
                             >
-                              {formatValueForDisplay(col, order[col])}
+                              {col === 'TIEMPOS DE PRODUCCIÓN'
+                                ? <span className="font-bold text-emerald-700">{calculateProductionTime(order['MATERIAL'], Number(order['CANTIDAD'] || 0))}</span>
+                                : formatValueForDisplay(col, order[col])
+                              }
                             </td>
                           ))}
                         </tr>
