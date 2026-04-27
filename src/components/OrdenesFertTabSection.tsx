@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils';
 
 interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
+  columns?: string[];
+  hideControls?: boolean;
 }
 
 interface PaginationState {
@@ -98,7 +100,7 @@ const MultiSelect: React.FC<{
   );
 };
 
-export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones }) => {
+export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones, columns, hideControls = false }) => {
   const { addNotification } = useAppContext();
   const [orders, setOrders] = useState<OrdenFert[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -114,9 +116,9 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
 
   // Define static columns to ensure order and completeness
-  const COLUMNS_TO_DISPLAY = [
-    'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'PEDIDO', 'POSICION', 'CENTRO', 
-    'MAQUINA', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
+  const COLUMNS_TO_DISPLAY = columns || [
+    'FECHA', 'PEDIDO', 'POSICION', 'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
+    'MAQUINA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
   ];
 
   useEffect(() => {
@@ -251,33 +253,35 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start space-x-2">
-            <div className="w-56">
-                <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
-                <MultiSelect
-                    options={uniqueDates.map(d => ({ value: d, label: d }))}
-                    selected={selectedDates}
-                    onChange={handleDateChange}
-                    placeholder="Todas las fechas"
-                />
+      {!hideControls && (
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-start space-x-2">
+              <div className="w-56">
+                  <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
+                  <MultiSelect
+                      options={uniqueDates.map(d => ({ value: d, label: d }))}
+                      selected={selectedDates}
+                      onChange={handleDateChange}
+                      placeholder="Todas las fechas"
+                  />
+              </div>
+            <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm mt-6">
+                <Package className="w-6 h-6 text-indigo-600" />
+                <div>
+                  <p className="text-xs text-indigo-800 font-semibold uppercase">CANT. PENDIENTE</p>
+                  <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
+                </div>
             </div>
-          <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm mt-6">
-              <Package className="w-6 h-6 text-indigo-600" />
-              <div>
-                <p className="text-xs text-indigo-800 font-semibold uppercase">CANT. PENDIENTE</p>
-                <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
-              </div>
-          </div>
-          <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
-              <Package className="w-6 h-6 text-teal-600" />
-              <div>
-                <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL PENDIENTE</p>
-                <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
-              </div>
+            <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
+                <Package className="w-6 h-6 text-teal-600" />
+                <div>
+                  <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL PENDIENTE</p>
+                  <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
+                </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
