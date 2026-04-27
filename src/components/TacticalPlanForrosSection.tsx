@@ -267,11 +267,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return [...priority.filter(k => k === 'TIEMPOS DE PRODUCCIÓN' || (allKeys.includes(k) && k !== 'CATEGORIA')), ...allKeys.filter(k => !priority.includes(k) && k !== 'CATEGORIA')];
   }, [dailyOrders]);
 
-  const calculateProductionTime = useCallback((material: string, quantity: number) => {
-    const norm = normalizeMaterialCode(material);
-    const matches = tiemposProduccion.filter(t => normalizeMaterialCode(t.CodMaterial || t.Material) === norm);
-    if (matches.length === 0) return '—';
-    const unitTime = Math.max(...matches.map(m => Number(m.Tiempo || 0)));
+  /**
+   * Calcula el tiempo de producción para una orden previsional.
+   * Busca en la tabla de tiempos de producción donde CodMaterial y PuestoTrabajo (Máquina) coincidan.
+   */
+  const calculateProductionTime = useCallback((material: string, quantity: number, machine: string) => {
+    const normMaterial = normalizeMaterialCode(material);
+    const normMachine = String(machine || '').trim().toUpperCase();
+    
+    // Buscar coincidencia exacta de Material y Puesto (Máquina)
+    const match = tiemposProduccion.find(t => {
+      const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
+      const tMachine = String(t.PuestoTrabajo || '').trim().toUpperCase();
+      return tMaterial === normMaterial && tMachine === normMachine;
+    });
+
+    if (!match) return '—';
+    
+    const unitTime = Number(match.Tiempo || 0);
     return (unitTime * quantity).toFixed(2) + ' min';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
@@ -537,7 +550,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
                             >
                               {col === 'TIEMPOS DE PRODUCCIÓN'
-                                ? <span className="font-bold text-emerald-700">{calculateProductionTime(order['MATERIAL'], Number(order['CANTIDAD'] || 0))}</span>
+                                ? <span className="font-bold text-emerald-700">{calculateProductionTime(order['MATERIAL'], Number(order['CANTIDAD'] || 0), order['MAQUINA'])}</span>
                                 : formatValueForDisplay(col, order[col])
                               }
                             </td>
