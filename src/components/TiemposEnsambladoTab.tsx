@@ -131,7 +131,7 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grup
                                 <table ref={tableRef} className="min-w-full text-xs divide-y divide-gray-200">
                                     <TableHeader>
                                         <TableRow>
-                                            {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
+                                            {columns.map(col => <TableHead key={col}>{col === 'CodMaterial' ? 'MATERIAL' : col}</TableHead>)}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
