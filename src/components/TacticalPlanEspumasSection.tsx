@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 
 // --- CONSTANTES TÉCNICAS ---
 const MACHINE_RADIO_CM = 350;    
@@ -67,7 +68,7 @@ const ScheduleControlPanel = ({
     const p = getParam(restrictions, `${m.id}_PARO`, paroParam.value);
     
     const baseHours = t1.value + t2.value - (p.value * 2);
-    const maxPotentialHours = baseHours + maxExtrasParam.value; // Consideramos extras en T1
+    const maxPotentialHours = baseHours + maxExtrasParam.value; 
     
     return { 
       ...m, 
@@ -88,24 +89,23 @@ const ScheduleControlPanel = ({
   
   const utilization = netCapacityBase > 0 ? (plannedHours / netCapacityBase) * 100 : 0;
   
-  // Evaluación de estado operativo
   let status: 'NORMAL' | 'WARNING' | 'CRITICAL' = 'NORMAL';
-  let statusMessage = "Capacidad Normal (Turnos Estándar)";
+  let statusMessage = "Capacidad Normal";
   let recommendation = "El plan es factible dentro de la jornada normal.";
   
   if (plannedHours > netCapacityMax) {
     status = 'CRITICAL';
     statusMessage = "SOBRECARGA CRÍTICA";
-    recommendation = `La demanda excede la capacidad máxima (${netCapacityMax.toFixed(1)}h). Se requiere reprogramar órdenes.`;
+    recommendation = `La demanda excede la capacidad máxima (${netCapacityMax.toFixed(1)}h). Se requiere reprogramar.`;
   } else if (plannedHours > netCapacityBase) {
     status = 'WARNING';
-    statusMessage = "REQUIERE HORAS EXTRAS";
+    statusMessage = "EXTRAS REQUERIDAS";
     const extrasNeeded = (plannedHours / (rendParam.value / 100)) - totalBaseHours;
-    recommendation = `Se requiere programar aproximadamente ${extrasNeeded.toFixed(1)}h de extras distribuidas en los recursos.`;
+    recommendation = `Se requiere programar aproximadamente ${extrasNeeded.toFixed(1)}h de extras.`;
   }
 
   return (
-    <div className="mb-10 animate-in fade-in slide-in-from-top-4 duration-700 text-left font-sans">
+    <div className="mb-10 text-left font-sans animate-in fade-in slide-in-from-top-4 duration-700">
       <div className={cn(
         "text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6",
         isQuito ? "bg-slate-900 border-b-2 border-blue-500" : "bg-indigo-950 border-b-2 border-indigo-400"
@@ -116,14 +116,12 @@ const ScheduleControlPanel = ({
             Control de Horarios y Evaluación de Capacidad - Planta {centroId}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-           <Badge className={cn(
-             "font-black text-[10px]",
-             status === 'NORMAL' ? "bg-green-500" : status === 'WARNING' ? "bg-amber-500" : "bg-red-500"
-           )}>
-             {statusMessage}
-           </Badge>
-        </div>
+        <Badge className={cn(
+          "font-black text-[10px]",
+          status === 'NORMAL' ? "bg-green-500" : status === 'WARNING' ? "bg-amber-500" : "bg-red-500"
+        )}>
+          {statusMessage}
+        </Badge>
       </div>
 
       <div className="bg-white border-x border-b border-gray-200 rounded-b-2xl shadow-2xl overflow-hidden">
@@ -162,10 +160,9 @@ const ScheduleControlPanel = ({
           </table>
         </div>
 
-        {/* Resumen de Capacidades */}
         <div className="grid grid-cols-1 md:grid-cols-4 border-t border-gray-200">
            <div className="p-6 border-r border-gray-100 flex flex-col items-center justify-center bg-gray-50/30">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Rendimiento de Proceso</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Rendimiento Planta</span>
               <div className="flex items-center gap-2">
                 <span className="text-3xl font-black text-slate-800 font-mono">{rendParam.value}%</span>
                 {rendParam.isOverridden && <ShieldCheck className="w-5 h-5 text-blue-500" />}
@@ -173,12 +170,12 @@ const ScheduleControlPanel = ({
            </div>
            
            <div className="p-6 border-r border-gray-100 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Capacidad Neta (Jornada)</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Capacidad Neta Disponible</span>
               <span className="text-3xl font-black text-indigo-600 font-mono">{netCapacityBase.toFixed(1)}h</span>
            </div>
 
            <div className="p-6 border-r border-gray-100 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Utilización Actual</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Utilización del Plan</span>
               <div className="flex flex-col items-center gap-1">
                 <span className={cn(
                   "text-3xl font-black font-mono",
@@ -198,7 +195,7 @@ const ScheduleControlPanel = ({
                 {status === 'NORMAL' ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
                 <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">Evaluación Operativa</span>
               </div>
-              <p className="text-xs font-bold text-gray-800 leading-tight">{recommendation}</p>
+              <p className="text-xs font-bold text-gray-800">{recommendation}</p>
            </div>
         </div>
       </div>
@@ -220,7 +217,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
 
-  // Refs para scroll
   const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
   const scrollResumen1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
@@ -238,7 +234,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setGrupos(filtered);
       return filtered;
     } catch (error) {
-      console.error('Error cargando grupos:', error);
       return [];
     }
   };
@@ -250,7 +245,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setRestricciones(filtered);
       return filtered;
     } catch (error) {
-      console.error('Error cargando restricciones:', error);
       return [];
     }
   };
@@ -336,7 +330,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const innerRadius = MACHINE_RADIO_CM - largo;
     if (innerRadius <= 0) return { subbloquesPorCarga: 1, totalCargas: Math.ceil(totalSubblocks) };
     const innerCircumference = 2 * Math.PI * innerRadius;
-    const subbloquesPorCarga = Math.max(1, Math.floor(innerCircumference / ancho) - 1);
+    const subbloquesPorCarga = Math.max(1, Math.floor(innerCircumference / ancho));
     const totalCargas = Math.ceil(totalSubblocks / subbloquesPorCarga);
     return { subbloquesPorCarga, totalCargas };
   };
@@ -373,6 +367,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
+  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
+  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
@@ -564,7 +560,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Popover>
           </div>
 
-          {/* CONTROL DE HORARIOS QUITO */}
           <ScheduleControlPanel 
             centroId="1000" 
             plannedHours={summaryTotals1000.timeLog} 
@@ -577,7 +572,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             ]}
           />
 
-          {/* TABLA RESUMEN QUITO */}
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-green-700">
               <div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Almacén 1006)
@@ -617,7 +611,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Card>
           </div>
 
-          {/* CONTROL DE HORARIOS GUAYAQUIL */}
           <ScheduleControlPanel 
             centroId="2000" 
             plannedHours={summaryTotals2000.timeLog} 
@@ -630,7 +623,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             ]}
           />
 
-          {/* TABLA RESUMEN GUAYAQUIL */}
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-indigo-700">
               <div className="w-2 h-2 rounded-full bg-indigo-600" /> Planta 2000 - Guayaquil (Almacén 2006)
@@ -753,7 +745,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="grid grid-cols-1 gap-10">
             {[ { t: 'Quito 1000', d: tiemposC1000 }, { t: 'Guayaquil 2000', d: tiemposC2000 } ].map((center, idx) => (
               <div key={idx} className="space-y-4">
-                <h3 className="text-sm font-bold uppercase text-gray-400">Catálogo de Tiempos - {center.t}</h3>
+                <h3 className="text-sm font-bold uppercase text-gray-400 text-left">Catálogo de Tiempos - {center.t}</h3>
                 <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
                   <table className="w-full border-collapse text-center">
                     <thead className="bg-gray-100 sticky top-0 text-[10px] font-bold uppercase text-gray-500">
