@@ -158,14 +158,15 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="ordenes" className="w-full">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
               <TabsTrigger value="grupos">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
               <TabsTrigger value="ordenes">Órdenes Previsionales</TabsTrigger>
               <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
               <TabsTrigger value="tiemposMuebles">Tiempos Muebles</TabsTrigger>
-              <TabsTrigger value="inventario">Inv. Cascos</TabsTrigger>
+              <TabsTrigger value="cascos">Inv. Cascos</TabsTrigger>
               <TabsTrigger value="telas">Inv. Telas</TabsTrigger>
+              <TabsTrigger value="plan">PLAN</TabsTrigger>
           </TabsList>
           <TabsContent value="grupos" className="mt-4">
               <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
@@ -202,12 +203,12 @@ export const TacticalPlanMueblesSection: React.FC = () => {
           <TabsContent value="tiemposMuebles" className="mt-4">
               <TiemposEnsambladoTab grupos={gruposMuebles} />
           </TabsContent>
-          <TabsContent value="inventario" className="mt-4">
+          <TabsContent value="cascos" className="mt-4">
               <Card>
                   <CardHeader>
-                      <CardTitle>Datos de Cubo de Inventarios</CardTitle>
+                      <CardTitle>Inventario de Cascos</CardTitle>
                       <CardDescription>
-                          Visualización de los datos de inventario.
+                          Visualización de los datos de inventario filtrados por "CASCO".
                       </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -218,13 +219,26 @@ export const TacticalPlanMueblesSection: React.FC = () => {
            <TabsContent value="telas" className="mt-4">
               <Card>
                   <CardHeader>
-                      <CardTitle>Datos de Inventarios de Telas</CardTitle>
+                      <CardTitle>Inventario de Telas</CardTitle>
                       <CardDescription>
                           Visualización de los datos de inventario filtrados por "TELA".
                       </CardDescription>
                   </CardHeader>
                   <CardContent>
                       <CuboInventariosTelasTab />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="plan" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>PLAN</CardTitle>
+                      <CardDescription>
+                          Visualización de las órdenes de fabricación (FERT).
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <OrdenesFertTabSection restricciones={restriccionesMuebles} />
                   </CardContent>
               </Card>
           </TabsContent>
