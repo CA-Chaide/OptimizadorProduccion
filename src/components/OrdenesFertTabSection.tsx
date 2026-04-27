@@ -76,7 +76,7 @@ export const OrdenesFertTabSection: React.FC = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // 1. Consulta exploratoria de Órdenes FERT
+      // 1. Consulta exploratoria de Órdenes FERT (POST)
       console.log('[OrdenesFert] Iniciando carga de datos...');
       const exploratoryRes = await serviciosService.getOrdenesFert(1, 1);
       const total = exploratoryRes.totalRegistros || 0;
@@ -88,6 +88,7 @@ export const OrdenesFertTabSection: React.FC = () => {
         const totalPages = Math.ceil(total / BATCH_SIZE);
         
         for (let i = 1; i <= totalPages; i++) {
+          console.log(`[OrdenesFert] Descargando bloque ${i} de ${totalPages}...`);
           const res = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
           if (res?.data) {
             const pageData = Array.isArray(res.data) ? res.data : [res.data];
@@ -97,22 +98,19 @@ export const OrdenesFertTabSection: React.FC = () => {
       }
 
       // 2. Cargar Tiempos de Ensamblado para el cruce (T. Prod)
-      console.log('[OrdenesFert] Cargando matriz técnica de tiempos...');
       const tiemposRes = await serviciosService.getTiemposEnsamblado(1, 10000);
       const tiemposData: TiempoTecnico[] = Array.isArray(tiemposRes?.data) ? tiemposRes.data : [];
       
-      // Crear mapa de búsqueda: "Centro|Material" -> Tiempo_Min
       const lookup = new Map<string, number>();
       tiemposData.forEach(t => {
         const key = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
-        // Solo guardamos el primer tiempo encontrado para evitar inconsistencias si hay duplicados
         if (!lookup.has(key)) {
           lookup.set(key, Number(t.Tiempo_Min) || 0);
         }
       });
       setTiemposLookup(lookup);
 
-      // 3. Cargar grupos y restricciones para filtros de responsables
+      // 3. Cargar grupos y restricciones
       const [groupsRes, restRes] = await Promise.all([
         grupoService.getAll(),
         restriccionService.getAll()
@@ -126,9 +124,8 @@ export const OrdenesFertTabSection: React.FC = () => {
       setAvailableCenters(centersFromGroups);
       
       inspector.captureVariable('fert_raw_count', allOrders.length);
-      inspector.captureVariable('tiempos_lookup_size', lookup.size);
       
-      console.log('[OrdenesFert] Carga y cruce de datos finalizado.');
+      console.log('[OrdenesFert] Datos cargados y procesados.');
     } catch (err) {
       addNotification('error', `Error al cargar y cruzar datos: ${(err as Error).message}`);
     } finally {
@@ -158,18 +155,12 @@ export const OrdenesFertTabSection: React.FC = () => {
     return parseResponsables(restriction?.valor_restriccion || '');
   };
 
-  // FILTRADO Y ENRIQUECIMIENTO CON TIEMPOS
   const filteredDataByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     
     availableCenters.forEach(centerId => {
-      // 1. Filtrar por Centro
-      let centerOrders = allRawOrders.filter(order => {
-        const orderCenter = String(order.CENTRO || order.Centro || order.centro || '').trim();
-        return orderCenter === centerId;
-      });
+      let centerOrders = allRawOrders.filter(order => String(order.CENTRO || '').trim() === centerId);
 
-      // 2. Filtrar por Responsables
       const allowedResps = getResponsablesPorCentro(centerId);
       if (allowedResps.length > 0) {
         centerOrders = centerOrders.filter(order => 
@@ -177,7 +168,6 @@ export const OrdenesFertTabSection: React.FC = () => {
         );
       }
 
-      // 3. ENRIQUECER CON T. PROD (Cruce de datos)
       const enrichedOrders = centerOrders.map(order => {
         const materialKey = `${centerId}|${normalizeMaterialCode(order.MATERIAL)}`;
         const tiempoTecnico = tiemposLookup.get(materialKey);
@@ -338,6 +328,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase">Notif.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-red-600 uppercase">Rech.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-amber-600 uppercase">Pend.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/30">T. Total</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Resp.</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Sector</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Pri.</th>
@@ -346,36 +337,42 @@ export const OrdenesFertTabSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => (
-                      <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-3 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{order.CENTRO}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-xs font-mono font-bold text-indigo-600">{order.ORDEN}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500">{order.CATEGORIA}</td>
-                        <td className="px-3 py-4 text-xs text-gray-600 max-w-xs truncate font-medium" title={order.NOMBRE}>{order.NOMBRE}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                          {order.T_PROD ? Number(order.T_PROD).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-gray-900">{order.CANTPROGRAMADA}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-red-600 bg-red-50/30">{order.CANTRECHAZO}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-amber-600 bg-amber-50/20">{order.CANTPENDIENTE || 0}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center">
-                          <Badge variant="outline" className="text-[10px] font-mono border-gray-100 bg-gray-50 text-gray-400">{order.RESPCTRLPROD}</Badge>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center">
-                          <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100 text-[10px] font-bold uppercase">
-                            {order.SECTORDESC || 'SIN SECTOR'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-[10px] font-mono">{order.PRIORIDAD}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-500 font-mono">{order.MAQUINA || '-'}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-600">{order.FECHA}</td>
-                      </tr>
-                    )) : (
+                    {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => {
+                      const tTotal = (order.T_PROD || 0) * (order.CANTPENDIENTE || 0);
+                      return (
+                        <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-3 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{order.CENTRO}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-mono font-bold text-indigo-600">{order.ORDEN}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500">{order.CATEGORIA}</td>
+                          <td className="px-3 py-4 text-xs text-gray-600 max-w-xs truncate font-medium" title={order.NOMBRE}>{order.NOMBRE}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                            {order.T_PROD ? Number(order.T_PROD).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-gray-900">{order.CANTPROGRAMADA}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-red-600 bg-red-50/30">{order.CANTRECHAZO}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-amber-600 bg-amber-50/20">{order.CANTPENDIENTE || 0}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
+                            {tTotal > 0 ? tTotal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-center">
+                            <Badge variant="outline" className="text-[10px] font-mono border-gray-100 bg-gray-50 text-gray-400">{order.RESPCTRLPROD}</Badge>
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-center">
+                            <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100 text-[10px] font-bold uppercase">
+                              {order.SECTORDESC || 'SIN SECTOR'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-center text-[10px] font-mono">{order.PRIORIDAD}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-500 font-mono">{order.MAQUINA || '-'}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-600">{order.FECHA}</td>
+                        </tr>
+                      );
+                    }) : (
                       <tr>
-                        <td colSpan={16} className="px-6 py-12 text-center text-gray-400 italic">
+                        <td colSpan={17} className="px-6 py-12 text-center text-gray-400 italic">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <AlertCircle className="w-8 h-8 text-gray-300" />
                             <span>No se encontraron órdenes para los criterios seleccionados.</span>
