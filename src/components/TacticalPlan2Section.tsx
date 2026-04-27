@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2, ClipboardList, UserCheck, Clock } from 'lucide-react';
+import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2, ClipboardList, UserCheck, Clock, ListChecks } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -87,7 +87,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 mb-8">
+        <TabsList className="grid w-full grid-cols-7 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -111,6 +111,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="fert" className="flex items-center gap-2">
             <ClipboardList className="w-4 h-4" />
             Fert
+          </TabsTrigger>
+          <TabsTrigger value="prog_diaria" className="flex items-center gap-2">
+            <ListChecks className="w-4 h-4" />
+            Prog Diaria
           </TabsTrigger>
         </TabsList>
 
@@ -248,6 +252,21 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <OrdenesFertTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="prog_diaria">
+          <Card>
+            <CardHeader>
+              <CardTitle>Programación Diaria de Planta</CardTitle>
+              <CardDescription>Planificación de carga diaria y secuenciación de órdenes.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-lg border border-dashed">
+                <CalendarClock className="w-12 h-12 text-gray-300 mb-4" />
+                <p className="text-gray-500 font-medium">Esta sección está siendo configurada para la gestión de programación diaria.</p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
