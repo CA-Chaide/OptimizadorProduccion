@@ -27,7 +27,10 @@ interface ProvisionalOrder {
   Maquina: string | null;
   ClaseOrden: string;
   CodMaterial: string;
-  T_PROD?: number;
+  T_ARMADO?: number;
+  T_CERRADO_L1?: number;
+  T_CERRADO_L2?: number;
+  T_CERRADO_L3?: number;
 }
 
 export const ProvisionalOrdersTabSection: React.FC = () => {
@@ -64,21 +67,33 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
-      // Crear mapa de búsqueda para tiempos técnicos
-      const lookup = new Map<string, number>();
+      // Crear mapa de búsqueda para tiempos técnicos por estación
+      const lookup = new Map<string, Record<string, number>>();
       const tiemposData = Array.isArray(tiemposRes?.data) ? tiemposRes.data : [];
+      
       tiemposData.forEach((t: any) => {
-        const key = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
-        lookup.set(key, Number(t.Tiempo_Min) || 0);
+        const materialKey = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
+        const stationName = String(t.PuestoTrabajo || '').trim().toUpperCase();
+        const time = Number(t.Tiempo_Min) || 0;
+        
+        if (!lookup.has(materialKey)) {
+          lookup.set(materialKey, {});
+        }
+        lookup.get(materialKey)![stationName] = time;
       });
 
       if (pageResponse && pageResponse.data) {
         const rawOrders = Array.isArray(pageResponse.data) ? pageResponse.data : [];
         const enriched = rawOrders.map(order => {
           const materialKey = `${String(order.Centro).trim()}|${normalizeMaterialCode(order.CodMaterial || order.MATERIAL)}`;
+          const times = lookup.get(materialKey) || {};
+          
           return {
             ...order,
-            T_PROD: lookup.get(materialKey)
+            T_ARMADO: times['ARMADO'] || 0,
+            T_CERRADO_L1: times['CERRADO L1'] || 0,
+            T_CERRADO_L2: times['CERRADO L2'] || 0,
+            T_CERRADO_L3: times['CERRADO L3'] || 0,
           };
         });
         setOrders(enriched);
@@ -181,7 +196,10 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
-                    <th className="px-6 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">T. Prod</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Armado</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L1</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L2</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L3</th>
                     <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
                     <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp. Ctrl.</th>
@@ -195,8 +213,17 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
-                        {order.T_PROD ? Number(order.T_PROD).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
+                        {order.T_ARMADO ? order.T_ARMADO.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
+                        {order.T_CERRADO_L1 ? order.T_CERRADO_L1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
+                        {order.T_CERRADO_L2 ? order.T_CERRADO_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
+                        {order.T_CERRADO_L3 ? order.T_CERRADO_L3.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{Number(order.CANTIDAD || 0).toLocaleString()}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.Almacen}</td>
@@ -206,7 +233,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
+                      <td colSpan={12} className="px-6 py-12 text-center text-gray-400 italic">
                         No se encontraron órdenes para el centro {selectedCenter}.
                       </td>
                     </tr>
