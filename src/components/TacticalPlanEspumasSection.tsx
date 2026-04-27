@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -21,7 +22,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-// CONSTANTES TÉCNICAS DEL CARRUSEL (PLANTA 1000 Y 2000)
+// CONSTANTES TÉCNICAS DEL CARRUSEL
 const MACHINE_RADIO_CM = 350;    // Radio de 3.5 metros
 const SECONDS_LOAD_BLOCK = 300;   // 5 min por bloque físico
 const SECONDS_REPETITION = 45;    // 45 seg por repetición de corte
@@ -39,19 +40,20 @@ const getParam = (restrictions: Restriccion[], key: string, defaultValue: number
 // COMPONENTE: Plan de Horarios y Capacidad (Quito)
 const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: number, restrictions: Restriccion[] }) => {
   const rend = getParam(restrictions, 'RENDIMIENTO_PROCESO', 70);
+  const defaultHours = getParam(restrictions, 'HORAS_TRABAJO', 9);
   
   const rawMachines = [
-    { id: 'FECKEN', name: 'Fecken', t1: 10, t2: 9.5, p: 0.68 },
-    { id: 'M3', name: 'Máquina 3', t1: 10, t2: 9.5, p: 0.68 },
+    { id: 'FECKEN', name: 'Fecken', t1: defaultHours.value, t2: 9.5, p: 0.68 },
+    { id: 'M3', name: 'Máquina 3', t1: defaultHours.value, t2: 9.5, p: 0.68 },
     { id: 'M1', name: 'Máquina 1', t1: 4, t2: 9.5, p: 0.68 },
-    { id: 'CNC', name: 'CNC', t1: 10, t2: 9.5, p: 0.68 },
+    { id: 'CNC', name: 'CNC', t1: defaultHours.value, t2: 9.5, p: 0.68 },
   ];
 
   const processed = rawMachines.map(m => {
     const t1 = getParam(restrictions, `${m.id}_T1`, m.t1);
     const t2 = getParam(restrictions, `${m.id}_T2`, m.t2);
     const p = getParam(restrictions, `${m.id}_PARO`, m.p);
-    const total = t1.value + t2.value - (p.value * 2); // Paro aplica por turno
+    const total = t1.value + t2.value - (p.value * 2);
     return { ...m, t1, t2, p, total };
   });
 
@@ -60,12 +62,12 @@ const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: numbe
   const porcentaje = totalDisponible > 0 ? (plannedHours / totalDisponible) * 100 : 0;
 
   return (
-    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500 text-left">
+    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500 text-left font-sans">
       <div className="bg-indigo-900 text-white p-2 text-center rounded-t-2xl text-[9px] font-black tracking-widest uppercase shadow-sm">
         Panel de Control de Horarios y Restricciones - Planta 1000
       </div>
       <div className="overflow-x-auto border-x border-b border-indigo-100 rounded-b-2xl shadow-xl bg-white">
-        <table className="w-full text-center border-collapse text-[10px] font-sans">
+        <table className="w-full text-center border-collapse text-[10px]">
           <thead>
             <tr className="bg-indigo-600 text-white uppercase font-black">
               <th className="px-4 py-3 border-r border-indigo-500 text-left sticky left-0 bg-indigo-600 z-10">RECURSO QUITO</th>
@@ -88,7 +90,7 @@ const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: numbe
               {processed.map(m => (
                 <td key={m.id} className="px-4 py-2.5 font-mono border-r border-indigo-50">
                   <div className="flex items-center justify-center gap-1">
-                    {m.t2.value} {m.t2.isOverridden && <ShieldCheck className="w-3 h-3 text-blue-500" title="Valor desde restricciones" />}
+                    {m.t2.value} {m.t2.isOverridden && <ShieldCheck className="w-3 h-3 text-blue-500" />}
                   </div>
                 </td>
               ))}
@@ -138,11 +140,12 @@ const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: numbe
 // COMPONENTE: Plan de Horarios y Capacidad (Guayaquil)
 const SchedulePlanGye = ({ plannedHours, restrictions }: { plannedHours: number, restrictions: Restriccion[] }) => {
   const rend = getParam(restrictions, 'RENDIMIENTO_PROCESO_GYE', 65);
+  const defaultHours = getParam(restrictions, 'HORAS_TRABAJO', 9);
 
   const rawMachines = [
-    { id: 'CARRUSEL_G', name: 'Carrusel', t1: 10, t2: 8, p: 0.68 },
-    { id: 'FEMA', name: 'Fema', t1: 10, t2: 8, p: 0.68 },
-    { id: 'M3_G', name: 'Máquina 3', t1: 10, t2: 8, p: 0.68 },
+    { id: 'CARRUSEL_G', name: 'Carrusel', t1: defaultHours.value, t2: 8, p: 0.68 },
+    { id: 'FEMA', name: 'Fema', t1: defaultHours.value, t2: 8, p: 0.68 },
+    { id: 'M3_G', name: 'Máquina 3', t1: defaultHours.value, t2: 8, p: 0.68 },
     { id: 'REPOTENCIADO', name: 'Repotenciado', t1: 6, t2: 8, p: 0.68 },
   ];
 
@@ -159,12 +162,12 @@ const SchedulePlanGye = ({ plannedHours, restrictions }: { plannedHours: number,
   const porcentaje = totalDisponible > 0 ? (plannedHours / totalDisponible) * 100 : 0;
 
   return (
-    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500 text-left">
+    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500 text-left font-sans">
       <div className="bg-slate-900 text-white p-2 text-center rounded-t-2xl text-[9px] font-black tracking-widest uppercase shadow-sm">
         Panel de Control de Horarios y Restricciones - Planta 2000
       </div>
       <div className="overflow-x-auto border-x border-b border-slate-100 rounded-b-2xl shadow-xl bg-white">
-        <table className="w-full text-center border-collapse text-[10px] font-sans">
+        <table className="w-full text-center border-collapse text-[10px]">
           <thead>
             <tr className="bg-slate-700 text-white uppercase font-black">
               <th className="px-4 py-3 border-r border-slate-600 text-left sticky left-0 bg-slate-700 z-10">RECURSO GYE</th>
@@ -375,7 +378,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0 || totalSubblocks <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
     
-    // Perímetro interno para evitar colisiones radiales
     const innerRadius = MACHINE_RADIO_CM - largo;
     if (innerRadius <= 0) return { subbloquesPorCarga: 1, totalCargas: Math.ceil(totalSubblocks) };
 
@@ -718,7 +720,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Quito - Carrusel 1006', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', id: '1000' }, 
             { t: 'Guayaquil - Carrusel 2006', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000' } 
           ].map((center, idx) => (
-            <div key={idx} className="space-y-4 text-left">
+            <div key={idx} className="space-y-4 text-left font-sans">
               <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)</h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
@@ -732,13 +734,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-gray-100">Categoría</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-gray-800 bg-gray-50/20">DENS.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-blue-800 bg-blue-50/20 uppercase">Apert.</th>
+                        <th className="px-2 py-4 border-r border-gray-100 text-blue-800 bg-blue-50/20 uppercase">APERT.</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-gray-800 uppercase">Ancho</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-gray-800 uppercase">Largo</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-gray-800 uppercase">Esp.</th>
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30">ALT. TOT.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 uppercase">Nro. Subbloque</th>
+                        <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30 font-black">ALT. TOT.</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 uppercase font-black">Nro. Subbloque</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold uppercase" title="Capacidad física del carrusel según radio útil de carga interior">Batch. Carga Carrusel</th>
                         
                         {center.id === '1000' && (
@@ -747,7 +749,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
                         <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold uppercase" title="Vueltas completas requeridas">Nro. Cargas Subbloque</th>
                         <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">Tiempo Operativo</th>
-                        <th className="px-3 py-4">Alm.</th>
+                        <th className="px-3 py-4 font-black">Alm.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">{renderTableBody(center.d, center.id)}</tbody>
@@ -758,11 +760,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="grupos"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">{grupos.map(g => (<Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6 text-left"><div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" /><Badge className="bg-gray-100 text-gray-600 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge><h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4><p className="text-[9px] font-mono text-gray-400 mt-2">ID: {g.codigo_grupo}</p></Card>))}</div></TabsContent>
+        <TabsContent value="grupos"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left font-sans">{grupos.map(g => (<Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6 text-left"><div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" /><Badge className="bg-gray-100 text-gray-600 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge><h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4><p className="text-[9px] font-mono text-gray-400 mt-2">ID: {g.codigo_grupo}</p></Card>))}</div></TabsContent>
 
-        <TabsContent value="restricciones" className="mt-0 space-y-8 animate-in slide-in-from-bottom-2 duration-400 text-left">{[ { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } ].map(center => { const list = restricciones.filter(r => grupos.some(g => g.codigo_grupo === r.codigo_grupo && String(g.centro) === center.id)); return (<div key={center.id} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.color)}><div className={cn("w-2 h-2 rounded-full", center.border)} /> Parámetros {center.label}</h3><Card className="rounded-3xl border border-gray-100 shadow-sm overflow-hidden bg-white"><table className="w-full border-collapse text-center"><thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Restricción</th><th className="px-6 py-4 border-r border-gray-50">Valor</th><th className="px-6 py-4 text-left">Referencia</th></tr></thead><tbody className="divide-y divide-gray-100 text-[11px]">{list.length === 0 ? (<tr><td colSpan={3} className="py-10 text-center text-gray-300 italic">Sin restricciones configuradas</td></tr>) : (list.map(r => (<tr key={r.codigo_restriccion} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-bold text-gray-700 border-r border-gray-50 uppercase">{r.nombre_restriccion}</td><td className="px-6 py-3 border-r border-gray-50"><Badge variant="outline" className="font-mono text-primary bg-primary/5 border-primary/20">{r.valor_restriccion}</Badge></td><td className="px-6 py-3 text-gray-500 italic text-left">{r.descripcion || '—'}</td></tr>)))}</tbody></table></Card></div>);})}</TabsContent>
+        <TabsContent value="restricciones" className="mt-0 space-y-8 animate-in slide-in-from-bottom-2 duration-400 text-left font-sans">{[ { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } ].map(center => { const list = restricciones.filter(r => grupos.some(g => g.codigo_grupo === r.codigo_grupo && String(g.centro) === center.id)); return (<div key={center.id} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.color)}><div className={cn("w-2 h-2 rounded-full", center.border)} /> Parámetros Técnicos {center.label}</h3><Card className="rounded-3xl border border-gray-100 shadow-sm overflow-hidden bg-white"><table className="w-full border-collapse text-center"><thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Restricción</th><th className="px-6 py-4 border-r border-gray-50">Valor</th><th className="px-6 py-4 text-left">Referencia</th></tr></thead><tbody className="divide-y divide-gray-100 text-[11px]">{list.length === 0 ? (<tr><td colSpan={3} className="py-10 text-center text-gray-300 italic">Sin restricciones configuradas</td></tr>) : (list.map(r => (<tr key={r.codigo_restriccion} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-bold text-gray-700 border-r border-gray-50 uppercase">{r.nombre_restriccion}</td><td className="px-6 py-3 border-r border-gray-50"><Badge variant="outline" className="font-mono text-primary bg-primary/5 border-primary/20">{r.valor_restriccion}</Badge></td><td className="px-6 py-3 text-gray-500 italic text-left">{r.descripcion || '—'}</td></tr>)))}</tbody></table></Card></div>);})}</TabsContent>
 
-        <TabsContent value="tiempos" className="space-y-10 text-left">{[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollResumen1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollResumen2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (<div key={idx} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)</h3><Card className="rounded-3xl border border-gray-100 shadow-sm overflow-hidden bg-white"><div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div><div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]"><table ref={center.s.table} className="w-full border-collapse text-center"><thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Material</th><th className="px-6 py-4 border-r border-gray-50 text-left">Descripción Técnica</th><th className="px-6 py-4 border-r border-gray-50">Línea Prod.</th><th className="px-6 py-4 border-r border-gray-50 text-teal-700">Estándar (Min)</th><th className="px-6 py-4">Stock / Seguridad</th></tr></thead><tbody className="divide-y divide-gray-100 text-[10px]">{center.d.map((t, i) => { const info = extractMaterialInfo(t); return (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td><td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td><td className="px-6 py-3 border-r border-gray-50 text-gray-400 uppercase font-medium">{t.Linea || '—'}</td><td className="px-6 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td><td className="px-6 py-3 text-gray-400 font-mono">{(t.StockActual || 0).toLocaleString()} / {(t.StockSeguridad || 0).toLocaleString()}</td></tr>);})}</tbody></table></div></Card></div>))}</TabsContent>
+        <TabsContent value="tiempos" className="space-y-10 text-left font-sans">{[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollResumen1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollResumen2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (<div key={idx} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)</h3><Card className="rounded-3xl border border-gray-100 shadow-sm overflow-hidden bg-white"><div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div><div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]"><table ref={center.s.table} className="w-full border-collapse text-center"><thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Material</th><th className="px-6 py-4 border-r border-gray-50 text-left">Descripción Técnica</th><th className="px-6 py-4 border-r border-gray-50">Línea Prod.</th><th className="px-6 py-4 border-r border-gray-50 text-teal-700">Estándar (Min)</th><th className="px-6 py-4">Stock / Seguridad</th></tr></thead><tbody className="divide-y divide-gray-100 text-[10px]">{center.d.map((t, i) => { const info = extractMaterialInfo(t); return (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td><td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td><td className="px-6 py-3 border-r border-gray-50 text-gray-400 uppercase font-medium">{t.Linea || '—'}</td><td className="px-6 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td><td className="px-6 py-3 text-gray-400 font-mono">{(t.StockActual || 0).toLocaleString()} / {(t.StockSeguridad || 0).toLocaleString()}</td></tr>);})}</tbody></table></div></Card></div>))}</TabsContent>
       </Tabs>
     </div>
   );
