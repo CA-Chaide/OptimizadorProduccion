@@ -15,7 +15,8 @@ import {
   ChevronsRight, 
   CalendarCheck,
   BarChart3,
-  Clock
+  Clock,
+  Map
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -139,17 +140,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return isNaN(val) ? 1 : val;
   }, [forrosRestricciones]);
 
-  // Inicialización de fechas LABORABLES (Saltando fines de semana)
   useEffect(() => {
     if (isMounted) {
       const todayStr = getEcuadorTodayString();
       const [y, m, d] = todayStr.split('-').map(Number);
       let baseDate = new Date(y, m - 1, d);
       
-      // Asegurar que 'Hoy' sea día laborable (L-V)
       const dayOfWeek = baseDate.getDay();
-      if (dayOfWeek === 6) baseDate.setDate(baseDate.getDate() + 2); // Sábado -> Lunes
-      else if (dayOfWeek === 0) baseDate.setDate(baseDate.getDate() + 1); // Domingo -> Lunes
+      if (dayOfWeek === 6) baseDate.setDate(baseDate.getDate() + 2);
+      else if (dayOfWeek === 0) baseDate.setDate(baseDate.getDate() + 1);
       
       const planningToday = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Guayaquil',
@@ -158,7 +157,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
         day: '2-digit'
       }).format(baseDate);
 
-      // Calcular 'Target' saltando fines de semana
       let targetDateObj = new Date(baseDate);
       let businessDaysAdded = 0;
       while (businessDaysAdded < horizonValue) {
@@ -256,7 +254,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const dailyColumns = useMemo(() => {
     if (dailyOrders.length === 0) return [];
     const allKeys = Object.keys(dailyOrders[0]);
-    // Aseguramos que MAQUINA sea una columna de prioridad para que se muestre al principio
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'MAQUINA', 'FECHAFIN'];
     return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [dailyOrders]);
@@ -322,6 +319,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <TabsList className="flex w-full h-auto bg-transparent p-0 overflow-x-auto justify-start scrollbar-hide">
             <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
+            <TabsTrigger value="hojas-ruta" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Map className="w-4 h-4" /> Hojas de Ruta</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
             <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><CalendarCheck className="w-4 h-4" /> Programación Diaria</TabsTrigger>
@@ -345,7 +343,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{g.codigo_grupo}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{g.centro}</td>
                           <td className="px-6 py-4 whitespace-nowrap font-medium">{g.nombre_grupo}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center"><Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>{g.estado === 'A' ? 'Activo' : 'Inactivo'}</Badge></td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center"><Badge variant={g.state === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>{g.estado === 'A' ? 'Activo' : 'Inactivo'}</Badge></td>
                         </tr>
                       ))}
                     </tbody>
@@ -374,6 +372,46 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-gray-500 text-xs">{r.descripcion || '-'}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="hojas-ruta">
+          <Card>
+            <CardHeader>
+              <CardTitle>Hojas de Ruta (Procesos de Forros)</CardTitle>
+              <CardDescription>Definición de secuencias y flujos operativos para la fabricación de forros.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Material</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Línea</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Puesto</th>
+                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase">Tiempo Estándar</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {tiemposProduccion.slice(0, 10).map((t, idx) => (
+                        <tr key={`route-${idx}`} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{t.CodMaterial || t.Material}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">{t.Linea}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">{t.PuestoTrabajo}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-sm">{t.Tiempo} min</td>
+                        </tr>
+                      ))}
+                      {tiemposProduccion.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-12 text-center text-gray-400 italic">No hay rutas configuradas.</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -477,7 +515,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="resumen-diario">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Horas Disponibles Card */}
             <Card className="lg:col-span-1 border-indigo-100 shadow-md">
               <CardHeader className="bg-indigo-50/50 border-b border-indigo-100">
                 <CardTitle className="text-sm font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-2">
@@ -521,7 +558,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Resumen Table Card */}
             <Card className="lg:col-span-3 shadow-md">
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-lg">
