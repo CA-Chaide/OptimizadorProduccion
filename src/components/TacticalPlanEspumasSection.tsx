@@ -106,6 +106,88 @@ const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: numbe
   );
 };
 
+// COMPONENTE: Plan de Horarios y Capacidad (Guayaquil)
+const SchedulePlanGye = ({ plannedHours, restrictions }: { plannedHours: number, restrictions: any[] }) => {
+  const getRestVal = (name: string, def: string) => {
+    return restrictions.find(r => r.nombre_restriccion === name)?.valor_restriccion || def;
+  };
+
+  const machines = [
+    { id: 'carrusel', name: 'Carrusel', t1: 0, t2: 0, p1: 0, p2: 0 }, // Columna Carrusel según imagen (vacía)
+    { id: 'fema', name: 'Fema', t1: 10, t2: 8, p1: 0.68, p2: 0.68 },
+    { id: 'm3', name: '3', t1: 10, t2: 8, p1: 0.68, p2: 0.68 },
+    { id: 'repotenciado', name: 'Repotenciado', t1: 6, t2: 8, p1: 0.68, p2: 0.68 },
+  ];
+
+  const processed = machines.map(m => ({ 
+    ...m, 
+    total: m.t1 > 0 || m.t2 > 0 ? (m.t1 + m.t2 - m.p1 - m.p2) : 0 
+  }));
+  
+  const rendimiento = parseFloat(getRestVal('RENDIMIENTO_PROCESO_GYE', '65'));
+  const totalMachineSum = processed.reduce((acc, m) => acc + m.total, 0);
+  const totalDisponible = totalMachineSum * (rendimiento / 100);
+  const porcentaje = totalDisponible > 0 ? (plannedHours / totalDisponible) * 100 : 0;
+
+  return (
+    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500">
+      <div className="bg-slate-900 text-white p-2 text-center rounded-t-2xl text-[9px] font-black tracking-widest uppercase shadow-sm">
+        Panel de Control de Horarios - Planta 2000
+      </div>
+      <div className="overflow-x-auto border-x border-b border-slate-100 rounded-b-2xl shadow-xl bg-white">
+        <table className="w-full text-center border-collapse text-[10px] font-sans">
+          <thead>
+            <tr className="bg-slate-700 text-white uppercase font-black">
+              <th className="px-4 py-3 border-r border-slate-600 text-left sticky left-0 bg-slate-700 z-10">GUAYAQUIL</th>
+              {processed.map(m => <th key={m.id} className="px-4 py-3 border-r border-slate-600">{m.name}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50 font-medium text-gray-700">
+            <tr className="hover:bg-slate-50/20">
+              <td className="px-4 py-2.5 text-left font-bold text-gray-500 border-r border-slate-50 sticky left-0 bg-white">Turno 1 [H]</td>
+              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">{m.t1 || ''}</td>)}
+            </tr>
+            <tr className="hover:bg-slate-50/20">
+              <td className="px-4 py-2.5 text-left font-bold text-gray-500 border-r border-slate-50 sticky left-0 bg-white">Turno 2 [H]</td>
+              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">{m.t2 || ''}</td>)}
+            </tr>
+            <tr className="hover:bg-slate-50/20 text-gray-400">
+              <td className="px-4 py-2.5 text-left font-bold border-r border-slate-50 sticky left-0 bg-white">Paro Prog. T1</td>
+              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">{m.p1 || ''}</td>)}
+            </tr>
+            <tr className="hover:bg-slate-50/20 text-gray-400">
+              <td className="px-4 py-2.5 text-left font-bold border-r border-slate-50 sticky left-0 bg-white">Paro Prog. T2</td>
+              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">{m.p2 || ''}</td>)}
+            </tr>
+            <tr className="bg-slate-50/50 font-black text-slate-900 text-[11px]">
+              <td className="px-4 py-3 text-left border-r border-slate-100 sticky left-0 bg-slate-50/50">TIEMPO TOTAL (H)</td>
+              {processed.map(m => <td key={m.id} className="px-4 py-3 font-mono border-r border-slate-100">{m.total > 0 ? m.total.toFixed(2) : ''}</td>)}
+            </tr>
+          </tbody>
+        </table>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border-t border-slate-100">
+          <div className="p-5 border-r border-slate-50 flex flex-col items-center justify-center bg-gray-50/30">
+             <span className="text-[9px] font-black text-slate-300 uppercase mb-1 tracking-tighter">Rendimiento</span>
+             <span className="text-2xl font-black text-slate-600 font-mono">{rendimiento}%</span>
+          </div>
+          <div className="p-5 border-r border-slate-50 flex flex-col items-center justify-center bg-yellow-50/20">
+             <span className="text-[9px] font-black text-amber-300 uppercase mb-1 tracking-tighter">T. Total Disponible</span>
+             <span className="text-2xl font-black text-gray-800 font-mono">{totalDisponible.toFixed(1)}h</span>
+          </div>
+          <div className={cn("p-5 flex flex-col items-center justify-center transition-colors", porcentaje > 100 ? "bg-red-50" : "bg-green-50")}>
+             <span className={cn("text-[9px] font-black uppercase mb-1 tracking-tighter", porcentaje > 100 ? "text-red-400" : "text-green-400")}>Carga de Trabajo</span>
+             <div className="flex flex-col items-center">
+                <span className={cn("text-2xl font-black font-mono leading-none", porcentaje > 100 ? "text-red-600" : "text-green-600")}>{porcentaje.toFixed(1)}%</span>
+                <span className="text-[8px] font-bold text-gray-400 mt-2 uppercase">Planificado: {plannedHours.toFixed(1)}h</span>
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
   const { addNotification } = useAppContext();
@@ -483,71 +565,105 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {/* PANEL DE HORARIOS QUITO */}
           <SchedulePlanQuito plannedHours={summaryTotals1000.timeLog} restrictions={restricciones} />
 
-          {[ 
-            { t: 'Planta 1000 - Quito (Almacén 1006)', d: summaryData1000, s: scrollResumen1000, c: 'text-green-700', b: 'bg-green-600', totals: summaryTotals1000, id: '1000' }, 
-            { t: 'Planta 2000 - Guayaquil (Almacén 2006)', d: summaryData2000, s: scrollResumen2000, c: 'text-indigo-700', b: 'bg-indigo-600', totals: summaryTotals2000, id: '2000' } 
-          ].map((center, idx) => (
-            <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}</h3>
-              <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[400px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center font-sans">
-                    <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
-                      <tr>
-                        <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
-                        <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
-                        <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
-                        <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
-                        <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Nro. Subbloque</th>
-                        
-                        {center.id === '1000' && (
-                          <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Nro. Bloque Formulado</th>
-                        )}
+          {/* TABLA RESUMEN QUITO */}
+          <div className="space-y-4">
+            <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-green-700"><div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Almacén 1006)</h3>
+            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+              <div ref={scrollResumen1000.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: scrollResumen1000.width[0], height: '1px' }} /></div>
+              <div ref={scrollResumen1000.bottom} className="overflow-x-auto max-h-[400px]">
+                <table ref={scrollResumen1000.table} className="w-full border-collapse text-center font-sans">
+                  <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
+                      <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
+                      <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
+                      <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
+                      <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Nro. Subbloque</th>
+                      <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Nro. Bloque Formulado</th>
+                      <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Nro. Cargas Subbloque</th>
+                      <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">Tiempo Operativo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-[11px]">
+                    {summaryData1000.length === 0 ? (<tr><td colSpan={8} className="py-10 text-center text-gray-300 italic">Sin demanda para el período</td></tr>) : (
+                      summaryData1000.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
+                          <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
+                          <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
+                          <td className="px-4 py-2 font-mono border-r border-gray-50">{row.units.toLocaleString()}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  <tfoot className="bg-gray-800 text-white text-[11px] font-bold sticky bottom-0">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-2.5 text-right uppercase tracking-wider">Totales</td>
+                      <td className="px-4 py-2.5 font-mono">{summaryTotals1000.units.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 font-mono">{summaryTotals1000.subbloques.toFixed(1)}</td>
+                      <td className="px-4 py-2.5 font-mono text-orange-300">{summaryTotals1000.bloques20m.toFixed(1)}</td>
+                      <td className="px-4 py-2.5 font-mono text-purple-300">{Math.ceil(summaryTotals1000.cargas)}</td>
+                      <td className="px-4 py-2.5 font-mono text-teal-300">{summaryTotals1000.timeLog.toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          </div>
 
-                        <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Nro. Cargas Subbloque</th>
-                        <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">Tiempo Operativo</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-[11px]">
-                      {center.d.length === 0 ? (<tr><td colSpan={center.id === '1000' ? 8 : 7} className="py-10 text-center text-gray-300 italic">Sin demanda para el período</td></tr>) : (
-                        center.d.map((row, i) => (
-                          <tr key={i} className="hover:bg-gray-50/80 transition-colors">
-                            <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
-                            <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
-                            <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
-                            <td className="px-4 py-2 font-mono border-r border-gray-50">{row.units.toLocaleString()}</td>
-                            <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
-                            
-                            {center.id === '1000' && (
-                              <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
-                            )}
+          {/* PANEL DE HORARIOS GUAYAQUIL */}
+          <SchedulePlanGye plannedHours={summaryTotals2000.timeLog} restrictions={restricciones} />
 
-                            <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
-                            <td className="px-4 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                    <tfoot className="bg-gray-800 text-white text-[11px] font-bold sticky bottom-0">
-                      <tr>
-                        <td colSpan={3} className="px-4 py-2.5 text-right uppercase tracking-wider">Totales</td>
-                        <td className="px-4 py-2.5 font-mono">{center.totals.units.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 font-mono">{center.totals.subbloques.toFixed(1)}</td>
-                        
-                        {center.id === '1000' && (
-                          <td className="px-4 py-2.5 font-mono text-orange-300">{center.totals.bloques20m.toFixed(1)}</td>
-                        )}
-
-                        <td className="px-4 py-2.5 font-mono text-purple-300">{Math.ceil(center.totals.cargas)}</td>
-                        <td className="px-4 py-2.5 font-mono text-teal-300">{center.totals.timeLog.toFixed(2)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </Card>
-            </div>
-          ))}
+          {/* TABLA RESUMEN GUAYAQUIL */}
+          <div className="space-y-4">
+            <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-indigo-700"><div className="w-2 h-2 rounded-full bg-indigo-600" /> Planta 2000 - Guayaquil (Almacén 2006)</h3>
+            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+              <div ref={scrollResumen2000.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: scrollResumen2000.width[0], height: '1px' }} /></div>
+              <div ref={scrollResumen2000.bottom} className="overflow-x-auto max-h-[400px]">
+                <table ref={scrollResumen2000.table} className="w-full border-collapse text-center font-sans">
+                  <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
+                      <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
+                      <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
+                      <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
+                      <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Nro. Subbloque</th>
+                      <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Nro. Cargas Subbloque</th>
+                      <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">Tiempo Operativo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-[11px]">
+                    {summaryData2000.length === 0 ? (<tr><td colSpan={7} className="py-10 text-center text-gray-300 italic">Sin demanda para el período</td></tr>) : (
+                      summaryData2000.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
+                          <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
+                          <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
+                          <td className="px-4 py-2 font-mono border-r border-gray-50">{row.units.toLocaleString()}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  <tfoot className="bg-gray-800 text-white text-[11px] font-bold sticky bottom-0">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-2.5 text-right uppercase tracking-wider">Totales</td>
+                      <td className="px-4 py-2.5 font-mono">{summaryTotals2000.units.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 font-mono">{summaryTotals2000.subbloques.toFixed(1)}</td>
+                      <td className="px-4 py-2.5 font-mono text-purple-300">{Math.ceil(summaryTotals2000.cargas)}</td>
+                      <td className="px-4 py-2.5 font-mono text-teal-300">{summaryTotals2000.timeLog.toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="ordenes" className="mt-0 space-y-10 animate-in fade-in duration-400">
