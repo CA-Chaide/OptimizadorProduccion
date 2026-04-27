@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, ChevronsLeft, ChevronsRight, Scissors } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -369,6 +369,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
 
+      // Para el catálogo técnico (Tiempos), no aplicamos filtros de almacén o responsable tan estrictos
+      if (!applyDateFilter && !o.ORDENPREVISIONAL) return true;
+
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (centro === '1000' && itemAlmValue !== '1006') return false;
       if (centro === '2000' && itemAlmValue !== '2006') return false;
@@ -392,8 +395,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
-  const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
-  const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
+  
+  // Catálogo técnico: Filtrar solo por centro para asegurar que se muestre la información
+  const tiemposC1000 = useMemo(() => 
+    tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), 
+    [tiemposEnsamblado]
+  );
+  const tiemposC2000 = useMemo(() => 
+    tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), 
+    [tiemposEnsamblado]
+  );
 
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
@@ -794,7 +805,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                         <th className="px-4 py-4 border-r border-gray-100">Línea</th>
                         <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Estándar (Min)</th>
-                        <th className="px-4 py-4">Stock</th>
+                        <th className="px-4 py-4">Stock / Seguridad</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[11px]">
@@ -807,9 +818,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                               <td className="px-4 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td>
                               <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                              <td className="px-4 py-3 border-r border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
+                              <td className="px-4 py-3 border-r border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
                               <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
-                              <td className="px-4 py-3 text-gray-400 font-mono">{t.StockActual || 0}</td>
+                              <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
                             </tr>
                           );
                         })
