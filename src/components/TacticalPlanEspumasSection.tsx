@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, ChevronsLeft, ChevronsRight, Scissors } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -330,23 +330,36 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
+    const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
-    if (desc) {
-      const densMatch = desc.match(/D-?(\d+)/i);
-      if (densMatch) dimensions.dens = densMatch[1];
-      const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
-      if (dimMatch) {
-        dimensions.ancho = dimMatch[1];
-        dimensions.largo = dimMatch[2];
-        if (dimMatch[3]) dimensions.esp = dimMatch[3];
-      }
-      const apertureMatch = desc.match(/194\.5|206|219/);
-      if (apertureMatch) dimensions.apertura = apertureMatch[0];
+    
+    // Extract density
+    const densMatch = desc.match(/D-?(\d+)/i);
+    if (densMatch) dimensions.dens = densMatch[1];
+    
+    // Extract physical dimensions
+    const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
+    if (dimMatch) {
+      dimensions.ancho = dimMatch[1];
+      dimensions.largo = dimMatch[2];
+      if (dimMatch[3]) dimensions.esp = dimMatch[3];
     }
+    
+    // REFINEMENT: Apertura detection (Prioritize Category String analysis)
+    const apertureRegex = /194\.5|206|219/;
+    const catApertureMatch = catStr.match(apertureRegex);
+    const descApertureMatch = desc.match(apertureRegex);
+    
+    if (catApertureMatch) {
+      dimensions.apertura = catApertureMatch[0];
+    } else if (descApertureMatch) {
+      dimensions.apertura = descApertureMatch[0];
+    }
+    
     return { code, desc, ...dimensions };
   };
 
@@ -369,7 +382,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
 
-      // Para el catálogo técnico (Tiempos), no aplicamos filtros de almacén o responsable tan estrictos
+      // Para el catálogo técnico (Tiempos), no aplicamos filtros de almacén tan estrictos
       if (!applyDateFilter && !o.ORDENPREVISIONAL) return true;
 
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
@@ -396,7 +409,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
   
-  // Catálogo técnico: Filtrar solo por centro para asegurar que se muestre la información
   const tiemposC1000 = useMemo(() => 
     tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), 
     [tiemposEnsamblado]
