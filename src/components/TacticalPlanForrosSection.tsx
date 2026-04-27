@@ -269,14 +269,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
     const allKeys = Object.keys(tiemposProduccion[0]);
-    // Insertamos 'HOJA DE RUTA' en la lista de prioridades después de PuestoTrabajo
+    // Prioridad para las columnas principales, inyectando HOJA DE RUTA
     const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'HOJA DE RUTA', 'Tiempo'];
-    
-    // Filtramos las columnas a mostrar, asegurando que HOJA DE RUTA esté presente
-    return [
-      ...priority.filter(k => k === 'HOJA DE RUTA' || allKeys.includes(k)),
-      ...allKeys.filter(k => !priority.includes(k))
-    ];
+    return [...priority.filter(k => k === 'HOJA DE RUTA' || allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [tiemposProduccion]);
 
   const dailyColumns = useMemo(() => {
@@ -489,7 +484,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           {tiemposColumns.map(col => (
                             <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
                               {col === 'HOJA DE RUTA' 
-                                ? (manualRouteAssignments[String(t.PuestoTrabajo || '').trim()] ?? t.Linea ?? '—')
+                                ? <span className="font-bold text-blue-700">{manualRouteAssignments[String(t.PuestoTrabajo || '').trim()] ?? t.Linea ?? '—'}</span>
                                 : formatValueForDisplay(col, t[col])
                               }
                             </td>
