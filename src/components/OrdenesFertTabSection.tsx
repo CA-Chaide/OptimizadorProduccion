@@ -6,6 +6,7 @@ import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
+import { dataStore } from '@/services/DataStore';
 import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, UserCheck, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,7 +77,6 @@ export const OrdenesFertTabSection: React.FC = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // 1. Consulta exploratoria de Órdenes FERT (POST)
       console.log('[OrdenesFert] Iniciando carga de datos...');
       const exploratoryRes = await serviciosService.getOrdenesFert(1, 1);
       const total = exploratoryRes.totalRegistros || 0;
@@ -97,7 +97,6 @@ export const OrdenesFertTabSection: React.FC = () => {
         }
       }
 
-      // 2. Cargar Tiempos de Ensamblado para el cruce (T. Prod)
       const tiemposRes = await serviciosService.getTiemposEnsamblado(1, 10000);
       const tiemposData: TiempoTecnico[] = Array.isArray(tiemposRes?.data) ? tiemposRes.data : [];
       
@@ -110,7 +109,6 @@ export const OrdenesFertTabSection: React.FC = () => {
       });
       setTiemposLookup(lookup);
 
-      // 3. Cargar grupos y restricciones
       const [groupsRes, restRes] = await Promise.all([
         grupoService.getAll(),
         restriccionService.getAll()
@@ -124,8 +122,6 @@ export const OrdenesFertTabSection: React.FC = () => {
       setAvailableCenters(centersFromGroups);
       
       inspector.captureVariable('fert_raw_count', allOrders.length);
-      
-      console.log('[OrdenesFert] Datos cargados y procesados.');
     } catch (err) {
       addNotification('error', `Error al cargar y cruzar datos: ${(err as Error).message}`);
     } finally {
@@ -182,6 +178,19 @@ export const OrdenesFertTabSection: React.FC = () => {
 
     return grouped;
   }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup]);
+
+  // PUBLICAR DATOS EN EL DATASTORE PARA "PROG DIARIA"
+  useEffect(() => {
+    if (filteredDataByCenter) {
+      const allProcessed = Object.values(filteredDataByCenter).flat();
+      if (allProcessed.length > 0) {
+        dataStore.setData('ordenesFert', allProcessed, 'OrdenesFertTab', {
+          count: allProcessed.length,
+          lastProcessed: new Date()
+        });
+      }
+    }
+  }, [filteredDataByCenter]);
 
   const availableSectors = useMemo(() => {
     const baseOrders = selectedTab === "raw_view" 

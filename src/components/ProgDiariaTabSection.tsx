@@ -2,10 +2,10 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
-import { ListChecks, Home, Map, Hash, AlertCircle, Loader2 } from 'lucide-react';
+import { dataStore } from '@/services/DataStore';
+import { ListChecks, Home, Map, Hash, AlertCircle, Loader2, CalendarRange } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from '@/components/ui/card';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 
 interface ProgDiariaTabSectionProps {
@@ -16,8 +16,24 @@ interface ProgDiariaTabSectionProps {
 export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ groups, restrictions }) => {
   const inspector = useRuntimeInspector('ProgDiariaTab');
   const [selectedCenter, setSelectedCenter] = useState<string>("");
+  const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
 
-  // Obtener centros únicos de los grupos
+  // 1. Suscribirse a los datos de Órdenes Fert del DataStore
+  useEffect(() => {
+    const updateFromStore = () => {
+      const snapshot = dataStore.getData('ordenesFert');
+      if (snapshot?.data) {
+        setOrdenesFert(snapshot.data);
+      }
+    };
+
+    updateFromStore();
+    return dataStore.subscribe((key) => {
+      if (key === 'ordenesFert') updateFromStore();
+    });
+  }, []);
+
+  // 2. Obtener centros únicos de los grupos
   const availableCenters = useMemo(() => {
     const centers = [...new Set(groups.map(g => String(g.centro).trim()))].sort();
     return centers;
@@ -30,44 +46,49 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
     }
   }, [availableCenters, selectedCenter]);
 
-  // Helper para procesar el valor de la restricción
+  // Helper para procesar el valor de la restricción HOJA_DE_RUTA
   const parseHojaDeRuta = (value: string): string[] => {
     if (!value) return [];
-    // Separar por , o & y limpiar espacios
     return value.split(/[,&]/).map(v => v.trim()).filter(Boolean);
   };
 
-  // Obtener Hojas de Ruta por Centro
-  const routesByCenter = useMemo(() => {
-    const result: Record<string, string[]> = {};
+  // 3. Generar Matriz de Carga por Centro
+  const matrixData = useMemo(() => {
+    if (!selectedCenter || ordenesFert.length === 0) return null;
 
-    availableCenters.forEach(centerId => {
-      // 1. Encontrar el grupo de ensamblado para este centro
-      const group = groups.find(g => 
-        String(g.centro).trim() === centerId && 
-        g.nombre_grupo.toLowerCase().includes('ensamblado')
-      );
+    // Filtrar órdenes por centro
+    const centerOrders = ordenesFert.filter(o => String(o.CENTRO).trim() === selectedCenter);
+    
+    // Obtener HOJA_DE_RUTA para este centro
+    const group = groups.find(g => String(g.centro).trim() === selectedCenter && g.nombre_grupo.toLowerCase().includes('ensamblado'));
+    const restriction = restrictions.find(r => r.codigo_grupo === group?.codigo_grupo && r.nombre_restriccion.toUpperCase() === 'HOJA_DE_RUTA');
+    const allowedRoutes = parseHojaDeRuta(restriction?.valor_restriccion || "");
 
-      if (group) {
-        // 2. Buscar la restricción HOJA_DE_RUTA para este grupo
-        const restriction = restrictions.find(r => 
-          r.codigo_grupo === group.codigo_grupo && 
-          r.nombre_restriccion.toUpperCase() === 'HOJA_DE_RUTA'
-        );
-
-        if (restriction) {
-          result[centerId] = parseHojaDeRuta(restriction.valor_restriccion);
-        } else {
-          result[centerId] = [];
-        }
-      } else {
-        result[centerId] = [];
-      }
+    // Extraer fechas únicas ordenadas
+    const dates = [...new Set(centerOrders.map(o => o.FECHA))].sort((a, b) => {
+      // Intentar ordenar fechas DD/MM/YYYY o ISO
+      const parseDate = (d: string) => {
+        const parts = d.split('/');
+        if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime();
+        return new Date(d).getTime();
+      };
+      return parseDate(a) - parseDate(b);
     });
 
-    inspector.captureVariable('hojas_de_ruta_mapeadas', result);
-    return result;
-  }, [availableCenters, groups, restrictions, inspector]);
+    // Calcular Carga: SUM(T. TOTAL) / 60 por MAQUINA y FECHA
+    const aggregation: Record<string, Record<string, number>> = {};
+    
+    centerOrders.forEach(o => {
+      const route = String(o.MAQUINA || "").trim();
+      const date = o.FECHA;
+      const tTotal = Number((o.T_PROD || 0) * (o.CANTPENDIENTE || 0));
+
+      if (!aggregation[route]) aggregation[route] = {};
+      aggregation[route][date] = (aggregation[route][date] || 0) + (tTotal / 60);
+    });
+
+    return { allowedRoutes, dates, aggregation };
+  }, [selectedCenter, ordenesFert, groups, restrictions]);
 
   if (availableCenters.length === 0) {
     return (
@@ -82,10 +103,10 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <ListChecks className="w-6 h-6 text-indigo-600" />
+          <CalendarRange className="w-6 h-6 text-indigo-600" />
           <div>
-            <h3 className="text-xl font-semibold text-gray-800">Programación Diaria</h3>
-            <p className="text-xs text-gray-500 mt-1">Gestión de Hojas de Ruta configuradas por Planta</p>
+            <h3 className="text-xl font-semibold text-gray-800">Matriz de Carga Diaria (Horas)</h3>
+            <p className="text-xs text-gray-500 mt-1">Cálculo: Σ(T.Prod * Cant.Pendiente) / 60 por Ruta y Fecha</p>
           </div>
         </div>
       </div>
@@ -106,50 +127,48 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
 
         {availableCenters.map(centerId => (
           <TabsContent key={centerId} value={centerId} className="mt-0">
-            <div className="space-y-4">
-              {/* Header de la sección */}
-              <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Map className="w-5 h-5 text-indigo-600" />
-                  <div>
-                    <span className="text-sm font-bold text-indigo-900 uppercase">Hojas de Ruta Activas - Planta {centerId}</span>
-                    <p className="text-[10px] text-indigo-700 mt-0.5">Definidas en la restricción técnica HOJA_DE_RUTA</p>
-                  </div>
+            <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+              {matrixData && matrixData.dates.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border-collapse">
+                    <thead className="bg-[#003d5b] text-white">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider border-r border-white/10 sticky left-0 bg-[#003d5b] z-20 min-w-[150px]">
+                          CÓDIGO RUTA
+                        </th>
+                        {matrixData.dates.map(date => (
+                          <th key={date} className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider border-r border-white/10 min-w-[100px]">
+                            {date}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {matrixData.allowedRoutes.map(route => (
+                        <tr key={route} className="hover:bg-indigo-50/30 transition-colors">
+                          <td className="px-4 py-3 text-[12px] font-bold text-white bg-[#003d5b] border-r border-white/10 sticky left-0 z-10">
+                            {route}
+                          </td>
+                          {matrixData.dates.map(date => {
+                            const val = matrixData.aggregation[route]?.[date];
+                            return (
+                              <td key={`${route}-${date}`} className="px-4 py-3 text-center text-sm font-mono text-gray-700 border-r border-gray-100">
+                                {val !== undefined ? val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <Badge variant="outline" className="bg-white text-indigo-700 border-indigo-200">
-                  {routesByCenter[centerId]?.length || 0} Rutas
-                </Badge>
-              </div>
-
-              {/* Lista de Hojas de Ruta */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {routesByCenter[centerId] && routesByCenter[centerId].length > 0 ? (
-                  routesByCenter[centerId].map((route, idx) => (
-                    <Card key={`${route}-${idx}`} className="hover:shadow-md transition-shadow border-l-4 border-l-indigo-500">
-                      <CardContent className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-indigo-100 p-2 rounded-lg">
-                            <Hash className="w-4 h-4 text-indigo-600" />
-                          </div>
-                          <div>
-                            <span className="text-xs font-bold text-gray-500 uppercase tracking-tighter">Código Ruta</span>
-                            <p className="text-lg font-mono font-bold text-gray-900 leading-none">{route}</p>
-                          </div>
-                        </div>
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none text-[10px] font-bold">
-                          ACTIVA
-                        </Badge>
-                      </CardContent>
-                    </Card>
-                  ))
-                ) : (
-                  <div className="col-span-full py-12 flex flex-col items-center justify-center bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                    <AlertCircle className="w-10 h-10 text-gray-300 mb-3" />
-                    <p className="text-gray-500 font-medium">No hay Hojas de Ruta configuradas para el Centro {centerId}</p>
-                    <p className="text-xs text-gray-400 mt-1">Verifique las restricciones del grupo de ensamblado</p>
-                  </div>
-                )}
-              </div>
+              ) : (
+                <div className="py-20 flex flex-col items-center justify-center bg-gray-50">
+                  <AlertCircle className="w-12 h-12 text-gray-300 mb-4" />
+                  <p className="text-gray-500 font-medium">No hay datos de Órdenes Fert disponibles para procesar</p>
+                  <p className="text-xs text-gray-400 mt-1">Por favor, cargue la información en la pestaña "Fert" primero.</p>
+                </div>
+              )}
             </div>
           </TabsContent>
         ))}
