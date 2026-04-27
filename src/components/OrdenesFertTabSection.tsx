@@ -125,8 +125,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   // Define static columns to ensure order and completeness
   const COLUMNS_TO_DISPLAY = [
-    'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
-    'MAQUINA', 'PEDIDO', 'POSICION', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
+    'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'PEDIDO', 'POSICION', 'CENTRO', 
+    'MAQUINA', 'FECHA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
   ];
 
   useEffect(() => {
@@ -162,7 +162,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
       } catch (err) {
         const errorMessage = (err as Error).message;
-        logger.error(`[OrdenesFertTab] Error fetching data: ${errorMessage}`, 'error');
+        logger.error(`[OrdenesFertTab] Error fetching data: ${errorMessage}`);
         setError(errorMessage);
         addNotification('error', `Error al cargar datos: ${errorMessage}`);
       } finally {
@@ -197,6 +197,12 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [filteredOrders]);
   
+  const totalCantidadPendiente2026 = useMemo(() => {
+    return orders
+      .filter(order => order.FECHA.startsWith('2026'))
+      .reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
+  }, [orders]);
+
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
   
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
@@ -313,8 +319,15 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm mt-6">
               <Package className="w-6 h-6 text-indigo-600" />
               <div>
-                <p className="text-xs text-indigo-800 font-semibold uppercase">Cant. Pendiente</p>
+                <p className="text-xs text-indigo-800 font-semibold uppercase">CANT. PENDIENTE</p>
                 <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
+              </div>
+          </div>
+          <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
+              <Package className="w-6 h-6 text-teal-600" />
+              <div>
+                <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL (2026)</p>
+                <p className="text-2xl font-bold text-teal-900">{totalCantidadPendiente2026.toLocaleString()}</p>
               </div>
           </div>
         </div>
