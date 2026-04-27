@@ -384,7 +384,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Hojas de Ruta (Procesos de Forros)</CardTitle>
-              <CardDescription>Definición de secuencias y flujos operativos para la fabricación de forros.</CardDescription>
+              <CardDescription>Visualización de la secuencia de puestos de trabajo y flujos operativos.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-hidden">
@@ -392,24 +392,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Material</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Línea</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Puesto</th>
-                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase">Tiempo Estándar</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">numeración</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Puesto de Trabajo KPI</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Hoja de Ruta</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {tiemposProduccion.slice(0, 10).map((t, idx) => (
+                      {tiemposProduccion.map((t, idx) => (
                         <tr key={`route-${idx}`} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{t.CodMaterial || t.Material}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">{t.Linea}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">{t.PuestoTrabajo}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-sm">{t.Tiempo} min</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+                          <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{t.PuestoTrabajo}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{t.Linea}</td>
                         </tr>
                       ))}
                       {tiemposProduccion.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="px-6 py-12 text-center text-gray-400 italic">No hay rutas configuradas.</td>
+                          <td colSpan={3} className="px-6 py-12 text-center text-gray-400 italic">No hay rutas configuradas.</td>
                         </tr>
                       )}
                     </tbody>
