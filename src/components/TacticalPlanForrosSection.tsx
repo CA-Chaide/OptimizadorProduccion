@@ -14,7 +14,8 @@ import {
   ChevronsLeft, 
   ChevronsRight, 
   CalendarCheck,
-  BarChart3
+  BarChart3,
+  Clock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -477,70 +478,117 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="resumen-diario">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-primary" />
-                Resumen de Carga de Producción (Hoy y Objetivo)
-              </CardTitle>
-              <CardDescription>
-                Consolidado de unidades a producir basado en la programación diaria de Ecuador Continental ({formattedToday} y {formattedTarget}).
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Categoría</th>
-                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
-                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {isLoadingDaily ? (
-                        <tr>
-                          <td colSpan={4} className="py-12 text-center">
-                            <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-                          </td>
-                        </tr>
-                      ) : productionSummary.length > 0 ? (
-                        productionSummary.map((item, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-900">{item.date}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{item.category}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={4} className="py-12 text-center text-gray-400 italic">
-                            No hay datos en la programación diaria para resumir.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                    {productionSummary.length > 0 && (
-                      <tfoot className="bg-gray-50 font-bold border-t-2">
-                        <tr>
-                          <td colSpan={2} className="px-6 py-3 text-right text-xs text-gray-600 uppercase">Totales Generales:</td>
-                          <td className="px-6 py-3 text-right font-mono text-sm">
-                            {productionSummary.reduce((acc, curr) => acc + curr.count, 0)}
-                          </td>
-                          <td className="px-6 py-3 text-right font-mono text-sm text-blue-800">
-                            {productionSummary.reduce((acc, curr) => acc + curr.quantity, 0).toLocaleString()}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Horas Disponibles Card */}
+            <Card className="lg:col-span-1 border-indigo-100 shadow-md">
+              <CardHeader className="bg-indigo-50/50 border-b border-indigo-100">
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Horas disponibles
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Capacidad Total Planificada</p>
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-3xl font-extrabold text-indigo-700">--</p>
+                      <span className="text-sm font-medium text-gray-400 italic">horas / día</span>
+                    </div>
+                  </div>
+                  
+                  <div className="pt-6 border-t border-gray-100">
+                    <p className="text-xs font-bold text-gray-700 uppercase mb-3 flex items-center gap-1.5">
+                      <Timer className="w-3.5 h-3.5" />
+                      Desglose por Fecha
+                    </p>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50/50 border border-blue-100">
+                        <span className="text-xs font-medium text-blue-900">{formattedToday}</span>
+                        <span className="text-sm font-mono font-bold text-blue-700">-- h</span>
+                      </div>
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-teal-50/50 border border-teal-100">
+                        <span className="text-xs font-medium text-teal-900">{formattedTarget}</span>
+                        <span className="text-sm font-mono font-bold text-teal-700">-- h</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <p className="text-[10px] leading-relaxed text-amber-800 italic">
+                      * Las horas se calculan en base a los turnos vigentes y el personal asignado al área de Forros.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* Resumen Table Card */}
+            <Card className="lg:col-span-3 shadow-md">
+              <CardHeader className="border-b">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <BarChart3 className="w-5 h-5 text-primary" />
+                  Resumen de Carga de Producción (Detalle por Categoría)
+                </CardTitle>
+                <CardDescription>
+                  Consolidado de unidades a producir para las fechas seleccionadas ({formattedToday} y {formattedTarget}).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="rounded-md border overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Categoría</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {isLoadingDaily ? (
+                          <tr>
+                            <td colSpan={4} className="py-12 text-center">
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                            </td>
+                          </tr>
+                        ) : productionSummary.length > 0 ? (
+                          productionSummary.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-900">{item.date}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{item.category}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={4} className="py-12 text-center text-gray-400 italic">
+                              No hay datos en la programación diaria para resumir.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                      {productionSummary.length > 0 && (
+                        <tfoot className="bg-gray-50 font-bold border-t-2">
+                          <tr>
+                            <td colSpan={2} className="px-6 py-3 text-right text-xs text-gray-600 uppercase">Totales Generales:</td>
+                            <td className="px-6 py-3 text-right font-mono text-sm">
+                              {productionSummary.reduce((acc, curr) => acc + curr.count, 0)}
+                            </td>
+                            <td className="px-6 py-3 text-right font-mono text-sm text-blue-800">
+                              {productionSummary.reduce((acc, curr) => acc + curr.quantity, 0).toLocaleString()}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
