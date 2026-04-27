@@ -301,12 +301,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const uniqueRoutes = useMemo(() => {
     const seen = new Set<string>();
-    return tiemposProduccion.filter(t => {
+    const filtered = tiemposProduccion.filter(t => {
       const pId = String(t.PuestoTrabajo || '').trim();
       if (!pId || seen.has(pId)) return false;
       seen.add(pId);
       return true;
     });
+
+    // Ordenar ascendentemente por PuestoTrabajo
+    return filtered.sort((a, b) => 
+      String(a.PuestoTrabajo || '').localeCompare(String(b.PuestoTrabajo || ''))
+    );
   }, [tiemposProduccion]);
 
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
