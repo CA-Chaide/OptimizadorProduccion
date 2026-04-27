@@ -15,6 +15,7 @@ import { CuboInventariosTab } from './CuboInventariosTab';
 import { CuboInventariosTelasTab } from './CuboInventariosTelasTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
+import { serviciosService } from '@/services/servicios.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { useAppContext } from '@/context/AppProvider';
 
@@ -104,6 +105,8 @@ export const TacticalPlanMueblesSection: React.FC = () => {
     const [gruposMuebles, setGruposMuebles] = useState<Grupo[]>([]);
     const [restriccionesMuebles, setRestriccionesMuebles] = useState<Restriccion[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [tiemposMueblesData, setTiemposMueblesData] = useState<any[]>([]);
+    const [isTiemposLoading, setIsTiemposLoading] = useState(true);
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -149,6 +152,44 @@ export const TacticalPlanMueblesSection: React.FC = () => {
         };
         fetchInitialData();
     }, [addNotification]);
+
+    useEffect(() => {
+        const fetchTiemposData = async () => {
+            if (gruposMuebles.length === 0) {
+                if(!isLoading) setIsTiemposLoading(false);
+                return;
+            }
+            setIsTiemposLoading(true);
+            const centro = '1000';
+            const grupoMuebles = gruposMuebles.find(g => 
+                g.centro === centro && g.nombre_grupo.toLowerCase().includes('muebles')
+            );
+
+            if (!grupoMuebles) {
+                addNotification('warning', 'No se encontró el grupo "Muebles" para el centro 1000 para cargar tiempos.');
+                setIsTiemposLoading(false);
+                return;
+            }
+
+            const codigoGrupo = grupoMuebles.codigo_grupo;
+
+            try {
+                const response = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(centro, codigoGrupo);
+                if (response && response.data) {
+                    const dataArray = Array.isArray(response.data) ? response.data : [response.data];
+                    setTiemposMueblesData(dataArray);
+                } else {
+                    addNotification('warning', 'No se encontraron datos de tiempos para Muebles.');
+                }
+            } catch (error) {
+                addNotification('error', `Error al cargar tiempos de Muebles: ${(error as Error).message}`);
+            } finally {
+                setIsTiemposLoading(false);
+            }
+        };
+
+        fetchTiemposData();
+    }, [gruposMuebles, addNotification, isLoading]);
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -201,12 +242,12 @@ export const TacticalPlanMueblesSection: React.FC = () => {
               </Card>
           </TabsContent>
           <TabsContent value="tiemposMuebles" className="mt-4">
-              <TiemposEnsambladoTab grupos={gruposMuebles} />
+              <TiemposEnsambladoTab data={tiemposMueblesData} isLoading={isTiemposLoading} />
           </TabsContent>
           <TabsContent value="cascos" className="mt-4">
               <Card>
                   <CardHeader>
-                      <CardTitle>Inventario de Cascos</CardTitle>
+                      <CardTitle>Inv. Cascos</CardTitle>
                       <CardDescription>
                           Visualización de los datos de inventario filtrados por "CASCO".
                       </CardDescription>
@@ -219,7 +260,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
            <TabsContent value="telas" className="mt-4">
               <Card>
                   <CardHeader>
-                      <CardTitle>Inventario de Telas</CardTitle>
+                      <CardTitle>Inv. Telas</CardTitle>
                       <CardDescription>
                           Visualización de los datos de inventario filtrados por "TELA".
                       </CardDescription>
@@ -240,8 +281,9 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   <CardContent>
                       <OrdenesFertTabSection 
                         restricciones={restriccionesMuebles} 
-                        columns={['FECHA', 'ORDEN', 'MATERIAL', 'CANTPROGRAMADA']}
+                        columns={['FECHA', 'ORDEN', 'MATERIAL', 'CANTPROGRAMADA', 'TIEMPO']}
                         hideControls={true}
+                        tiemposData={tiemposMueblesData}
                       />
                   </CardContent>
               </Card>

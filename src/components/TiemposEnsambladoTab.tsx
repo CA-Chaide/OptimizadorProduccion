@@ -1,23 +1,19 @@
 
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { serviciosService } from '@/services/servicios.service';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Grupo } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Loader2 } from 'lucide-react';
-import { useAppContext } from '@/context/AppProvider';
 
 interface TiemposEnsambladoTabProps {
-    grupos: Grupo[];
+    data: any[];
+    isLoading: boolean;
 }
 
-export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grupos }) => {
-    const { addNotification } = useAppContext();
-    const [data, setData] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data, isLoading }) => {
     const [columns, setColumns] = useState<string[]>([]);
     
     const topScrollRef = useRef<HTMLDivElement>(null);
@@ -26,47 +22,11 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ grup
     const [tableWidth, setTableWidth] = useState(0);
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
-    const handleFetch = useCallback(async () => {
-        // Find the 'Muebles' group for 'Centro' 1000
-        const centro = '1000';
-        const grupoMuebles = grupos.find(g => 
-            g.centro === centro && g.nombre_grupo.toLowerCase().includes('muebles')
-        );
-
-        if (!grupoMuebles) {
-            addNotification('warning', 'No se encontró el grupo "Muebles" para el centro 1000.');
-            return;
-        }
-
-        const codigoGrupo = grupoMuebles.codigo_grupo;
-
-        setIsLoading(true);
-        setData([]);
-        try {
-            const response = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(centro, codigoGrupo);
-            if (response && response.data) {
-                const dataArray = Array.isArray(response.data) ? response.data : [response.data];
-                setData(dataArray);
-                if (dataArray.length > 0) {
-                    setColumns(Object.keys(dataArray[0]));
-                }
-                addNotification('success', `Se encontraron ${dataArray.length} registros para Muebles en Centro 1000.`);
-            } else {
-                addNotification('warning', 'No se encontraron datos para la selección.');
-            }
-        } catch (error) {
-            addNotification('error', `Error al cargar los datos: ${(error as Error).message}`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [grupos, addNotification]);
-
-    // Fetch data automatically on component mount or when grupos change
     useEffect(() => {
-        if (grupos.length > 0) {
-            handleFetch();
+        if (data.length > 0) {
+            setColumns(Object.keys(data[0]));
         }
-    }, [grupos, handleFetch]);
+    }, [data]);
 
     useEffect(() => {
         const calculateWidth = () => {

@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
 import { Package, Check, ChevronsUpDown } from 'lucide-react';
@@ -11,11 +12,16 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+const normalizeMaterialCode = (code: string | number): string => {
+  const codeStr = String(code).trim();
+  return codeStr.slice(-8);
+};
 
 interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
   columns?: string[];
   hideControls?: boolean;
+  tiemposData?: any[];
 }
 
 interface PaginationState {
@@ -100,7 +106,7 @@ const MultiSelect: React.FC<{
   );
 };
 
-export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones, columns, hideControls = false }) => {
+export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones, columns, hideControls = false, tiemposData = [] }) => {
   const { addNotification } = useAppContext();
   const [orders, setOrders] = useState<OrdenFert[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -114,6 +120,23 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [error, setError] = useState<string | null>(null);
   
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
+
+  const tiemposMap = useMemo(() => {
+    if (!tiemposData || tiemposData.length === 0) {
+        return new Map<string, number>();
+    }
+    const map = new Map<string, number>();
+    tiemposData.forEach(item => {
+        const materialCode = normalizeMaterialCode(item.CodMaterial);
+        const tiempo = item.Tiempo_Min ?? item.Tiempo ?? 0;
+        if (materialCode && tiempo > 0) {
+            if (!map.has(materialCode)) {
+                map.set(materialCode, tiempo);
+            }
+        }
+    });
+    return map;
+  }, [tiemposData]);
 
   // Define static columns to ensure order and completeness
   const COLUMNS_TO_DISPLAY = columns || [
@@ -275,7 +298,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
                 <Package className="w-6 h-6 text-teal-600" />
                 <div>
-                  <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL PENDIENTE</p>
+                  <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL</p>
                   <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
                 </div>
             </div>
@@ -300,25 +323,46 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {displayedOrders.map((order, index) => (
-                <tr key={`${order.ORDEN}-${index}`} className="hover:bg-gray-50">
-                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
-                      let displayValue = String((order as any)[col] ?? '-');
-                      if (col === 'ORDEN') {
-                        if (displayValue && displayValue.length > 4) {
-                            displayValue = displayValue.substring(4);
-                        }
-                      } else if (col === 'MATERIAL') {
-                        displayValue = displayValue.slice(-8);
+              {displayedOrders.map((order, index) => {
+                  let tiempoCalculado = '-';
+                  if (COLUMNS_TO_DISPLAY.includes('TIEMPO')) {
+                      const materialCode = normalizeMaterialCode(order.MATERIAL);
+                      const tiempoMin = tiemposMap.get(materialCode);
+                      if (tiempoMin) {
+                          const cantProgramada = Number(order.CANTPROGRAMADA) || 0;
+                          const tiempoTotal = cantProgramada * tiempoMin;
+                          tiempoCalculado = tiempoTotal.toFixed(2);
                       }
-                      return (
-                       <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
-                         {displayValue}
-                       </td>
-                      );
-                  })}
-                </tr>
-              ))}
+                  }
+                  
+                  return (
+                    <tr key={`${order.ORDEN}-${index}`} className="hover:bg-gray-50">
+                      {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
+                          if (col === 'TIEMPO') {
+                              return (
+                                 <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center font-mono font-semibold text-blue-700 ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
+                                   {tiempoCalculado}
+                                 </td>
+                              );
+                          }
+
+                          let displayValue = String((order as any)[col] ?? '-');
+                          if (col === 'ORDEN') {
+                            if (displayValue && displayValue.length > 4) {
+                                displayValue = displayValue.substring(4);
+                            }
+                          } else if (col === 'MATERIAL') {
+                            displayValue = normalizeMaterialCode(displayValue);
+                          }
+                          return (
+                           <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
+                             {displayValue}
+                           </td>
+                          );
+                      })}
+                    </tr>
+                  );
+              })}
             </tbody>
           </table>
         </div>
