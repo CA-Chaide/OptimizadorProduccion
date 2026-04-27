@@ -21,6 +21,7 @@ export * from './ProvisionalOrdersTabSection';
 export * from './OrdenesFertTabSection';
 export * from './HabilidadesOpTabSection';
 export * from './TiemposEnsambladoTabSection';
+export * from './ProgDiariaTabSection';
 export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
 export * from './InventoryNeedsSection';

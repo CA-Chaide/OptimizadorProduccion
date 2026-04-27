@@ -10,6 +10,7 @@ import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
 import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
+import { ProgDiariaTabSection } from './ProgDiariaTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -260,13 +261,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Programación Diaria de Planta</CardTitle>
-              <CardDescription>Planificación de carga diaria y secuenciación de órdenes.</CardDescription>
+              <CardDescription>Configuración de Hojas de Ruta activas por Centro.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-lg border border-dashed">
-                <CalendarClock className="w-12 h-12 text-gray-300 mb-4" />
-                <p className="text-gray-500 font-medium">Esta sección está siendo configurada para la gestión de programación diaria.</p>
-              </div>
+              <ProgDiariaTabSection groups={grupos} restrictions={restricciones} />
             </CardContent>
           </Card>
         </TabsContent>
