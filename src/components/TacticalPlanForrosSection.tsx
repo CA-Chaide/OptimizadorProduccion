@@ -16,7 +16,7 @@ import {
   CalendarCheck,
   BarChart3,
   Clock,
-  Map
+  Map as MapIcon
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -319,7 +319,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <TabsList className="flex w-full h-auto bg-transparent p-0 overflow-x-auto justify-start scrollbar-hide">
             <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
-            <TabsTrigger value="hojas-ruta" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Map className="w-4 h-4" /> Hojas de Ruta</TabsTrigger>
+            <TabsTrigger value="hojas-ruta" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><MapIcon className="w-4 h-4" /> Hojas de Ruta</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
             <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><CalendarCheck className="w-4 h-4" /> Programación Diaria</TabsTrigger>
@@ -343,7 +343,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{g.codigo_grupo}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{g.centro}</td>
                           <td className="px-6 py-4 whitespace-nowrap font-medium">{g.nombre_grupo}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center"><Badge variant={g.state === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>{g.estado === 'A' ? 'Activo' : 'Inactivo'}</Badge></td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center"><Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>{g.estado === 'A' ? 'Activo' : 'Inactivo'}</Badge></td>
                         </tr>
                       ))}
                     </tbody>
@@ -499,7 +499,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </div>
               </div>
               
-              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center gap-1">
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
