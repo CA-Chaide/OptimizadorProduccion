@@ -27,6 +27,7 @@ interface ProvisionalOrder {
   Maquina: string | null;
   ClaseOrden: string;
   CodMaterial: string;
+  T_PROD?: number;
 }
 
 export const ProvisionalOrdersTabSection: React.FC = () => {
@@ -43,6 +44,10 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
+  const normalizeMaterialCode = (code: string | number): string => {
+    return String(code || '').trim().slice(-8);
+  };
+
   const loadData = useCallback(async () => {
     if (hasStarted.current) return;
     hasStarted.current = true;
@@ -50,16 +55,33 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     try {
       setIsLoading(true);
       
-      const [groupsRes, pageResponse] = await Promise.all([
+      const [groupsRes, pageResponse, tiemposRes] = await Promise.all([
         grupoService.getAll(),
-        serviciosService.OrdenesProvisionalesPaginados(1, 10000)
+        serviciosService.OrdenesProvisionalesPaginados(1, 10000),
+        serviciosService.getTiemposEnsamblado(1, 10000)
       ]);
 
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
+      // Crear mapa de búsqueda para tiempos técnicos
+      const lookup = new Map<string, number>();
+      const tiemposData = Array.isArray(tiemposRes?.data) ? tiemposRes.data : [];
+      tiemposData.forEach((t: any) => {
+        const key = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
+        lookup.set(key, Number(t.Tiempo_Min) || 0);
+      });
+
       if (pageResponse && pageResponse.data) {
-        setOrders(Array.isArray(pageResponse.data) ? pageResponse.data : []);
+        const rawOrders = Array.isArray(pageResponse.data) ? pageResponse.data : [];
+        const enriched = rawOrders.map(order => {
+          const materialKey = `${String(order.Centro).trim()}|${normalizeMaterialCode(order.CodMaterial || order.MATERIAL)}`;
+          return {
+            ...order,
+            T_PROD: lookup.get(materialKey)
+          };
+        });
+        setOrders(enriched);
       }
       
       if (centersFromGroups.length > 0) {
@@ -159,6 +181,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
+                    <th className="px-6 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">T. Prod</th>
                     <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
                     <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp. Ctrl.</th>
@@ -172,6 +195,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
+                        {order.T_PROD ? Number(order.T_PROD).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{Number(order.CANTIDAD || 0).toLocaleString()}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.Almacen}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.RESPCONTROLPROD}</td>
@@ -180,7 +206,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">
+                      <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
                         No se encontraron órdenes para el centro {selectedCenter}.
                       </td>
                     </tr>
