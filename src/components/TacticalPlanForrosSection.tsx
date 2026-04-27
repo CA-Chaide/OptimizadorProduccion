@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -49,6 +50,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
+  
+  // Estado para asignaciones manuales de Hojas de Ruta
+  const [manualRouteAssignments, setManualRouteAssignments] = useState<Record<string, string>>({});
 
   /**
    * Obtiene la fecha de "hoy" en Ecuador (America/Guayaquil) formateada como YYYY-MM-DD.
@@ -120,7 +124,25 @@ export const TacticalPlanForrosSection: React.FC = () => {
   useEffect(() => {
     setIsMounted(true);
     fetchData();
+    
+    // Cargar asignaciones manuales desde localStorage
+    const saved = localStorage.getItem('forros_manual_routes');
+    if (saved) {
+      try {
+        setManualRouteAssignments(JSON.parse(saved));
+      } catch (e) {
+        console.error('Error loading manual routes');
+      }
+    }
   }, [fetchData]);
+
+  const handleRouteAssignmentChange = (puestoId: string, value: string) => {
+    setManualRouteAssignments(prev => {
+      const updated = { ...prev, [puestoId]: value };
+      localStorage.setItem('forros_manual_routes', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => (g.nombre_grupo || '').toUpperCase().includes('FORROS'));
@@ -399,7 +421,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Hojas de Ruta (Procesos de Forros)</CardTitle>
-              <CardDescription>Visualización de la secuencia de puestos de trabajo únicos y flujos operativos.</CardDescription>
+              <CardDescription>Visualización de la secuencia de puestos de trabajo críticos y asignación manual de hojas de ruta.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-hidden">
@@ -409,17 +431,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">numeración</th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Puesto de Trabajo KPI</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Hoja de Ruta</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Hoja de Ruta (Asignación Manual)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {uniqueRoutes.map((t, idx) => (
-                        <tr key={`route-${idx}`} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-                          <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{t.PuestoTrabajo}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{t.Linea}</td>
-                        </tr>
-                      ))}
+                      {uniqueRoutes.map((t, idx) => {
+                        const puestoId = String(t.PuestoTrabajo || '').trim();
+                        return (
+                          <tr key={`route-${idx}`} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+                            <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{puestoId}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                              <Input 
+                                value={manualRouteAssignments[puestoId] ?? t.Linea ?? ''} 
+                                onChange={(e) => handleRouteAssignmentChange(puestoId, e.target.value)}
+                                className="h-9 text-xs max-w-md"
+                                placeholder="Escriba la hoja de ruta..."
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {uniqueRoutes.length === 0 && (
                         <tr>
                           <td colSpan={3} className="px-6 py-12 text-center text-gray-400 italic">No hay rutas configuradas.</td>
