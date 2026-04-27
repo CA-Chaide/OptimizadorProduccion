@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -27,58 +27,84 @@ const SECONDS_LOAD_BLOCK = 300;   // 5 min por bloque físico
 const SECONDS_REPETITION = 45;    // 45 seg por repetición de corte
 const SECONDS_CART_SWAP = 60;     // 1 min por cambio de coche
 
-// COMPONENTE: Plan de Horarios y Capacidad (Quito)
-const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: number, restrictions: any[] }) => {
-  const getRestVal = (name: string, def: string) => {
-    return restrictions.find(r => r.nombre_restriccion === name)?.valor_restriccion || def;
-  };
+// Helper para obtener valores de restricciones con indicador visual
+const getParam = (restrictions: Restriccion[], key: string, defaultValue: number) => {
+  const r = restrictions.find(res => res.nombre_restriccion.toUpperCase() === key.toUpperCase());
+  if (r) {
+    return { value: parseFloat(r.valor_restriccion) || defaultValue, isOverridden: true };
+  }
+  return { value: defaultValue, isOverridden: false };
+};
 
-  const machines = [
-    { id: 'carrusel', name: 'Carrusel', t1: 10, t2: 9.5, p1: 0.68, p2: 0.68 },
-    { id: 'fecken', name: 'Fecken', t1: 10, t2: 9.5, p1: 0.68, p2: 0.68 },
-    { id: 'm3', name: '3', t1: 10, t2: 9.5, p1: 0.68, p2: 0.68 },
-    { id: 'm1', name: '1', t1: 4, t2: 9.5, p1: 0, p2: 0.68 },
-    { id: 'cnc', name: 'CNC', t1: 10, t2: 9.5, p1: 0.68, p2: 0.68 },
+// COMPONENTE: Plan de Horarios y Capacidad (Quito)
+const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: number, restrictions: Restriccion[] }) => {
+  const rend = getParam(restrictions, 'RENDIMIENTO_PROCESO', 70);
+  
+  const rawMachines = [
+    { id: 'FECKEN', name: 'Fecken', t1: 10, t2: 9.5, p: 0.68 },
+    { id: 'M3', name: 'Máquina 3', t1: 10, t2: 9.5, p: 0.68 },
+    { id: 'M1', name: 'Máquina 1', t1: 4, t2: 9.5, p: 0.68 },
+    { id: 'CNC', name: 'CNC', t1: 10, t2: 9.5, p: 0.68 },
   ];
 
-  const processed = machines.map(m => ({ ...m, total: m.t1 + m.t2 - m.p1 - m.p2 }));
-  const rendimiento = parseFloat(getRestVal('RENDIMIENTO_PROCESO', '70'));
+  const processed = rawMachines.map(m => {
+    const t1 = getParam(restrictions, `${m.id}_T1`, m.t1);
+    const t2 = getParam(restrictions, `${m.id}_T2`, m.t2);
+    const p = getParam(restrictions, `${m.id}_PARO`, m.p);
+    const total = t1.value + t2.value - (p.value * 2); // Paro aplica por turno
+    return { ...m, t1, t2, p, total };
+  });
+
   const totalMachineSum = processed.reduce((acc, m) => acc + m.total, 0);
-  const totalDisponible = totalMachineSum * (rendimiento / 100);
+  const totalDisponible = totalMachineSum * (rend.value / 100);
   const porcentaje = totalDisponible > 0 ? (plannedHours / totalDisponible) * 100 : 0;
 
   return (
-    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500">
+    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500 text-left">
       <div className="bg-indigo-900 text-white p-2 text-center rounded-t-2xl text-[9px] font-black tracking-widest uppercase shadow-sm">
-        Panel de Control de Horarios - Planta 1000
+        Panel de Control de Horarios y Restricciones - Planta 1000
       </div>
       <div className="overflow-x-auto border-x border-b border-indigo-100 rounded-b-2xl shadow-xl bg-white">
         <table className="w-full text-center border-collapse text-[10px] font-sans">
           <thead>
             <tr className="bg-indigo-600 text-white uppercase font-black">
-              <th className="px-4 py-3 border-r border-indigo-500 text-left sticky left-0 bg-indigo-600 z-10">QUITO / MAQUINA</th>
+              <th className="px-4 py-3 border-r border-indigo-500 text-left sticky left-0 bg-indigo-600 z-10">RECURSO QUITO</th>
               {processed.map(m => <th key={m.id} className="px-4 py-3 border-r border-indigo-500">{m.name}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-indigo-50 font-medium text-gray-700">
             <tr className="hover:bg-indigo-50/20">
               <td className="px-4 py-2.5 text-left font-bold text-gray-500 border-r border-indigo-50 sticky left-0 bg-white">Turno 1 [H]</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-indigo-50">{m.t1}</td>)}
+              {processed.map(m => (
+                <td key={m.id} className="px-4 py-2.5 font-mono border-r border-indigo-50">
+                  <div className="flex items-center justify-center gap-1">
+                    {m.t1.value} {m.t1.isOverridden && <ShieldCheck className="w-3 h-3 text-blue-500" title="Valor desde restricciones" />}
+                  </div>
+                </td>
+              ))}
             </tr>
             <tr className="hover:bg-indigo-50/20">
               <td className="px-4 py-2.5 text-left font-bold text-gray-500 border-r border-indigo-50 sticky left-0 bg-white">Turno 2 [H]</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-indigo-50">{m.t2}</td>)}
+              {processed.map(m => (
+                <td key={m.id} className="px-4 py-2.5 font-mono border-r border-indigo-50">
+                  <div className="flex items-center justify-center gap-1">
+                    {m.t2.value} {m.t2.isOverridden && <ShieldCheck className="w-3 h-3 text-blue-500" title="Valor desde restricciones" />}
+                  </div>
+                </td>
+              ))}
             </tr>
             <tr className="hover:bg-indigo-50/20 text-gray-400">
-              <td className="px-4 py-2.5 text-left font-bold border-r border-indigo-50 sticky left-0 bg-white">Paro Prog. T1</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-indigo-50">{m.p1 || '—'}</td>)}
-            </tr>
-            <tr className="hover:bg-indigo-50/20 text-gray-400">
-              <td className="px-4 py-2.5 text-left font-bold border-r border-indigo-50 sticky left-0 bg-white">Paro Prog. T2</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-indigo-50">{m.p2}</td>)}
+              <td className="px-4 py-2.5 text-left font-bold border-r border-indigo-50 sticky left-0 bg-white">Paros [H]</td>
+              {processed.map(m => (
+                <td key={m.id} className="px-4 py-2.5 font-mono border-r border-indigo-50">
+                   <div className="flex items-center justify-center gap-1">
+                    {m.p.value} {m.p.isOverridden && <ShieldCheck className="w-3 h-3 text-blue-500" />}
+                  </div>
+                </td>
+              ))}
             </tr>
             <tr className="bg-indigo-50/50 font-black text-indigo-900 text-[11px]">
-              <td className="px-4 py-3 text-left border-r border-indigo-100 sticky left-0 bg-indigo-50/50">TIEMPO TOTAL (H)</td>
+              <td className="px-4 py-3 text-left border-r border-indigo-100 sticky left-0 bg-indigo-50/50">CAPACIDAD BRUTA (H)</td>
               {processed.map(m => <td key={m.id} className="px-4 py-3 font-mono border-r border-indigo-100">{m.total.toFixed(2)}</td>)}
             </tr>
           </tbody>
@@ -86,18 +112,21 @@ const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: numbe
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border-t border-indigo-100">
           <div className="p-5 border-r border-indigo-50 flex flex-col items-center justify-center bg-gray-50/30">
-             <span className="text-[9px] font-black text-indigo-300 uppercase mb-1 tracking-tighter">Rendimiento</span>
-             <span className="text-2xl font-black text-indigo-600 font-mono">{rendimiento}%</span>
+             <span className="text-[9px] font-black text-indigo-300 uppercase mb-1 tracking-tighter">Rendimiento Planta</span>
+             <div className="flex items-center gap-2">
+                <span className="text-2xl font-black text-indigo-600 font-mono">{rend.value}%</span>
+                {rend.isOverridden && <ShieldCheck className="w-4 h-4 text-blue-500" />}
+             </div>
           </div>
           <div className="p-5 border-r border-indigo-50 flex flex-col items-center justify-center bg-yellow-50/20">
-             <span className="text-[9px] font-black text-amber-300 uppercase mb-1 tracking-tighter">T. Total Disponible</span>
+             <span className="text-[9px] font-black text-amber-300 uppercase mb-1 tracking-tighter">Capacidad Neta Disponible</span>
              <span className="text-2xl font-black text-gray-800 font-mono">{totalDisponible.toFixed(1)}h</span>
           </div>
           <div className={cn("p-5 flex flex-col items-center justify-center transition-colors", porcentaje > 100 ? "bg-red-50" : "bg-green-50")}>
-             <span className={cn("text-[9px] font-black uppercase mb-1 tracking-tighter", porcentaje > 100 ? "text-red-400" : "text-green-400")}>Carga de Trabajo</span>
+             <span className={cn("text-[9px] font-black uppercase mb-1 tracking-tighter", porcentaje > 100 ? "text-red-400" : "text-green-400")}>Utilización del Plan</span>
              <div className="flex flex-col items-center">
                 <span className={cn("text-2xl font-black font-mono leading-none", porcentaje > 100 ? "text-red-600" : "text-green-600")}>{porcentaje.toFixed(1)}%</span>
-                <span className="text-[8px] font-bold text-gray-400 mt-2 uppercase">Planificado: {plannedHours.toFixed(1)}h</span>
+                <span className="text-[8px] font-bold text-gray-400 mt-2 uppercase">Carga: {plannedHours.toFixed(1)}h</span>
              </div>
           </div>
         </div>
@@ -107,79 +136,96 @@ const SchedulePlanQuito = ({ plannedHours, restrictions }: { plannedHours: numbe
 };
 
 // COMPONENTE: Plan de Horarios y Capacidad (Guayaquil)
-const SchedulePlanGye = ({ plannedHours, restrictions }: { plannedHours: number, restrictions: any[] }) => {
-  const getRestVal = (name: string, def: string) => {
-    return restrictions.find(r => r.nombre_restriccion === name)?.valor_restriccion || def;
-  };
+const SchedulePlanGye = ({ plannedHours, restrictions }: { plannedHours: number, restrictions: Restriccion[] }) => {
+  const rend = getParam(restrictions, 'RENDIMIENTO_PROCESO_GYE', 65);
 
-  const machines = [
-    { id: 'carrusel', name: 'Carrusel', t1: 0, t2: 0, p1: 0, p2: 0 }, // Columna Carrusel según imagen (vacía)
-    { id: 'fema', name: 'Fema', t1: 10, t2: 8, p1: 0.68, p2: 0.68 },
-    { id: 'm3', name: '3', t1: 10, t2: 8, p1: 0.68, p2: 0.68 },
-    { id: 'repotenciado', name: 'Repotenciado', t1: 6, t2: 8, p1: 0.68, p2: 0.68 },
+  const rawMachines = [
+    { id: 'CARRUSEL_G', name: 'Carrusel', t1: 10, t2: 8, p: 0.68 },
+    { id: 'FEMA', name: 'Fema', t1: 10, t2: 8, p: 0.68 },
+    { id: 'M3_G', name: 'Máquina 3', t1: 10, t2: 8, p: 0.68 },
+    { id: 'REPOTENCIADO', name: 'Repotenciado', t1: 6, t2: 8, p: 0.68 },
   ];
 
-  const processed = machines.map(m => ({ 
-    ...m, 
-    total: m.t1 > 0 || m.t2 > 0 ? (m.t1 + m.t2 - m.p1 - m.p2) : 0 
-  }));
+  const processed = rawMachines.map(m => {
+    const t1 = getParam(restrictions, `${m.id}_T1`, m.t1);
+    const t2 = getParam(restrictions, `${m.id}_T2`, m.t2);
+    const p = getParam(restrictions, `${m.id}_PARO`, m.p);
+    const total = t1.value + t2.value - (p.value * 2);
+    return { ...m, t1, t2, p, total };
+  });
   
-  const rendimiento = parseFloat(getRestVal('RENDIMIENTO_PROCESO_GYE', '65'));
   const totalMachineSum = processed.reduce((acc, m) => acc + m.total, 0);
-  const totalDisponible = totalMachineSum * (rendimiento / 100);
+  const totalDisponible = totalMachineSum * (rend.value / 100);
   const porcentaje = totalDisponible > 0 ? (plannedHours / totalDisponible) * 100 : 0;
 
   return (
-    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500">
+    <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500 text-left">
       <div className="bg-slate-900 text-white p-2 text-center rounded-t-2xl text-[9px] font-black tracking-widest uppercase shadow-sm">
-        Panel de Control de Horarios - Planta 2000
+        Panel de Control de Horarios y Restricciones - Planta 2000
       </div>
       <div className="overflow-x-auto border-x border-b border-slate-100 rounded-b-2xl shadow-xl bg-white">
         <table className="w-full text-center border-collapse text-[10px] font-sans">
           <thead>
             <tr className="bg-slate-700 text-white uppercase font-black">
-              <th className="px-4 py-3 border-r border-slate-600 text-left sticky left-0 bg-slate-700 z-10">GUAYAQUIL</th>
+              <th className="px-4 py-3 border-r border-slate-600 text-left sticky left-0 bg-slate-700 z-10">RECURSO GYE</th>
               {processed.map(m => <th key={m.id} className="px-4 py-3 border-r border-slate-600">{m.name}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 font-medium text-gray-700">
             <tr className="hover:bg-slate-50/20">
               <td className="px-4 py-2.5 text-left font-bold text-gray-500 border-r border-slate-50 sticky left-0 bg-white">Turno 1 [H]</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">{m.t1 || ''}</td>)}
+              {processed.map(m => (
+                <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">
+                  <div className="flex items-center justify-center gap-1">
+                    {m.t1.value} {m.t1.isOverridden && <ShieldCheck className="w-3 h-3 text-blue-500" />}
+                  </div>
+                </td>
+              ))}
             </tr>
             <tr className="hover:bg-slate-50/20">
               <td className="px-4 py-2.5 text-left font-bold text-gray-500 border-r border-slate-50 sticky left-0 bg-white">Turno 2 [H]</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">{m.t2 || ''}</td>)}
+              {processed.map(m => (
+                <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">
+                   <div className="flex items-center justify-center gap-1">
+                    {m.t2.value} {m.t2.isOverridden && <ShieldCheck className="w-3 h-3 text-blue-500" />}
+                  </div>
+                </td>
+              ))}
             </tr>
             <tr className="hover:bg-slate-50/20 text-gray-400">
-              <td className="px-4 py-2.5 text-left font-bold border-r border-slate-50 sticky left-0 bg-white">Paro Prog. T1</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">{m.p1 || ''}</td>)}
-            </tr>
-            <tr className="hover:bg-slate-50/20 text-gray-400">
-              <td className="px-4 py-2.5 text-left font-bold border-r border-slate-50 sticky left-0 bg-white">Paro Prog. T2</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">{m.p2 || ''}</td>)}
+              <td className="px-4 py-2.5 text-left font-bold border-r border-slate-50 sticky left-0 bg-white">Paros [H]</td>
+              {processed.map(m => (
+                <td key={m.id} className="px-4 py-2.5 font-mono border-r border-slate-50">
+                   <div className="flex items-center justify-center gap-1">
+                    {m.p.value} {m.p.isOverridden && <ShieldCheck className="w-3 h-3 text-blue-500" />}
+                  </div>
+                </td>
+              ))}
             </tr>
             <tr className="bg-slate-50/50 font-black text-slate-900 text-[11px]">
-              <td className="px-4 py-3 text-left border-r border-slate-100 sticky left-0 bg-slate-50/50">TIEMPO TOTAL (H)</td>
-              {processed.map(m => <td key={m.id} className="px-4 py-3 font-mono border-r border-slate-100">{m.total > 0 ? m.total.toFixed(2) : ''}</td>)}
+              <td className="px-4 py-3 text-left border-r border-slate-100 sticky left-0 bg-slate-50/50">CAPACIDAD BRUTA (H)</td>
+              {processed.map(m => <td key={m.id} className="px-4 py-3 font-mono border-r border-slate-100">{m.total.toFixed(2)}</td>)}
             </tr>
           </tbody>
         </table>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border-t border-slate-100">
           <div className="p-5 border-r border-slate-50 flex flex-col items-center justify-center bg-gray-50/30">
-             <span className="text-[9px] font-black text-slate-300 uppercase mb-1 tracking-tighter">Rendimiento</span>
-             <span className="text-2xl font-black text-slate-600 font-mono">{rendimiento}%</span>
+             <span className="text-[9px] font-black text-slate-300 uppercase mb-1 tracking-tighter">Rendimiento Planta</span>
+             <div className="flex items-center gap-2">
+                <span className="text-2xl font-black text-slate-600 font-mono">{rend.value}%</span>
+                {rend.isOverridden && <ShieldCheck className="w-4 h-4 text-blue-500" />}
+             </div>
           </div>
           <div className="p-5 border-r border-slate-50 flex flex-col items-center justify-center bg-yellow-50/20">
-             <span className="text-[9px] font-black text-amber-300 uppercase mb-1 tracking-tighter">T. Total Disponible</span>
+             <span className="text-[9px] font-black text-amber-300 uppercase mb-1 tracking-tighter">Capacidad Neta Disponible</span>
              <span className="text-2xl font-black text-gray-800 font-mono">{totalDisponible.toFixed(1)}h</span>
           </div>
           <div className={cn("p-5 flex flex-col items-center justify-center transition-colors", porcentaje > 100 ? "bg-red-50" : "bg-green-50")}>
-             <span className={cn("text-[9px] font-black uppercase mb-1 tracking-tighter", porcentaje > 100 ? "text-red-400" : "text-green-400")}>Carga de Trabajo</span>
+             <span className={cn("text-[9px] font-black uppercase mb-1 tracking-tighter", porcentaje > 100 ? "text-red-400" : "text-green-400")}>Utilización del Plan</span>
              <div className="flex flex-col items-center">
                 <span className={cn("text-2xl font-black font-mono leading-none", porcentaje > 100 ? "text-red-600" : "text-green-600")}>{porcentaje.toFixed(1)}%</span>
-                <span className="text-[8px] font-bold text-gray-400 mt-2 uppercase">Planificado: {plannedHours.toFixed(1)}h</span>
+                <span className="text-[8px] font-bold text-gray-400 mt-2 uppercase">Carga: {plannedHours.toFixed(1)}h</span>
              </div>
           </div>
         </div>
@@ -329,6 +375,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0 || totalSubblocks <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
     
+    // Perímetro interno para evitar colisiones radiales
     const innerRadius = MACHINE_RADIO_CM - largo;
     if (innerRadius <= 0) return { subbloquesPorCarga: 1, totalCargas: Math.ceil(totalSubblocks) };
 
@@ -671,8 +718,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Quito - Carrusel 1006', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', id: '1000' }, 
             { t: 'Guayaquil - Carrusel 2006', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000' } 
           ].map((center, idx) => (
-            <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)</h3>
+            <div key={idx} className="space-y-4 text-left">
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)</h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                 <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
                 <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
@@ -715,7 +762,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="restricciones" className="mt-0 space-y-8 animate-in slide-in-from-bottom-2 duration-400 text-left">{[ { id: '1000', label: 'Quito', color: 'text-green-700', border: 'bg-green-600' }, { id: '2000', label: 'Guayaquil', color: 'text-indigo-700', border: 'bg-indigo-600' } ].map(center => { const list = restricciones.filter(r => grupos.some(g => g.codigo_grupo === r.codigo_grupo && String(g.centro) === center.id)); return (<div key={center.id} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.color)}><div className={cn("w-2 h-2 rounded-full", center.border)} /> Parámetros {center.label}</h3><Card className="rounded-3xl border border-gray-100 shadow-sm overflow-hidden bg-white"><table className="w-full border-collapse text-center"><thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Restricción</th><th className="px-6 py-4 border-r border-gray-50">Valor</th><th className="px-6 py-4 text-left">Referencia</th></tr></thead><tbody className="divide-y divide-gray-100 text-[11px]">{list.length === 0 ? (<tr><td colSpan={3} className="py-10 text-center text-gray-300 italic">Sin restricciones configuradas</td></tr>) : (list.map(r => (<tr key={r.codigo_restriccion} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-bold text-gray-700 border-r border-gray-50 uppercase">{r.nombre_restriccion}</td><td className="px-6 py-3 border-r border-gray-50"><Badge variant="outline" className="font-mono text-primary bg-primary/5 border-primary/20">{r.valor_restriccion}</Badge></td><td className="px-6 py-3 text-gray-500 italic text-left">{r.descripcion || '—'}</td></tr>)))}</tbody></table></Card></div>);})}</TabsContent>
 
-        <TabsContent value="tiempos" className="space-y-10 text-left">{[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollProv1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollProv2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (<div key={idx} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)</h3><Card className="rounded-3xl border border-gray-100 shadow-sm overflow-hidden bg-white"><div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div><div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]"><table ref={center.s.table} className="w-full border-collapse text-center"><thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Material</th><th className="px-6 py-4 border-r border-gray-50 text-left">Descripción Técnica</th><th className="px-6 py-4 border-r border-gray-50">Línea Prod.</th><th className="px-6 py-4 border-r border-gray-50 text-teal-700">Estándar (Min)</th><th className="px-6 py-4">Stock / Seguridad</th></tr></thead><tbody className="divide-y divide-gray-100 text-[10px]">{center.d.map((t, i) => { const info = extractMaterialInfo(t); return (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td><td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td><td className="px-6 py-3 border-r border-gray-50 text-gray-400 uppercase font-medium">{t.Linea || '—'}</td><td className="px-6 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td><td className="px-6 py-3 text-gray-400 font-mono">{(t.StockActual || 0).toLocaleString()} / {(t.StockSeguridad || 0).toLocaleString()}</td></tr>);})}</tbody></table></div></Card></div>))}</TabsContent>
+        <TabsContent value="tiempos" className="space-y-10 text-left">{[ { t: 'Catálogo Técnico - Quito 1000', d: tiemposC1000, s: scrollResumen1000, c: 'text-teal-700', b: 'bg-teal-600' }, { t: 'Catálogo Técnico - Guayaquil 2000', d: tiemposC2000, s: scrollResumen2000, c: 'text-cyan-700', b: 'bg-cyan-600' } ].map((center, idx) => (<div key={idx} className="space-y-4 text-left"><h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider", center.c)}><div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} materiales)</h3><Card className="rounded-3xl border border-gray-100 shadow-sm overflow-hidden bg-white"><div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div><div ref={center.s.bottom} className="overflow-x-auto max-h-[450px]"><table ref={center.s.table} className="w-full border-collapse text-center"><thead className="bg-gray-100/50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100"><tr><th className="px-6 py-4 border-r border-gray-50">Material</th><th className="px-6 py-4 border-r border-gray-50 text-left">Descripción Técnica</th><th className="px-6 py-4 border-r border-gray-50">Línea Prod.</th><th className="px-6 py-4 border-r border-gray-50 text-teal-700">Estándar (Min)</th><th className="px-6 py-4">Stock / Seguridad</th></tr></thead><tbody className="divide-y divide-gray-100 text-[10px]">{center.d.map((t, i) => { const info = extractMaterialInfo(t); return (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td><td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td><td className="px-6 py-3 border-r border-gray-50 text-gray-400 uppercase font-medium">{t.Linea || '—'}</td><td className="px-6 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td><td className="px-6 py-3 text-gray-400 font-mono">{(t.StockActual || 0).toLocaleString()} / {(t.StockSeguridad || 0).toLocaleString()}</td></tr>);})}</tbody></table></div></Card></div>))}</TabsContent>
       </Tabs>
     </div>
   );
