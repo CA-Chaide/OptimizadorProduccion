@@ -29,7 +29,8 @@ interface ProvisionalOrder {
   CodMaterial: string;
   T_ARMADO?: number;
   T_CERRADO_L1?: number;
-  T_CERRADO_L2?: number;
+  T_CERRADO1_L2?: number;
+  T_CERRADO2_L2?: number;
   T_CERRADO_L3?: number;
 }
 
@@ -92,7 +93,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             ...order,
             T_ARMADO: times['ARMADO'] || 0,
             T_CERRADO_L1: times['CERRADO L1'] || 0,
-            T_CERRADO_L2: times['CERRADO L2'] || 0,
+            T_CERRADO1_L2: times['CERRADO1 L2'] || 0,
+            T_CERRADO2_L2: times['CERRADO2 L2'] || 0,
             T_CERRADO_L3: times['CERRADO L3'] || 0,
           };
         });
@@ -198,7 +200,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
                     <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Armado</th>
                     <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L1</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L2</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado1 L2</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado2 L2</th>
                     <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L3</th>
                     <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
                     <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
@@ -220,7 +223,10 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                         {order.T_CERRADO_L1 ? order.T_CERRADO_L1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
-                        {order.T_CERRADO_L2 ? order.T_CERRADO_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                        {order.T_CERRADO1_L2 ? order.T_CERRADO1_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
+                        {order.T_CERRADO2_L2 ? order.T_CERRADO2_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
                         {order.T_CERRADO_L3 ? order.T_CERRADO_L3.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
@@ -233,7 +239,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={12} className="px-6 py-12 text-center text-gray-400 italic">
+                      <td colSpan={13} className="px-6 py-12 text-center text-gray-400 italic">
                         No se encontraron órdenes para el centro {selectedCenter}.
                       </td>
                     </tr>
