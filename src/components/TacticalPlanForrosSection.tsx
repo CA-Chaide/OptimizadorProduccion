@@ -256,7 +256,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const dailyColumns = useMemo(() => {
     if (dailyOrders.length === 0) return [];
     const allKeys = Object.keys(dailyOrders[0]);
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'FECHAFIN'];
+    // Aseguramos que MAQUINA sea una columna de prioridad para que se muestre al principio
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'MAQUINA', 'FECHAFIN'];
     return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [dailyOrders]);
 
