@@ -269,8 +269,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
     const allKeys = Object.keys(tiemposProduccion[0]);
-    const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'Tiempo'];
-    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+    // Insertamos 'HOJA DE RUTA' en la lista de prioridades después de PuestoTrabajo
+    const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'HOJA DE RUTA', 'Tiempo'];
+    
+    // Filtramos las columnas a mostrar, asegurando que HOJA DE RUTA esté presente
+    return [
+      ...priority.filter(k => k === 'HOJA DE RUTA' || allKeys.includes(k)),
+      ...allKeys.filter(k => !priority.includes(k))
+    ];
   }, [tiemposProduccion]);
 
   const dailyColumns = useMemo(() => {
@@ -479,7 +485,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {isLoadingTiempos ? (<tr><td colSpan={tiemposColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : tiemposProduccion.length > 0 ? paginatedTiemposData.map((t, idx) => (
-                        <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">{tiemposColumns.map(col => (<td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{formatValueForDisplay(col, t[col])}</td>))}</tr>
+                        <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">
+                          {tiemposColumns.map(col => (
+                            <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
+                              {col === 'HOJA DE RUTA' 
+                                ? (manualRouteAssignments[String(t.PuestoTrabajo || '').trim()] ?? t.Linea ?? '—')
+                                : formatValueForDisplay(col, t[col])
+                              }
+                            </td>
+                          ))}
+                        </tr>
                       )) : (<tr><td colSpan={tiemposColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay datos disponibles.</td></tr>)}
                     </tbody>
                   </table>
