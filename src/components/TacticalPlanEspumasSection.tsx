@@ -86,6 +86,7 @@ const ScheduleControlPanel = ({
   const netCapacityMax = totalMaxHours * (rendParam.value / 100);
   
   const utilization = netCapacityBase > 0 ? (plannedHours / netCapacityBase) * 100 : 0;
+  const capacitySaldo = netCapacityBase - plannedHours;
   
   let status: 'NORMAL' | 'WARNING' | 'CRITICAL' = 'NORMAL';
   let statusMessage = "Capacidad Normal";
@@ -158,42 +159,44 @@ const ScheduleControlPanel = ({
           </table>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-gray-200">
-           <div className="p-6 border-r border-gray-100 flex flex-col items-center justify-center bg-gray-50/30">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Rendimiento Planta</span>
+        <div className="grid grid-cols-1 md:grid-cols-5 border-t border-gray-200">
+           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-gray-50/30">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Rendimiento Planta</span>
               <div className="flex items-center gap-2">
-                <span className="text-3xl font-black text-slate-800 font-mono">{rendParam.value}%</span>
-                {rendParam.isOverridden && <ShieldCheck className="w-5 h-5 text-blue-500" />}
+                <span className="text-2xl font-black text-slate-800 font-mono">{rendParam.value}%</span>
+                {rendParam.isOverridden && <ShieldCheck className="w-4 h-4 text-blue-500" />}
               </div>
            </div>
            
-           <div className="p-6 border-r border-gray-100 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Capacidad Neta Disponible</span>
-              <span className="text-3xl font-black text-indigo-600 font-mono">{netCapacityBase.toFixed(1)}h</span>
+           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-blue-50/20">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Capacidad Neta (Disp.)</span>
+              <span className="text-2xl font-black text-indigo-600 font-mono">{netCapacityBase.toFixed(1)}h</span>
            </div>
 
-           <div className="p-6 border-r border-gray-100 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-2">Utilización del Plan</span>
-              <div className="flex flex-col items-center gap-1">
-                <span className={cn(
-                  "text-3xl font-black font-mono",
-                  utilization > 100 ? "text-red-600" : "text-green-600"
-                )}>
-                  {utilization.toFixed(1)}%
-                </span>
-                <Progress value={Math.min(utilization, 100)} className="w-24 h-1.5" />
-              </div>
+           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-amber-50/10">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Capacidad Ocupada (Plan)</span>
+              <span className="text-2xl font-black text-amber-600 font-mono">{plannedHours.toFixed(1)}h</span>
+           </div>
+
+           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Saldo Disponible</span>
+              <span className={cn(
+                "text-2xl font-black font-mono",
+                capacitySaldo < 0 ? "text-red-600" : "text-green-600"
+              )}>
+                {capacitySaldo.toFixed(1)}h
+              </span>
            </div>
 
            <div className={cn(
-             "p-6 flex flex-col items-start justify-center px-8",
+             "p-4 flex flex-col items-start justify-center px-6",
              status === 'NORMAL' ? "bg-green-50/50" : status === 'WARNING' ? "bg-amber-50/50" : "bg-red-50/50"
            )}>
               <div className="flex items-center gap-2 mb-1">
                 {status === 'NORMAL' ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
-                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">Evaluación Operativa</span>
+                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">Uso: {utilization.toFixed(1)}%</span>
               </div>
-              <p className="text-xs font-bold text-gray-800">{recommendation}</p>
+              <p className="text-[10px] font-bold text-gray-800 leading-tight">{recommendation}</p>
            </div>
         </div>
       </div>
@@ -292,11 +295,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }
     } catch (error) {
       console.error('Error cargando materiales brutos:', error);
-      addNotification('error', 'Error al cargar materiales brutos');
     } finally {
       setBrutosLoading(false);
     }
-  }, [addNotification]);
+  }, []);
 
   useEffect(() => {
     if (!mounted) return;
@@ -336,29 +338,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
-    
-    // Extract density
     const densMatch = desc.match(/D-?(\d+)/i);
     if (densMatch) dimensions.dens = densMatch[1];
-    
-    // Extract physical dimensions
     const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
     if (dimMatch) {
       dimensions.ancho = dimMatch[1];
       dimensions.largo = dimMatch[2];
       if (dimMatch[3]) dimensions.esp = dimMatch[3];
     }
-    
-    // Apertura detection (Prioritize Category String analysis)
     const apertureRegex = /194\.5|206|219/;
     const catApertureMatch = catStr.match(apertureRegex);
     const descApertureMatch = desc.match(apertureRegex);
-    
-    if (catApertureMatch) {
-      dimensions.apertura = catApertureMatch[0];
-    } else if (descApertureMatch) {
-      dimensions.apertura = descApertureMatch[0];
-    }
+    if (catApertureMatch) dimensions.apertura = catApertureMatch[0];
+    else if (descApertureMatch) dimensions.apertura = descApertureMatch[0];
     
     return { code, desc, ...dimensions };
   };
@@ -381,18 +373,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
-
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (centro === '1000' && itemAlmValue !== '1006') return false;
       if (centro === '2000' && itemAlmValue !== '2006') return false;
-
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = relevantGroups.some(g => {
         const respCodes = restricciones.filter(r => r.codigo_grupo === g.codigo_grupo && r.nombre_restriccion === 'RESPCTRLPROD')
           .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
         return respCodes.length === 0 || respCodes.includes(itemResp);
       });
-
       if (!matchResp) return false;
       if (applyDateFilter) {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
@@ -406,94 +395,42 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
   
-  const tiemposC1000 = useMemo(() => 
-    tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), 
-    [tiemposEnsamblado]
-  );
-  const tiemposC2000 = useMemo(() => 
-    tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), 
-    [tiemposEnsamblado]
-  );
+  const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
+  const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
-
     data.forEach(o => {
       const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
       const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       const info = extractMaterialInfo(o);
       const key = `${fecha}|${info.dens}|${info.apertura}`;
-      
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const ancho = parseFloat(info.ancho) || 0;
       const largo = parseFloat(info.largo) || 0;
       const esp = parseFloat(info.esp) || 0;
       const densValue = parseFloat(info.dens) || 0;
-      
       const usefulHeight = isNaN(densValue) ? 103 : (densValue < 30 ? 103 : 85);
       const itemSubbloques = (qty * esp) / usefulHeight;
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
-      
       const { totalCargas } = calculateCargasLogic(itemSubbloques, ancho, largo);
-      
       const physicalBlocksCount = Math.ceil(itemBloques20m);
       const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
       const tDescarga = Math.ceil(qty / (esp > 10 ? 4 : 3)) * SECONDS_REPETITION;
       const tCoches = Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP;
       const itemTimeLog = (tCarga + tDescarga + tCoches) / 3600;
-
       if (!groupsMap.has(key)) groupsMap.set(key, { fecha, dens: info.dens, apertura: info.apertura, units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
       const entry = groupsMap.get(key)!;
       entry.units += qty; entry.subbloques += itemSubbloques; entry.bloques20m += itemBloques20m; entry.cargas += totalCargas; entry.timeLog += itemTimeLog;
     });
-
     return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.dens.localeCompare(b.dens) || a.apertura.localeCompare(b.apertura));
   };
 
   const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
 
-  const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ 
-    units: acc.units + row.units, 
-    subbloques: acc.subbloques + row.subbloques, 
-    bloques20m: acc.bloques20m + row.bloques20m, 
-    cargas: acc.cargas + row.cargas, 
-    timeLog: acc.timeLog + row.timeLog 
-  }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
-  
-  const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ 
-    units: acc.units + row.units, 
-    subbloques: acc.subbloques + row.subbloques, 
-    bloques20m: acc.bloques20m + row.bloques20m, 
-    cargas: acc.cargas + row.cargas, 
-    timeLog: acc.timeLog + row.timeLog 
-  }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
-
-  const setupScrollSync = (group: any) => {
-    if (!group.top.current || !group.bottom.current) return;
-    const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
-    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
-    group.top.current.addEventListener('scroll', syncB);
-    group.bottom.current.addEventListener('scroll', syncT);
-    return () => { group.top.current?.removeEventListener('scroll', syncB); group.bottom.current?.removeEventListener('scroll', syncT); };
-  };
-
-  useEffect(() => {
-    if (!mounted) return;
-    const items = [scrollProv1000, scrollProv2000, scrollResumen1000, scrollResumen2000];
-    const cleaners = items.map(setupScrollSync);
-    const timer = setTimeout(() => { items.forEach(s => { if (s.table.current) s.width[1](s.table.current.offsetWidth); }); }, 500);
-    return () => { cleaners.forEach(c => c?.()); clearTimeout(timer); };
-  }, [activeTab, ordenes, mounted]);
-
-  const calendarDays = useMemo(() => {
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const firstDay = getDay(start); 
-    const padding = Array.from({ length: firstDay === 0 ? 6 : firstDay - 1 }, () => null);
-    return [...padding, ...days];
-  }, [viewDate]);
+  const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
+  const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
 
   const handleBrutosPageChange = (newPage: number) => {
     const p = Math.max(1, Math.min(newPage, Math.ceil(brutosTotal / brutosRowsPerPage)));
@@ -501,16 +438,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     fetchBrutosData(p, brutosRowsPerPage);
   };
 
-  if (!mounted) return null;
-
   const renderTableBody = (data: any[], centroId: string) => {
     return data.map((o, i) => {
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const hasCategory = String(o.CATEGORIA || '').trim() !== '' && String(o.CATEGORIA || '').trim() !== 'N/A';
-      
       let alturaTotal = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0, totalCargas = 0, subbloquesPorCarga = 0;
-      
       if (hasCategory) {
         const e = parseFloat(info.esp) || 0;
         const d = parseFloat(info.dens) || 0;
@@ -526,7 +459,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const physicalBlocks = Math.ceil(bloques20mItem);
         tiempoLogistico = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
       }
-
       return (
         <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px] font-sans">
           <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
@@ -542,9 +474,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <td className="px-2 py-2 font-mono font-bold text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{hasCategory ? alturaTotal.toFixed(1) : '—'}</td>
           <td className="px-2 py-2 font-mono font-bold text-orange-700 border-r border-gray-100 bg-orange-50/10">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
           <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5">{hasCategory ? subbloquesPorCarga : '—'}</td>
-          {centroId === '1000' && (
-            <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>
-          )}
+          {centroId === '1000' && <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>}
           <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? Math.ceil(totalCargas) : '—'}</td>
           <td className="px-3 py-2 font-mono font-bold border-r border-gray-100 text-teal-600 bg-teal-50/10">{hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}</td>
           <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
@@ -553,14 +483,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-96 gap-4">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Iniciando Planificación Táctica...</p>
-      </div>
-    );
-  }
+  const renderTotalsRow = (totals: any, centroId: string) => (
+    <tr className="bg-gray-800 text-white font-bold text-[10px] uppercase">
+      <td colSpan={9} className="px-3 py-2 text-right">Totales Planta {centroId}:</td>
+      <td className="px-3 py-2 font-mono">{totals.units.toLocaleString()}</td>
+      <td className="px-2 py-2 font-mono text-indigo-200">{totals.units > 0 ? (totals.units * 15).toFixed(0) : '—'}</td>
+      <td className="px-2 py-2 font-mono text-orange-200">{totals.sub.toFixed(1)}</td>
+      <td className="px-2 py-2"></td>
+      {centroId === '1000' && <td className="px-2 py-2 font-mono text-orange-200">{totals.blocks.toFixed(1)}</td>}
+      <td className="px-2 py-2 font-mono text-purple-200">{Math.ceil(totals.cargas)}</td>
+      <td className="px-4 py-2 font-mono text-teal-300">{totals.time.toFixed(2)}</td>
+      <td></td>
+    </tr>
+  );
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -651,9 +586,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Almacén 1006)
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-              <div ref={scrollResumen1000.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: scrollResumen1000.width[0], height: '1px' }} /></div>
-              <div ref={scrollResumen1000.bottom} className="overflow-x-auto max-h-[400px]">
-                <table ref={scrollResumen1000.table} className="w-full border-collapse text-center font-sans">
+              <div className="overflow-x-auto max-h-[400px]">
+                <table className="w-full border-collapse text-center font-sans">
                   <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                     <tr>
                       <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
@@ -711,9 +645,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="w-2 h-2 rounded-full bg-indigo-600" /> Planta 2000 - Guayaquil (Almacén 2006)
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-              <div ref={scrollResumen2000.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: scrollResumen2000.width[0], height: '1px' }} /></div>
-              <div ref={scrollResumen2000.bottom} className="overflow-x-auto max-h-[400px]">
-                <table ref={scrollResumen2000.table} className="w-full border-collapse text-center font-sans">
+              <div className="overflow-x-auto max-h-[400px]">
+                <table className="w-full border-collapse text-center font-sans">
                   <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                     <tr>
                       <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
@@ -793,81 +726,57 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="space-y-10">
           {[ 
-            { t: 'Planta 1000 - Quito', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', id: '1000' }, 
-            { t: 'Planta 2000 - Guayaquil', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000' } 
-          ].map((center, idx) => {
-            const totals = center.d.reduce((acc, o) => {
-              const info = extractMaterialInfo(o);
-              const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-              const e = parseFloat(info.esp) || 0;
-              const d = parseFloat(info.dens) || 0;
-              const usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
-              const alt = qty * e;
-              const sub = alt / usefulHeight;
-              const { totalCargas } = calculateCargasLogic(sub, parseFloat(info.ancho) || 0, parseFloat(info.largo) || 0);
-              const blocks = ( (parseFloat(info.ancho) || 0) * sub) / 2000;
-              const time = (Math.ceil(blocks) * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(Math.ceil(blocks) / 2) * SECONDS_CART_SWAP) / 3600;
-              
-              return {
-                units: acc.units + qty,
-                altura: acc.altura + alt,
-                sub: acc.sub + sub,
-                cargas: acc.cargas + totalCargas,
-                blocks: acc.blocks + blocks,
-                time: acc.time + (isNaN(time) ? 0 : time)
-              };
-            }, { units: 0, altura: 0, sub: 0, cargas: 0, blocks: 0, time: 0 });
-
-            return (
-              <div key={idx} className="space-y-4">
-                <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
-                  <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
-                </h3>
-                <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-                  <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                  <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
-                    <table ref={center.s.table} className="w-full border-collapse text-center">
-                      <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
-                        <tr>
-                          <th className="px-3 py-4 border-r border-gray-100">Orden</th>
-                          <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
-                          <th className="px-3 py-4 border-r border-gray-100">Material</th>
-                          <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
-                          <th className="px-2 py-4 border-r border-gray-100 text-gray-800 bg-gray-50/20">DENS.</th>
-                          <th className="px-2 py-4 border-r border-gray-100 text-blue-800 bg-blue-50/20">APERT.</th>
-                          <th className="px-2 py-4 border-r border-gray-100 text-gray-800">ANCHO</th>
-                          <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
-                          <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
-                          <th className="px-3 py-4 border-r border-gray-100">CANT.</th>
-                          <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30 font-black">ALT. TOT.</th>
-                          <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-black">NRO. SUBBLOQUE</th>
-                          <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold">Batch. Carga Carrusel</th>
-                          {center.id === '1000' && <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold">Nro. Bloque Formulado</th>}
-                          <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold">Nro. Cargas Subbloque</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">Tiempo Operativo</th>
-                          <th className="px-3 py-4 font-black">ALM.</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">{renderTableBody(center.d, center.id)}</tbody>
-                      <tfoot className="bg-gray-800 text-white font-bold text-[9px] uppercase">
-                        <tr>
-                          <td colSpan={9} className="px-3 py-2 text-right">Totales {center.t}:</td>
-                          <td className="px-3 py-2 font-mono">{totals.units.toLocaleString()}</td>
-                          <td className="px-2 py-2 font-mono text-indigo-200">{totals.altura.toFixed(1)}</td>
-                          <td className="px-2 py-2 font-mono text-orange-200">{totals.sub.toFixed(1)}</td>
-                          <td className="px-2 py-2"></td>
-                          {center.id === '1000' && <td className="px-2 py-2 font-mono text-orange-200">{totals.blocks.toFixed(1)}</td>}
-                          <td className="px-2 py-2 font-mono text-purple-200">{Math.ceil(totals.cargas)}</td>
-                          <td className="px-4 py-2 font-mono text-teal-300">{totals.time.toFixed(2)}</td>
-                          <td></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </Card>
-              </div>
-            );
-          })}
+            { t: 'Planta 1000 - Quito', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', id: '1000', totals: summaryTotals1000 }, 
+            { t: 'Planta 2000 - Guayaquil', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000', totals: summaryTotals2000 } 
+          ].map((center, idx) => (
+            <div key={idx} className="space-y-4">
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
+              </h3>
+              <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
+                <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
+                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                    <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                      <tr>
+                        <th className="px-3 py-4 border-r border-gray-100">Orden</th>
+                        <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
+                        <th className="px-3 py-4 border-r border-gray-100">Material</th>
+                        <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
+                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800 bg-gray-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-gray-100 text-blue-800 bg-blue-50/20">APERT.</th>
+                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800">ANCHO</th>
+                        <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
+                        <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
+                        <th className="px-3 py-4 border-r border-gray-100">CANT.</th>
+                        <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30 font-black">ALT. TOT.</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-black">NRO. SUBBLOQUE</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold">Batch. Carga Carrusel</th>
+                        {center.id === '1000' && <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold">Nro. Bloque Formulado</th>}
+                        <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold">Nro. Cargas Subbloque</th>
+                        <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">Tiempo Operativo</th>
+                        <th className="px-3 py-4 font-black">ALM.</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">{renderTableBody(center.d, center.id)}</tbody>
+                    <tfoot className="bg-gray-800 text-white font-bold text-[9px] uppercase">
+                      <tr>
+                        <td colSpan={9} className="px-3 py-2 text-right">Totales {center.t}:</td>
+                        <td className="px-3 py-2 font-mono">{center.totals.units.toLocaleString()}</td>
+                        <td className="px-2 py-2 font-mono text-indigo-200">{(center.totals.units * 15).toFixed(0)}</td>
+                        <td className="px-2 py-2 font-mono text-orange-200">{center.totals.subbloques.toFixed(1)}</td>
+                        <td className="px-2 py-2"></td>
+                        {center.id === '1000' && <td className="px-2 py-2 font-mono text-orange-200">{center.totals.bloques20m.toFixed(1)}</td>}
+                        <td className="px-2 py-2 font-mono text-purple-200">{Math.ceil(center.totals.cargas)}</td>
+                        <td className="px-4 py-2 font-mono text-teal-300">{center.totals.timeLog.toFixed(2)}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
@@ -876,7 +785,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div key={idx} className="space-y-4">
                 <h3 className="text-sm font-bold uppercase text-gray-400 text-left">Catálogo de Tiempos - {center.t}</h3>
                 <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-                  <div ref={idx === 0 ? scrollResumen1000.top : scrollResumen2000.top} className="overflow-x-auto h-2 bg-gray-50/50"><div style={{ width: 1000, height: '1px' }} /></div>
                   <div className="overflow-x-auto max-h-[400px]">
                     <table className="w-full border-collapse text-center">
                       <thead className="bg-gray-100 sticky top-0 text-[10px] font-bold uppercase text-gray-500">
