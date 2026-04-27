@@ -219,24 +219,36 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       )
       .reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [orders]);
-  
-  const totalCantProgramadaPlan = useMemo(() => {
-    if (displayMode !== 'plan') return 0;
-    return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPROGRAMADA) || 0), 0);
-  }, [filteredOrders, displayMode]);
 
-  const totalTiempoPlan = useMemo(() => {
-    if (displayMode !== 'plan' || filteredOrders.length === 0 || !tiemposMap.size) return 0;
-    return filteredOrders.reduce((sum, order) => {
-        const materialCode = normalizeMaterialCode(order.MATERIAL);
-        const tiempoMin = tiemposMap.get(materialCode);
-        if (tiempoMin) {
+  const planSummaryByDate = useMemo(() => {
+    if (displayMode !== 'plan' || selectedDates.length === 0) return [];
+
+    const summaryMap = new Map<string, { cantProgramada: number; tiempoTotal: number }>();
+
+    selectedDates.forEach(date => {
+        summaryMap.set(date, { cantProgramada: 0, tiempoTotal: 0 });
+    });
+
+    filteredOrders.forEach(order => {
+        const date = order.FECHA;
+        if (summaryMap.has(date)) {
+            const summary = summaryMap.get(date)!;
             const cantProgramada = Number(order.CANTPROGRAMADA) || 0;
-            return sum + (cantProgramada * tiempoMin);
+            summary.cantProgramada += cantProgramada;
+
+            const materialCode = normalizeMaterialCode(order.MATERIAL);
+            const tiempoMin = tiemposMap.get(materialCode);
+            if (tiempoMin) {
+                summary.tiempoTotal += cantProgramada * tiempoMin;
+            }
         }
-        return sum;
-    }, 0);
-  }, [filteredOrders, tiemposMap, displayMode]);
+    });
+
+    return Array.from(summaryMap.entries()).map(([date, totals]) => ({
+        date,
+        ...totals,
+    })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [filteredOrders, selectedDates, displayMode, tiemposMap]);
 
 
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
@@ -328,22 +340,27 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             )}
 
             {displayMode === 'plan' && selectedDates.length > 0 && (
-              <div className="flex items-center space-x-3 bg-gray-50 border border-gray-200 rounded-lg p-3 shadow-sm mt-6">
-                <div>
-                  <p className="text-xs text-gray-500 font-semibold uppercase">FECHA(S)</p>
-                  <p className="text-sm font-bold text-gray-900">{selectedDates.join(', ')}</p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm mt-6 w-full max-w-md">
+                    <h4 className="text-sm font-semibold text-gray-800 mb-2">Resumen por Fecha Seleccionada</h4>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => (
+                            <div key={date} className="grid grid-cols-3 gap-4 items-center text-sm p-2 border-b last:border-b-0">
+                                <div>
+                                    <p className="text-xs text-gray-500 font-semibold uppercase">FECHA</p>
+                                    <p className="font-bold text-gray-900">{date}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500 font-semibold uppercase">CANT. PROGRAMADA</p>
+                                    <p className="font-bold text-gray-900">{cantProgramada.toLocaleString()}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO TOTAL (h)</p>
+                                    <p className="font-bold text-gray-900">{(tiempoTotal / 60).toFixed(2)}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
-                <div className="border-l border-gray-300 h-10 mx-2"></div>
-                <div>
-                  <p className="text-xs text-gray-500 font-semibold uppercase">CANT. PROGRAMADA</p>
-                  <p className="text-sm font-bold text-gray-900">{totalCantProgramadaPlan.toLocaleString()}</p>
-                </div>
-                <div className="border-l border-gray-300 h-10 mx-2"></div>
-                <div>
-                  <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO TOTAL (min)</p>
-                  <p className="text-sm font-bold text-gray-900">{totalTiempoPlan.toFixed(2)}</p>
-                </div>
-              </div>
             )}
           </div>
         </div>
