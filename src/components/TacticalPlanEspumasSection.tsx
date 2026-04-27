@@ -520,6 +520,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Iniciando Planificación Táctica...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -772,7 +781,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="tiempos">
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
           <div className="grid grid-cols-1 gap-10">
             {[ { t: 'Quito 1000', d: tiemposC1000 }, { t: 'Guayaquil 2000', d: tiemposC2000 } ].map((center, idx) => (
               <div key={idx} className="space-y-4">
@@ -789,18 +798,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[11px]">
-                      {center.d.map((t, i) => {
-                        const info = extractMaterialInfo(t);
-                        return (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td>
-                            <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
-                            <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || 0).toFixed(4)}</td>
-                            <td className="px-4 py-3 text-gray-400 font-mono">{t.StockActual || 0}</td>
-                          </tr>
-                        );
-                      })}
+                      {center.d.length === 0 ? (
+                        <tr><td colSpan={5} className="py-8 text-center text-gray-400 italic">No hay tiempos cargados para este centro</td></tr>
+                      ) : (
+                        center.d.map((t, i) => {
+                          const info = extractMaterialInfo(t);
+                          return (
+                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-4 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td>
+                              <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
+                              <td className="px-4 py-3 border-r border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || '—'}</td>
+                              <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                              <td className="px-4 py-3 text-gray-400 font-mono">{t.StockActual || 0}</td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </Card>
@@ -809,10 +822,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="brutos">
+        <TabsContent value="brutos" className="animate-in fade-in duration-300">
           <Card className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-800 uppercase">Maestro de Materiales Brutos</h3>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
+                <h3 className="text-lg font-bold text-gray-800 uppercase">Maestro de Materiales Brutos</h3>
+              </div>
               <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
                 {brutosTotal.toLocaleString()} REGISTROS TOTALES
               </div>
@@ -824,7 +840,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cargando Materia Prima...</p>
               </div>
             ) : brutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic">No se encontraron datos de materiales brutos</div>
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se encontraron datos de materiales brutos</div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
@@ -850,7 +866,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </table>
                 </div>
 
-                {/* Controles de Paginación */}
                 <div className="flex items-center justify-between pt-4 bg-white">
                   <p className="text-[10px] font-bold text-gray-400 uppercase">
                     Página {brutosPage} de {Math.ceil(brutosTotal / brutosRowsPerPage)}
@@ -875,7 +890,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex items-center gap-1 mx-2">
-                      <span className="text-[10px] font-bold text-gray-700">FILAS:</span>
+                      <span className="text-[10px] font-bold text-gray-700 uppercase">Filas:</span>
                       <select 
                         value={brutosRowsPerPage} 
                         onChange={(e) => {
