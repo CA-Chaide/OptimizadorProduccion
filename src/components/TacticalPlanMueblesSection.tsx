@@ -282,8 +282,9 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                       <OrdenesFertTabSection 
                         restricciones={restriccionesMuebles} 
                         columns={['FECHA', 'ORDEN', 'MATERIAL', 'CANTPROGRAMADA', 'TIEMPO']}
-                        hideControls={true}
+                        hideControls={false}
                         tiemposData={tiemposMueblesData}
+                        displayMode="plan"
                       />
                   </CardContent>
               </Card>

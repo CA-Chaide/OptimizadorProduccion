@@ -22,6 +22,7 @@ interface OrdenesFertTabSectionProps {
   columns?: string[];
   hideControls?: boolean;
   tiemposData?: any[];
+  displayMode?: 'full' | 'plan';
 }
 
 interface PaginationState {
@@ -106,7 +107,7 @@ const MultiSelect: React.FC<{
   );
 };
 
-export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones, columns, hideControls = false, tiemposData = [] }) => {
+export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones, columns, hideControls = false, tiemposData = [], displayMode = 'full' }) => {
   const { addNotification } = useAppContext();
   const [orders, setOrders] = useState<OrdenFert[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -138,7 +139,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return map;
   }, [tiemposData]);
 
-  // Define static columns to ensure order and completeness
+
   const COLUMNS_TO_DISPLAY = columns || [
     'FECHA', 'PEDIDO', 'POSICION', 'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
     'MAQUINA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
@@ -218,6 +219,25 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       )
       .reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [orders]);
+  
+  const totalCantProgramadaPlan = useMemo(() => {
+    if (displayMode !== 'plan') return 0;
+    return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPROGRAMADA) || 0), 0);
+  }, [filteredOrders, displayMode]);
+
+  const totalTiempoPlan = useMemo(() => {
+    if (displayMode !== 'plan' || filteredOrders.length === 0 || !tiemposMap.size) return 0;
+    return filteredOrders.reduce((sum, order) => {
+        const materialCode = normalizeMaterialCode(order.MATERIAL);
+        const tiempoMin = tiemposMap.get(materialCode);
+        if (tiempoMin) {
+            const cantProgramada = Number(order.CANTPROGRAMADA) || 0;
+            return sum + (cantProgramada * tiempoMin);
+        }
+        return sum;
+    }, 0);
+  }, [filteredOrders, tiemposMap, displayMode]);
+
 
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
   
@@ -275,33 +295,56 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
       {!hideControls && (
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-start space-x-2">
-              <div className="w-56">
-                  <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
-                  <MultiSelect
-                      options={uniqueDates.map(d => ({ value: d, label: d }))}
-                      selected={selectedDates}
-                      onChange={handleDateChange}
-                      placeholder="Todas las fechas"
-                  />
+            <div className="w-56">
+              <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
+              <MultiSelect
+                options={uniqueDates.map(d => ({ value: d, label: d }))}
+                selected={selectedDates}
+                onChange={handleDateChange}
+                placeholder="Todas las fechas"
+              />
+            </div>
+            
+            {displayMode === 'full' && (
+              <>
+                <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm mt-6">
+                  <Package className="w-6 h-6 text-indigo-600" />
+                  <div>
+                    <p className="text-xs text-indigo-800 font-semibold uppercase">CANT. PENDIENTE</p>
+                    <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
+                  <Package className="w-6 h-6 text-teal-600" />
+                  <div>
+                    <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL</p>
+                    <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {displayMode === 'plan' && selectedDates.length > 0 && (
+              <div className="flex items-center space-x-3 bg-gray-50 border border-gray-200 rounded-lg p-3 shadow-sm mt-6">
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold uppercase">FECHA(S)</p>
+                  <p className="text-sm font-bold text-gray-900">{selectedDates.join(', ')}</p>
+                </div>
+                <div className="border-l border-gray-300 h-10 mx-2"></div>
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold uppercase">CANT. PROGRAMADA</p>
+                  <p className="text-sm font-bold text-gray-900">{totalCantProgramadaPlan.toLocaleString()}</p>
+                </div>
+                <div className="border-l border-gray-300 h-10 mx-2"></div>
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO TOTAL (min)</p>
+                  <p className="text-sm font-bold text-gray-900">{totalTiempoPlan.toFixed(2)}</p>
+                </div>
               </div>
-            <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm mt-6">
-                <Package className="w-6 h-6 text-indigo-600" />
-                <div>
-                  <p className="text-xs text-indigo-800 font-semibold uppercase">CANT. PENDIENTE</p>
-                  <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
-                </div>
-            </div>
-            <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
-                <Package className="w-6 h-6 text-teal-600" />
-                <div>
-                  <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL</p>
-                  <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
-                </div>
-            </div>
+            )}
           </div>
         </div>
       )}
