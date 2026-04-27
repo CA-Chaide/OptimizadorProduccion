@@ -20,7 +20,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Progress } from "@/components/ui/progress";
 
 // --- CONSTANTES TÉCNICAS ---
 const MACHINE_RADIO_CM = 350;    
@@ -226,11 +225,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [brutosLoading, setBrutosLoading] = useState(false);
   const [brutosColumns, setBrutosColumns] = useState<string[]>([]);
 
-  const scrollProv1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  const scrollProv2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  const scrollResumen1000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-  const scrollResumen2000 = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
-
   useEffect(() => { setMounted(true); }, []);
 
   const fetchGruposRelevantes = async () => {
@@ -328,6 +322,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
     return dates;
   }, [ordenes]);
+
+  const calendarDays = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
 
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
@@ -438,64 +441,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     fetchBrutosData(p, brutosRowsPerPage);
   };
 
-  const renderTableBody = (data: any[], centroId: string) => {
-    return data.map((o, i) => {
-      const info = extractMaterialInfo(o);
-      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      const hasCategory = String(o.CATEGORIA || '').trim() !== '' && String(o.CATEGORIA || '').trim() !== 'N/A';
-      let alturaTotal = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0, totalCargas = 0, subbloquesPorCarga = 0;
-      if (hasCategory) {
-        const e = parseFloat(info.esp) || 0;
-        const d = parseFloat(info.dens) || 0;
-        const w = parseFloat(info.ancho) || 0;
-        const l = parseFloat(info.largo) || 0;
-        alturaTotal = qty * e;
-        const usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
-        nSubItem = alturaTotal / usefulHeight;
-        bloques20mItem = (w * nSubItem) / 2000;
-        const logic = calculateCargasLogic(nSubItem, w, l);
-        subbloquesPorCarga = logic.subbloquesPorCarga;
-        totalCargas = logic.totalCargas;
-        const physicalBlocks = Math.ceil(bloques20mItem);
-        tiempoLogistico = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
-      }
-      return (
-        <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px] font-sans">
-          <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-          <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-          <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
-          <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
-          <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.dens : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-gray-100 bg-blue-50/10">{hasCategory ? info.apertura : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.ancho : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.largo : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.esp : '—'}</td>
-          <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
-          <td className="px-2 py-2 font-mono font-bold text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{hasCategory ? alturaTotal.toFixed(1) : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-orange-700 border-r border-gray-100 bg-orange-50/10">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
-          <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5">{hasCategory ? subbloquesPorCarga : '—'}</td>
-          {centroId === '1000' && <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>}
-          <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? Math.ceil(totalCargas) : '—'}</td>
-          <td className="px-3 py-2 font-mono font-bold border-r border-gray-100 text-teal-600 bg-teal-50/10">{hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}</td>
-          <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
-        </tr>
-      );
-    });
-  };
-
-  const renderTotalsRow = (totals: any, centroId: string) => (
-    <tr className="bg-gray-800 text-white font-bold text-[10px] uppercase">
-      <td colSpan={9} className="px-3 py-2 text-right">Totales Planta {centroId}:</td>
-      <td className="px-3 py-2 font-mono">{totals.units.toLocaleString()}</td>
-      <td className="px-2 py-2 font-mono text-indigo-200">{totals.units > 0 ? (totals.units * 15).toFixed(0) : '—'}</td>
-      <td className="px-2 py-2 font-mono text-orange-200">{totals.sub.toFixed(1)}</td>
-      <td className="px-2 py-2"></td>
-      {centroId === '1000' && <td className="px-2 py-2 font-mono text-orange-200">{totals.blocks.toFixed(1)}</td>}
-      <td className="px-2 py-2 font-mono text-purple-200">{Math.ceil(totals.cargas)}</td>
-      <td className="px-4 py-2 font-mono text-teal-300">{totals.time.toFixed(2)}</td>
-      <td></td>
-    </tr>
-  );
+  if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -510,7 +456,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
@@ -531,7 +477,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-primary" /></div>
               <div>
                 <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
-                <h3 className="text-xs font-bold text-gray-700 uppercase">{selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}</h3>
+                <h3 className="text-xs font-bold text-gray-700 uppercase">
+                  {selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                </h3>
               </div>
             </div>
             <Popover>
@@ -726,26 +674,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="space-y-10">
           {[ 
-            { t: 'Planta 1000 - Quito', d: provC1000, s: scrollProv1000, b: 'bg-green-600', c: 'text-green-700', id: '1000', totals: summaryTotals1000 }, 
-            { t: 'Planta 2000 - Guayaquil', d: provC2000, s: scrollProv2000, b: 'bg-indigo-600', c: 'text-indigo-700', id: '2000', totals: summaryTotals2000 } 
+            { t: 'Planta 1000 - Quito', d: provC1000, id: '1000', totals: summaryTotals1000 }, 
+            { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000', totals: summaryTotals2000 } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
-                <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.id === '1000' ? 'text-green-700' : 'text-indigo-700')}>
+                <div className={cn("w-2 h-2 rounded-full", center.id === '1000' ? 'bg-green-600' : 'bg-indigo-600')} /> {center.t} ({center.d.length} órdenes)
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-                <div ref={center.s.top} className="overflow-x-auto h-2 bg-gray-50/50 border-b border-gray-100"><div style={{ width: center.s.width[0], height: '1px' }} /></div>
-                <div ref={center.s.bottom} className="overflow-x-auto max-h-[500px]">
-                  <table ref={center.s.table} className="w-full border-collapse text-center">
+                <div className="overflow-x-auto max-h-[500px]">
+                  <table className="w-full border-collapse text-center">
                     <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-gray-100">Orden</th>
                         <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
                         <th className="px-3 py-4 border-r border-gray-100">Material</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800 bg-gray-50/20">DENS.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-blue-800 bg-blue-50/20">APERT.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 text-gray-800">ANCHO</th>
+                        <th className="px-2 py-4 border-r border-gray-100">DENS.</th>
+                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/20">APERT.</th>
+                        <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
                         <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
                         <th className="px-3 py-4 border-r border-gray-100">CANT.</th>
@@ -758,7 +705,50 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 font-black">ALM.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">{renderTableBody(center.d, center.id)}</tbody>
+                    <tbody className="divide-y divide-gray-50">
+                      {center.d.map((o, i) => {
+                        const info = extractMaterialInfo(o);
+                        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                        const hasCategory = String(o.CATEGORIA || '').trim() !== '' && String(o.CATEGORIA || '').trim() !== 'N/A';
+                        let alturaTotal = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0, totalCargas = 0, subbloquesPorCarga = 0;
+                        if (hasCategory) {
+                          const e = parseFloat(info.esp) || 0;
+                          const d = parseFloat(info.dens) || 0;
+                          const w = parseFloat(info.ancho) || 0;
+                          const l = parseFloat(info.largo) || 0;
+                          alturaTotal = qty * e;
+                          const usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
+                          nSubItem = alturaTotal / usefulHeight;
+                          bloques20mItem = (w * nSubItem) / 2000;
+                          const logic = calculateCargasLogic(nSubItem, w, l);
+                          subbloquesPorCarga = logic.subbloquesPorCarga;
+                          totalCargas = logic.totalCargas;
+                          const physicalBlocks = Math.ceil(bloques20mItem);
+                          tiempoLogistico = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
+                        }
+                        return (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
+                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
+                            <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.dens : '—'}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-gray-100 bg-blue-50/10">{hasCategory ? info.apertura : '—'}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.ancho : '—'}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.largo : '—'}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.esp : '—'}</td>
+                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{hasCategory ? alturaTotal.toFixed(1) : '—'}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-orange-700 border-r border-gray-100 bg-orange-50/10">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
+                            <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5">{hasCategory ? subbloquesPorCarga : '—'}</td>
+                            {center.id === '1000' && <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>}
+                            <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? Math.ceil(totalCargas) : '—'}</td>
+                            <td className="px-3 py-2 font-mono font-bold border-r border-gray-100 text-teal-600 bg-teal-50/10">{hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
                     <tfoot className="bg-gray-800 text-white font-bold text-[9px] uppercase">
                       <tr>
                         <td colSpan={9} className="px-3 py-2 text-right">Totales {center.t}:</td>
