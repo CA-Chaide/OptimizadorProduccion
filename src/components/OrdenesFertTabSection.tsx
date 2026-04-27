@@ -1,9 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
-import { useRuntimeInspector } from '@/services/RuntimeInspector';
-import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
 import { Package, Check, ChevronsUpDown } from 'lucide-react';
 import type { OrdenFert, Restriccion } from '@/types/interfaces';
@@ -12,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+
 
 interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
@@ -99,11 +98,8 @@ const MultiSelect: React.FC<{
   );
 };
 
-
 export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones }) => {
-  const inspector = useRuntimeInspector('OrdenesFertTab');
   const { addNotification } = useAppContext();
-
   const [orders, setOrders] = useState<OrdenFert[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
@@ -117,12 +113,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
 
-  const topScrollRef = useRef<HTMLDivElement>(null);
-  const tableScrollRef = useRef<HTMLDivElement>(null);
-  const tableRef = useRef<HTMLTableElement>(null);
-  const [tableWidth, setTableWidth] = useState(0);
-  const lastScrolledRef = useRef<'top' | 'table' | null>(null);
-
   // Define static columns to ensure order and completeness
   const COLUMNS_TO_DISPLAY = [
     'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'PEDIDO', 'POSICION', 'CENTRO', 
@@ -133,7 +123,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     const fetchOrders = async () => {
       setIsLoading(true);
       setError(null);
-      logger.log('[OrdenesFertTab] Fetching FERT orders...', 'info');
+      
       try {
         const exploreResponse = await serviciosService.getOrdenesFert(1, 1);
         const totalRecords = exploreResponse.totalRegistros || (exploreResponse.data?.length > 0 ? 1 : 0);
@@ -158,11 +148,9 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         }
         
         setOrders(allData);
-        logger.log(`[OrdenesFertTab] Loaded ${allData.length} FERT orders.`, 'success');
 
       } catch (err) {
         const errorMessage = (err as Error).message;
-        logger.error(`[OrdenesFertTab] Error fetching data: ${errorMessage}`);
         setError(errorMessage);
         addNotification('error', `Error al cargar datos: ${errorMessage}`);
       } finally {
@@ -197,9 +185,12 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [filteredOrders]);
   
-  const totalCantidadPendiente2026 = useMemo(() => {
+  const totalCantidadPendienteGeneral = useMemo(() => {
     return orders
-      .filter(order => order.FECHA.startsWith('2026'))
+      .filter(order => 
+        (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
+        order.CENTRO === '1000'
+      )
       .reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [orders]);
 
@@ -228,51 +219,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     setSelectedDates(dates);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
-  
-  useEffect(() => {
-      const calculateWidth = () => {
-          if (tableRef.current) {
-              setTableWidth(tableRef.current.offsetWidth);
-          }
-      };
-      calculateWidth();
-      window.addEventListener('resize', calculateWidth);
-      
-      const resizeObserver = new ResizeObserver(calculateWidth);
-      if (tableRef.current) {
-          resizeObserver.observe(tableRef.current);
-      }
-
-      return () => {
-          window.removeEventListener('resize', calculateWidth);
-          if (tableRef.current) {
-              resizeObserver.unobserve(tableRef.current);
-          }
-      };
-  }, [displayedOrders]);
-
-  const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (lastScrolledRef.current === 'table') {
-      lastScrolledRef.current = null;
-      return;
-    }
-    if (tableScrollRef.current) {
-      lastScrolledRef.current = 'top';
-      tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    }
-  };
-
-  const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (lastScrolledRef.current === 'top') {
-      lastScrolledRef.current = null;
-      return;
-    }
-    if (topScrollRef.current) {
-      lastScrolledRef.current = 'table';
-      topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    }
-  };
-
 
   if (isLoading && orders.length === 0) {
     return (
@@ -326,22 +272,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
               <Package className="w-6 h-6 text-teal-600" />
               <div>
-                <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL (2026)</p>
-                <p className="text-2xl font-bold text-teal-900">{totalCantidadPendiente2026.toLocaleString()}</p>
+                <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL PENDIENTE</p>
+                <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
               </div>
           </div>
         </div>
       </div>
 
-      {/* Top Scrollbar */}
-      <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
-          <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
-      </div>
-
       {/* Table */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div ref={tableScrollRef} onScroll={handleTableScroll} className="overflow-x-auto">
-          <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
                 {COLUMNS_TO_DISPLAY.map((col, index) => (
