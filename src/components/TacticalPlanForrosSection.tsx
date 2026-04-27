@@ -299,6 +299,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   }, [dailyOrders, formatValueForDisplay, normalizeDateForFilter]);
 
+  const uniqueRoutes = useMemo(() => {
+    const seen = new Set<string>();
+    return tiemposProduccion.filter(t => {
+      const pId = String(t.PuestoTrabajo || '').trim();
+      if (!pId || seen.has(pId)) return false;
+      seen.add(pId);
+      return true;
+    });
+  }, [tiemposProduccion]);
+
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
 
@@ -384,7 +394,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Hojas de Ruta (Procesos de Forros)</CardTitle>
-              <CardDescription>Visualización de la secuencia de puestos de trabajo y flujos operativos.</CardDescription>
+              <CardDescription>Visualización de la secuencia de puestos de trabajo únicos y flujos operativos.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-hidden">
@@ -398,14 +408,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {tiemposProduccion.map((t, idx) => (
+                      {uniqueRoutes.map((t, idx) => (
                         <tr key={`route-${idx}`} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
                           <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{t.PuestoTrabajo}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{t.Linea}</td>
                         </tr>
                       ))}
-                      {tiemposProduccion.length === 0 && (
+                      {uniqueRoutes.length === 0 && (
                         <tr>
                           <td colSpan={3} className="px-6 py-12 text-center text-gray-400 italic">No hay rutas configuradas.</td>
                         </tr>
@@ -542,7 +552,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </div>
                       <div className="flex items-center justify-between p-2 rounded-lg bg-teal-50/50 border border-teal-100">
                         <span className="text-xs font-medium text-teal-900">{formattedTarget}</span>
-                        <span className="text-sm font-mono font-bold text-teal-700">-- h</span>
+                        <span className="text-sm font-mono font-bold text-blue-700">-- h</span>
                       </div>
                     </div>
                   </div>
