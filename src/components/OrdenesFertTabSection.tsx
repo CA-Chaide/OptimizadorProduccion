@@ -37,8 +37,14 @@ interface OrdenFert {
   MAQUINA: string;
   PEDIDO: string;
   CANTPROGPESONETO: number;
-  T_PROD?: number; // Nueva columna para tiempo de producción
+  T_PROD?: number;
   [key: string]: any;
+}
+
+interface TiempoTecnico {
+  CodMaterial: string;
+  Centro: string;
+  Tiempo_Min: number;
 }
 
 export const OrdenesFertTabSection: React.FC = () => {
@@ -48,6 +54,7 @@ export const OrdenesFertTabSection: React.FC = () => {
 
   // Estados de Datos
   const [allRawOrders, setAllRawOrders] = useState<OrdenFert[]>([]);
+  const [tiemposLookup, setTiemposLookup] = useState<Map<string, number>>(new Map());
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [restrictions, setRestrictions] = useState<any[]>([]);
@@ -62,51 +69,68 @@ export const OrdenesFertTabSection: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
+  const normalizeMaterialCode = (code: string | number): string => {
+    return String(code || '').trim().replace(/^0+/, '');
+  };
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // 1. Consulta exploratoria para obtener el total de registros
-      console.log('[OrdenesFert] Iniciando consulta exploratoria...');
+      // 1. Consulta exploratoria de Órdenes FERT
+      console.log('[OrdenesFert] Iniciando carga de datos...');
       const exploratoryRes = await serviciosService.getOrdenesFert(1, 1);
       const total = exploratoryRes.totalRegistros || 0;
       
-      let allData: OrdenFert[] = [];
+      let allOrders: OrdenFert[] = [];
       
       if (total > 0) {
         const BATCH_SIZE = 10000;
         const totalPages = Math.ceil(total / BATCH_SIZE);
-        console.log(`[OrdenesFert] Detectados ${total} registros. Cargando en ${totalPages} bloques de ${BATCH_SIZE}...`);
         
-        // 2. Cargar todos los bloques
         for (let i = 1; i <= totalPages; i++) {
-          console.log(`[OrdenesFert] Descargando bloque ${i}/${totalPages}...`);
           const res = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
           if (res?.data) {
             const pageData = Array.isArray(res.data) ? res.data : [res.data];
-            allData = [...allData, ...pageData];
+            allOrders = [...allOrders, ...pageData];
           }
         }
       }
 
-      // 3. Cargar grupos y restricciones para filtros
+      // 2. Cargar Tiempos de Ensamblado para el cruce (T. Prod)
+      console.log('[OrdenesFert] Cargando matriz técnica de tiempos...');
+      const tiemposRes = await serviciosService.getTiemposEnsamblado(1, 10000);
+      const tiemposData: TiempoTecnico[] = Array.isArray(tiemposRes?.data) ? tiemposRes.data : [];
+      
+      // Crear mapa de búsqueda: "Centro|Material" -> Tiempo_Min
+      const lookup = new Map<string, number>();
+      tiemposData.forEach(t => {
+        const key = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
+        // Solo guardamos el primer tiempo encontrado para evitar inconsistencias si hay duplicados
+        if (!lookup.has(key)) {
+          lookup.set(key, Number(t.Tiempo_Min) || 0);
+        }
+      });
+      setTiemposLookup(lookup);
+
+      // 3. Cargar grupos y restricciones para filtros de responsables
       const [groupsRes, restRes] = await Promise.all([
         grupoService.getAll(),
         restriccionService.getAll()
       ]);
 
-      setAllRawOrders(allData);
+      setAllRawOrders(allOrders);
       setGroups(groupsRes?.data || []);
       setRestrictions(restRes?.data || []);
 
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
       
-      inspector.captureVariable('fert_raw_count', allData.length);
-      inspector.captureVariable('restrictions_count', (restRes?.data || []).length);
+      inspector.captureVariable('fert_raw_count', allOrders.length);
+      inspector.captureVariable('tiempos_lookup_size', lookup.size);
       
-      console.log('[OrdenesFert] Carga completa finalizada.');
+      console.log('[OrdenesFert] Carga y cruce de datos finalizado.');
     } catch (err) {
-      addNotification('error', `Error al cargar órdenes FERT: ${(err as Error).message}`);
+      addNotification('error', `Error al cargar y cruzar datos: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }
@@ -119,26 +143,22 @@ export const OrdenesFertTabSection: React.FC = () => {
     }
   }, [loadData]);
 
-  // Helper para parsear responsables (separados por , o &)
   const parseResponsables = (value: string): string[] => {
     if (!value) return [];
     return value.split(/[,&]/).map(v => v.trim()).filter(Boolean);
   };
 
-  // Obtener responsables configurados para un centro específico
   const getResponsablesPorCentro = (centerId: string) => {
     const groupForCenter = groups.find(g => String(g.centro).trim() === centerId);
     if (!groupForCenter) return [];
-    
     const restriction = restrictions.find(r => 
       r.codigo_grupo === groupForCenter.codigo_grupo && 
       r.nombre_restriccion === 'RespCtrlProd'
     );
-    
     return parseResponsables(restriction?.valor_restriccion || '');
   };
 
-  // AGRUPACIÓN Y FILTRADO PRINCIPAL
+  // FILTRADO Y ENRIQUECIMIENTO CON TIEMPOS
   const filteredDataByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     
@@ -149,7 +169,7 @@ export const OrdenesFertTabSection: React.FC = () => {
         return orderCenter === centerId;
       });
 
-      // 2. Filtrar por Responsables (RespCtrlProd) configurados en restricciones
+      // 2. Filtrar por Responsables
       const allowedResps = getResponsablesPorCentro(centerId);
       if (allowedResps.length > 0) {
         centerOrders = centerOrders.filter(order => 
@@ -157,22 +177,29 @@ export const OrdenesFertTabSection: React.FC = () => {
         );
       }
 
-      grouped[centerId] = centerOrders;
+      // 3. ENRIQUECER CON T. PROD (Cruce de datos)
+      const enrichedOrders = centerOrders.map(order => {
+        const materialKey = `${centerId}|${normalizeMaterialCode(order.MATERIAL)}`;
+        const tiempoTecnico = tiemposLookup.get(materialKey);
+        return {
+          ...order,
+          T_PROD: tiempoTecnico
+        };
+      });
+
+      grouped[centerId] = enrichedOrders;
     });
 
     return grouped;
-  }, [allRawOrders, availableCenters, groups, restrictions]);
+  }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup]);
 
-  // Sectores disponibles en la vista actual
   const availableSectors = useMemo(() => {
     const baseOrders = selectedTab === "raw_view" 
       ? allRawOrders 
       : (filteredDataByCenter[selectedTab] || []);
-    
     return [...new Set(baseOrders.map(o => String(o.SECTORDESC || 'SIN SECTOR').trim().toUpperCase()))].sort();
   }, [allRawOrders, filteredDataByCenter, selectedTab]);
 
-  // Aplicación de filtros de UI (Búsqueda y Combo de Sectores)
   const currentViewOrders = useMemo(() => {
     let base = selectedTab === "raw_view" 
       ? allRawOrders 
@@ -208,8 +235,8 @@ export const OrdenesFertTabSection: React.FC = () => {
         <div className="flex items-center space-x-3">
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
-            <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT (Detalle Completo)</h3>
-            <p className="text-xs text-gray-500 mt-1">Filtrado dinámico por Centro y Responsables</p>
+            <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT</h3>
+            <p className="text-xs text-gray-500 mt-1">Cruce con Tiempos de Ensamblado por Centro y Material</p>
           </div>
         </div>
         
@@ -248,7 +275,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       {isLoading ? (
         <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
           <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-          <span className="mt-4 text-gray-600 font-medium">Cargando datos...</span>
+          <span className="mt-4 text-gray-600 font-medium">Sincronizando órdenes y tiempos...</span>
         </div>
       ) : (
         <Tabs value={selectedTab} onValueChange={(val) => { setSelectedTab(val); setCurrentPage(1); setSelectedSector("ALL"); }} className="w-full">
@@ -273,12 +300,11 @@ export const OrdenesFertTabSection: React.FC = () => {
             ))}
           </TabsList>
 
-          {/* Label de Responsables Activos para el Centro */}
           {selectedTab !== "raw_view" && (
             <div className="mb-4 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center gap-3">
               <UserCheck className="w-5 h-5 text-indigo-600 shrink-0" />
               <div className="flex flex-wrap gap-2 items-center">
-                <span className="text-xs font-bold text-indigo-800 uppercase tracking-tight">Responsables Activos:</span>
+                <span className="text-xs font-bold text-indigo-800 uppercase tracking-tight">Responsables Filtrados:</span>
                 {(() => {
                   const resps = getResponsablesPorCentro(selectedTab);
                   return resps.length > 0 ? (
@@ -288,7 +314,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       </Badge>
                     ))
                   ) : (
-                    <span className="text-[10px] text-indigo-400 italic">Todos los responsables (Sin restricción)</span>
+                    <span className="text-[10px] text-indigo-400 italic">Sin restricción de responsables activa</span>
                   );
                 })()}
               </div>
@@ -296,7 +322,6 @@ export const OrdenesFertTabSection: React.FC = () => {
           )}
 
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-            {/* Contenedor para Scroll Horizontal Superior */}
             <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
               <div style={{ transform: 'rotateX(180deg)' }}>
                 <table className="min-w-full divide-y divide-gray-200">
@@ -329,7 +354,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500">{order.CATEGORIA}</td>
                         <td className="px-3 py-4 text-xs text-gray-600 max-w-xs truncate font-medium" title={order.NOMBRE}>{order.NOMBRE}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                          {order.T_PROD ? Number(order.T_PROD).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                          {order.T_PROD ? Number(order.T_PROD).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
                         </td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-gray-900">{order.CANTPROGRAMADA}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
@@ -353,7 +378,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td colSpan={16} className="px-6 py-12 text-center text-gray-400 italic">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <AlertCircle className="w-8 h-8 text-gray-300" />
-                            <span>No hay órdenes para los filtros configurados (Centro + Responsables).</span>
+                            <span>No se encontraron órdenes para los criterios seleccionados.</span>
                           </div>
                         </td>
                       </tr>
