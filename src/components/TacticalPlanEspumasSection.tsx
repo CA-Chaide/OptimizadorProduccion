@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -173,7 +174,7 @@ const ScheduleControlPanel = ({
            </div>
 
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-amber-50/10">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Capacidad Ocupada (Plan)</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Capacidad Ocupada (Órdenes)</span>
               <span className="text-2xl font-black text-amber-600 font-mono">{plannedHours.toFixed(1)}h</span>
            </div>
 
@@ -695,13 +696,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
                         <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
-                        <th className="px-3 py-4 border-r border-gray-100">CANT.</th>
+                        <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30 font-black">ALT. TOT.</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-black">NRO. SUBBLOQUE</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold">Batch. Carga Carrusel</th>
                         {center.id === '1000' && <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold">Nro. Bloque Formulado</th>}
                         <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold">Nro. Cargas Subbloque</th>
                         <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">Tiempo Operativo</th>
+                        <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
                         <th className="px-3 py-4 font-black">ALM.</th>
                       </tr>
                     </thead>
@@ -744,6 +746,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             {center.id === '1000' && <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>}
                             <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? Math.ceil(totalCargas) : '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold border-r border-gray-100 text-teal-600 bg-teal-50/10">{hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}</td>
+                            <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-100 uppercase">{o.MAQUINA || o.Maquina || '—'}</td>
                             <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
                         );
@@ -759,6 +762,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         {center.id === '1000' && <td className="px-2 py-2 font-mono text-orange-200">{center.totals.bloques20m.toFixed(1)}</td>}
                         <td className="px-2 py-2 font-mono text-purple-200">{Math.ceil(center.totals.cargas)}</td>
                         <td className="px-4 py-2 font-mono text-teal-300">{center.totals.timeLog.toFixed(2)}</td>
+                        <td></td>
                         <td></td>
                       </tr>
                     </tfoot>
