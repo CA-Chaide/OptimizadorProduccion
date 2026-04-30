@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { FlaskConical, Users, Lock, Package, Loader2, AlertCircle, Clock } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { FlaskConical, Users, Lock, Package, Loader2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -11,67 +12,54 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
+import { es } from 'date-fns/locale';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
-/**
- * TacticalPlanFormulacionSection
- * 
- * Reestructurado para mostrar el grupo específico "Formulación"
- * 1. Grupos: Filtrados exclusivamente por "Formulación"
- * 2. Restricciones: Pertenecientes a esos grupos
- * 3. Órdenes Provisionales: Filtradas por RESPCTRLPROD y ALMACEN
- * 4. Tiempos de Ensamblado: Recuperados por Centro y CodigoGrupo
- */
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
   const { addNotification } = useAppContext();
 
-  const [activeTab, setActiveTab] = useState('grupos');
+  // Estados de control de montaje para evitar errores de hidratación
+  const [mounted, setMounted] = useState(false);
+  const [viewDate, setViewDate] = useState<Date | null>(null);
+
+  const [activeTab, setActiveTab] = useState('resumen');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [tiemposCurrentPage, setTiemposCurrentPage] = useState(1);
-  const [tiemposItemsPerPage, setTiemposItemsPerPage] = useState(10);
-  const [materialSearch, setMaterialSearch] = useState('');
-  const [selectedResponsible, setSelectedResponsible] = useState('');
+  const [selectedDate, setSelectedDate] = useState<string>('all');
 
   // Refs para sincronización de scroll
-  const topScrollRef = useRef<HTMLDivElement>(null);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  const tableRef = useRef<HTMLTableElement>(null);
-  const [tableWidth, setTableWidth] = useState(0);
+  const scrollProv = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const scrollTiempos = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
 
-  const topScrollTiemposRef = useRef<HTMLDivElement>(null);
-  const tableContainerTiemposRef = useRef<HTMLDivElement>(null);
-  const tableTiemposRef = useRef<HTMLTableElement>(null);
-  const [tableTiemposWidth, setTableTiemposWidth] = useState(0);
-
-  // 1. Cargar Grupos de Formulación
-  const fetchGruposFormulacion = async () => {
+  const fetchGruposRelevantes = async () => {
     try {
       const res = await grupoService.getAll();
+      // Filtrar por "Corte y Laminado" como solicitó el usuario para heredar sus restricciones
       const filtered = (res.data || []).filter(g => 
-        g.nombre_grupo.toLowerCase().includes('formulación') || 
-        g.nombre_grupo.toLowerCase().includes('formulacion')
+        g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('corte y laminado')
       );
       setGrupos(filtered);
-      inspector.captureVariable('gruposFormulacionFiltrados', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando grupos:', error);
-      addNotification('error', 'Error al cargar grupos de formulación');
       return [];
     }
   };
 
-  // 2. Cargar Restricciones
   const fetchRestricciones = async (gruposIds: number[]) => {
     try {
       const res = await restriccionService.getAll();
-      const filtered = (res.data || []).filter(r => 
-        gruposIds.includes(r.codigo_grupo)
-      );
+      const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
       setRestricciones(filtered);
       return filtered;
     } catch (error) {
@@ -80,366 +68,339 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
   };
 
-  // 3. Cargar Tiempos de Ensamblado
-  const fetchTiemposEnsamblado = async (filteredGroups: Grupo[]) => {
+  const loadData = async (filteredGroups: Grupo[]) => {
     try {
-      const allTiempos = [];
+      // 1. Cargar Órdenes Provisionales
+      const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
+      setOrders(resProv.data || []);
+
+      // 2. Cargar Tiempos de Ensamblado específicos para estos grupos
+      const allTiempos: any[] = [];
       for (const g of filteredGroups) {
-        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo);
-        if (res.data) {
-          const data = Array.isArray(res.data) ? res.data : [res.data];
-          allTiempos.push(...data);
-        }
+        if (!g.centro) continue;
+        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
+        const dataArray = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        if (dataArray.length > 0) allTiempos.push(...dataArray);
       }
       setTiemposEnsamblado(allTiempos);
-      inspector.captureVariable('tiemposEnsambladoFormulacion', allTiempos);
     } catch (error) {
-      console.error('Error cargando tiempos de ensamblado:', error);
+      console.error('Error cargando datos operativos:', error);
     }
   };
-
-  // 4. Cargar Órdenes Provisionales
-  const fetchOrdenes = async () => {
-    try {
-      const res = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
-      setOrders(res.data || []);
-    } catch (error) {
-      console.error('Error cargando órdenes:', error);
-    }
-  };
-
-  // Filtrar tiempos por búsqueda y responsable
-  const filteredTiempos = useMemo(() => {
-    return tiemposEnsamblado.filter(t => {
-      const matchMaterial = !materialSearch || 
-        t.CodMaterial.toLowerCase().includes(materialSearch.toLowerCase()) ||
-        (t.Linea && t.Linea.toLowerCase().includes(materialSearch.toLowerCase())) ||
-        (t.Centro && t.Centro.toLowerCase().includes(materialSearch.toLowerCase()));
-      
-      const matchResponsible = !selectedResponsible || 
-        (t.NombRespControlProd && t.NombRespControlProd.toLowerCase().includes(selectedResponsible.toLowerCase())) ||
-        (t.RespCtrlProd && t.RespCtrlProd.toLowerCase().includes(selectedResponsible.toLowerCase()));
-      
-      return matchMaterial && matchResponsible;
-    });
-  }, [tiemposEnsamblado, materialSearch, selectedResponsible]);
-
-  // Obtener lista única de responsables
-  const responsibleOptions = useMemo(() => {
-    const unique = new Set(
-      tiemposEnsamblado
-        .map(t => t.NombRespControlProd || t.RespCtrlProd)
-        .filter(Boolean)
-    );
-    return Array.from(unique).sort();
-  }, [tiemposEnsamblado]);
 
   useEffect(() => {
-    const initData = async () => {
+    setMounted(true);
+    setViewDate(new Date());
+
+    const init = async () => {
       setIsLoading(true);
-      const filteredGroups = await fetchGruposFormulacion();
-      const groupsIds = filteredGroups.map(g => g.codigo_grupo);
-      await Promise.all([
-        fetchRestricciones(groupsIds),
-        fetchOrdenes(),
-        fetchTiemposEnsamblado(filteredGroups)
-      ]);
+      const groups = await fetchGruposRelevantes();
+      const ids = groups.map(g => g.codigo_grupo);
+      await fetchRestricciones(ids);
+      await loadData(groups);
       setIsLoading(false);
     };
-    initData();
+    init();
   }, []);
 
-  const filtrarData = (data: any[]) => {
-    if (data.length === 0) return [];
-    const respCtrlProdValues = restricciones
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-    
-    const almacenValues = restricciones
-      .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .map(r => r.valor_restriccion.trim())
-      .filter(v => v !== '');
+  const datesWithOrders = useMemo(() => {
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null' && d !== 'undefined') {
+        const normalized = d.includes('T') ? d.split('T')[0] : d;
+        dates.add(normalized);
+      }
+    });
+    return dates;
+  }, [ordenes]);
 
+  const calendarDays = useMemo(() => {
+    if (!viewDate) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
+
+  const filterData = (data: any[]) => {
+    if (!data || data.length === 0) return [];
+    
+    // Filtro estricto: Centro 1000 y Responsable 005
     return data.filter(o => {
-      const respVal = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || '').trim();
-      const almVal = String(o.Almacen || o.ALMACEN || '').trim();
-      const matchResp = respCtrlProdValues.length === 0 || respCtrlProdValues.includes(respVal);
-      const matchAlmacen = almacenValues.length === 0 || almacenValues.includes(almVal);
-      return matchResp && matchAlmacen;
+      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+      if (itemCentro !== '1000') return false;
+
+      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
+      if (itemResp !== '005') return false;
+
+      if (selectedDate !== 'all') {
+        const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
+        const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
+        if (itemDate !== selectedDate) return false;
+      }
+      return true;
     });
   };
 
-  const ordenesFiltradas = useMemo(() => filtrarData(ordenes), [ordenes, restricciones]);
+  const ordenesFiltradas = useMemo(() => filterData(ordenes), [ordenes, selectedDate]);
+  const tiemposFiltrados = useMemo(() => filterData(tiemposEnsamblado), [tiemposEnsamblado]);
 
-  // Sincronización de scroll genérica
-  const setupScrollSync = (top: HTMLDivElement | null, bottom: HTMLDivElement | null) => {
-    if (!top || !bottom) return;
-    const syncBottom = () => { bottom.scrollLeft = top.scrollLeft; };
-    const syncTop = () => { top.scrollLeft = bottom.scrollLeft; };
-    top.addEventListener('scroll', syncBottom);
-    bottom.addEventListener('scroll', syncTop);
+  // Sincronización de scroll
+  const setupScroll = (group: any) => {
+    if (!group.top.current || !group.bottom.current) return;
+    const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
+    const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
+    group.top.current.addEventListener('scroll', syncB);
+    group.bottom.current.addEventListener('scroll', syncT);
     return () => {
-      top.removeEventListener('scroll', syncBottom);
-      bottom.removeEventListener('scroll', syncTop);
+      group.top.current?.removeEventListener('scroll', syncB);
+      group.bottom.current?.removeEventListener('scroll', syncT);
     };
   };
 
   useEffect(() => {
-    if (activeTab === 'ordenes' && tableRef.current) {
-      setTableWidth(tableRef.current.offsetWidth);
-      return setupScrollSync(topScrollRef.current, tableContainerRef.current);
+    if (activeTab === 'ordenes') {
+      setupScroll(scrollProv);
+      if (scrollProv.table.current) scrollProv.width[1](scrollProv.table.current.offsetWidth);
+    } else if (activeTab === 'tiempos') {
+      setupScroll(scrollTiempos);
+      if (scrollTiempos.table.current) scrollTiempos.width[1](scrollTiempos.table.current.offsetWidth);
     }
-  }, [activeTab, ordenesFiltradas]);
+  }, [activeTab, ordenesFiltradas, tiemposFiltrados]);
 
-  useEffect(() => {
-    if (activeTab === 'tiempos' && tableTiemposRef.current) {
-      setTableTiemposWidth(tableTiemposRef.current.offsetWidth);
-      return setupScrollSync(topScrollTiemposRef.current, tableContainerTiemposRef.current);
-    }
-  }, [activeTab, tiemposEnsamblado]);
-
-  if (isLoading) {
+  // Renderizado consistente para evitar errores de hidratación
+  if (!mounted || !viewDate) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-        <p className="text-gray-500 font-medium">Configurando entorno de Formulación...</p>
+        <p className="text-gray-500 font-medium">Iniciando entorno de Formulación...</p>
       </div>
     );
   }
 
+  if (isLoading) return (
+    <div className="flex flex-col items-center justify-center h-96 gap-4">
+      <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
+      <p className="text-gray-500 font-medium">Consultando datos para Planta 1000 - Responsable 005...</p>
+    </div>
+  );
+
   return (
-    <div className="p-6 md:p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <FlaskConical className="w-8 h-8 text-teal-600" />
+    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
+      <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+        <div className="flex items-center space-x-3 text-left">
+          <div className="p-2 bg-teal-50 rounded-xl"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-800">Planificación Táctica Formulación</h2>
-            <p className="text-sm text-gray-500">Gestión de mezclas por grupo operativo</p>
+            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Planificación Táctica Formulación</h2>
+            <p className="text-xs text-gray-500 font-medium">Criterio: Planta 1000 | Resp. 005 | Restricciones: Corte y Laminado</p>
           </div>
         </div>
       </div>
-      
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-8">
-          <TabsTrigger value="grupos" className="flex items-center gap-2"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
-          <TabsTrigger value="restricciones" className="flex items-center gap-2"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
-          <TabsTrigger value="ordenes" className="flex items-center gap-2"><Package className="w-4 h-4" /> Órdenes Provisionales</TabsTrigger>
-          <TabsTrigger value="tiempos" className="flex items-center gap-2"><Clock className="w-4 h-4" /> Tiempos de Ensamblado</TabsTrigger>
+        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+          {[ 
+            { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
+            { v: 'grupos', l: 'Grupos', i: Users }, 
+            { v: 'restricciones', l: 'Restricciones', i: Lock }, 
+            { v: 'ordenes', l: 'Provisionales', i: Package }, 
+            { v: 'tiempos', l: 'Tiempos', i: Clock }
+          ].map(tab => (
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              <tab.i className="w-3.5 h-3.5" /> {tab.l}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="grupos">
-          <Card>
-            <CardHeader>
-              <CardTitle>Grupos: Formulación</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {grupos.map(g => (
-                  <div key={g.codigo_grupo} className="p-4 border rounded-lg bg-gray-50 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-bold text-teal-900">{g.nombre_grupo}</span>
-                      <Badge variant="secondary">{g.centro}</Badge>
-                    </div>
-                    <p className="text-xs text-gray-500">ID: {g.codigo_grupo}</p>
-                  </div>
-                ))}
+        <TabsContent value="resumen" className="animate-in fade-in duration-300">
+          <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100 mb-6">
+            <div className="flex items-center gap-4 text-left">
+              <div className="p-2 bg-teal-50 rounded-xl"><CalendarIcon className="w-4 h-4 text-teal-600" /></div>
+              <div>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Fecha de Planificación</p>
+                <h3 className="text-xs font-bold text-gray-700 uppercase">
+                  {selectedDate === 'all' ? 'Vista Consolidada' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                </h3>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-teal-500/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm">
+                  <Filter className="w-3 h-3" /> Filtrar Fecha
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
+                <div className="bg-white p-3 font-sans">
+                  <div className="flex items-center justify-between mb-3 text-left">
+                    <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                    <div className="flex gap-1 bg-gray-50 rounded-lg p-1">
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-3 h-3" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronRight className="w-3 h-3" /></Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-7 gap-y-1 text-center mb-2">
+                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
+                    {calendarDays.map((day, idx) => {
+                      if (!day) return <div key={`cal-pad-${idx}`} className="p-1" />;
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const isSelected = selectedDate === dateStr;
+                      return (
+                        <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-teal-600 text-white shadow-md" : "hover:bg-gray-100")}>
+                          <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                          {datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-teal-400/60 rounded-full" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-teal-600 h-7 mt-1 rounded-lg hover:bg-teal-50" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="p-6 rounded-2xl border-2 border-dashed border-teal-100 bg-teal-50/10">
+              <h4 className="text-xs font-bold uppercase text-teal-800 mb-4">Métricas de Carga</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase">Órdenes Provisionales</p>
+                  <p className="text-2xl font-black text-teal-700">{ordenesFiltradas.length}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase">Total Unidades</p>
+                  <p className="text-2xl font-black text-teal-700">
+                    {ordenesFiltradas.reduce((sum, o) => sum + (o.CANTIDAD || 0), 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </Card>
+            
+            <Card className="p-6 rounded-2xl border-2 border-dashed border-blue-100 bg-blue-50/10">
+              <h4 className="text-xs font-bold uppercase text-blue-800 mb-4">Sincronización Técnica</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 font-medium">Grupo de Capacidad:</span>
+                  <Badge className="bg-blue-600">Corte y Laminado</Badge>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 font-medium">Catálogo de Tiempos:</span>
+                  <span className="font-bold text-blue-700">{tiemposFiltrados.length} materiales</span>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="grupos">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {grupos.map(g => (
+              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
+                <div className="absolute top-0 left-0 w-1 h-full bg-teal-500/20 group-hover:bg-teal-500 transition-colors" />
+                <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge>
+                <h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4>
+                <p className="text-[9px] font-mono text-gray-400 mt-2">Sincronizado para Formulación</p>
+              </Card>
+            ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="restricciones">
-          <Card>
-            <CardHeader>
-              <CardTitle>Restricciones Configuradas</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto border rounded-lg">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Parámetro</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Valor</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Descripción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {restricciones.map(r => (
-                      <tr key={r.codigo_restriccion} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-center border-r border-dashed border-gray-300">{r.nombre_restriccion}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center border-r border-dashed border-gray-300">
-                          <Badge variant="outline" className="font-mono border-teal-200 text-teal-700">{r.valor_restriccion}</Badge>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-500 text-center">{r.descripcion || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
+          <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+            <table className="w-full border-collapse text-center">
+              <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro (Corte y Laminado)</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
+                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-[11px]">
+                {restricciones.map(r => (
+                  <tr key={r.codigo_restriccion} className="hover:bg-teal-50/10">
+                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
+                      <Badge variant="outline" className="font-mono text-teal-700 border-teal-200 bg-teal-50/50">{r.valor_restriccion}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </Card>
         </TabsContent>
 
         <TabsContent value="ordenes">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>Órdenes Provisionales</CardTitle>
-                <Badge variant="outline" className="bg-teal-50 text-teal-700">{ordenesFiltradas.length} Registros</Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-0">
-                <div ref={topScrollRef} className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg" style={{ marginBottom: '-1px' }}>
-                  <div style={{ width: tableWidth, height: '1px' }} />
-                </div>
-                <div ref={tableContainerRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
-                  <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                      <tr>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Orden</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Material</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase border-r border-dashed border-gray-300">Cantidad</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Almacén</th>
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            <div ref={scrollProv.top} className="overflow-x-auto h-3 bg-gray-50 border-b border-gray-100">
+              <div style={{ width: scrollProv.width[0], height: '1px' }} />
+            </div>
+            <div ref={scrollProv.bottom} className="overflow-x-auto max-h-[500px]">
+              <table ref={scrollProv.table} className="w-full border-collapse text-center font-sans">
+                <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                  <tr>
+                    <th className="px-4 py-4 border-r border-gray-100">Orden</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Material</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Descripción</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Cantidad</th>
+                    <th className="px-4 py-4">Almacén</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 text-[11px]">
+                  {ordenesFiltradas.length === 0 ? (
+                    <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay órdenes para Planta 1000 - Resp. 005</td></tr>
+                  ) : (
+                    ordenesFiltradas.map((o, i) => (
+                      <tr key={i} className="hover:bg-teal-50/50 transition-colors">
+                        <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100 uppercase">{o.ORDENPREVISIONAL}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{String(o.MATERIAL).split(' ')[0]}</td>
+                        <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{String(o.NOMBRE || o.MATERIAL).replace(/^\d+\s*/, '')}</td>
+                        <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100">{o.CANTIDAD}</td>
+                        <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN}</td>
                       </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {ordenesFiltradas.map((o, idx) => (
-                        <tr key={idx} className="hover:bg-teal-50/30 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300">
-                            <div className="font-mono text-xs text-teal-600">{o.MATERIAL}</div>
-                            <div className="truncate max-w-[250px] mx-auto">{o.NOMBRE}</div>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-teal-700 border-r border-dashed border-gray-300">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 text-center">{o.Almacen}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </CardContent>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </Card>
         </TabsContent>
 
         <TabsContent value="tiempos">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>Tiempos de Ensamblado</CardTitle>
-                <Badge variant="outline" className="bg-blue-50 text-blue-700">{filteredTiempos.length} Registros</Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Filtros */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Buscar por Material, Línea o Centro</label>
-                    <input
-                      type="text"
-                      placeholder="Código material, línea o centro..."
-                      value={materialSearch}
-                      onChange={(e) => {
-                        setMaterialSearch(e.target.value);
-                        setTiemposCurrentPage(1);
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Filtrar por Responsable</label>
-                    <select
-                      value={selectedResponsible}
-                      onChange={(e) => {
-                        setSelectedResponsible(e.target.value);
-                        setTiemposCurrentPage(1);
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Todos los responsables</option>
-                      {responsibleOptions.map(resp => (
-                        <option key={resp} value={resp}>{resp}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Tabla */}
-                <div className="space-y-0">
-                  <div ref={topScrollTiemposRef} className="overflow-x-auto h-5 bg-gray-50 border-t border-x rounded-t-lg" style={{ marginBottom: '-1px' }}>
-                    <div style={{ width: tableTiemposWidth, height: '1px' }} />
-                  </div>
-                  <div ref={tableContainerTiemposRef} className="overflow-x-auto border rounded-b-lg max-h-[600px]">
-                    <table ref={tableTiemposRef} className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-100 sticky top-0 z-10">
-                        <tr>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Centro</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Material</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Línea</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Puesto</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Stock</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r border-dashed border-gray-300">Responsable</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Tiempo (min)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredTiempos.slice((tiemposCurrentPage - 1) * tiemposItemsPerPage, tiemposCurrentPage * tiemposItemsPerPage).map((t, idx) => (
-                          <tr key={idx} className="hover:bg-teal-50/20 transition-colors">
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{t.Centro}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-center border-r border-dashed border-gray-300">{t.CodMaterial}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300 truncate max-w-[200px]">{t.Linea}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300">{t.PuestoTrabajo}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-300 font-mono text-sm">{t.StockActual}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600 text-center border-r border-dashed border-gray-300 truncate max-w-[200px]">{t.NombRespControlProd || t.RespCtrlProd}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-center text-teal-600">{t.Tiempo_Min ? t.Tiempo_Min.toFixed(4) : 'N/A'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-700">Registros por página:</label>
-                    <select 
-                      value={tiemposItemsPerPage} 
-                      onChange={(e) => {
-                        setTiemposItemsPerPage(Number(e.target.value));
-                        setTiemposCurrentPage(1);
-                      }}
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-                    >
-                      <option value={5}>5</option>
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                    </select>
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    Página {tiemposCurrentPage} de {Math.ceil(filteredTiempos.length / tiemposItemsPerPage) || 1}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setTiemposCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={tiemposCurrentPage === 1}
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Anterior
-                    </button>
-                    <button
-                      onClick={() => setTiemposCurrentPage(prev => Math.min(Math.ceil(filteredTiempos.length / tiemposItemsPerPage), prev + 1))}
-                      disabled={tiemposCurrentPage >= Math.ceil(filteredTiempos.length / tiemposItemsPerPage)}
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Siguiente
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            <div ref={scrollTiempos.top} className="overflow-x-auto h-3 bg-gray-50 border-b border-gray-100">
+              <div style={{ width: scrollTiempos.width[0], height: '1px' }} />
+            </div>
+            <div ref={scrollTiempos.bottom} className="overflow-x-auto max-h-[500px]">
+              <table ref={scrollTiempos.table} className="w-full border-collapse text-center font-sans">
+                <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                  <tr>
+                    <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Línea Técnica</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Tiempo (Min)</th>
+                    <th className="px-4 py-4">Seguridad</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 text-[11px]">
+                  {tiemposFiltrados.length === 0 ? (
+                    <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay catálogos técnicos para Planta 1000 - Resp. 005</td></tr>
+                  ) : (
+                    tiemposFiltrados.map((t, i) => (
+                      <tr key={i} className="hover:bg-teal-50/50 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
+                        <td className="px-4 py-3 text-gray-400 font-bold uppercase">{t.StockSeguridad}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </Card>
         </TabsContent>
       </Tabs>
