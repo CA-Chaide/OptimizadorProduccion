@@ -22,7 +22,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -50,8 +49,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
-  
-  const [manualRouteAssignments, setManualRouteAssignments] = useState<Record<string, string>>({});
 
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     const codeStr = String(code).trim();
@@ -113,23 +110,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   useEffect(() => {
     setIsMounted(true);
     fetchData();
-    const saved = localStorage.getItem('forros_manual_routes');
-    if (saved) {
-      try {
-        setManualRouteAssignments(JSON.parse(saved));
-      } catch (e) {
-        console.error('Error loading manual routes');
-      }
-    }
   }, [fetchData]);
-
-  const handleRouteAssignmentChange = (puestoId: string, value: string) => {
-    setManualRouteAssignments(prev => {
-      const updated = { ...prev, [puestoId]: value };
-      localStorage.setItem('forros_manual_routes', JSON.stringify(updated));
-      return updated;
-    });
-  };
 
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => (g.nombre_grupo || '').toUpperCase().includes('FORROS'));
@@ -256,8 +237,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
     const allKeys = Object.keys(tiemposProduccion[0]);
-    const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'HOJA DE RUTA', 'Tiempo'];
-    return [...priority.filter(k => k === 'HOJA DE RUTA' || allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+    const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'Tiempo'];
+    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [tiemposProduccion]);
 
   const dailyColumns = useMemo(() => {
@@ -267,15 +248,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return [...priority.filter(k => k === 'TIEMPOS DE PRODUCCIÓN' || (allKeys.includes(k) && k !== 'CATEGORIA')), ...allKeys.filter(k => !priority.includes(k) && k !== 'CATEGORIA')];
   }, [dailyOrders]);
 
-  /**
-   * Calcula el tiempo de producción para una orden previsional.
-   * Busca en la tabla de tiempos de producción donde CodMaterial y PuestoTrabajo (Máquina) coincidan.
-   */
   const calculateProductionTime = useCallback((material: string, quantity: number, machine: string) => {
     const normMaterial = normalizeMaterialCode(material);
     const normMachine = String(machine || '').trim().toUpperCase();
     
-    // Buscar coincidencia exacta de Material y Puesto (Máquina)
     const match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tMachine = String(t.PuestoTrabajo || '').trim().toUpperCase();
@@ -329,19 +305,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   }, [dailyOrders, formatValueForDisplay, normalizeDateForFilter]);
 
-  const uniqueRoutes = useMemo(() => {
-    const seen = new Set<string>();
-    const filtered = tiemposProduccion.filter(t => {
-      const pId = String(t.PuestoTrabajo || '').trim();
-      if (!pId || seen.has(pId)) return false;
-      seen.add(pId);
-      return true;
-    });
-    return filtered.sort((a, b) => 
-      String(a.PuestoTrabajo || '').localeCompare(String(b.PuestoTrabajo || ''))
-    );
-  }, [tiemposProduccion]);
-
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
 
@@ -362,7 +325,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <TabsList className="flex w-full h-auto bg-transparent p-0 overflow-x-auto justify-start scrollbar-hide">
             <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
-            <TabsTrigger value="hojas-ruta" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><MapIcon className="w-4 h-4" /> Hojas de Ruta</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
             <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><CalendarCheck className="w-4 h-4" /> Programación Diaria</TabsTrigger>
@@ -423,54 +385,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="hojas-ruta">
-          <Card>
-            <CardHeader>
-              <CardTitle>Hojas de Ruta (Procesos de Forros)</CardTitle>
-              <CardDescription>Visualización de la secuencia de puestos de trabajo críticos y asignación manual de hojas de ruta.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">numeración</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Puesto de Trabajo KPI</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Hoja de Ruta (Asignación Manual)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {uniqueRoutes.map((t, idx) => {
-                        const puestoId = String(t.PuestoTrabajo || '').trim();
-                        return (
-                          <tr key={`route-${idx}`} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-                            <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{puestoId}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                              <Input 
-                                value={manualRouteAssignments[puestoId] ?? t.Linea ?? ''} 
-                                onChange={(e) => handleRouteAssignmentChange(puestoId, e.target.value)}
-                                className="h-9 text-xs max-w-md"
-                                placeholder="Escriba la hoja de ruta..."
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {uniqueRoutes.length === 0 && (
-                        <tr>
-                          <td colSpan={3} className="px-6 py-12 text-center text-gray-400 italic">No hay rutas configuradas.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="tiempos">
           <Card>
             <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -488,10 +402,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">
                           {tiemposColumns.map(col => (
                             <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
-                              {col === 'HOJA DE RUTA' 
-                                ? <span className="font-bold text-blue-700">{manualRouteAssignments[String(t.PuestoTrabajo || '').trim()] ?? t.Linea ?? '—'}</span>
-                                : formatValueForDisplay(col, t[col])
-                              }
+                              {formatValueForDisplay(col, t[col])}
                             </td>
                           ))}
                         </tr>
