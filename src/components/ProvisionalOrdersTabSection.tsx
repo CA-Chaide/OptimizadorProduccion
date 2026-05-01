@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -89,13 +88,16 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           const materialKey = `${String(order.Centro).trim()}|${normalizeMaterialCode(order.CodMaterial || order.MATERIAL)}`;
           const times = lookup.get(materialKey) || {};
           
+          // Lógica de validación por sufijo de Categoría (L1, L2, L3)
+          const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
+          
           return {
             ...order,
             T_ARMADO: times['ARMADO'] || 0,
-            T_CERRADO_L1: times['CERRADO L1'] || 0,
-            T_CERRADO1_L2: times['CERRADO1 L2'] || 0,
-            T_CERRADO2_L2: times['CERRADO2 L2'] || 0,
-            T_CERRADO_L3: times['CERRADO L3'] || 0,
+            T_CERRADO_L1: catSuffix === 'L1' ? (times['CERRADO L1'] || 0) : 0,
+            T_CERRADO1_L2: catSuffix === 'L2' ? (times['CERRADO1 L2'] || 0) : 0,
+            T_CERRADO2_L2: catSuffix === 'L2' ? (times['CERRADO2 L2'] || 0) : 0,
+            T_CERRADO_L3: catSuffix === 'L3' ? (times['CERRADO L3'] || 0) : 0,
           };
         });
         setOrders(enriched);

@@ -177,13 +177,17 @@ export const OrdenesFertTabSection: React.FC = () => {
       const enrichedOrders = centerOrders.map(order => {
         const materialKey = `${centerId}|${normalizeMaterialCode(order.MATERIAL)}`;
         const stations = tiemposLookup.get(materialKey) || {};
+        
+        // Lógica de validación por sufijo de Categoría (L1, L2, L3)
+        const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
+
         return {
           ...order,
           T_ARMADO: stations['ARMADO'] || 0,
-          T_CERRADO_L1: stations['CERRADO L1'] || 0,
-          T_CERRADO1_L2: stations['CERRADO1 L2'] || 0,
-          T_CERRADO2_L2: stations['CERRADO2 L2'] || 0,
-          T_CERRADO_L3: stations['CERRADO L3'] || 0,
+          T_CERRADO_L1: catSuffix === 'L1' ? (stations['CERRADO L1'] || 0) : 0,
+          T_CERRADO1_L2: catSuffix === 'L2' ? (stations['CERRADO1 L2'] || 0) : 0,
+          T_CERRADO2_L2: catSuffix === 'L2' ? (stations['CERRADO2 L2'] || 0) : 0,
+          T_CERRADO_L3: catSuffix === 'L3' ? (stations['CERRADO L3'] || 0) : 0,
         };
       });
 
