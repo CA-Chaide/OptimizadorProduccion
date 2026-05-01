@@ -340,32 +340,42 @@ export const OrdenesFertTabSection: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Centro</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Máquina</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Orden</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Material</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Categoría</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Nombre</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Armado</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado L1</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado1 L2</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado2 L2</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado L3</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Prog.</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Entreg.</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase">Notif.</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-red-600 uppercase">Rech.</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-amber-600 uppercase">Pend.</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/30">T. Total</th>
-                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Resp.</th>
-                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Sector</th>
-                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Pri.</th>
-                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Fecha</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Centro</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Máquina</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Categoría</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Armado</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L1</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado1 L2</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado2 L2</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L3</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Prog.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Entreg.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase tracking-wider">Notif.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-red-600 uppercase tracking-wider">Rech.</th>
+                      <th className="px-3 py-3 text-right text-[10px] font-bold text-amber-600 uppercase tracking-wider">Pend.</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Armado</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Cerrado L1</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Cerrado1 L2</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Cerrado2 L2</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30 border-r-2 border-emerald-100">TT Cerrado L3</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp.</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Sector</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pri.</th>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Fecha</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-100">
                     {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => {
-                      const tTotal = (order.T_ARMADO || 0) * (order.CANTPENDIENTE || 0);
+                      const pend = Number(order.CANTPENDIENTE || 0);
+                      const ttArmado = (order.T_ARMADO || 0) * pend;
+                      const ttCerradoL1 = (order.T_CERRADO_L1 || 0) * pend;
+                      const ttCerrado1L2 = (order.T_CERRADO1_L2 || 0) * pend;
+                      const ttCerrado2L2 = (order.T_CERRADO2_L2 || 0) * pend;
+                      const ttCerradoL3 = (order.T_CERRADO_L3 || 0) * pend;
+
                       return (
                         <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
                           <td className="px-3 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{order.CENTRO}</td>
@@ -393,9 +403,21 @@ export const OrdenesFertTabSection: React.FC = () => {
                           <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
                           <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
                           <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-red-600 bg-red-50/30">{order.CANTRECHAZO}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-amber-600 bg-amber-50/20">{order.CANTPENDIENTE || 0}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-amber-600 bg-amber-50/20">{pend}</td>
                           <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                            {tTotal > 0 ? tTotal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                            {ttArmado > 0 ? ttArmado.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
+                            {ttCerradoL1 > 0 ? ttCerradoL1.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
+                            {ttCerrado1L2 > 0 ? ttCerrado1L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
+                            {ttCerrado2L2 > 0 ? ttCerrado2L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10 border-r-2 border-emerald-100">
+                            {ttCerradoL3 > 0 ? ttCerradoL3.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
                           </td>
                           <td className="px-3 py-4 whitespace-nowrap text-center">
                             <Badge variant="outline" className="text-[10px] font-mono border-gray-100 bg-gray-50 text-gray-400">{order.RESPCTRLPROD}</Badge>
@@ -411,7 +433,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       );
                     }) : (
                       <tr>
-                        <td colSpan={21} className="px-6 py-12 text-center text-gray-400 italic">
+                        <td colSpan={25} className="px-6 py-12 text-center text-gray-400 italic">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <AlertCircle className="w-8 h-8 text-gray-300" />
                             <span>No se encontraron órdenes para los criterios seleccionados.</span>
