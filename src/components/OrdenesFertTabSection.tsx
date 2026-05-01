@@ -341,15 +341,16 @@ export const OrdenesFertTabSection: React.FC = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Centro</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Máquina</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Orden</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Material</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Categoría</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Nombre</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Armado</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado L1</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado1 L2</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado2 L2</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado L3</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Armado</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado L1</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado1 L2</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado2 L2</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase bg-indigo-50/30">Cerrado L3</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Prog.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Entreg.</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase">Notif.</th>
@@ -359,7 +360,6 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Resp.</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Sector</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Pri.</th>
-                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Máquina</th>
                       <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Fecha</th>
                     </tr>
                   </thead>
@@ -369,6 +369,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       return (
                         <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
                           <td className="px-3 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{order.CENTRO}</td>
+                          <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500 font-mono">{order.MAQUINA || '-'}</td>
                           <td className="px-3 py-4 whitespace-nowrap text-xs font-mono font-bold text-indigo-600">{order.ORDEN}</td>
                           <td className="px-3 py-4 whitespace-nowrap text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
                           <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500">{order.CATEGORIA}</td>
@@ -405,7 +406,6 @@ export const OrdenesFertTabSection: React.FC = () => {
                             </span>
                           </td>
                           <td className="px-3 py-4 whitespace-nowrap text-center text-[10px] font-mono">{order.PRIORIDAD}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-500 font-mono">{order.MAQUINA || '-'}</td>
                           <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-600">{order.FECHA}</td>
                         </tr>
                       );
