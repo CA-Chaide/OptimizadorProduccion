@@ -3,8 +3,8 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
- * Restricciones: Heredadas del grupo "Corte y Laminado".
- * Filtros: Globales (Sin restricción de Centro 1000 o Resp 005 por solicitud del usuario).
+ * Restricciones: Heredadas del grupo "Corte y Laminado" pero filtradas exclusivamente para el Centro 1000.
+ * Filtros de Datos: Globales (Sin restricción de Resp 005).
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -79,11 +79,11 @@ const CapacityEvaluationPanel = ({
   else if (plannedHours > netCapacityBase) status = 'WARNING';
 
   return (
-    <div className="mb-8 text-left font-sans">
+    <div className="mb-8 text-left font-sans animate-in fade-in slide-in-from-top-4 duration-500">
       <div className="bg-teal-900 text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6 border-b-2 border-teal-500">
         <div className="flex items-center gap-3">
           <Clock className="w-5 h-5 text-teal-300" />
-          <span className="text-xs font-black tracking-widest uppercase">Evaluación de Capacidad Neta - Formulación (Plan Maestro)</span>
+          <span className="text-xs font-black tracking-widest uppercase">Evaluación de Capacidad Neta - Formulación</span>
         </div>
         <Badge className={cn("font-black text-[10px]", status === 'NORMAL' ? "bg-green-500" : status === 'WARNING' ? "bg-amber-500" : "bg-red-500")}>
           {status === 'NORMAL' ? 'CAPACIDAD OK' : status === 'WARNING' ? 'REQUERIDAS EXTRAS' : 'SOBRECARGA'}
@@ -148,11 +148,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         setGrupos(filteredGroups);
         const ids = filteredGroups.map(g => g.codigo_grupo);
 
-        // 2. Obtener restricciones
+        // 2. Obtener restricciones (Filtradas solo para grupos del Centro 1000)
         const resR = await restriccionService.getAll();
-        setRestricciones((resR.data || []).filter(r => ids.includes(r.codigo_grupo)));
+        const quitoGroupIds = filteredGroups
+          .filter(g => String(g.centro).trim() === '1000')
+          .map(g => g.codigo_grupo);
+        
+        setRestricciones((resR.data || []).filter(r => quitoGroupIds.includes(r.codigo_grupo)));
 
-        // 3. Cargar Órdenes y Tiempos globales (Sin filtro de Resp o Centro específico por solicitud)
+        // 3. Cargar Órdenes y Tiempos globales
         const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
         setOrders(resProv.data || []);
 
@@ -268,7 +272,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center h-96 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-gray-500 font-medium">Cargando Formulación...</p>
+      <p className="text-gray-500 font-medium animate-pulse">Sincronizando Formulación con Corte y Laminado (Centro 1000)...</p>
     </div>
   );
 
@@ -277,8 +281,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center space-x-4 pb-4 border-b border-gray-100">
         <div className="p-2 bg-teal-50 rounded-xl shadow-sm"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
         <div>
-          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación</h2>
-          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1 uppercase">Plan Maestro</Badge>
+          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Planificación Táctica Formulación</h2>
+          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1 uppercase">Restricciones: Centro 1000</Badge>
         </div>
       </div>
 
@@ -344,7 +348,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <CapacityEvaluationPanel 
             plannedHours={totalPlannedTime} 
             restrictions={restricciones}
-            resources={[ { id: 'FORMULACION_PROCESO', name: 'Planta de Formulación' } ]}
+            resources={[ { id: 'FORMULACION_Q', name: 'Planta de Mezcla (Quito)' } ]}
           />
 
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
@@ -389,33 +393,40 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
               <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
-              <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTILLA TÉCNICA</Badge>
+              <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTILLA TÉCNICA (QUITO)</Badge>
               <h4 className="font-bold text-gray-800 uppercase text-sm">RESTRICCIONES: CORTE Y LAMINADO</h4>
-              <p className="text-[10px] font-medium text-gray-400 mt-2">Sincronización automática de parámetros operativos</p>
+              <p className="text-[10px] font-medium text-gray-400 mt-2">Sincronización de parámetros operativos del Centro 1000</p>
             </Card>
           </div>
         </TabsContent>
 
         <TabsContent value="restricciones">
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+            <div className="p-4 bg-teal-50 border-b border-teal-100">
+               <p className="text-[10px] font-black uppercase text-teal-800">Visualizando exclusivamente parámetros del Centro 1000 (Heredados de Corte y Laminado)</p>
+            </div>
             <table className="w-full border-collapse text-center">
               <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro (Heredado)</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
                   <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
                   <th className="px-6 py-5 text-left">Descripción Operativa</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-[11px]">
-                {restricciones.map(r => (
-                  <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
-                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
-                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
-                      <Badge variant="outline" className="font-mono text-teal-700 border-teal-200 bg-teal-50/50">{r.valor_restriccion}</Badge>
-                    </td>
-                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
-                  </tr>
-                ))}
+                {restricciones.length === 0 ? (
+                  <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">No se encontraron restricciones para el Centro 1000</td></tr>
+                ) : (
+                  restricciones.map(r => (
+                    <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
+                      <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                      <td className="px-6 py-4 border-r border-dashed border-gray-200">
+                        <Badge variant="outline" className="font-mono text-teal-700 border-teal-200 bg-teal-50/50">{r.valor_restriccion}</Badge>
+                      </td>
+                      <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </Card>
