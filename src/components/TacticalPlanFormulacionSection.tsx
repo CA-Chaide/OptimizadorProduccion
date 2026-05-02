@@ -6,8 +6,8 @@
  * 
  * Estructura de Datos: Integración de campos SAP (ORDENPREVISIONAL, CodMaterial, NOMBRE, CATEGORIA, etc.)
  * Restricciones: Heredadas de "Corte y Laminado" filtradas para el Centro 1000.
- * Filtro Dinámico: Las órdenes provisionales se filtran por los códigos de RESPCTRLPROD y ALMACEN definidos en las restricciones.
- * Lista de Materiales: Integración de maestro de materiales brutos con paginación.
+ * Filtro Dinámico: Las órdenes provisionales se filtran por los códigos de RESPCONTROLPROD y ALMACEN definidos en las restricciones.
+ * Lista de Materiales: Integración de maestro de materiales brutos con paginación, filtrado por tipo HALB.
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -153,7 +153,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     try {
       const res = await serviciosService.getMaterialesBrutosPorMaterialMateriaPrima(page, rows);
       if (res && res.data) {
-        const data = Array.isArray(res.data) ? res.data : [res.data];
+        let data = Array.isArray(res.data) ? res.data : [res.data];
+        
+        // FILTRO SOLICITADO: Solo tipo HALB (Semielaborados)
+        data = data.filter(m => String(m.TIPO_MATERIAL || m.tipomaterial || '').trim().toUpperCase() === 'HALB');
+        
         setBrutosData(data);
         setBrutosTotal(res.totalRegistros || res.totalRecords || res.length || data.length);
         if (data.length > 0) setBrutosColumns(Object.keys(data[0]));
@@ -546,7 +550,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-4">Stock Seg.</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
+                <tbody className="divide-y divide-gray-50 text-[11px]">
                   {tiemposEnsamblado.length === 0 ? (
                     <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay catálogos técnicos cargados</td></tr>
                   ) : (
@@ -574,10 +578,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800 uppercase">Lista de Materiales / Maestro Brutos</h3>
+                <h3 className="text-lg font-bold text-gray-800 uppercase">Lista de Materiales (Tipo HALB)</h3>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
-                {brutosTotal.toLocaleString()} REGISTROS
+                {brutosTotal.toLocaleString()} REGISTROS FILTRADOS
               </div>
             </div>
 
@@ -587,7 +591,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Materia Prima...</p>
               </div>
             ) : brutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se encontraron materiales brutos</div>
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se encontraron materiales tipo HALB</div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
