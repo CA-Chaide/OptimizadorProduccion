@@ -3,7 +3,7 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
- * Corrección: Se estabiliza la lógica de carga de datos para evitar el error 'Maximum update depth exceeded'.
+ * Corrección: Se añade la columna Máquina en la pestaña de Provisionales.
  * - Lista Necesidades: Unión técnica de Órdenes y Tiempos filtrada por Planta 1000.
  * - Restricciones: Parámetros técnicos exclusivos del Centro 1000.
  * - Grupos: Áreas operativas del Centro 1000.
@@ -325,22 +325,30 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-gray-100">Orden</th>
                     <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Nombre</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-orange-700 bg-orange-50/10">Máquina</th>
                     <th className="px-4 py-4 border-r border-gray-100">Cantidad</th>
                     <th className="px-4 py-4">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {ordenes.map((o, i) => (
-                    <tr key={i} className="hover:bg-teal-50/30 transition-colors">
-                      <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{extractMaterialCode(o)}</td>
-                      <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">
-                        {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
-                      </td>
-                      <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || 0}</td>
-                      <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || '—'}</td>
-                    </tr>
-                  ))}
+                  {ordenes.length === 0 ? (
+                    <tr><td colSpan={6} className="py-20 text-center text-gray-400 font-medium italic">Sin órdenes provisonales cargadas</td></tr>
+                  ) : (
+                    ordenes.map((o, i) => (
+                      <tr key={i} className="hover:bg-teal-50/30 transition-colors">
+                        <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{extractMaterialCode(o)}</td>
+                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">
+                          {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
+                        </td>
+                        <td className="px-4 py-3 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
+                          {o.Maquina || o.MAQUINA || '—'}
+                        </td>
+                        <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || 0}</td>
+                        <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || '—'}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

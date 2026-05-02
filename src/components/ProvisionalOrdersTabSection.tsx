@@ -232,6 +232,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     Fecha Fin
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
+                    Máquina
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-dashed">
                     Centro
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
@@ -265,6 +268,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-r border-dashed">
                       {order.FECHAFIN}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700 uppercase border-r border-dashed">
+                      {order.Maquina || '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-r border-dashed">
                       {order.Centro}

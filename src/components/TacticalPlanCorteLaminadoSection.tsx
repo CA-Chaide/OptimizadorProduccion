@@ -162,7 +162,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4 mb-8">
+        <TabsList className="grid grid-cols-4 h-10 bg-gray-100/80 p-1 rounded-xl border mb-8">
           <TabsTrigger value="grupos">Grupos</TabsTrigger>
           <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
           <TabsTrigger value="ordenes">Provisionales</TabsTrigger>
@@ -232,6 +232,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">RESIDUO / DESTINO</th>
                     <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center bg-orange-50/10">CANT. APOYO</th>
                     <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
+                    <th className="px-3 py-4 border-r border-dashed border-gray-200 font-bold uppercase text-center">Máquina</th>
                     <th className="px-3 py-4 text-center">Almacén</th>
                   </tr>
                 </thead>
@@ -299,6 +300,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
                         <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
                           {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
+                        </td>
+                        <td className="px-3 py-3 font-bold border-r border-dashed border-gray-100 text-indigo-600 text-center uppercase">
+                          {o.MAQUINA || o.Maquina || '—'}
                         </td>
                         <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
                       </tr>

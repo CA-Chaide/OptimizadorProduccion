@@ -294,6 +294,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-amber-600 bg-amber-50/5">
             {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
           </td>
+          <td className="px-3 py-3 font-bold border-r border-dashed border-gray-100 text-blue-700 uppercase">
+            {o.MAQUINA || o.Maquina || '—'}
+          </td>
           <td className="px-3 py-3 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
         </tr>
       );
@@ -434,13 +437,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Categoría</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">DENS..</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ANCHO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Cant.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30">T. Pl Corte</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200">Máquina</th>
                         <th className="px-3 py-4">Almacén</th>
                       </tr>
                     </thead>
@@ -474,13 +478,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Material</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Categoría</th>
-                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS.</th>
+                        <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">DENS..</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ANCHO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">LARGO</th>
                         <th className="px-2 py-4 border-r border-dashed border-gray-200 text-center text-blue-800 bg-blue-50/20">ESP.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Cant.</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Tiempo PL</th>
                         <th className="px-3 py-4 border-r border-dashed border-gray-200 text-amber-700 bg-amber-50/30 text-center">T. Pl Corte</th>
+                        <th className="px-3 py-4 border-r border-dashed border-gray-200 text-center">Máquina</th>
                         <th className="px-3 py-4 text-center">Almacén</th>
                       </tr>
                     </thead>
