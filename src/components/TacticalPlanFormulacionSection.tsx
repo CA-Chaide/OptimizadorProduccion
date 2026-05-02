@@ -5,7 +5,7 @@
  * 
  * - Lista Necesidades: Unión técnica de Órdenes y Tiempos por CodMaterial.
  * - Restricciones: Filtradas exclusivamente para el Centro 1000 (Planta Quito).
- * - Lista de Materiales: Sin filtros restrictivos, incluye visor de esquema para material 20004463.
+ * - Lista de Materiales: Sin filtros restrictivos, incluye visor de esquema para material 20000179.
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -333,10 +333,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const totalPlannedTime = useMemo(() => summaryData.reduce((sum, r) => sum + r.time, 0), [summaryData]);
 
-  // LOCALIZACIÓN DEL MATERIAL PARA INSPECCIÓN DE ESQUEMA
+  // LOCALIZACIÓN DEL MATERIAL PARA INSPECCIÓN DE ESQUEMA: MATERIAL 20000179
   const schemaTarget = useMemo(() => {
     return brutosData.find(item => 
-      Object.values(item).some(val => String(val || '').includes('20004463'))
+      Object.values(item).some(val => String(val || '').includes('20000179'))
     );
   }, [brutosData]);
 
@@ -654,11 +654,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </div>
             </div>
 
-            {/* PANEL DE INSPECCIÓN DE ESQUEMA: MATERIAL 20004463 */}
+            {/* PANEL DE INSPECCIÓN DE ESQUEMA: MATERIAL 20000179 */}
             <div className="p-4 bg-slate-900 rounded-2xl border border-slate-700 space-y-3">
               <div className="flex items-center gap-2 text-teal-400 border-b border-slate-800 pb-2">
                 <Code className="w-4 h-4" />
-                <h4 className="text-[10px] font-black uppercase tracking-widest">Inspección de Esquema: Material 20004463</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-widest">Inspección de Esquema: Material 20000179</h4>
               </div>
               {schemaTarget ? (
                 <div className="space-y-2">
@@ -670,7 +670,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               ) : (
                 <div className="py-4 flex items-center gap-2 text-amber-500">
                   <Info className="w-4 h-4" />
-                  <p className="text-[10px] font-bold uppercase italic">Material 20004463 no encontrado en la página actual. Intenta navegar en las páginas para localizarlo.</p>
+                  <p className="text-[10px] font-bold uppercase italic">Material 20000179 no encontrado en la página actual. Intenta navegar en las páginas para localizarlo.</p>
                 </div>
               )}
             </div>
@@ -697,7 +697,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       {brutosData.map((row, idx) => (
                         <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                           {brutosColumns.map(col => (
-                            <td key={`${idx}-${col}`} className="px-4 py-2.5 text-gray-600 border-r border-gray-100 last:border-r-0">
+                            <td key={`${idx}-${col}`} className="px-4 py-2.5 text-gray-600 border-r border-gray-50 last:border-r-0">
                               {typeof row[col] === 'object' ? JSON.stringify(row[col]) : String(row[col] ?? '—')}
                             </td>
                           ))}
