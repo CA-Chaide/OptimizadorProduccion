@@ -5,7 +5,7 @@
  * 
  * - Lista Necesidades: Unión técnica de Órdenes y Tiempos por CodMaterial.
  * - Restricciones: Filtradas exclusivamente para el Centro 1000 (Planta Quito).
- * - Lista de Materiales: Filtrado global buscando el término "Bloque" en todas las columnas.
+ * - Lista de Materiales: Filtrado global buscando el término "BLOQUE FORMULADO" en todas las columnas.
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -173,7 +173,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         const resR = await restriccionService.getAll();
         // Filtrar restricciones solo para Centro 1000
-        setRestricciones((resR.data || []).filter(r => ids.includes(r.codigo_grupo) && String(r.grupo?.centro) === '1000'));
+        const center1000Restrictions = (resR.data || []).filter(r => ids.includes(r.codigo_grupo) && String(r.grupo?.centro) === '1000');
+        setRestricciones(center1000Restrictions);
 
         const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
         const oData = resProv.data?.data || resProv.data || [];
@@ -332,8 +333,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const totalPlannedTime = useMemo(() => summaryData.reduce((sum, r) => sum + r.time, 0), [summaryData]);
 
+  // FILTRO "BLOQUE FORMULADO" PARA MAESTRO DE MATERIALES
   const filteredBrutosData = useMemo(() => {
-    const searchTerm = "BLOQUE";
+    const searchTerm = "BLOQUE FORMULADO";
     return brutosData.filter(item => {
       return Object.values(item).some(val => 
         String(val || '').toUpperCase().includes(searchTerm)
@@ -372,7 +374,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <div className="p-2 bg-teal-50 rounded-xl shadow-sm"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
         <div>
           <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación</h2>
-          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1 uppercase">Control Global de Necesidades</Badge>
+          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1 uppercase">Control de Mezcla</Badge>
         </div>
       </div>
 
@@ -485,7 +487,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </h3>
               <p className="text-[10px] text-indigo-600 mt-1">Filtrado por Restricciones de Planta 1000 (Resp. / Alm.)</p>
             </div>
-            <div ref={scrollNecesidades.top} className="overflow-x-auto h-3 bg-gray-50 border-b border-gray-100"><div style={{ width: scrollNecesidades.width[0], height: '1px' }} /></div>
+            <div ref={scrollNecesidades.top} className="overflow-x-auto h-3 bg-gray-50 border-b border-indigo-100"><div style={{ width: scrollNecesidades.width[0], height: '1px' }} /></div>
             <div ref={scrollNecesidades.bottom} className="overflow-x-auto max-h-[600px]">
               <table ref={scrollNecesidades.table} className="w-full border-collapse text-center">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
@@ -568,20 +570,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-4 border-r border-gray-100">Orden</th>
-                    <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-left">Nombre Material</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Categoría</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Material</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-4 py-4 border-r border-gray-100">Cantidad</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-blue-700 bg-blue-50/10">Unidad</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Fecha Inicio</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Almacén</th>
-                    <th className="px-4 py-4 border-r border-gray-100">RESPCONTROLPROD</th>
-                    <th className="px-4 py-4">Maquina</th>
+                    <th className="px-4 py-4">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px]">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={10} className="py-12 text-center text-gray-400 italic">No hay órdenes para mostrar</td></tr>
+                    <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay órdenes para mostrar</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
@@ -589,14 +586,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <tr key={i} className="hover:bg-teal-50/30 transition-colors">
                           <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100 uppercase">{o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">{info.desc}</td>
-                          <td className="px-4 py-3 font-bold text-gray-700 border-r border-gray-100 uppercase">{o.CATEGORIA || o.Categoria}</td>
+                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
                           <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100">{o.CANTIDAD || o.CANTPROGRAMADA}</td>
-                          <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-100 bg-blue-50/5">{o.UNIDAD || 'UN'}</td>
-                          <td className="px-4 py-3 text-gray-400 border-r border-gray-100 font-mono text-[10px] uppercase">{o.FECHAINICIO || o.FECHA}</td>
-                          <td className="px-4 py-3 text-gray-400 font-bold uppercase border-r border-gray-100">{o.Almacen || o.ALMACEN}</td>
-                          <td className="px-4 py-3 text-gray-400 border-r border-gray-100">{o.RESPCONTROLPROD || o.RespCtrlProd}</td>
-                          <td className="px-4 py-3 font-bold text-teal-600 uppercase">{o.Maquina || o.MAQUINA || '—'}</td>
+                          <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN}</td>
                         </tr>
                       );
                     })
@@ -613,7 +605,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <table className="w-full border-collapse text-center font-sans">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
-                    <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Material</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100">Línea Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Tiempo (Min)</th>
@@ -622,17 +614,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px]">
                   {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay catálogos técnicos cargados</td></tr>
+                    <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay catálogos técnicos para este criterio</td></tr>
                   ) : (
-                    tiemposEnsamblado.map((t, i) => (
-                      <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
-                        <td className="px-4 py-3 text-gray-400 font-mono">{t.StockSeguridad}</td>
-                      </tr>
-                    ))
+                    tiemposEnsamblado.map((t, i) => {
+                      const info = extractMaterialInfo(t);
+                      return (
+                        <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                          <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
+                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea}</td>
+                          <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
+                          <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockSeguridad || 0)}</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -645,10 +640,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800 uppercase text-left">Lista de Materiales</h3>
+                <h3 className="text-lg font-bold text-gray-800 uppercase text-left">Maestro de Materiales</h3>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold uppercase">
-                {filteredBrutosData.length.toLocaleString()} COINCIDENCIAS (TÉRMINO: "BLOQUE")
+                {filteredBrutosData.length.toLocaleString()} COINCIDENCIAS (TÉRMINO: "BLOQUE FORMULADO")
               </div>
             </div>
 
@@ -658,7 +653,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Maestro Brutos...</p>
               </div>
             ) : filteredBrutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl uppercase text-[10px] font-bold">No se encontraron materiales que contengan el término "BLOQUE"</div>
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl uppercase text-[10px] font-bold">No se encontraron materiales que contengan el término "BLOQUE FORMULADO"</div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
