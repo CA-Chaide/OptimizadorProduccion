@@ -71,17 +71,28 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const oData = resProv.data?.data || resProv.data || [];
         setOrders(Array.isArray(oData) ? oData : []);
 
-        // 4. Tiempos
-        const resT = await serviciosService.getTiemposEnsamblado(1, 10000);
-        const tData = resT.data?.data || resT.data || [];
-        setTiemposEnsamblado(Array.isArray(tData) ? tData : []);
+        // 4. Tiempos (Cambio a búsqueda específica por grupo para evitar fallo del endpoint genérico)
+        const allTiempos: any[] = [];
+        for (const g of filteredGroups) {
+          if (!g.centro) continue;
+          try {
+            const resT = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
+            const tData = resT.data?.data || resT.data || [];
+            if (Array.isArray(tData)) {
+              allTiempos.push(...tData);
+            }
+          } catch (err) {
+            console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}:`, err);
+          }
+        }
+        setTiemposEnsamblado(allTiempos);
 
         initialLoadDone.current = true;
         inspector.captureVariable('dataLoaded', { 
             groups: filteredGroups.length,
             restrictions: center1000Restrictions.length,
             orders: Array.isArray(oData) ? oData.length : 0, 
-            times: Array.isArray(tData) ? tData.length : 0 
+            times: allTiempos.length 
         });
       } catch (error) {
         console.error('Error en inicialización táctica:', error);
@@ -125,7 +136,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || '').trim();
         const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
         const itemAlm = String(o.Almacen || o.ALMACEN || o.almacen || '').trim();
-        const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
+        const matchAlm = almCodes.length === 0 || almCodes.some(c => itemAlm === c || itemAlm.includes(c));
         return matchResp && matchAlm;
       })
       .map(o => {
@@ -345,7 +356,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <tr key={i} className="hover:bg-teal-50/20 transition-colors">
                       <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{String(t.CodMaterial || t.Material || '').trim().slice(-8)}</td>
                       <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Material || t.Descripcion || '—'}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                      <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
                       <td className="px-4 py-3 font-bold text-gray-400 uppercase">{t.Centro || '—'}</td>
                     </tr>
                   ))}
