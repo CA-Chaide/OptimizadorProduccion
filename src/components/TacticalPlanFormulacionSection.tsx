@@ -5,7 +5,7 @@
  * 
  * - Lista Necesidades: Unión técnica de Órdenes y Tiempos por CodMaterial.
  * - Restricciones: Filtradas exclusivamente para el Centro 1000 (Planta Quito).
- * - Lista de Materiales: Sin filtros restrictivos, incluye visor de esquema para material 20000179.
+ * - Lista de Materiales: Sin filtros restrictivos, incluye visor de esquema para material 20010779.
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -199,7 +199,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   useEffect(() => {
     setMounted(true);
     loadAllBaseData();
-  }, [loadAllBaseData]);
+  }, []); // Carga única al montar para evitar bucles infinitos
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -333,10 +333,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const totalPlannedTime = useMemo(() => summaryData.reduce((sum, r) => sum + r.time, 0), [summaryData]);
 
-  // LOCALIZACIÓN DEL MATERIAL PARA INSPECCIÓN DE ESQUEMA: MATERIAL 20000179
+  // LOCALIZACIÓN DEL MATERIAL PARA INSPECCIÓN DE ESQUEMA: MATERIAL 20010779
   const schemaTarget = useMemo(() => {
     return brutosData.find(item => 
-      Object.values(item).some(val => String(val || '').includes('20000179'))
+      Object.values(item).some(val => String(val || '').includes('20010779'))
     );
   }, [brutosData]);
 
@@ -585,7 +585,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-4">Almacén</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-[11px]">
+                <tbody className="divide-y divide-gray-100 text-[11px]">
                   {ordenes.length === 0 ? (
                     <tr><td colSpan={5} className="py-12 text-center text-gray-400 font-medium italic">No se detectaron órdenes de producción</td></tr>
                   ) : (
@@ -620,7 +620,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-4">Centro</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-[11px]">
+                <tbody className="divide-y divide-gray-100 text-[11px]">
                   {tiemposEnsamblado.length === 0 ? (
                     <tr><td colSpan={4} className="py-12 text-center text-gray-400 font-medium italic">No se detectaron catálogos de ingeniería</td></tr>
                   ) : (
@@ -654,11 +654,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </div>
             </div>
 
-            {/* PANEL DE INSPECCIÓN DE ESQUEMA: MATERIAL 20000179 */}
+            {/* PANEL DE INSPECCIÓN DE ESQUEMA: MATERIAL 20010779 */}
             <div className="p-4 bg-slate-900 rounded-2xl border border-slate-700 space-y-3">
               <div className="flex items-center gap-2 text-teal-400 border-b border-slate-800 pb-2">
                 <Code className="w-4 h-4" />
-                <h4 className="text-[10px] font-black uppercase tracking-widest">Inspección de Esquema: Material 20000179</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-widest">Inspección de Esquema: Fert_Principal 20010779</h4>
               </div>
               {schemaTarget ? (
                 <div className="space-y-2">
@@ -670,7 +670,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               ) : (
                 <div className="py-4 flex items-center gap-2 text-amber-500">
                   <Info className="w-4 h-4" />
-                  <p className="text-[10px] font-bold uppercase italic">Material 20000179 no encontrado en la página actual. Intenta navegar en las páginas para localizarlo.</p>
+                  <p className="text-[10px] font-bold uppercase italic">Fert_Principal 20010779 no encontrado en la página actual. Intenta navegar en las páginas para localizarlo.</p>
                 </div>
               )}
             </div>
