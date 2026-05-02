@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -6,13 +5,13 @@
  * 
  * - Lista Necesidades: Unión técnica de Órdenes y Tiempos por CodMaterial.
  * - Restricciones: Filtradas exclusivamente para el Centro 1000 (Planta Quito).
- * - Grupos: Visualización de áreas operativas.
+ * - Grupos: Visualización de áreas operativas del Centro 1000.
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FlaskConical, Users, Lock, Package, Loader2, Clock, 
-  ListChecks, ChevronLeft, ChevronRight
+  ListChecks
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -50,10 +49,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       if (initialLoadDone.current) return;
       setIsLoading(true);
       try {
-        // 1. Grupos (Corte y Laminado es el grupo padre para Formulación técnica)
+        // 1. Grupos (Corte y Laminado - Filtrado por Centro 1000)
         const resG = await grupoService.getAll();
         const filteredGroups = (resG.data || []).filter(g => 
-          g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('corte y laminado')
+          g.nombre_grupo && 
+          g.nombre_grupo.toLowerCase().includes('corte y laminado') &&
+          String(g.centro || '').trim() === '1000'
         );
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
@@ -76,7 +77,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         setTiemposEnsamblado(Array.isArray(tData) ? tData : []);
 
         initialLoadDone.current = true;
-        inspector.captureVariable('dataLoaded', { orders: oData.length, times: tData.length });
+        inspector.captureVariable('dataLoaded', { 
+            groups: filteredGroups.length,
+            restrictions: center1000Restrictions.length,
+            orders: Array.isArray(oData) ? oData.length : 0, 
+            times: Array.isArray(tData) ? tData.length : 0 
+        });
       } catch (error) {
         console.error('Error en inicialización táctica:', error);
         addNotification('error', 'Fallo al cargar datos maestros de formulación');
@@ -113,6 +119,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     return ordenes
       .filter(o => {
+        const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+        if (itemCentro !== '' && itemCentro !== '1000') return false; // Solo planta 1000
+
         const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || '').trim();
         const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
         const itemAlm = String(o.Almacen || o.ALMACEN || o.almacen || '').trim();
@@ -174,15 +183,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <div className="p-2 bg-teal-50 rounded-xl shadow-sm"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
         <div>
           <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación</h2>
-          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1 uppercase">Control de Mezcla</Badge>
+          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1 uppercase">Planta 1000 - Quito</Badge>
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs defaultValue="necesidades" className="w-full">
         <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'necesidades', l: 'Necesidades', i: ListChecks },
-            { v: 'grupos', l: 'Grupos', i: Users }, 
+            { v: 'grupos', l: 'Grupos (C1000)', i: Users }, 
             { v: 'restricciones', l: 'Restricciones', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Tiempos', i: Clock }
@@ -253,6 +262,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <p className="text-[10px] font-medium text-gray-400 mt-2 uppercase">ID: {g.codigo_grupo}</p>
               </Card>
             ))}
+            {grupos.length === 0 && (
+                <div className="col-span-full text-center py-20 text-gray-400 italic">No se encontraron grupos para el Centro 1000</div>
+            )}
           </div>
         </TabsContent>
 
