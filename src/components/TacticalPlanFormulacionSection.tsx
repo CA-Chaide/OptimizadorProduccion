@@ -3,10 +3,9 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
- * Cambios:
- * - Nuevo Tab "Lista Necesidades": Unión de Órdenes Provisionales y Tiempos de Ensamblado por CodMaterial.
- * - Restricciones: Filtradas exclusivamente para el Centro 1000.
- * - Sin filtros maestros de Planta/Responsable en la data global.
+ * - Lista Necesidades: Unión de Órdenes y Tiempos por CodMaterial con filtrado por Restricciones.
+ * - Restricciones: Filtradas para el Centro 1000 (heredadas de Corte y Laminado).
+ * - Diseño: Industrial Sans Serif / Monospace.
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -132,7 +131,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
 
-  // Estados para Lista de Materiales
+  // Estados para Lista de Materiales (Maestro Brutos)
   const [brutosData, setBrutosData] = useState<any[]>([]);
   const [brutosTotal, setBrutosTotal] = useState(0);
   const [brutosPage, setBrutosPage] = useState(1);
@@ -273,32 +272,56 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   /**
    * UNIÓN TÁCTICA: Lista Necesidades
-   * Cruce de Provisionales con Tiempos por CodMaterial
+   * Cruce de Provisionales con Tiempos por CodMaterial.
+   * Aplica filtros de RESPCTRLPROD y ALMACEN desde restricciones de Planta 1000.
    */
   const listaNecesidades = useMemo(() => {
+    // 1. Obtener códigos permitidos desde las restricciones
+    const respCodes = restricciones
+      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+
+    const almCodes = restricciones
+      .filter(r => r.nombre_restriccion === 'ALMACEN')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+
     const timesMap = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
       const code = String(t.CodMaterial || '').trim();
       if (code) timesMap.set(code, t);
     });
 
-    return ordenes.map(o => {
-      const info = extractMaterialInfo(o);
-      const t = timesMap.get(info.code);
-      
-      return {
-        centro: o.Centro || o.CENTRO || t?.Centro || '—',
-        almacen: o.Almacen || o.ALMACEN || '—',
-        categoria: o.CATEGORIA || o.Categoria || '—',
-        material: info.code,
-        descripcion: info.desc,
-        cantidad: o.CANTIDAD || o.CANTPROGRAMADA || 0,
-        lineaTecnica: t?.Linea || t?.PuestoTrabajoLinea || '—',
-        maquina: o.Maquina || o.MAQUINA || '—',
-        tiempo: t?.Tiempo_Min || t?.Tiempo || 0
-      };
-    });
-  }, [ordenes, tiemposEnsamblado]);
+    return ordenes
+      .filter(o => {
+        // Filtrar por Responsable (si hay restricción)
+        const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || '').trim();
+        const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
+        
+        // Filtrar por Almacén (si hay restricción)
+        const itemAlm = String(o.Almacen || o.ALMACEN || o.almacen || '').trim();
+        const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
+
+        return matchResp && matchAlm;
+      })
+      .map(o => {
+        const info = extractMaterialInfo(o);
+        const t = timesMap.get(info.code);
+        
+        return {
+          centro: o.Centro || o.CENTRO || t?.Centro || '—',
+          almacen: o.Almacen || o.ALMACEN || '—',
+          categoria: o.CATEGORIA || o.Categoria || '—',
+          material: info.code,
+          descripcion: info.desc,
+          cantidad: o.CANTIDAD || o.CANTPROGRAMADA || 0,
+          lineaTecnica: t?.Linea || t?.PuestoTrabajoLinea || '—',
+          maquina: o.Maquina || o.MAQUINA || '—',
+          tiempo: t?.Tiempo_Min || t?.Tiempo || 0
+        };
+      });
+  }, [ordenes, tiemposEnsamblado, restricciones]);
 
   const summaryData = useMemo(() => {
     const groupsMap = new Map<string, any>();
@@ -478,7 +501,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <h3 className="text-xs font-black uppercase text-indigo-900 flex items-center gap-2">
                 <ListChecks className="w-4 h-4" /> Unión Táctica: Provisionales + Tiempos Ensamblado
               </h3>
-              <p className="text-[10px] text-indigo-600 mt-1">Cruce automatizado por índice CodMaterial - Centro 1000</p>
+              <p className="text-[10px] text-indigo-600 mt-1">Filtrado por Restricciones de Planta 1000 (Resp. / Alm.)</p>
             </div>
             <div ref={scrollNecesidades.top} className="overflow-x-auto h-3 bg-gray-50 border-b border-gray-100">
               <div style={{ width: scrollNecesidades.width[0], height: '1px' }} />
@@ -500,7 +523,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
                   {listaNecesidades.length === 0 ? (
-                    <tr><td colSpan={9} className="py-20 text-gray-400 italic">No hay datos procesados para unir</td></tr>
+                    <tr><td colSpan={9} className="py-20 text-gray-400 italic">No hay registros que coincidan con las restricciones</td></tr>
                   ) : (
                     listaNecesidades.map((row, i) => (
                       <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
@@ -586,7 +609,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <tr key={i} className="hover:bg-teal-50/30 transition-colors">
                           <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100 uppercase">{o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
+                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
                           <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-100 uppercase">{o.CATEGORIA || o.Categoria}</td>
                           <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100">{o.CANTIDAD || o.CANTPROGRAMADA}</td>
                           <td className="px-4 py-3 text-gray-400 font-bold uppercase border-r border-gray-100">{o.Almacen || o.ALMACEN}</td>
