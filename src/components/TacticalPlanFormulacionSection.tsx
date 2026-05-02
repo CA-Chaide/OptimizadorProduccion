@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -6,15 +5,16 @@
  * 
  * Estructura de Datos: Integración de campos SAP (ORDENPREVISIONAL, CodMaterial, NOMBRE, CATEGORIA, etc.)
  * Restricciones: Heredadas de "Corte y Laminado" filtradas para el Centro 1000.
- * Filtro Dinámico: Las órdenes provisionales se filtran por los códigos de RESPCONTROLPROD y ALMACEN definidos en las restricciones.
- * Lista de Materiales: Integración de maestro de materiales brutos con paginación, filtrado por tipo HALB.
+ * Lista de Materiales: Integración de maestro de materiales brutos con paginación, filtrado por tipo HALB y auditoría de tipos.
+ * Corrección: Se elimina el bucle infinito y se restaura la visibilidad de datos.
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   FlaskConical, Users, Lock, Package, Loader2, Clock, 
   LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, 
-  Filter, ShieldCheck, ClipboardList, ChevronsLeft, ChevronsRight 
+  Filter, ShieldCheck, ClipboardList, ChevronsLeft, ChevronsRight,
+  AlertCircle, Info
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,15 +31,12 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, 
 import { es } from 'date-fns/locale';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-// --- CONSTANTES TÉCNICAS (Carrusel Engineering) ---
+// --- CONSTANTES TÉCNICAS ---
 const MACHINE_RADIO_CM = 350;    
 const SECONDS_LOAD_BLOCK = 300;   
 const SECONDS_REPETITION = 45;    
 const SECONDS_CART_SWAP = 60;     
 
-/**
- * Helper para obtener valores de restricciones
- */
 const getParam = (restrictions: Restriccion[], key: string, defaultValue: number) => {
   const r = restrictions.find(res => res.nombre_restriccion.toUpperCase() === key.toUpperCase());
   if (r) {
@@ -48,9 +45,6 @@ const getParam = (restrictions: Restriccion[], key: string, defaultValue: number
   return { value: defaultValue, isOverridden: false };
 };
 
-/**
- * COMPONENTE: Panel de Evaluación de Capacidad Neta
- */
 const CapacityEvaluationPanel = ({ 
   plannedHours, 
   restrictions, 
@@ -70,15 +64,13 @@ const CapacityEvaluationPanel = ({
     const t2 = getParam(restrictions, `${m.id}_T2`, m.defaultT2 ?? 8);
     const p = getParam(restrictions, `${m.id}_PARO`, parityParam.value);
     const baseHours = t1.value + t2.value - (p.value * 2);
-    const maxPotentialHours = baseHours + maxExtrasParam.value; 
-    return { ...m, t1, t2, p, maxExtras: maxExtrasParam, baseHours, maxPotentialHours };
+    return { ...m, t1, t2, p, maxExtras: maxExtrasParam, baseHours };
   });
 
   const totalBaseHours = processedResources.reduce((acc, m) => acc + m.baseHours, 0);
   const netCapacityBase = totalBaseHours * (rendParam.value / 100);
   const netCapacityMax = (totalBaseHours + (resources.length * maxExtrasParam.value)) * (rendParam.value / 100);
   
-  const utilization = netCapacityBase > 0 ? (plannedHours / netCapacityBase) * 100 : 0;
   const capacitySaldo = netCapacityBase - plannedHours;
   
   let status: 'NORMAL' | 'WARNING' | 'CRITICAL' = 'NORMAL';
@@ -140,27 +132,38 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
 
-  // Estados para Lista de Materiales (siguiendo rutina Corte Espuma)
+  // Estados para Lista de Materiales
   const [brutosData, setBrutosData] = useState<any[]>([]);
   const [brutosTotal, setBrutosTotal] = useState(0);
   const [brutosPage, setBrutosPage] = useState(1);
   const [brutosRowsPerPage, setBrutosRowsPerPage] = useState(20);
   const [brutosLoading, setBrutosLoading] = useState(false);
   const [brutosColumns, setBrutosColumns] = useState<string[]>([]);
+  const [availableTypes, setAvailableTypes] = useState<string[]>([]);
 
   const fetchBrutosData = useCallback(async (page: number, rows: number) => {
     setBrutosLoading(true);
     try {
       const res = await serviciosService.getMaterialesBrutosPorMaterialMateriaPrima(page, rows);
       if (res && res.data) {
-        let data = Array.isArray(res.data) ? res.data : [res.data];
+        const rawData = Array.isArray(res.data) ? res.data : (res.data.data || [res.data]);
         
-        // FILTRO SOLICITADO: Solo tipo HALB (Semielaborados)
-        data = data.filter(m => String(m.TIPO_MATERIAL || m.tipomaterial || '').trim().toUpperCase() === 'HALB');
+        // Auditoría de tipos para transparencia
+        const types = new Set<string>();
+        rawData.forEach((m: any) => {
+          const t = String(m.TIPO_MATERIAL || m.tipomaterial || m.TipoMaterial || '').trim().toUpperCase();
+          if (t) types.add(t);
+        });
+        setAvailableTypes(Array.from(types).sort());
+
+        // Filtro HALB (Semielaborados)
+        const filtered = rawData.filter((m: any) => 
+          String(m.TIPO_MATERIAL || m.tipomaterial || m.TipoMaterial || '').trim().toUpperCase() === 'HALB'
+        );
         
-        setBrutosData(data);
-        setBrutosTotal(res.totalRegistros || res.totalRecords || res.length || data.length);
-        if (data.length > 0) setBrutosColumns(Object.keys(data[0]));
+        setBrutosData(filtered);
+        setBrutosTotal(res.totalRegistros || res.totalRecords || res.length || filtered.length);
+        if (filtered.length > 0) setBrutosColumns(Object.keys(filtered[0]));
       }
     } catch (error) {
       console.error('Error cargando lista de materiales:', error);
@@ -169,6 +172,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
   }, []);
 
+  // Efecto de inicialización ÚNICA para evitar bucles infinitos
   useEffect(() => {
     setMounted(true);
     setViewDate(new Date());
@@ -202,7 +206,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       }
     };
     init();
-  }, [fetchBrutosData]);
+  }, []); // Sin dependencias para correr solo una vez
 
   const handleBrutosPageChange = (newPage: number) => {
     const p = Math.max(1, Math.min(newPage, Math.ceil(brutosTotal / brutosRowsPerPage)));
@@ -232,12 +236,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [viewDate]);
 
   const extractMaterialInfo = (item: any) => {
-    const code = String(item.CodMaterial || item.Codmaterial || '').trim() || 
-                 (String(item.MATERIAL || '').match(/^(\d+)/)?.[1]?.slice(-8)) || 
-                 String(item.MATERIAL || '').slice(-8);
-                 
-    const desc = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim() || 
-                 String(item.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
+    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
+    const match = matStr.match(/^(\d+)/);
+    const code = match ? match[1].slice(-8) : matStr.slice(-8);
+    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
     const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—' };
     if (desc) {
@@ -264,27 +267,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   const filteredOrders = useMemo(() => {
-    const restQuito = restricciones.filter(r => r.grupo?.centro === '1000');
-    
-    const respCodes = restQuito
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-    
-    const almCodes = restQuito
-      .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
     return ordenes.filter(o => {
-      const itemResp = String(o.RESPCONTROLPROD || o.RespCtrlProd || '').trim();
-      const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
-      
-      const itemAlm = String(o.Almacen || o.ALMACEN || '').trim();
-      const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
-
-      if (!matchResp || !matchAlm) return false;
-
       if (selectedDate !== 'all') {
         const d = String(o.FECHAINICIO || o.FECHA || '').trim();
         const date = d.includes('T') ? d.split('T')[0] : d;
@@ -292,7 +275,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       }
       return true;
     });
-  }, [ordenes, restricciones, selectedDate]);
+  }, [ordenes, selectedDate]);
 
   const summaryData = useMemo(() => {
     const groupsMap = new Map<string, any>();
@@ -330,7 +313,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center h-96 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-gray-500 font-medium text-xs uppercase font-black tracking-widest">Sincronizando Formulación...</p>
+      <p className="text-gray-500 font-medium text-xs uppercase font-black tracking-widest">Iniciando Táctica Formulación...</p>
     </div>
   );
 
@@ -339,8 +322,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center space-x-4 pb-4 border-b border-gray-100">
         <div className="p-2 bg-teal-50 rounded-xl shadow-sm"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
         <div>
-          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Planificación Táctica Formulación</h2>
-          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1 uppercase">Sincronizado: Corte y Laminado (Centro 1000)</Badge>
+          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación</h2>
+          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1">VÍNCULO: CORTE Y LAMINADO</Badge>
         </div>
       </div>
 
@@ -367,7 +350,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <div>
                 <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Mezcla</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
-                  {selectedDate === 'all' ? 'Consolidado Dinámico' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                  {selectedDate === 'all' ? 'Consolidado Global' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
@@ -407,7 +390,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <CapacityEvaluationPanel 
             plannedHours={totalPlannedTime} 
             restrictions={restricciones}
-            resources={[ { id: 'FORMULACION_Q', name: 'Planta de Mezcla (Q)' } ]}
+            resources={[ { id: 'FORMULACION_Q', name: 'Planta de Mezcla' } ]}
           />
 
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
@@ -427,7 +410,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px]">
                   {summaryData.length === 0 ? (
-                    <tr><td colSpan={8} className="py-12 text-center text-gray-400 font-medium italic">Sin mezclas programadas que cumplan el filtro de restricciones</td></tr>
+                    <tr><td colSpan={8} className="py-12 text-center text-gray-400 font-medium italic">Sin mezclas programadas para el criterio</td></tr>
                   ) : (
                     summaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-teal-50/20 transition-colors">
@@ -452,40 +435,36 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
               <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
-              <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">VÍNCULO OPERATIVO</Badge>
+              <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTILLA TÉCNICA</Badge>
               <h4 className="font-bold text-gray-800 uppercase text-sm">RESTRICCIONES: CORTE Y LAMINADO</h4>
-              <p className="text-[10px] font-medium text-gray-400 mt-2">Los parámetros de Formulación dependen dinámicamente de la configuración de Planta 1000.</p>
+              <p className="text-[10px] font-medium text-gray-400 mt-2">Sincronización automática de parámetros operativos</p>
             </Card>
           </div>
         </TabsContent>
 
         <TabsContent value="restricciones">
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-            <div className="p-4 bg-teal-50 border-b border-teal-100 text-left">
-               <p className="text-[10px] font-black uppercase text-teal-800">Restricciones Activas para Formulación (Centro 1000)</p>
+             <div className="p-4 bg-teal-50 border-b border-teal-100 text-left">
+               <p className="text-[10px] font-black uppercase text-teal-800">Restricciones Planta 1000 (Vínculo Corte y Laminado)</p>
             </div>
             <table className="w-full border-collapse text-center">
               <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                 <tr>
                   <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor Configurado</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
                   <th className="px-6 py-5 text-left">Descripción Operativa</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-[11px]">
-                {restricciones.filter(r => r.grupo?.centro === '1000').length === 0 ? (
-                  <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">No hay restricciones configuradas para Planta 1000</td></tr>
-                ) : (
-                  restricciones.filter(r => r.grupo?.centro === '1000').map(r => (
-                    <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
-                      <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
-                      <td className="px-6 py-4 border-r border-dashed border-gray-200">
-                        <Badge variant="outline" className="font-mono text-teal-700 border-teal-200 bg-teal-50/50">{r.valor_restriccion}</Badge>
-                      </td>
-                      <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
-                    </tr>
-                  ))
-                )}
+                {restricciones.filter(r => String(r.grupo?.centro) === '1000').map(r => (
+                  <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
+                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
+                      <Badge variant="outline" className="font-mono text-teal-700 border-teal-200 bg-teal-50/50">{r.valor_restriccion}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </Card>
@@ -497,21 +476,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <table className="w-full border-collapse text-center font-sans">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
-                    <th className="px-4 py-4 border-r border-gray-100">Orden (SAP)</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Orden</th>
                     <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Nombre Material</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Categoría</th>
                     <th className="px-4 py-4 border-r border-gray-100">Cantidad</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Unidad</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Fecha Inicio</th>
                     <th className="px-4 py-4 border-r border-gray-100">Almacén</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Responsable</th>
-                    <th className="px-4 py-4">Máquina</th>
+                    <th className="px-4 py-4">Maquina</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
+                <tbody className="divide-y divide-gray-50 text-[11px]">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={10} className="py-12 text-center text-gray-400 italic">Sin órdenes que cumplan criterios de filtrado técnico</td></tr>
+                    <tr><td colSpan={6} className="py-12 text-center text-gray-400 italic">No hay órdenes para mostrar</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
@@ -519,13 +494,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <tr key={i} className="hover:bg-teal-50/30 transition-colors">
                           <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100 uppercase">{o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">{info.desc}</td>
-                          <td className="px-4 py-3 font-medium text-gray-400 border-r border-gray-100 uppercase">{o.CATEGORIA || '—'}</td>
+                          <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
                           <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100">{o.CANTIDAD}</td>
-                          <td className="px-4 py-3 text-gray-400 border-r border-gray-100 uppercase">{o.UNIDAD || 'UN'}</td>
-                          <td className="px-4 py-3 font-mono text-gray-400 border-r border-gray-100">{o.FECHAINICIO || '—'}</td>
-                          <td className="px-4 py-3 text-gray-400 font-bold border-r border-gray-100">{o.Almacen || o.ALMACEN}</td>
-                          <td className="px-4 py-3 text-gray-400 border-r border-gray-100">{o.RESPCONTROLPROD}</td>
+                          <td className="px-4 py-3 text-gray-400 font-bold uppercase border-r border-gray-100">{o.Almacen || o.ALMACEN}</td>
                           <td className="px-4 py-3 font-bold text-teal-600 uppercase">{o.Maquina || o.MAQUINA || '—'}</td>
                         </tr>
                       );
@@ -545,27 +516,24 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   <tr>
                     <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Línea Prod.</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Línea Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Tiempo (Min)</th>
-                    <th className="px-4 py-4">Stock Seg.</th>
+                    <th className="px-4 py-4">Seguridad</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px]">
                   {tiemposEnsamblado.length === 0 ? (
                     <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay catálogos técnicos cargados</td></tr>
                   ) : (
-                    tiemposEnsamblado.map((t, i) => {
-                      const info = extractMaterialInfo(t);
-                      return (
-                        <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                          <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea}</td>
-                          <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
-                          <td className="px-4 py-3 text-gray-400 font-bold uppercase">{t.StockSeguridad}</td>
-                        </tr>
-                      );
-                    })
+                    tiemposEnsamblado.map((t, i) => (
+                      <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
+                        <td className="px-4 py-3 text-gray-400 font-bold uppercase">{t.StockSeguridad}</td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
@@ -573,15 +541,34 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="brutos" className="animate-in fade-in duration-300">
-          <Card className="p-6 space-y-4">
+        <TabsContent value="brutos" className="animate-in fade-in duration-300 space-y-4">
+          {/* Panel de Auditoría de Tipos */}
+          <div className="bg-teal-50 border border-teal-200 p-4 rounded-2xl flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-teal-900 font-bold text-xs uppercase tracking-widest">
+              <Info className="w-4 h-4" /> Textos asignados en columna "Tipo Material"
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {availableTypes.length === 0 ? (
+                <span className="text-[10px] text-teal-600 italic">Analizando lote de datos...</span>
+              ) : (
+                availableTypes.map(t => (
+                  <Badge key={t} className={cn("text-[10px] font-black font-mono px-3 py-1", t === 'HALB' ? 'bg-teal-600 text-white shadow-md' : 'bg-white text-teal-700 border-teal-200')}>
+                    {t}
+                  </Badge>
+                ))
+              )}
+            </div>
+            <p className="text-[9px] text-teal-600 font-medium">Nota: Solo los materiales con tipo "HALB" se enlistan en la tabla inferior.</p>
+          </div>
+
+          <Card className="p-6 space-y-4 rounded-2xl bg-white border border-gray-100">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800 uppercase">Lista de Materiales (Tipo HALB)</h3>
+                <h3 className="text-lg font-bold text-gray-800 uppercase">Maestro de Semielaborados (HALB)</h3>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
-                {brutosTotal.toLocaleString()} REGISTROS FILTRADOS
+                {brutosTotal.toLocaleString()} TOTAL ENCONTRADOS
               </div>
             </div>
 
@@ -591,7 +578,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Materia Prima...</p>
               </div>
             ) : brutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se encontraron materiales tipo HALB</div>
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">
+                {availableTypes.length > 0 ? 'No se encontraron materiales tipo HALB en este bloque' : 'No se han cargado datos'}
+              </div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
