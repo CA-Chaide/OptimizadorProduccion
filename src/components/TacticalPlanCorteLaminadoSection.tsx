@@ -61,7 +61,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
-        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo);
+        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
         const dataArray = Array.isArray(res.data) ? res.data : (res.data?.data || []);
         if (dataArray.length > 0) allTiempos.push(...dataArray);
       }
@@ -296,13 +296,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-2 py-3 font-mono font-bold text-teal-900 border-r border-dashed border-gray-100 text-center bg-teal-50/10">{hasCategory ? alturaUtil : '—'}</td>
                         <td className="px-2 py-3 font-mono font-bold text-orange-700 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? nSub.toFixed(2) : '—'}</td>
                         <td className="px-2 py-3 font-mono font-bold text-orange-900 border-r border-dashed border-gray-100 text-center bg-orange-50/5">{hasCategory ? cargasB7 : '—'}</td>
-                        <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-center text-[8px]", hasCategory && destino.includes('APOYO') ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
+                        <td className={cn("px-2 py-3 font-bold border-r border-dashed border-gray-100 text-center text-[8px]", hasCategory && (String(destino).includes('APOYO')) ? 'text-blue-600' : 'text-gray-500')}>{hasCategory ? destino : '—'}</td>
                         <td className="px-2 py-3 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 text-center">{hasCategory && cantApoyo > 0 ? cantApoyo.toFixed(2) : '—'}</td>
                         <td className="px-3 py-3 font-mono font-bold border-r border-dashed border-gray-100 text-center text-amber-600 bg-amber-50/5">
                           {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
                         </td>
                         <td className="px-3 py-3 font-bold border-r border-dashed border-gray-100 text-indigo-600 text-center uppercase">
-                          {o.MAQUINA || o.Maquina || '—'}
+                          {o.MAQUINA || o.Maquina || o.RECURSO || '—'}
                         </td>
                         <td className="px-3 py-3 font-medium text-gray-400 text-center">{o.Almacen || o.ALMACEN || '—'}</td>
                       </tr>

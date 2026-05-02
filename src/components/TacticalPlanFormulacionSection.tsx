@@ -3,7 +3,7 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
- * Corrección: Se añade la columna Máquina en la pestaña de Provisionales.
+ * Corrección: Soporte multiafield para Máquina (MAQUINA, Maquina, RECURSO).
  * - Lista Necesidades: Unión técnica de Órdenes y Tiempos filtrada por Planta 1000.
  * - Restricciones: Parámetros técnicos exclusivos del Centro 1000.
  * - Grupos: Áreas operativas del Centro 1000.
@@ -164,7 +164,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           descripcion: desc,
           cantidad: o.CANTIDAD || o.CANTPROGRAMADA || 0,
           lineaTecnica: t?.Linea || t?.PuestoTrabajoLinea || '—',
-          maquina: o.Maquina || o.MAQUINA || '—',
+          maquina: o.MAQUINA || o.Maquina || o.RECURSO || '—',
           tiempo: t?.Tiempo_Min || t?.Tiempo || 0
         };
       });
@@ -342,10 +342,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                           {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
                         </td>
                         <td className="px-4 py-3 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
-                          {o.Maquina || o.MAQUINA || '—'}
+                          {o.MAQUINA || o.Maquina || o.RECURSO || '—'}
                         </td>
                         <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || 0}</td>
-                        <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || '—'}</td>
+                        <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
                       </tr>
                     ))
                   )}

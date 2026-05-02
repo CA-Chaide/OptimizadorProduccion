@@ -211,7 +211,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || '').trim();
       if (!categoria || categoria === 'N/A') return;
 
-      const maquina = String(o.MAQUINA || o.Maquina || o.maquina || 'SIN MÁQUINA').trim();
+      const maquina = String(o.MAQUINA || o.Maquina || o.maquina || o.RECURSO || 'SIN MÁQUINA').trim();
       const info = extractMaterialInfo(o);
       const espesor = info.esp || '—';
       const key = `${maquina}|${categoria}|${espesor}`;
@@ -295,7 +295,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             {hasCategory ? calculatedCorteHours.toFixed(2) : '—'}
           </td>
           <td className="px-3 py-3 font-bold border-r border-dashed border-gray-100 text-blue-700 uppercase">
-            {o.MAQUINA || o.Maquina || '—'}
+            {o.MAQUINA || o.Maquina || o.RECURSO || '—'}
           </td>
           <td className="px-3 py-3 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
         </tr>

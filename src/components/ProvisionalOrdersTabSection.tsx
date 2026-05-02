@@ -20,6 +20,8 @@ interface ProvisionalOrder {
   Centro: string;
   Almacen: string;
   Maquina: string | null;
+  MAQUINA: string | null;
+  RECURSO: string | null;
   ClaseOrden: string;
   CodMaterial: string;
 }
@@ -124,7 +126,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     }
   }, [pagination.pageSize, addNotification]);
 
-  const totalPages = Math.ceil(pagination.totalRegistros / pagination.pageSize);
   const totalPagesLocal = Math.ceil(orders.length / pagination.rowsPerPage);
   
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
@@ -177,8 +178,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-800">
             <span className="font-semibold">Total de registros:</span> {pagination.totalRegistros.toLocaleString()} | 
-            <span className="font-semibold ml-4">Registros por página:</span> {pagination.pageSize.toLocaleString()} | 
-            <span className="font-semibold ml-4">Total de páginas:</span> {totalPages}
+            <span className="font-semibold ml-4">Registros cargados:</span> {orders.length.toLocaleString()}
           </p>
         </div>
       )}
@@ -270,7 +270,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                       {order.FECHAFIN}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700 uppercase border-r border-dashed">
-                      {order.Maquina || '—'}
+                      {order.MAQUINA || order.Maquina || order.RECURSO || '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-r border-dashed">
                       {order.Centro}
@@ -317,25 +317,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               <span className="text-sm text-gray-600">
                 Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
               </span>
-              <div className="flex space-x-1 ml-4">
-                {Array.from({ length: Math.min(5, totalPagesLocal) }, (_, i) => {
-                  const page = i + 1;
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => handleLoadPage(page)}
-                      disabled={isLoading}
-                      className={`px-3 py-1 rounded ${
-                        pagination.currentPage === page
-                          ? 'bg-indigo-600 text-white font-semibold'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             <button
