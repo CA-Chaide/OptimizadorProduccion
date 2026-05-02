@@ -3,9 +3,10 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
- * - Lista Necesidades: Unión de Órdenes y Tiempos por CodMaterial con filtrado por Restricciones.
- * - Restricciones: Filtradas para el Centro 1000 (heredadas de Corte y Laminado).
- * - Diseño: Industrial Sans Serif / Monospace.
+ * - Lista Necesidades: Unión (Join) de Órdenes y Tiempos por CodMaterial.
+ * - Restricciones: Filtradas exclusivamente para el Centro 1000.
+ * - Lista de Materiales: Lista pura (plana) con paginación y auditoría de tipos.
+ * - Diseño: Profesional Industrial (Sans Serif / Monospace).
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -15,7 +16,7 @@ import {
   Filter, ShieldCheck, ClipboardList, ChevronsLeft, ChevronsRight,
   ListChecks, Info
 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
@@ -641,15 +642,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   {tiemposEnsamblado.length === 0 ? (
                     <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay catálogos técnicos cargados</td></tr>
                   ) : (
-                    tiemposEnsamblado.map((t, i) => (
-                      <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{t.CodMaterial}</td>
-                        <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea || '—'}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
-                        <td className="px-4 py-3 text-gray-400 font-mono">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
-                      </tr>
-                    ))
+                    tiemposEnsamblado.map((t, i) => {
+                      const info = extractMaterialInfo(t);
+                      return (
+                        <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                          <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
+                          <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea || '—'}</td>
+                          <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
+                          <td className="px-4 py-3 text-gray-400 font-mono">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
