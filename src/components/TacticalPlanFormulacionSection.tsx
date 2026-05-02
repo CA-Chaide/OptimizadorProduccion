@@ -4,9 +4,9 @@
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
  * - Lista Necesidades: Unión (Join) de Órdenes y Tiempos por CodMaterial.
- * - Restricciones: Filtradas exclusivamente para el Centro 1000.
- * - Lista de Materiales: Filtrada por 'Bloque formulado' en descripcion_fert.
- * - Diseño: Profesional Industrial (Sans Serif / Monospace).
+ * - Restricciones: Filtradas exclusivamente para el Centro 1000 (Planta Quito).
+ * - Lista de Materiales: Listado completo de materiales (sin filtros de descripción).
+ * - Estructura SAP: Integración de campos ORDENPREVISIONAL, CodMaterial, NOMBRE, CATEGORIA, etc.
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -132,7 +132,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
 
-  // Estados para Lista de Materiales (Maestro Brutos)
   const [brutosData, setBrutosData] = useState<any[]>([]);
   const [brutosTotal, setBrutosTotal] = useState(0);
   const [brutosPage, setBrutosPage] = useState(1);
@@ -185,7 +184,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         setRestricciones((resR.data || []).filter(r => ids.includes(r.codigo_grupo) && String(r.grupo?.centro) === '1000'));
 
         const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
-        setOrders(resProv.data || []);
+        const oData = resProv.data?.data || resProv.data || [];
+        setOrders(Array.isArray(oData) ? oData : []);
 
         const resT = await serviciosService.getTiemposEnsamblado(1, 10000);
         const tData = Array.isArray(resT.data) ? resT.data : (resT.data?.data || []);
@@ -271,13 +271,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
-  /**
-   * UNIÓN TÁCTICA: Lista Necesidades
-   * Cruce de Provisionales con Tiempos por CodMaterial.
-   * Aplica filtros de RESPCTRLPROD y ALMACEN desde restricciones de Planta 1000.
-   */
   const listaNecesidades = useMemo(() => {
-    // 1. Obtener códigos permitidos desde las restricciones
     const respCodes = restricciones
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -296,20 +290,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     return ordenes
       .filter(o => {
-        // Filtrar por Responsable (si hay restricción)
         const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || '').trim();
         const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
-        
-        // Filtrar por Almacén (si hay restricción)
         const itemAlm = String(o.Almacen || o.ALMACEN || o.almacen || '').trim();
         const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
-
         return matchResp && matchAlm;
       })
       .map(o => {
         const info = extractMaterialInfo(o);
         const t = timesMap.get(info.code);
-        
         return {
           centro: o.Centro || o.CENTRO || t?.Centro || '—',
           almacen: o.Almacen || o.ALMACEN || '—',
@@ -323,17 +312,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         };
       });
   }, [ordenes, tiemposEnsamblado, restricciones]);
-
-  /**
-   * FILTRO ESPECÍFICO: Lista de Materiales
-   * Solo items que digan 'Bloque formulado' en descripcion_fert.
-   */
-  const filteredBrutosData = useMemo(() => {
-    return brutosData.filter(row => {
-      const descFert = String(row.descripcion_fert || row.DESCRIPCION_FERT || row.Descripcion_Fert || '').toLowerCase();
-      return descFert.includes('bloque formulado');
-    });
-  }, [brutosData]);
 
   const summaryData = useMemo(() => {
     const groupsMap = new Map<string, any>();
@@ -362,7 +340,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const totalPlannedTime = useMemo(() => summaryData.reduce((sum, r) => sum + r.time, 0), [summaryData]);
 
-  // Sincronización de scroll para Lista Necesidades
   useEffect(() => {
     if (activeTab === 'necesidades' && mounted) {
       const group = scrollNecesidades;
@@ -379,16 +356,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
   }, [activeTab, mounted, listaNecesidades]);
 
-  if (!mounted || !viewDate) return (
-    <div className="flex justify-center p-20">
-      <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-    </div>
-  );
+  if (!mounted || !viewDate) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-teal-600" /></div>;
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center h-96 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-gray-500 font-medium text-xs uppercase font-black tracking-widest">Sincronizando Táctica Formulación...</p>
+      <p className="text-gray-500 font-black text-xs uppercase tracking-widest">Sincronizando Táctica Formulación...</p>
     </div>
   );
 
@@ -463,11 +436,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </Popover>
           </div>
 
-          <CapacityEvaluationPanel 
-            plannedHours={totalPlannedTime} 
-            restrictions={restricciones}
-            resources={[ { id: 'FORMULACION_Q', name: 'Planta de Mezcla' } ]}
-          />
+          <CapacityEvaluationPanel plannedHours={totalPlannedTime} restrictions={restricciones} resources={[ { id: 'FORMULACION_Q', name: 'Planta de Mezcla' } ]} />
 
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[450px]">
@@ -515,9 +484,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </h3>
               <p className="text-[10px] text-indigo-600 mt-1">Filtrado por Restricciones de Planta 1000 (Resp. / Alm.)</p>
             </div>
-            <div ref={scrollNecesidades.top} className="overflow-x-auto h-3 bg-gray-50 border-b border-gray-100">
-              <div style={{ width: scrollNecesidades.width[0], height: '1px' }} />
-            </div>
+            <div ref={scrollNecesidades.top} className="overflow-x-auto h-3 bg-gray-50 border-b border-gray-100"><div style={{ width: scrollNecesidades.width[0], height: '1px' }} /></div>
             <div ref={scrollNecesidades.bottom} className="overflow-x-auto max-h-[600px]">
               <table ref={scrollNecesidades.table} className="w-full border-collapse text-center">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
@@ -561,22 +528,19 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
             <Card className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
               <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
-              <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">VÍNCULO OPERATIVO</Badge>
-              <h4 className="font-bold text-gray-800 uppercase text-sm">RESTRICCIONES: CORTE Y LAMINADO (CENTRO 1000)</h4>
-              <p className="text-[10px] font-medium text-gray-400 mt-2">Los parámetros de Formulación se heredan del grupo maestro de la planta.</p>
+              <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTILLA TÉCNICA</Badge>
+              <h4 className="font-bold text-gray-800 uppercase text-sm">RESTRICCIONES: CORTE Y LAMINADO</h4>
+              <p className="text-[10px] font-medium text-gray-400 mt-2">Sincronización automática de parámetros operativos desde Planta 1000</p>
             </Card>
           </div>
         </TabsContent>
 
         <TabsContent value="restricciones">
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-             <div className="p-4 bg-teal-50 border-b border-teal-100 text-left">
-               <p className="text-[10px] font-black uppercase text-teal-800">Restricciones Planta 1000 (Vínculo Corte y Laminado)</p>
-            </div>
             <table className="w-full border-collapse text-center">
               <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro Técnico</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro (Heredado)</th>
                   <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
                   <th className="px-6 py-5 text-left">Descripción Operativa</th>
                 </tr>
@@ -607,13 +571,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Nombre Material</th>
                     <th className="px-4 py-4 border-r border-gray-100">Categoría</th>
                     <th className="px-4 py-4 border-r border-gray-100">Cantidad</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-blue-700 bg-blue-50/10">Unidad</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Fecha Inicio</th>
                     <th className="px-4 py-4 border-r border-gray-100">Almacén</th>
+                    <th className="px-4 py-4 border-r border-gray-100">RESPCONTROLPROD</th>
                     <th className="px-4 py-4">Maquina</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px]">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={7} className="py-12 text-center text-gray-400 italic">No hay órdenes para mostrar</td></tr>
+                    <tr><td colSpan={10} className="py-12 text-center text-gray-400 italic">No hay órdenes para mostrar</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
@@ -621,10 +588,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <tr key={i} className="hover:bg-teal-50/30 transition-colors">
                           <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100 uppercase">{o.ORDENPREVISIONAL}</td>
                           <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
-                          <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-100 uppercase">{o.CATEGORIA || o.Categoria}</td>
+                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">{info.desc}</td>
+                          <td className="px-4 py-3 font-bold text-gray-700 border-r border-gray-100 uppercase">{o.CATEGORIA || o.Categoria}</td>
                           <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100">{o.CANTIDAD || o.CANTPROGRAMADA}</td>
+                          <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-100 bg-blue-50/5">{o.UNIDAD || 'UN'}</td>
+                          <td className="px-4 py-3 text-gray-400 border-r border-gray-100 font-mono text-[10px] uppercase">{o.FECHAINICIO || o.FECHA}</td>
                           <td className="px-4 py-3 text-gray-400 font-bold uppercase border-r border-gray-100">{o.Almacen || o.ALMACEN}</td>
+                          <td className="px-4 py-3 text-gray-400 border-r border-gray-100">{o.RESPCONTROLPROD || o.RespCtrlProd}</td>
                           <td className="px-4 py-3 font-bold text-teal-600 uppercase">{o.Maquina || o.MAQUINA || '—'}</td>
                         </tr>
                       );
@@ -646,25 +616,22 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100">Línea Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Tiempo (Min)</th>
-                    <th className="px-4 py-4">Stock / Seguridad</th>
+                    <th className="px-4 py-4">Seguridad</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-[11px]">
+                <tbody className="divide-y divide-gray-100 text-[11px]">
                   {tiemposEnsamblado.length === 0 ? (
                     <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay catálogos técnicos cargados</td></tr>
                   ) : (
-                    tiemposEnsamblado.map((t, i) => {
-                      const info = extractMaterialInfo(t);
-                      return (
-                        <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                          <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea || '—'}</td>
-                          <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
-                          <td className="px-4 py-3 text-gray-400 font-mono">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
-                        </tr>
-                      );
-                    })
+                    tiemposEnsamblado.map((t, i) => (
+                      <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{t.CodMaterial}</td>
+                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
+                        <td className="px-4 py-3 text-gray-400 font-mono">{t.StockSeguridad}</td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
@@ -675,18 +642,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsContent value="brutos" className="animate-in fade-in duration-300 space-y-4">
           <div className="bg-teal-50 border border-teal-200 p-4 rounded-2xl flex flex-col gap-3">
             <div className="flex items-center gap-2 text-teal-900 font-bold text-xs uppercase tracking-widest text-left">
-              <Info className="w-4 h-4" /> Tipos Detectados (Auditoría de Lote)
+              <Info className="w-4 h-4" /> Auditoría de Tipos en el Lote
             </div>
             <div className="flex flex-wrap gap-2">
-              {availableTypes.length === 0 ? (
-                <span className="text-[10px] text-teal-600 italic">Analizando lote de datos...</span>
-              ) : (
-                availableTypes.map(t => (
-                  <Badge key={t} className="text-[10px] font-black font-mono px-3 py-1 bg-white text-teal-700 border-teal-200 uppercase">
-                    {t}
-                  </Badge>
-                ))
-              )}
+              {availableTypes.length === 0 ? <span className="text-[10px] text-teal-600 italic">Analizando lote de datos...</span> : 
+                availableTypes.map(t => <Badge key={t} className="text-[10px] font-black font-mono px-3 py-1 bg-white text-teal-700 border-teal-200 uppercase">{t}</Badge>)
+              }
             </div>
           </div>
 
@@ -694,22 +655,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800 uppercase text-left">Lista de Materiales</h3>
+                <h3 className="text-lg font-bold text-gray-800 uppercase text-left">Lista de Materiales (Sin Filtros)</h3>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
-                {filteredBrutosData.length.toLocaleString()} FILTRADOS (DE {brutosTotal.toLocaleString()})
+                {brutosData.length.toLocaleString()} CARGADOS (TOTAL: {brutosTotal.toLocaleString()})
               </div>
             </div>
 
             {brutosLoading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-4">
                 <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Materia Prima...</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Maestro Brutos...</p>
               </div>
-            ) : filteredBrutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">
-                No hay registros que digan 'Bloque formulado' en descripcion_fert
-              </div>
+            ) : brutosData.length === 0 ? (
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se encontraron datos de materiales brutos</div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
@@ -722,7 +681,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {filteredBrutosData.map((row, idx) => (
+                      {brutosData.map((row, idx) => (
                         <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                           {brutosColumns.map(col => (
                             <td key={`${idx}-${col}`} className="px-4 py-2.5 text-gray-600 border-r border-gray-50 last:border-r-0">
@@ -736,61 +695,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between pt-4 bg-white">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase">
-                    Página {brutosPage} de {Math.ceil(brutosTotal / brutosRowsPerPage)}
-                  </p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase">Página {brutosPage} de {Math.ceil(brutosTotal / brutosRowsPerPage)}</p>
                   <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 rounded-xl" 
-                      onClick={() => handleBrutosPageChange(1)}
-                      disabled={brutosPage === 1}
-                    >
-                      <ChevronsLeft className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 rounded-xl" 
-                      onClick={() => handleBrutosPageChange(brutosPage - 1)}
-                      disabled={brutosPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-xl" onClick={() => handleBrutosPageChange(1)} disabled={brutosPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-xl" onClick={() => handleBrutosPageChange(brutosPage - 1)} disabled={brutosPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
                     <div className="flex items-center gap-1 mx-2">
                       <span className="text-[10px] font-bold text-gray-700 uppercase">Filas:</span>
-                      <select 
-                        value={brutosRowsPerPage} 
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          setBrutosRowsPerPage(val);
-                          setBrutosPage(1);
-                          fetchBrutosData(1, val);
-                        }}
-                        className="text-[10px] font-bold border rounded-lg px-2 h-7 bg-gray-50"
-                      >
+                      <select value={brutosRowsPerPage} onChange={(e) => { setBrutosRowsPerPage(Number(e.target.value)); setBrutosPage(1); fetchBrutosData(1, Number(e.target.value)); }} className="text-[10px] font-bold border rounded-lg px-2 h-7 bg-gray-50">
                         {[20, 50, 100, 500].map(v => <option key={v} value={v}>{v}</option>)}
                       </select>
                     </div>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 rounded-xl" 
-                      onClick={() => handleBrutosPageChange(brutosPage + 1)}
-                      disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 rounded-xl" 
-                      onClick={() => handleBrutosPageChange(Math.ceil(brutosTotal / brutosRowsPerPage))}
-                      disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}
-                    >
-                      <ChevronsRight className="h-4 w-4" />
-                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-xl" onClick={() => handleBrutosPageChange(brutosPage + 1)} disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}><ChevronRight className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-xl" onClick={() => handleBrutosPageChange(Math.ceil(brutosTotal / brutosRowsPerPage))} disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}><ChevronsRight className="h-4 w-4" /></Button>
                   </div>
                 </div>
               </>
