@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -6,10 +7,15 @@
  * Estructura de Datos: Integración de campos SAP (ORDENPREVISIONAL, CodMaterial, NOMBRE, CATEGORIA, etc.)
  * Restricciones: Heredadas de "Corte y Laminado" filtradas para el Centro 1000.
  * Filtro Dinámico: Las órdenes provisionales se filtran por los códigos de RESPCTRLPROD y ALMACEN definidos en las restricciones.
+ * Lista de Materiales: Integración de maestro de materiales brutos con paginación.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { FlaskConical, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { 
+  FlaskConical, Users, Lock, Package, Loader2, Clock, 
+  LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, 
+  Filter, ShieldCheck, ClipboardList, ChevronsLeft, ChevronsRight 
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -134,6 +140,31 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
 
+  // Estados para Lista de Materiales (siguiendo rutina Corte Espuma)
+  const [brutosData, setBrutosData] = useState<any[]>([]);
+  const [brutosTotal, setBrutosTotal] = useState(0);
+  const [brutosPage, setBrutosPage] = useState(1);
+  const [brutosRowsPerPage, setBrutosRowsPerPage] = useState(20);
+  const [brutosLoading, setBrutosLoading] = useState(false);
+  const [brutosColumns, setBrutosColumns] = useState<string[]>([]);
+
+  const fetchBrutosData = useCallback(async (page: number, rows: number) => {
+    setBrutosLoading(true);
+    try {
+      const res = await serviciosService.getMaterialesBrutosPorMaterialMateriaPrima(page, rows);
+      if (res && res.data) {
+        const data = Array.isArray(res.data) ? res.data : [res.data];
+        setBrutosData(data);
+        setBrutosTotal(res.totalRegistros || res.totalRecords || res.length || data.length);
+        if (data.length > 0) setBrutosColumns(Object.keys(data[0]));
+      }
+    } catch (error) {
+      console.error('Error cargando lista de materiales:', error);
+    } finally {
+      setBrutosLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setMounted(true);
     setViewDate(new Date());
@@ -141,7 +172,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const init = async () => {
       setIsLoading(true);
       try {
-        // 1. Obtener grupos de "Corte y Laminado" para heredar restricciones
         const resG = await grupoService.getAll();
         const filteredGroups = (resG.data || []).filter(g => 
           g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('corte y laminado')
@@ -149,17 +179,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         setGrupos(filteredGroups);
         const ids = filteredGroups.map(g => g.codigo_grupo);
 
-        // 2. Obtener restricciones
         const resR = await restriccionService.getAll();
         setRestricciones((resR.data || []).filter(r => ids.includes(r.codigo_grupo)));
 
-        // 3. Cargar Órdenes y Tiempos
         const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
         setOrders(resProv.data || []);
 
         const resT = await serviciosService.getTiemposEnsamblado(1, 1000);
         const tData = Array.isArray(resT.data) ? resT.data : (resT.data?.data || []);
         setTiemposEnsamblado(tData);
+
+        await fetchBrutosData(1, 20);
 
       } catch (error) {
         console.error('Error inicializando Formulación:', error);
@@ -168,7 +198,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       }
     };
     init();
-  }, []);
+  }, [fetchBrutosData]);
+
+  const handleBrutosPageChange = (newPage: number) => {
+    const p = Math.max(1, Math.min(newPage, Math.ceil(brutosTotal / brutosRowsPerPage)));
+    setBrutosPage(p);
+    fetchBrutosData(p, brutosRowsPerPage);
+  };
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -223,9 +259,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return { subbloquesPorCarga, totalCargas };
   };
 
-  // --- FILTRO DINÁMICO DE ÓRDENES BASADO EN RESTRICCIONES ---
   const filteredOrders = useMemo(() => {
-    // 1. Obtener códigos permitidos de las restricciones (específicos de planta 1000)
     const restQuito = restricciones.filter(r => r.grupo?.centro === '1000');
     
     const respCodes = restQuito
@@ -239,17 +273,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       .filter(v => v !== '');
 
     return ordenes.filter(o => {
-      // Filtrar por Responsable (si hay restricciones definidas)
       const itemResp = String(o.RESPCONTROLPROD || o.RespCtrlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
       
-      // Filtrar por Almacén (si hay restricciones definidas)
       const itemAlm = String(o.Almacen || o.ALMACEN || '').trim();
       const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
 
       if (!matchResp || !matchAlm) return false;
 
-      // Filtro de fecha
       if (selectedDate !== 'all') {
         const d = String(o.FECHAINICIO || o.FECHA || '').trim();
         const date = d.includes('T') ? d.split('T')[0] : d;
@@ -295,7 +326,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center h-96 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-gray-500 font-medium">Sincronizando Formulación (Heredando Corte y Laminado)...</p>
+      <p className="text-gray-500 font-medium text-xs uppercase font-black tracking-widest">Sincronizando Formulación...</p>
     </div>
   );
 
@@ -310,13 +341,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Restricciones', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'tiempos', l: 'Tiempos', i: Clock }
+            { v: 'tiempos', l: 'Tiempos', i: Clock },
+            { v: 'brutos', l: 'Lista de Materiales', i: ClipboardList }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -425,7 +457,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         <TabsContent value="restricciones">
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-            <div className="p-4 bg-teal-50 border-b border-teal-100">
+            <div className="p-4 bg-teal-50 border-b border-teal-100 text-left">
                <p className="text-[10px] font-black uppercase text-teal-800">Restricciones Activas para Formulación (Centro 1000)</p>
             </div>
             <table className="w-full border-collapse text-center">
@@ -475,7 +507,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={10} className="py-12 text-center text-gray-400 italic">No hay órdenes para el criterio de Planta 1000 y responsables seleccionados</td></tr>
+                    <tr><td colSpan={10} className="py-12 text-center text-gray-400 italic">Sin órdenes que cumplan criterios de filtrado técnico</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
@@ -509,7 +541,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   <tr>
                     <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Línea Técnica</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Línea Prod.</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Tiempo (Min)</th>
                     <th className="px-4 py-4">Stock Seg.</th>
                   </tr>
@@ -534,6 +566,113 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="brutos" className="animate-in fade-in duration-300">
+          <Card className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
+                <h3 className="text-lg font-bold text-gray-800 uppercase">Lista de Materiales / Maestro Brutos</h3>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
+                {brutosTotal.toLocaleString()} REGISTROS
+              </div>
+            </div>
+
+            {brutosLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Materia Prima...</p>
+              </div>
+            ) : brutosData.length === 0 ? (
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se encontraron materiales brutos</div>
+            ) : (
+              <>
+                <div className="overflow-x-auto border rounded-2xl">
+                  <table className="w-full border-collapse text-left text-[10px] font-sans">
+                    <thead className="bg-gray-50 sticky top-0 font-bold uppercase text-gray-500 border-b border-gray-100">
+                      <tr>
+                        {brutosColumns.map(col => (
+                          <th key={col} className="px-4 py-3 whitespace-nowrap border-r border-gray-100 last:border-r-0">{col}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {brutosData.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                          {brutosColumns.map(col => (
+                            <td key={`${idx}-${col}`} className="px-4 py-2.5 text-gray-600 border-r border-gray-50 last:border-r-0">
+                              {typeof row[col] === 'object' ? JSON.stringify(row[col]) : String(row[col] ?? '—')}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 bg-white">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase">
+                    Página {brutosPage} de {Math.ceil(brutosTotal / brutosRowsPerPage)}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-xl" 
+                      onClick={() => handleBrutosPageChange(1)}
+                      disabled={brutosPage === 1}
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-xl" 
+                      onClick={() => handleBrutosPageChange(brutosPage - 1)}
+                      disabled={brutosPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <div className="flex items-center gap-1 mx-2">
+                      <span className="text-[10px] font-bold text-gray-700 uppercase">Filas:</span>
+                      <select 
+                        value={brutosRowsPerPage} 
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setBrutosRowsPerPage(val);
+                          setBrutosPage(1);
+                          fetchBrutosData(1, val);
+                        }}
+                        className="text-[10px] font-bold border rounded-lg px-2 h-7 bg-gray-50"
+                      >
+                        {[20, 50, 100, 500].map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-xl" 
+                      onClick={() => handleBrutosPageChange(brutosPage + 1)}
+                      disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-xl" 
+                      onClick={() => handleBrutosPageChange(Math.ceil(brutosTotal / brutosRowsPerPage))}
+                      disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
           </Card>
         </TabsContent>
       </Tabs>
