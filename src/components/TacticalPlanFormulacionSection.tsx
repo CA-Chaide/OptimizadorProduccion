@@ -3,10 +3,9 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
- * - Lista Necesidades: Unión (Join) de Órdenes y Tiempos por CodMaterial.
+ * - Lista Necesidades: Unión técnica de Órdenes y Tiempos por CodMaterial.
  * - Restricciones: Filtradas exclusivamente para el Centro 1000 (Planta Quito).
- * - Lista de Materiales: Listado completo de materiales (sin filtros de descripción).
- * - Estructura SAP: Integración de campos ORDENPREVISIONAL, CodMaterial, NOMBRE, CATEGORIA, etc.
+ * - Lista de Materiales: Filtrado global buscando el término "Bloque" en todas las columnas.
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -138,7 +137,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [brutosRowsPerPage, setBrutosRowsPerPage] = useState(20);
   const [brutosLoading, setBrutosLoading] = useState(false);
   const [brutosColumns, setBrutosColumns] = useState<string[]>([]);
-  const [availableTypes, setAvailableTypes] = useState<string[]>([]);
 
   const scrollNecesidades = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
 
@@ -148,12 +146,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const res = await serviciosService.getMaterialesBrutosPorMaterialMateriaPrima(page, rows);
       if (res && res.data) {
         const dataArray = Array.isArray(res.data) ? res.data : (res.data.data || [res.data]);
-        const types = new Set<string>();
-        dataArray.forEach((m: any) => {
-          const t = String(m.TIPO_MATERIAL || m.tipomaterial || m.TipoMaterial || '').trim().toUpperCase();
-          if (t) types.add(t);
-        });
-        setAvailableTypes(Array.from(types).sort());
         setBrutosData(dataArray);
         setBrutosTotal(res.totalRegistros || res.totalRecords || res.length || dataArray.length);
         if (dataArray.length > 0) setBrutosColumns(Object.keys(dataArray[0]));
@@ -339,6 +331,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [filteredOrders]);
 
   const totalPlannedTime = useMemo(() => summaryData.reduce((sum, r) => sum + r.time, 0), [summaryData]);
+
+  const filteredBrutosData = useMemo(() => {
+    const searchTerm = "BLOQUE";
+    return brutosData.filter(item => {
+      return Object.values(item).some(val => 
+        String(val || '').toUpperCase().includes(searchTerm)
+      );
+    });
+  }, [brutosData]);
 
   useEffect(() => {
     if (activeTab === 'necesidades' && mounted) {
@@ -619,7 +620,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-4">Seguridad</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
+                <tbody className="divide-y divide-gray-50 text-[11px]">
                   {tiemposEnsamblado.length === 0 ? (
                     <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay catálogos técnicos cargados</td></tr>
                   ) : (
@@ -640,25 +641,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="brutos" className="animate-in fade-in duration-300 space-y-4">
-          <div className="bg-teal-50 border border-teal-200 p-4 rounded-2xl flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-teal-900 font-bold text-xs uppercase tracking-widest text-left">
-              <Info className="w-4 h-4" /> Auditoría de Tipos en el Lote
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {availableTypes.length === 0 ? <span className="text-[10px] text-teal-600 italic">Analizando lote de datos...</span> : 
-                availableTypes.map(t => <Badge key={t} className="text-[10px] font-black font-mono px-3 py-1 bg-white text-teal-700 border-teal-200 uppercase">{t}</Badge>)
-              }
-            </div>
-          </div>
-
           <Card className="p-6 space-y-4 rounded-2xl bg-white border border-gray-100">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800 uppercase text-left">Lista de Materiales (Sin Filtros)</h3>
+                <h3 className="text-lg font-bold text-gray-800 uppercase text-left">Lista de Materiales</h3>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
-                {brutosData.length.toLocaleString()} CARGADOS (TOTAL: {brutosTotal.toLocaleString()})
+              <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold uppercase">
+                {filteredBrutosData.length.toLocaleString()} COINCIDENCIAS (TÉRMINO: "BLOQUE")
               </div>
             </div>
 
@@ -667,8 +657,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Maestro Brutos...</p>
               </div>
-            ) : brutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se encontraron datos de materiales brutos</div>
+            ) : filteredBrutosData.length === 0 ? (
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl uppercase text-[10px] font-bold">No se encontraron materiales que contengan el término "BLOQUE"</div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
@@ -681,7 +671,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {brutosData.map((row, idx) => (
+                      {filteredBrutosData.map((row, idx) => (
                         <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                           {brutosColumns.map(col => (
                             <td key={`${idx}-${col}`} className="px-4 py-2.5 text-gray-600 border-r border-gray-50 last:border-r-0">
