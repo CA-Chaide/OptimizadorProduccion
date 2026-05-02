@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -5,7 +6,7 @@
  * 
  * - Lista Necesidades: Unión técnica de Órdenes y Tiempos por CodMaterial.
  * - Restricciones: Filtradas exclusivamente para el Centro 1000 (Planta Quito).
- * - Lista de Materiales: Sin filtros restrictivos, incluye visor de esquema para material 20010779.
+ * - Lista de Materiales: Incluye búsqueda local y visor de esquema para material 20010779.
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -18,6 +19,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -132,13 +134,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
 
   const [brutosData, setBrutosData] = useState<any[]>([]);
+  const [brutosSearch, setBrutosSearch] = useState('');
   const [brutosTotal, setBrutosTotal] = useState(0);
   const [brutosPage, setBrutosPage] = useState(1);
   const [brutosRowsPerPage, setBrutosRowsPerPage] = useState(20);
   const [brutosLoading, setBrutosLoading] = useState(false);
   const [brutosColumns, setBrutosColumns] = useState<string[]>([]);
 
-  const scrollNecesidades = { top: useRef<HTMLDivElement>(null), bottom: useRef<HTMLDivElement>(null), table: useRef<HTMLTableElement>(null), width: useState(0) };
+  const initialLoadDone = useRef(false);
+  const scrollNecesidadesTop = useRef<HTMLDivElement>(null);
+  const scrollNecesidadesBottom = useRef<HTMLDivElement>(null);
+  const scrollNecesidadesTable = useRef<HTMLTableElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(0);
 
   const fetchBrutosData = useCallback(async (page: number, rows: number) => {
     setBrutosLoading(true);
@@ -157,49 +164,51 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
   }, []);
 
-  const loadAllBaseData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      // 1. Grupos de Corte y Laminado
-      const resG = await grupoService.getAll();
-      const filteredGroups = (resG.data || []).filter(g => 
-        g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('corte y laminado')
-      );
-      setGrupos(filteredGroups);
-      const groupsIds = filteredGroups.map(g => g.codigo_grupo);
-
-      // 2. Restricciones Centro 1000
-      const resR = await restriccionService.getAll();
-      const center1000Restrictions = (resR.data || []).filter(r => 
-        groupsIds.includes(r.codigo_grupo) && String(r.grupo?.centro || '').trim() === '1000'
-      );
-      setRestricciones(center1000Restrictions);
-
-      // 3. Órdenes Provisionales
-      const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
-      const oData = resProv.data?.data || resProv.data || [];
-      setOrders(Array.isArray(oData) ? oData : []);
-
-      // 4. Catálogo de Tiempos
-      const resT = await serviciosService.getTiemposEnsamblado(1, 10000);
-      const tData = resT.data?.data || resT.data || [];
-      setTiemposEnsamblado(Array.isArray(tData) ? tData : []);
-
-      // 5. Lista de Materiales inicial
-      await fetchBrutosData(1, 20);
-
-    } catch (error) {
-      console.error('Error en inicialización táctica:', error);
-      addNotification('error', 'Error al sincronizar datos base de Formulación.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [addNotification, fetchBrutosData]);
-
   useEffect(() => {
+    if (initialLoadDone.current) return;
     setMounted(true);
+    
+    const loadAllBaseData = async () => {
+      setIsLoading(true);
+      try {
+        // 1. Grupos
+        const resG = await grupoService.getAll();
+        const filteredGroups = (resG.data || []).filter(g => 
+          g.nombre_grupo && g.nombre_grupo.toLowerCase().includes('corte y laminado')
+        );
+        setGrupos(filteredGroups);
+        const groupsIds = filteredGroups.map(g => g.codigo_grupo);
+
+        // 2. Restricciones
+        const resR = await restriccionService.getAll();
+        const center1000Restrictions = (resR.data || []).filter(r => 
+          groupsIds.includes(r.codigo_grupo) && String(r.grupo?.centro || '').trim() === '1000'
+        );
+        setRestricciones(center1000Restrictions);
+
+        // 3. Órdenes
+        const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
+        const oData = resProv.data?.data || resProv.data || [];
+        setOrders(Array.isArray(oData) ? oData : []);
+
+        // 4. Tiempos
+        const resT = await serviciosService.getTiemposEnsamblado(1, 10000);
+        const tData = resT.data?.data || resT.data || [];
+        setTiemposEnsamblado(Array.isArray(tData) ? tData : []);
+
+        // 5. Brutos
+        await fetchBrutosData(1, 20);
+
+        initialLoadDone.current = true;
+      } catch (error) {
+        console.error('Error en inicialización táctica:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     loadAllBaseData();
-  }, []); // Carga única al montar para evitar bucles infinitos
+  }, [fetchBrutosData]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -277,7 +286,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     const timesMap = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
-      const code = String(t.CodMaterial || '').trim();
+      const code = String(t.CodMaterial || t.Material || '').trim().slice(-8);
       if (code) timesMap.set(code, t);
     });
 
@@ -320,20 +329,27 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
       const itemSub = (qty * e) / usefulHeight;
       const itemBloqueF = (w * itemSub) / 2000;
-      const { totalCargas } = calculateCargasLogic(itemSub, w, l);
+      const logic = calculateCargasLogic(itemSub, w, l);
       const physicalBlocks = Math.ceil(itemBloqueF);
       const timeLog = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
 
       if (!groupsMap.has(key)) groupsMap.set(key, { ...info, units: 0, sub: 0, bloqueF: 0, cargas: 0, time: 0 });
       const entry = groupsMap.get(key);
-      entry.units += qty; entry.sub += itemSub; entry.bloqueF += itemBloqueF; entry.cargas += totalCargas; entry.time += timeLog;
+      entry.units += qty; entry.sub += itemSub; entry.bloqueF += itemBloqueF; entry.cargas += logic.totalCargas; entry.time += timeLog;
     });
     return Array.from(groupsMap.values());
   }, [filteredOrders]);
 
   const totalPlannedTime = useMemo(() => summaryData.reduce((sum, r) => sum + r.time, 0), [summaryData]);
 
-  // LOCALIZACIÓN DEL MATERIAL PARA INSPECCIÓN DE ESQUEMA: MATERIAL 20010779
+  const filteredBrutosData = useMemo(() => {
+    if (!brutosSearch.trim()) return brutosData;
+    const q = brutosSearch.toLowerCase();
+    return brutosData.filter(item => 
+      Object.values(item).some(val => String(val || '').toLowerCase().includes(q))
+    );
+  }, [brutosData, brutosSearch]);
+
   const schemaTarget = useMemo(() => {
     return brutosData.find(item => 
       Object.values(item).some(val => String(val || '').includes('20010779'))
@@ -348,16 +364,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'necesidades' && mounted) {
-      const group = scrollNecesidades;
-      if (!group.top.current || !group.bottom.current) return;
-      const syncB = () => { if (group.bottom.current) group.bottom.current.scrollLeft = group.top.current.scrollLeft; };
-      const syncT = () => { if (group.top.current) group.top.current.scrollLeft = group.bottom.current.scrollLeft; };
-      group.top.current.addEventListener('scroll', syncB);
-      group.bottom.current.addEventListener('scroll', syncT);
-      if (group.table.current) group.width[1](group.table.current.offsetWidth);
+      const top = scrollNecesidadesTop.current;
+      const bottom = scrollNecesidadesBottom.current;
+      if (!top || !bottom) return;
+      const syncB = () => { if (bottom) bottom.scrollLeft = top.scrollLeft; };
+      const syncT = () => { if (top) top.scrollLeft = bottom.scrollLeft; };
+      top.addEventListener('scroll', syncB);
+      bottom.addEventListener('scroll', syncT);
+      const timer = setTimeout(() => {
+        if (scrollNecesidadesTable.current) setScrollWidth(scrollNecesidadesTable.current.offsetWidth);
+      }, 500);
       return () => {
-        group.top.current?.removeEventListener('scroll', syncB);
-        group.bottom.current?.removeEventListener('scroll', syncT);
+        top.removeEventListener('scroll', syncB);
+        bottom.removeEventListener('scroll', syncT);
+        clearTimeout(timer);
       };
     }
   }, [activeTab, mounted, listaNecesidades]);
@@ -367,7 +387,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse text-left">Sincronizando Entorno Formulación...</p>
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse text-left">Cargando...</p>
     </div>
   );
 
@@ -385,12 +405,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsList className="grid grid-cols-7 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
-            { v: 'necesidades', l: 'Lista Necesidades', i: ListChecks },
+            { v: 'necesidades', l: 'Necesidades', i: ListChecks },
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Restricciones', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Tiempos', i: Clock },
-            { v: 'brutos', l: 'Lista de Materiales', i: ClipboardList }
+            { v: 'brutos', l: 'Materiales', i: ClipboardList }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -461,7 +481,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
                   {summaryData.length === 0 ? (
-                    <tr><td colSpan={8} className="py-12 text-center text-gray-400 font-medium italic">Sin mezclas programadas para el criterio</td></tr>
+                    <tr><td colSpan={8} className="py-12 text-center text-gray-400 font-medium italic">Sin mezclas programadas</td></tr>
                   ) : (
                     summaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-teal-50/20 transition-colors">
@@ -486,29 +506,29 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
             <div className="p-4 bg-indigo-50/50 border-b border-indigo-100 text-left">
               <h3 className="text-xs font-black uppercase text-indigo-900 flex items-center gap-2">
-                <ListChecks className="w-4 h-4" /> Unión Táctica: Provisionales + Tiempos Ensamblado
+                <ListChecks className="w-4 h-4" /> Unión Táctica: Provisionales + Tiempos
               </h3>
-              <p className="text-[10px] text-indigo-600 mt-1">Filtrado por Restricciones de Planta 1000 (Resp. / Alm.)</p>
+              <p className="text-[10px] text-indigo-600 mt-1">Filtrado por Restricciones de Planta 1000</p>
             </div>
-            <div ref={scrollNecesidades.top} className="overflow-x-auto h-3 bg-gray-50 border-b border-indigo-100"><div style={{ width: scrollNecesidades.width[0], height: '1px' }} /></div>
-            <div ref={scrollNecesidades.bottom} className="overflow-x-auto max-h-[600px]">
-              <table ref={scrollNecesidades.table} className="w-full border-collapse text-center">
+            <div ref={scrollNecesidadesTop} className="overflow-x-auto h-3 bg-gray-50 border-b border-indigo-100"><div style={{ width: scrollWidth, height: '1px' }} /></div>
+            <div ref={scrollNecesidadesBottom} className="overflow-x-auto max-h-[600px]">
+              <table ref={scrollNecesidadesTable} className="w-full border-collapse text-center">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-4 border-r border-dashed border-gray-200">Centro</th>
-                    <th className="px-4 py-4 border-r border-dashed border-gray-200">Almacén</th>
-                    <th className="px-4 py-4 border-r border-dashed border-gray-200 text-blue-700 bg-blue-50/20">Categoría</th>
-                    <th className="px-4 py-4 border-r border-dashed border-gray-200">Material</th>
-                    <th className="px-4 py-4 border-r border-dashed border-gray-200 text-left">Descripción</th>
-                    <th className="px-4 py-4 border-r border-dashed border-gray-200">Cantidad</th>
-                    <th className="px-4 py-4 border-r border-dashed border-gray-200 text-purple-700 bg-purple-50/20">Línea Técnica</th>
-                    <th className="px-4 py-4 border-r border-dashed border-gray-200 text-orange-700 bg-orange-50/10">Máquina</th>
+                    <th className="px-4 py-4 border-r border-gray-200">Centro</th>
+                    <th className="px-4 py-4 border-r border-gray-200">Almacén</th>
+                    <th className="px-4 py-4 border-r border-gray-200 text-blue-700 bg-blue-50/20">Categoría</th>
+                    <th className="px-4 py-4 border-r border-gray-200">Material</th>
+                    <th className="px-4 py-4 border-r border-gray-200 text-left">Descripción</th>
+                    <th className="px-4 py-4 border-r border-gray-200">Cantidad</th>
+                    <th className="px-4 py-4 border-r border-gray-200 text-purple-700 bg-purple-50/20">Línea Técnica</th>
+                    <th className="px-4 py-4 border-r border-gray-200 text-orange-700 bg-orange-50/10">Máquina</th>
                     <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Tiempo (Min)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
                   {listaNecesidades.length === 0 ? (
-                    <tr><td colSpan={9} className="py-20 text-center text-gray-400 font-medium italic">No hay registros que coincidan con las restricciones</td></tr>
+                    <tr><td colSpan={9} className="py-20 text-center text-gray-400 font-medium italic">Sin resultados</td></tr>
                   ) : (
                     listaNecesidades.map((row, i) => (
                       <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
@@ -537,7 +557,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
                 <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge>
                 <h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4>
-                <p className="text-[10px] font-medium text-gray-400 mt-2 uppercase">Identificador Técnico: {g.codigo_grupo}</p>
+                <p className="text-[10px] font-medium text-gray-400 mt-2 uppercase">ID: {g.codigo_grupo}</p>
               </Card>
             ))}
           </div>
@@ -548,14 +568,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <table className="w-full border-collapse text-center">
               <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro Técnico (Quito)</th>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor Configurado</th>
-                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro (Quito)</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
+                  <th className="px-6 py-5 text-left">Descripción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-[11px]">
                 {restricciones.length === 0 ? (
-                  <tr><td colSpan={3} className="py-12 text-center text-gray-400 font-medium italic">No hay restricciones configuradas para el Centro 1000</td></tr>
+                  <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">No hay restricciones</td></tr>
                 ) : (
                   restricciones.map(r => (
                     <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
@@ -575,7 +595,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsContent value="ordenes">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full border-collapse text-center font-sans">
+              <table className="w-full border-collapse text-center">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-4 border-r border-gray-100">Orden</th>
@@ -586,22 +606,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {ordenes.length === 0 ? (
-                    <tr><td colSpan={5} className="py-12 text-center text-gray-400 font-medium italic">No se detectaron órdenes de producción</td></tr>
-                  ) : (
-                    ordenes.map((o, i) => {
-                      const info = extractMaterialInfo(o);
-                      return (
-                        <tr key={i} className="hover:bg-teal-50/30 transition-colors">
-                          <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100 uppercase">{o.ORDENPREVISIONAL}</td>
-                          <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
-                          <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || 0}</td>
-                          <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || '—'}</td>
-                        </tr>
-                      );
-                    })
-                  )}
+                  {ordenes.map((o, i) => {
+                    const info = extractMaterialInfo(o);
+                    return (
+                      <tr key={i} className="hover:bg-teal-50/30 transition-colors">
+                        <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{info.code}</td>
+                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
+                        <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || 0}</td>
+                        <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || '—'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -611,7 +627,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsContent value="tiempos">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full border-collapse text-center font-sans">
+              <table className="w-full border-collapse text-center">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
@@ -621,21 +637,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={4} className="py-12 text-center text-gray-400 font-medium italic">No se detectaron catálogos de ingeniería</td></tr>
-                  ) : (
-                    tiemposEnsamblado.map((t, i) => {
-                      const info = extractMaterialInfo(t);
-                      return (
-                        <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                          <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
-                          <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
-                          <td className="px-4 py-3 font-bold text-gray-400 uppercase">{t.Centro || '—'}</td>
-                        </tr>
-                      );
-                    })
-                  )}
+                  {tiemposEnsamblado.map((t, i) => {
+                    const info = extractMaterialInfo(t);
+                    return (
+                      <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{info.code}</td>
+                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 uppercase">{t.Centro || '—'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -644,44 +656,48 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         <TabsContent value="brutos" className="animate-in fade-in duration-300 space-y-4">
           <Card className="p-6 space-y-6 rounded-2xl bg-white border border-gray-100 shadow-sm text-left">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800 uppercase">Maestro de Materiales (Sin Restricciones)</h3>
+                <h3 className="text-lg font-bold text-gray-800 uppercase">Maestro de Materiales</h3>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold uppercase">
-                {brutosTotal.toLocaleString()} REGISTROS TOTALES
+              <div className="flex items-center gap-4">
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input 
+                    placeholder="Buscar código o nombre..." 
+                    value={brutosSearch}
+                    onChange={(e) => setBrutosSearch(e.target.value)}
+                    className="pl-9 h-9 rounded-xl border-gray-200 text-xs"
+                  />
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold uppercase">
+                  {brutosTotal.toLocaleString()} TOTAL
+                </div>
               </div>
             </div>
 
-            {/* PANEL DE INSPECCIÓN DE ESQUEMA: MATERIAL 20010779 */}
             <div className="p-4 bg-slate-900 rounded-2xl border border-slate-700 space-y-3">
               <div className="flex items-center gap-2 text-teal-400 border-b border-slate-800 pb-2">
                 <Code className="w-4 h-4" />
-                <h4 className="text-[10px] font-black uppercase tracking-widest">Inspección de Esquema: Fert_Principal 20010779</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-widest">Inspección de Esquema: 20010779</h4>
               </div>
               {schemaTarget ? (
-                <div className="space-y-2">
-                  <p className="text-[10px] text-slate-400 font-bold uppercase italic">Esquema de salida de datos (JSON Crudo):</p>
-                  <pre className="bg-black/50 p-4 rounded-xl text-[9px] font-mono text-teal-200 overflow-auto max-h-60 leading-relaxed border border-white/5">
-                    {JSON.stringify(schemaTarget, null, 2)}
-                  </pre>
-                </div>
+                <pre className="bg-black/50 p-4 rounded-xl text-[9px] font-mono text-teal-200 overflow-auto max-h-60 leading-relaxed border border-white/5">
+                  {JSON.stringify(schemaTarget, null, 2)}
+                </pre>
               ) : (
-                <div className="py-4 flex items-center gap-2 text-amber-500">
-                  <Info className="w-4 h-4" />
-                  <p className="text-[10px] font-bold uppercase italic">Fert_Principal 20010779 no encontrado en la página actual. Intenta navegar en las páginas para localizarlo.</p>
-                </div>
+                <p className="text-[10px] text-amber-500 font-bold uppercase italic">Código 20010779 no encontrado en esta página.</p>
               )}
             </div>
 
             {brutosLoading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-4">
                 <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest text-left">Consultando Base de Materiales...</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando...</p>
               </div>
-            ) : brutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl uppercase text-[10px] font-bold">No se encontraron materiales en el servidor</div>
+            ) : filteredBrutosData.length === 0 ? (
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl text-[10px] font-bold">Sin resultados</div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
@@ -694,7 +710,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {brutosData.map((row, idx) => (
+                      {filteredBrutosData.map((row, idx) => (
                         <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                           {brutosColumns.map(col => (
                             <td key={`${idx}-${col}`} className="px-4 py-2.5 text-gray-600 border-r border-gray-50 last:border-r-0">
