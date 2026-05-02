@@ -3,9 +3,10 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
- * - Lista Necesidades: Unión técnica de Órdenes y Tiempos por CodMaterial.
- * - Restricciones: Filtradas exclusivamente para el Centro 1000 (Planta Quito).
- * - Grupos: Visualización de áreas operativas del Centro 1000.
+ * Corrección: Se estabiliza la lógica de carga de datos para evitar el error 'Maximum update depth exceeded'.
+ * - Lista Necesidades: Unión técnica de Órdenes y Tiempos filtrada por Planta 1000.
+ * - Restricciones: Parámetros técnicos exclusivos del Centro 1000.
+ * - Grupos: Áreas operativas del Centro 1000.
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -34,7 +35,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   const initialLoadDone = useRef(false);
   const scrollNecesidadesTop = useRef<HTMLDivElement>(null);
@@ -42,14 +43,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const scrollNecesidadesTable = useRef<HTMLTableElement>(null);
   const [scrollWidth, setScrollWidth] = useState(0);
 
+  // Efecto 1: Control de hidratación (Montaje seguro)
   useEffect(() => {
     setMounted(true);
-    
+  }, []);
+
+  // Efecto 2: Carga de datos maestros (Solo una vez tras el montaje)
+  useEffect(() => {
+    if (!mounted || initialLoadDone.current) return;
+
     const loadAllBaseData = async () => {
-      if (initialLoadDone.current) return;
+      initialLoadDone.current = true;
       setIsLoading(true);
       try {
-        // 1. Grupos (Corte y Laminado - Filtrado por Centro 1000)
+        // 1. Grupos (Filtrado exclusivo por Centro 1000)
         const resG = await grupoService.getAll();
         const filteredGroups = (resG.data || []).filter(g => 
           g.nombre_grupo && 
@@ -66,12 +73,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         );
         setRestricciones(center1000Restrictions);
 
-        // 3. Órdenes
+        // 3. Órdenes Provisionales
         const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
         const oData = resProv.data?.data || resProv.data || [];
         setOrders(Array.isArray(oData) ? oData : []);
 
-        // 4. Tiempos (Cambio a búsqueda específica por grupo para evitar fallo del endpoint genérico)
+        // 4. Tiempos de Ensamblado (Carga segmentada por grupo Planta 1000)
         const allTiempos: any[] = [];
         for (const g of filteredGroups) {
           if (!g.centro) continue;
@@ -87,7 +94,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         }
         setTiemposEnsamblado(allTiempos);
 
-        initialLoadDone.current = true;
         inspector.captureVariable('dataLoaded', { 
             groups: filteredGroups.length,
             restrictions: center1000Restrictions.length,
@@ -103,7 +109,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     };
 
     loadAllBaseData();
-  }, [addNotification, inspector]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]); // Solo depende del estado mounted para iniciar
 
   const extractMaterialCode = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
@@ -111,6 +118,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return match ? match[1].slice(-8) : matStr.slice(-8);
   };
 
+  // Lógica de unión técnica: Provisionales + Tiempos + Filtros de Planta 1000
   const listaNecesidades = useMemo(() => {
     const respCodes = restricciones
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
@@ -130,13 +138,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     return ordenes
       .filter(o => {
+        // Filtro estricto por Planta 1000
         const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
-        if (itemCentro !== '' && itemCentro !== '1000') return false; // Solo planta 1000
+        if (itemCentro !== '' && itemCentro !== '1000') return false; 
 
+        // Validación contra restricciones dinámicas
         const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || '').trim();
         const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
         const itemAlm = String(o.Almacen || o.ALMACEN || o.almacen || '').trim();
         const matchAlm = almCodes.length === 0 || almCodes.some(c => itemAlm === c || itemAlm.includes(c));
+        
         return matchResp && matchAlm;
       })
       .map(o => {
@@ -146,7 +157,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const desc = nameStr || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
 
         return {
-          centro: o.Centro || o.CENTRO || t?.Centro || '—',
+          centro: o.Centro || o.CENTRO || t?.Centro || '1000',
           almacen: o.Almacen || o.ALMACEN || '—',
           categoria: o.CATEGORIA || o.Categoria || '—',
           material: code,
@@ -159,6 +170,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       });
   }, [ordenes, tiemposEnsamblado, restricciones]);
 
+  // Sincronización de scroll para la tabla de necesidades
   useEffect(() => {
     if (activeTab === 'necesidades' && mounted) {
       const top = scrollNecesidadesTop.current;
@@ -184,7 +196,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando datos de Formulación...</p>
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Cargando Planta 1000 - Formulación...</p>
     </div>
   );
 
@@ -198,7 +210,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="necesidades" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'necesidades', l: 'Necesidades', i: ListChecks },
@@ -217,9 +229,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
             <div className="p-4 bg-indigo-50/50 border-b border-indigo-100 text-left">
               <h3 className="text-xs font-black uppercase text-indigo-900 flex items-center gap-2">
-                <ListChecks className="w-4 h-4" /> Unión Táctica: Provisionales + Tiempos
+                <ListChecks className="w-4 h-4" /> Unión Táctica: Provisionales + Tiempos (Planta 1000)
               </h3>
-              <p className="text-[10px] text-indigo-600 mt-1">Filtrado por Restricciones de Planta 1000 (Responsable y Almacén)</p>
+              <p className="text-[10px] text-indigo-600 mt-1">Cruce por CodMaterial basado en Restricciones Técnicas</p>
             </div>
             <div ref={scrollNecesidadesTop} className="overflow-x-auto h-3 bg-gray-50 border-b border-indigo-100">
               <div style={{ width: scrollWidth, height: '1px' }} />
@@ -241,7 +253,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
                   {listaNecesidades.length === 0 ? (
-                    <tr><td colSpan={9} className="py-20 text-center text-gray-400 font-medium italic">Sin resultados para Planta 1000</td></tr>
+                    <tr><td colSpan={9} className="py-20 text-center text-gray-400 font-medium italic">Sin resultados filtrados para Planta 1000</td></tr>
                   ) : (
                     listaNecesidades.map((row, i) => (
                       <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
@@ -274,7 +286,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </Card>
             ))}
             {grupos.length === 0 && (
-                <div className="col-span-full text-center py-20 text-gray-400 italic">No se encontraron grupos para el Centro 1000</div>
+              <div className="col-span-full py-20 text-center text-gray-400 italic">No hay grupos de la Planta 1000 cargados</div>
             )}
           </div>
         </TabsContent>
@@ -290,19 +302,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-[11px]">
-                {restricciones.length === 0 ? (
-                  <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">No hay restricciones configuradas para Planta 1000</td></tr>
-                ) : (
-                  restricciones.map(r => (
-                    <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
-                      <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
-                      <td className="px-6 py-4 border-r border-dashed border-gray-200">
-                        <Badge variant="outline" className="font-mono text-teal-700 border-teal-200 bg-teal-50/50">{r.valor_restriccion}</Badge>
-                      </td>
-                      <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
-                    </tr>
-                  ))
-                )}
+                {restricciones.map(r => (
+                  <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
+                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
+                      <Badge variant="outline" className="font-mono text-teal-700 border-teal-200 bg-teal-50/50">{r.valor_restriccion}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </Card>
