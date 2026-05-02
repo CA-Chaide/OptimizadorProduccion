@@ -4,9 +4,8 @@
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
  * Estructura de Datos: Integración de campos SAP (ORDENPREVISIONAL, CodMaterial, NOMBRE, CATEGORIA, etc.)
- * Restricciones: Heredadas de "Corte y Laminado" filtradas para el Centro 1000.
- * Lista de Materiales: Integración de maestro de materiales brutos con paginación, filtrado por tipo HALB y auditoría de tipos.
- * Corrección: Se elimina el bucle infinito y se restaura la visibilidad de datos.
+ * Restricciones: Heredadas de "Corte y Laminado" filtradas para el Centro 1000 en su tab correspondiente.
+ * Lista de Materiales: Visualización global de materiales brutos sin filtro HALB.
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -14,7 +13,7 @@ import {
   FlaskConical, Users, Lock, Package, Loader2, Clock, 
   LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, 
   Filter, ShieldCheck, ClipboardList, ChevronsLeft, ChevronsRight,
-  AlertCircle, Info
+  Info
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -146,24 +145,19 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     try {
       const res = await serviciosService.getMaterialesBrutosPorMaterialMateriaPrima(page, rows);
       if (res && res.data) {
-        const rawData = Array.isArray(res.data) ? res.data : (res.data.data || [res.data]);
+        const dataArray = Array.isArray(res.data) ? res.data : (res.data.data || [res.data]);
         
         // Auditoría de tipos para transparencia
         const types = new Set<string>();
-        rawData.forEach((m: any) => {
+        dataArray.forEach((m: any) => {
           const t = String(m.TIPO_MATERIAL || m.tipomaterial || m.TipoMaterial || '').trim().toUpperCase();
           if (t) types.add(t);
         });
         setAvailableTypes(Array.from(types).sort());
 
-        // Filtro HALB (Semielaborados)
-        const filtered = rawData.filter((m: any) => 
-          String(m.TIPO_MATERIAL || m.tipomaterial || m.TipoMaterial || '').trim().toUpperCase() === 'HALB'
-        );
-        
-        setBrutosData(filtered);
-        setBrutosTotal(res.totalRegistros || res.totalRecords || res.length || filtered.length);
-        if (filtered.length > 0) setBrutosColumns(Object.keys(filtered[0]));
+        setBrutosData(dataArray);
+        setBrutosTotal(res.totalRegistros || res.totalRecords || res.length || dataArray.length);
+        if (dataArray.length > 0) setBrutosColumns(Object.keys(dataArray[0]));
       }
     } catch (error) {
       console.error('Error cargando lista de materiales:', error);
@@ -172,7 +166,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
   }, []);
 
-  // Efecto de inicialización ÚNICA para evitar bucles infinitos
   useEffect(() => {
     setMounted(true);
     setViewDate(new Date());
@@ -206,7 +199,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       }
     };
     init();
-  }, []); // Sin dependencias para correr solo una vez
+  }, [fetchBrutosData]);
 
   const handleBrutosPageChange = (newPage: number) => {
     const p = Math.max(1, Math.min(newPage, Math.ceil(brutosTotal / brutosRowsPerPage)));
@@ -432,13 +425,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="grupos">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
-              <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
-              <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTILLA TÉCNICA</Badge>
-              <h4 className="font-bold text-gray-800 uppercase text-sm">RESTRICCIONES: CORTE Y LAMINADO</h4>
-              <p className="text-[10px] font-medium text-gray-400 mt-2">Sincronización automática de parámetros operativos</p>
-            </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+            {grupos.map(g => (
+              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
+                <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
+                <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge>
+                <h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4>
+                <p className="text-[9px] font-mono text-gray-400 mt-2">ID: {g.codigo_grupo}</p>
+              </Card>
+            ))}
           </div>
         </TabsContent>
 
@@ -450,7 +445,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <table className="w-full border-collapse text-center">
               <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro Técnico</th>
                   <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
                   <th className="px-6 py-5 text-left">Descripción Operativa</th>
                 </tr>
@@ -542,33 +537,32 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="brutos" className="animate-in fade-in duration-300 space-y-4">
-          {/* Panel de Auditoría de Tipos */}
           <div className="bg-teal-50 border border-teal-200 p-4 rounded-2xl flex flex-col gap-3">
             <div className="flex items-center gap-2 text-teal-900 font-bold text-xs uppercase tracking-widest">
-              <Info className="w-4 h-4" /> Textos asignados en columna "Tipo Material"
+              <Info className="w-4 h-4" /> Textos asignados en columna "Tipo Material" (Auditoría de Tipos)
             </div>
             <div className="flex flex-wrap gap-2">
               {availableTypes.length === 0 ? (
                 <span className="text-[10px] text-teal-600 italic">Analizando lote de datos...</span>
               ) : (
                 availableTypes.map(t => (
-                  <Badge key={t} className={cn("text-[10px] font-black font-mono px-3 py-1", t === 'HALB' ? 'bg-teal-600 text-white shadow-md' : 'bg-white text-teal-700 border-teal-200')}>
+                  <Badge key={t} className="text-[10px] font-black font-mono px-3 py-1 bg-white text-teal-700 border-teal-200">
                     {t}
                   </Badge>
                 ))
               )}
             </div>
-            <p className="text-[9px] text-teal-600 font-medium">Nota: Solo los materiales con tipo "HALB" se enlistan en la tabla inferior.</p>
+            <p className="text-[9px] text-teal-600 font-medium">Nota: Se muestran todos los materiales procesados en el bloque.</p>
           </div>
 
           <Card className="p-6 space-y-4 rounded-2xl bg-white border border-gray-100">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800 uppercase">Maestro de Semielaborados (HALB)</h3>
+                <h3 className="text-lg font-bold text-gray-800 uppercase text-left">Lista de Materiales</h3>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
-                {brutosTotal.toLocaleString()} TOTAL ENCONTRADOS
+                {brutosTotal.toLocaleString()} REGISTROS TOTALES
               </div>
             </div>
 
@@ -578,9 +572,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Materia Prima...</p>
               </div>
             ) : brutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">
-                {availableTypes.length > 0 ? 'No se encontraron materiales tipo HALB en este bloque' : 'No se han cargado datos'}
-              </div>
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se han cargado datos</div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
