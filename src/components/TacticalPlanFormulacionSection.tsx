@@ -5,7 +5,7 @@
  * 
  * - Lista Necesidades: Unión (Join) de Órdenes y Tiempos por CodMaterial.
  * - Restricciones: Filtradas exclusivamente para el Centro 1000.
- * - Lista de Materiales: Lista pura (plana) con paginación y auditoría de tipos.
+ * - Lista de Materiales: Filtrada por 'Bloque formulado' en descripcion_fert.
  * - Diseño: Profesional Industrial (Sans Serif / Monospace).
  */
 
@@ -323,6 +323,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         };
       });
   }, [ordenes, tiemposEnsamblado, restricciones]);
+
+  /**
+   * FILTRO ESPECÍFICO: Lista de Materiales
+   * Solo items que digan 'Bloque formulado' en descripcion_fert.
+   */
+  const filteredBrutosData = useMemo(() => {
+    return brutosData.filter(row => {
+      const descFert = String(row.descripcion_fert || row.DESCRIPCION_FERT || row.Descripcion_Fert || '').toLowerCase();
+      return descFert.includes('bloque formulado');
+    });
+  }, [brutosData]);
 
   const summaryData = useMemo(() => {
     const groupsMap = new Map<string, any>();
@@ -647,7 +658,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       return (
                         <tr key={i} className="hover:bg-teal-50/20 transition-colors">
                           <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
+                          <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Descripcion || t.Material}</td>
                           <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-100 uppercase">{t.Linea || '—'}</td>
                           <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || 0).toFixed(4)}</td>
                           <td className="px-4 py-3 text-gray-400 font-mono">{t.StockActual || 0} / {t.StockSeguridad || 0}</td>
@@ -663,7 +674,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         <TabsContent value="brutos" className="animate-in fade-in duration-300 space-y-4">
           <div className="bg-teal-50 border border-teal-200 p-4 rounded-2xl flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-teal-900 font-bold text-xs uppercase tracking-widest">
+            <div className="flex items-center gap-2 text-teal-900 font-bold text-xs uppercase tracking-widest text-left">
               <Info className="w-4 h-4" /> Tipos Detectados (Auditoría de Lote)
             </div>
             <div className="flex flex-wrap gap-2">
@@ -686,7 +697,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <h3 className="text-lg font-bold text-gray-800 uppercase text-left">Lista de Materiales</h3>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
-                {brutosTotal.toLocaleString()} REGISTROS TOTALES
+                {filteredBrutosData.length.toLocaleString()} FILTRADOS (DE {brutosTotal.toLocaleString()})
               </div>
             </div>
 
@@ -695,8 +706,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando Materia Prima...</p>
               </div>
-            ) : brutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se han cargado datos</div>
+            ) : filteredBrutosData.length === 0 ? (
+              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">
+                No hay registros que digan 'Bloque formulado' en descripcion_fert
+              </div>
             ) : (
               <>
                 <div className="overflow-x-auto border rounded-2xl">
@@ -709,7 +722,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {brutosData.map((row, idx) => (
+                      {filteredBrutosData.map((row, idx) => (
                         <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                           {brutosColumns.map(col => (
                             <td key={`${idx}-${col}`} className="px-4 py-2.5 text-gray-600 border-r border-gray-50 last:border-r-0">
@@ -727,10 +740,22 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     Página {brutosPage} de {Math.ceil(brutosTotal / brutosRowsPerPage)}
                   </p>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-xl" onClick={() => handleBrutosPageChange(1)} disabled={brutosPage === 1}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-xl" 
+                      onClick={() => handleBrutosPageChange(1)}
+                      disabled={brutosPage === 1}
+                    >
                       <ChevronsLeft className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-xl" onClick={() => handleBrutosPageChange(brutosPage - 1)} disabled={brutosPage === 1}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-xl" 
+                      onClick={() => handleBrutosPageChange(brutosPage - 1)}
+                      disabled={brutosPage === 1}
+                    >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex items-center gap-1 mx-2">
@@ -748,10 +773,22 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         {[20, 50, 100, 500].map(v => <option key={v} value={v}>{v}</option>)}
                       </select>
                     </div>
-                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-xl" onClick={() => handleBrutosPageChange(brutosPage + 1)} disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-xl" 
+                      onClick={() => handleBrutosPageChange(brutosPage + 1)}
+                      disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}
+                    >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-xl" onClick={() => handleBrutosPageChange(Math.ceil(brutosTotal / brutosRowsPerPage))} disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-xl" 
+                      onClick={() => handleBrutosPageChange(Math.ceil(brutosTotal / brutosRowsPerPage))}
+                      disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}
+                    >
                       <ChevronsRight className="h-4 w-4" />
                     </Button>
                   </div>
