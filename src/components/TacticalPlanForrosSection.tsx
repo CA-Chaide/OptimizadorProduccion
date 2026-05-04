@@ -235,7 +235,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   /**
-   * Resuelve la máquina para una orden. Si no viene en la orden, busca en los tiempos de producción.
+   * Resuelve la máquina para una orden.
    */
   const getResolvedMachine = useCallback((order: any) => {
     const orderMachine = order['MAQUINA'] || order['PUESTOTRABAJO'];
@@ -247,7 +247,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [tiemposProduccion, normalizeMaterialCode]);
 
   /**
-   * Calcula el tiempo total de producción para una orden buscando el tiempo unitario en los datos maestros.
+   * Calcula el tiempo total de producción.
    */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0';
@@ -315,24 +315,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return dailyOrders.slice(start, start + dailyRowsPerPage);
   }, [dailyOrders, dailyPage, dailyRowsPerPage]);
 
+  /**
+   * Resumen de producción consolidado por máquina única.
+   */
   const productionSummary = useMemo(() => {
-    const summaryMap = new Map<string, { date: string; dateSort: string; machine: string; quantity: number; count: number; totalTime: number }>();
+    const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
     dailyOrders.forEach(order => {
-      const normDate = normalizeDateForFilter(order['FECHAINICIO']);
-      if (!normDate) return;
-      
-      const dateDisplay = formatValueForDisplay('FECHA', normDate);
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
       const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'], quantity, order)) || 0;
       
-      const key = `${normDate}-${machine}`;
+      const key = machine;
       
       if (!summaryMap.has(key)) {
         summaryMap.set(key, {
-          date: dateDisplay,
-          dateSort: normDate,
           machine: machine,
           quantity: 0,
           count: 0,
@@ -346,10 +343,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
       entry.totalTime += timeVal;
     });
     
-    return Array.from(summaryMap.values()).sort((a, b) => {
-      return a.dateSort.localeCompare(b.dateSort) || a.machine.localeCompare(b.machine);
-    });
-  }, [dailyOrders, formatValueForDisplay, normalizeDateForFilter, getResolvedMachine, calculateProductionTime]);
+    return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
+  }, [dailyOrders, getResolvedMachine, calculateProductionTime]);
 
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
@@ -601,7 +596,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   Resumen de Carga de Producción (Detalle por Máquina)
                 </CardTitle>
                 <CardDescription>
-                  Consolidado de unidades y tiempos de carga por puesto de trabajo ({formattedToday} y {formattedTarget}).
+                  Consolidado único de unidades y tiempos de carga por puesto de trabajo técnico.
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
@@ -610,7 +605,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha</th>
                           <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Máquina / Puesto</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
@@ -620,14 +614,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <tbody className="divide-y divide-gray-200 bg-white">
                         {isLoadingDaily ? (
                           <tr>
-                            <td colSpan={5} className="py-12 text-center">
+                            <td colSpan={4} className="py-12 text-center">
                               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                             </td>
                           </tr>
                         ) : productionSummary.length > 0 ? (
                           productionSummary.map((item, idx) => (
                             <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-900">{item.date}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
@@ -636,7 +629,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={5} className="py-12 text-center text-gray-400 italic">
+                            <td colSpan={4} className="py-12 text-center text-gray-400 italic">
                               No hay datos en la programación diaria para resumir.
                             </td>
                           </tr>
@@ -645,7 +638,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       {productionSummary.length > 0 && (
                         <tfoot className="bg-gray-50 font-bold border-t-2">
                           <tr>
-                            <td colSpan={2} className="px-6 py-3 text-right text-xs text-gray-600 uppercase">Totales Generales:</td>
+                            <td className="px-6 py-3 text-right text-xs text-gray-600 uppercase">Totales Generales:</td>
                             <td className="px-6 py-3 text-right font-mono text-sm">
                               {productionSummary.reduce((acc, curr) => acc + curr.count, 0)}
                             </td>
