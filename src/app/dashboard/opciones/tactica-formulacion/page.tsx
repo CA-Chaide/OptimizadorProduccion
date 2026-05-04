@@ -1,7 +1,9 @@
 'use client';
 
-import { TacticalPlanFormulacionSection } from '@/components';
+import { redirect } from 'next/navigation';
 
 export default function TacticaFormulacionPage() {
-  return <TacticalPlanFormulacionSection />;
+  // Redirigir al dashboard ya que este módulo ha sido eliminado
+  redirect('/dashboard');
+  return null;
 }
