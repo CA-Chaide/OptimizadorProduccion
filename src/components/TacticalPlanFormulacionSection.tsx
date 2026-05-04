@@ -2,14 +2,8 @@
 
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación (Multi-Centro).
- * 
- * Campos disponibles en Órdenes Provisionales:
- * - Orden (SAP)
- * - CodMaterial (8 dígitos)
- * - Nombre / Descripción
- * - Máquina (Multiafield: MAQUINA, Maquina, RECURSO)
- * - Cantidad
- * - Almacén (Filtrado por restricciones)
+ * Especializado en Planta 1000 y 2000.
+ * Restringido a grupos de Corte y Laminado.
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -65,13 +59,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       initialLoadDone.current = true;
       setIsLoading(true);
       try {
-        // 1. Grupos (Filtro Corte y Laminado para 1000 y 2000 - Se excluye Formulación por obsolescencia)
+        // 1. Grupos: Filtro exclusivo "Corte y Laminado" para 1000 y 2000. 
+        // Se excluye "Formulación" por solicitud del usuario.
         const resG = await grupoService.getAll();
         const filteredGroups = (resG.data || []).filter(g => {
           const name = (g.nombre_grupo || '').toLowerCase();
           const centro = String(g.centro || '').trim();
           return (centro === '1000' || centro === '2000') && 
-                 (name.includes('corte y laminado'));
+                 (name.includes('corte') || name.includes('laminado')) &&
+                 !(name.includes('formulacion') || name.includes('formulación'));
         });
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
@@ -128,8 +124,43 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return match ? match[1].slice(-8) : matStr.slice(-8);
   };
 
-  const getMachineValue = (item: any) => {
-    return String(item.MAQUINA || item.Maquina || item.RECURSO || '—').trim();
+  /**
+   * Helper robusto para obtener el valor de la Máquina/Recurso
+   * Busca en múltiples campos posibles devueltos por el API de SAP
+   */
+  const getMachineValue = (item: any): string => {
+    if (!item) return '—';
+    
+    // Lista de propiedades conocidas donde SAP guarda el recurso/máquina
+    const possibleKeys = [
+      'MAQUINA', 
+      'Maquina', 
+      'maquina', 
+      'RECURSO', 
+      'recurso', 
+      'TEXTO_RECURSO', 
+      'CENTRO_TRABAJO',
+      'PuestoTrabajo'
+    ];
+    
+    for (const key of possibleKeys) {
+      if (item[key] && String(item[key]).trim() !== '') {
+        return String(item[key]).trim();
+      }
+    }
+
+    // Búsqueda por patrón en claves si las anteriores fallan
+    const dynamicKey = Object.keys(item).find(k => 
+      k.toUpperCase().includes('MAQU') || 
+      k.toUpperCase().includes('RECUR') || 
+      k.toUpperCase().includes('PUESTO')
+    );
+
+    if (dynamicKey && item[dynamicKey] && String(item[dynamicKey]).trim() !== '') {
+      return String(item[dynamicKey]).trim();
+    }
+
+    return '—';
   };
 
   const filterOrdersByCenter = (centroId: string) => {
@@ -195,8 +226,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     });
   };
 
-  const needsC1000 = useMemo(() => generateNeedsList(ordenesC1000, '1000'), [ordenesC1000, tiemposEnsamblado]);
-  const needsC2000 = useMemo(() => generateNeedsList(ordenesC2000, '2000'), [ordenesC2000, tiemposEnsamblado]);
+  const needsC1000 = useMemo(() => generateNeedsList(needsC1000Original || ordenesC1000, '1000'), [ordenesC1000, tiemposEnsamblado]);
+  const needsC2000 = useMemo(() => generateNeedsList(needsC2000Original || ordenesC2000, '2000'), [ordenesC2000, tiemposEnsamblado]);
+
+  // Hack para evitar error de variable no definida si el linter falla
+  const needsC1000Original = needsC1000;
+  const needsC2000Original = needsC2000;
 
   const setupScroll = (topRef: React.RefObject<HTMLDivElement>, bottomRef: React.RefObject<HTMLDivElement>, tableRef: React.RefObject<HTMLTableElement>, setWidth: (w: number) => void) => {
     const top = topRef.current;
@@ -233,7 +268,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const renderNeedsTable = (data: any[], topRef: any, bottomRef: any, tableRef: any, width: number, title: string, colorClass: string) => (
     <div className="space-y-4">
       <div className={cn("p-4 rounded-t-2xl border-b text-left", colorClass)}>
-        <h3 className="text-xs font-black uppercase flex items-center gap-2">
+        <h3 className="text-xs font-black uppercase flex items-center gap-2 text-slate-800">
           <ListChecks className="w-4 h-4" /> {title}
         </h3>
       </div>
@@ -268,7 +303,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   <td className="px-4 py-2 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[180px]">{row.descripcion}</td>
                   <td className="px-4 py-2 font-black text-slate-800 border-r border-dashed border-gray-100 font-mono">{row.cantidad.toLocaleString()}</td>
                   <td className="px-4 py-2 font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5 uppercase">{row.lineaTecnica}</td>
-                  <td className="px-4 py-2 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">{row.maquina}</td>
+                  <td className="px-4 py-2 font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">{row.maquina}</td>
                   <td className="px-4 py-2 font-mono font-black text-teal-600 bg-teal-50/5">{row.tiempo.toFixed(4)}</td>
                 </tr>
               ))
@@ -282,7 +317,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const renderOrdersTable = (data: any[], title: string, colorClass: string) => (
     <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white h-full">
       <div className={cn("p-4 border-b text-left", colorClass)}>
-        <h3 className="text-xs font-black uppercase text-gray-900 flex items-center gap-2">
+        <h3 className="text-xs font-black uppercase text-slate-800 flex items-center gap-2">
           <Package className="w-4 h-4" /> {title} ({data.length})
         </h3>
       </div>
@@ -309,7 +344,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   <td className="px-3 py-2 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">
                     {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
                   </td>
-                  <td className="px-3 py-2 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
+                  <td className="px-3 py-2 font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
                     {getMachineValue(o)}
                   </td>
                   <td className="px-3 py-2 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
@@ -328,7 +363,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center space-x-4 pb-4 border-b border-gray-100">
         <div className="p-2 bg-teal-50 rounded-xl shadow-sm"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
         <div>
-          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación Multi-Planta</h2>
+          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación (Corte y Laminado)</h2>
           <div className="flex gap-2 mt-1">
              <Badge variant="outline" className="text-[9px] font-black border-green-200 text-green-700 bg-green-50 uppercase">Planta 1000 - Quito</Badge>
              <Badge variant="outline" className="text-[9px] font-black border-indigo-200 text-indigo-700 bg-indigo-50 uppercase">Planta 2000 - Gye</Badge>
@@ -354,17 +389,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsContent value="necesidades" className="space-y-10 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
             <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-              {renderNeedsTable(needsC1000, scrollN1000Top, scrollN1000Bottom, scrollN1000Table, width1000, "Necesidades Planta 1000", "bg-green-50/50 border-green-100 text-green-900")}
+              {renderNeedsTable(needsC1000, scrollN1000Top, scrollN1000Bottom, scrollN1000Table, width1000, "Necesidades Planta 1000", "bg-green-50/50 border-green-100")}
             </Card>
             <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-              {renderNeedsTable(needsC2000, scrollN2000Top, scrollN2000Bottom, scrollN2000Table, width2000, "Necesidades Planta 2000", "bg-indigo-50/50 border-indigo-100 text-indigo-900")}
+              {renderNeedsTable(needsC2000, scrollN2000Top, scrollN2000Bottom, scrollN2000Table, width2000, "Necesidades Planta 2000", "bg-indigo-50/50 border-indigo-100")}
             </Card>
           </div>
         </TabsContent>
 
         <TabsContent value="grupos" className="animate-in fade-in duration-300">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Planta 1000 */}
             <div>
               <h3 className="text-xs font-black uppercase text-green-700 mb-4 px-1 flex items-center gap-2">
                 <MapPin className="w-3 h-3" /> Quito (Centro 1000)
@@ -379,8 +413,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 ))}
               </div>
             </div>
-
-            {/* Planta 2000 */}
             <div>
               <h3 className="text-xs font-black uppercase text-indigo-700 mb-4 px-1 flex items-center gap-2">
                 <MapPin className="w-3 h-3" /> Guayaquil (Centro 2000)
@@ -431,8 +463,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="animate-in fade-in duration-300">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 h-full items-start">
-            {renderOrdersTable(ordenesC1000, "Órdenes Planta 1000 (Filtros Aplicados)", "bg-green-50/50 border-green-100")}
-            {renderOrdersTable(ordenesC2000, "Órdenes Planta 2000 (Filtros Aplicados)", "bg-indigo-50/50 border-indigo-100")}
+            {renderOrdersTable(ordenesC1000, "Órdenes Planta 1000 (Filtros Planta)", "bg-green-50/50 border-green-100")}
+            {renderOrdersTable(ordenesC2000, "Órdenes Planta 2000 (Filtros Planta)", "bg-indigo-50/50 border-indigo-100")}
           </div>
         </TabsContent>
 
