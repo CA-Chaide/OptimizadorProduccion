@@ -325,9 +325,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return dailyOrders.slice(start, start + dailyRowsPerPage);
   }, [dailyOrders, dailyPage, dailyRowsPerPage]);
 
+  const plannedCapacity = useMemo(() => {
+    const diurno = parseFloat(horarioDiurno) || 0;
+    const nocturno = parseFloat(horarioNocturno) || 0;
+    // Cálculo: (Diurno + Nocturno) - 16% (multiplicar por 0.84)
+    return (diurno + nocturno) * 0.84;
+  }, [horarioDiurno, horarioNocturno]);
+
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
+    // Inicializar con todas las máquinas conocidas en la data técnica (para ver capacidad vacía)
+    const allKnownMachines = [...new Set(tiemposProduccion.map(t => String(t.PuestoTrabajo || '').trim().toUpperCase()))].filter(m => m !== '');
+    allKnownMachines.forEach(m => {
+      summaryMap.set(m, {
+        machine: m,
+        quantity: 0,
+        count: 0,
+        totalTime: 0
+      });
+    });
+
     dailyOrders.forEach(order => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
@@ -351,14 +369,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
     
     return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
-  }, [dailyOrders, getResolvedMachine, calculateProductionTime]);
-
-  const plannedCapacity = useMemo(() => {
-    const diurno = parseFloat(horarioDiurno) || 0;
-    const nocturno = parseFloat(horarioNocturno) || 0;
-    // Cálculo: (Diurno + Nocturno) - 16% (multiplicar por 0.84)
-    return (diurno + nocturno) * 0.84;
-  }, [horarioDiurno, horarioNocturno]);
+  }, [dailyOrders, tiemposProduccion, getResolvedMachine, calculateProductionTime]);
 
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
@@ -391,12 +402,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
       <Tabs defaultValue="grupos" className="w-full">
         <div className="relative border-b border-gray-200 mb-8">
           <TabsList className="flex w-full h-auto bg-transparent p-0 overflow-x-auto justify-start scrollbar-hide">
-            <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
-            <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
-            <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
-            <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
-            <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><CalendarCheck className="w-4 h-4" /> Programación Diaria</TabsTrigger>
-            <TabsTrigger value="resumen-diario" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap"><BarChart3 className="w-4 h-4" /> Resumen de producción diaria</TabsTrigger>
+            <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
+            <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
+            <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
+            <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
+            <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Diaria</TabsTrigger>
+            <TabsTrigger value="resumen-diario" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><BarChart3 className="w-4 h-4" /> Resumen de producción diaria</TabsTrigger>
           </TabsList>
         </div>
 

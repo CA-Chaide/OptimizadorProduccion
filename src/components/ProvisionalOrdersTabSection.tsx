@@ -150,12 +150,12 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       });
     });
 
-    // Si hay agrupamiento, debemos ordenar por la columna de agrupamiento
+    // Si hay agrupamiento, debemos ordenar por la columna de agrupamiento para que la lógica de render sea correcta
     if (groupBy) {
       const gCol = groupBy.toUpperCase().trim();
       result.sort((a, b) => {
-        const valA = resolveValue ? resolveValue(gCol, a) : String(a[gCol] ?? '');
-        const valB = resolveValue ? resolveValue(gCol, b) : String(b[gCol] ?? '');
+        const valA = resolveValue ? resolveValue(gCol, a) : String(a[gCol] ?? '—');
+        const valB = resolveValue ? resolveValue(gCol, b) : String(b[gCol] ?? '—');
         return valA.localeCompare(valB);
       });
     }
