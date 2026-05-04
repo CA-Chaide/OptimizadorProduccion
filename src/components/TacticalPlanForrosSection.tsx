@@ -48,8 +48,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // Estados para horarios de jornada
-  const [horarioDiurno, setHorarioDiurno] = useState("8");
+  // Estados para horarios de jornada - Inicializados con valores sugeridos
+  const [horarioDiurno, setHorarioDiurno] = useState("8.75");
   const [horarioNocturno, setHorarioNocturno] = useState("0");
 
   const [tiemposPage, setTiemposPage] = useState(1);
@@ -245,9 +245,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
-  /**
-   * Resuelve la máquina para una orden.
-   */
   const getResolvedMachine = useCallback((order: any) => {
     const orderMachine = order['MAQUINA'] || order['PUESTOTRABAJO'];
     if (orderMachine && String(orderMachine).trim() !== '') return String(orderMachine).trim().toUpperCase();
@@ -257,9 +254,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? String(match.PuestoTrabajo || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
-  /**
-   * Calcula el tiempo total de producción.
-   */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0';
     const normMaterial = normalizeMaterialCode(material);
@@ -279,9 +273,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return (unitTime * quantity).toFixed(2);
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
-  /**
-   * Renderizador de celdas para la pestaña de órdenes previsionales.
-   */
   const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
     if (upperCol === 'MAQUINA') {
@@ -326,9 +317,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return dailyOrders.slice(start, start + dailyRowsPerPage);
   }, [dailyOrders, dailyPage, dailyRowsPerPage]);
 
-  /**
-   * Resumen de producción consolidado por máquina única.
-   */
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
@@ -365,11 +353,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const formattedToday = todayDate ? formatValueForDisplay('FECHA', todayDate) : '...';
   const formattedTarget = targetDate ? formatValueForDisplay('FECHA', targetDate) : '...';
 
-  // Opciones para el selector de horas (0-12h)
-  const hourOptions = Array.from({ length: 13 }, (_, i) => ({
-    value: i.toString(),
-    label: `${i} horas`
-  }));
+  // Opciones de Horario Diurno (Solicitadas)
+  const diurnoOptions = [
+    { value: "8.75", label: "7:00 - 15:45 (8.75h)" },
+    { value: "10", label: "7:00 - 17:00 (10h)" },
+    { value: "11", label: "7:00 - 18:00 (11h)" },
+  ];
+
+  // Opciones de Horario Nocturno (Solicitadas)
+  const nocturnoOptions = [
+    { value: "0", label: "Sin turno nocturno" },
+    { value: "8.5", label: "21:00 - 5:30 (8.5h)" },
+  ];
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -580,7 +575,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </div>
                   </div>
                   
-                  {/* Selectores de Horario */}
+                  {/* Selectores de Horario con opciones solicitadas */}
                   <div className="space-y-4 pt-4 border-t border-gray-100">
                     <div>
                       <label className="text-[10px] font-bold text-gray-700 uppercase mb-1.5 block">Horario diurno</label>
@@ -589,7 +584,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <SelectValue placeholder="Seleccionar" />
                         </SelectTrigger>
                         <SelectContent>
-                          {hourOptions.map(opt => (
+                          {diurnoOptions.map(opt => (
                             <SelectItem key={`d-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
                           ))}
                         </SelectContent>
@@ -603,7 +598,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <SelectValue placeholder="Seleccionar" />
                         </SelectTrigger>
                         <SelectContent>
-                          {hourOptions.map(opt => (
+                          {nocturnoOptions.map(opt => (
                             <SelectItem key={`n-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
                           ))}
                         </SelectContent>
