@@ -1,18 +1,19 @@
 'use client';
 
 /**
- * @fileOverview Módulo de Planificación Táctica para Formulación.
+ * @fileOverview Módulo de Planificación Táctica para Formulación (Multi-Centro).
  * 
  * Configuración:
- * - Grupos: Corte y Laminado (Centro 1000).
- * - Filtros: Aplicados a Necesidades y Provisionales según RESPCTRLPROD y ALMACEN.
+ * - Grupos: Corte y Laminado / Formulación (Centros 1000 y 2000).
+ * - Vistas: Adyacentes por Planta para Necesidades y Provisionales.
+ * - Filtros: Aplicados según RESPCTRLPROD y ALMACEN por centro.
  * - Soporte multiafield para Máquina (MAQUINA, Maquina, RECURSO).
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FlaskConical, Users, Lock, Package, Loader2, Clock, 
-  ListChecks
+  ListChecks, MapPin
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,17 +39,25 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const initialLoadDone = useRef(false);
-  const scrollNecesidadesTop = useRef<HTMLDivElement>(null);
-  const scrollNecesidadesBottom = useRef<HTMLDivElement>(null);
-  const scrollNecesidadesTable = useRef<HTMLTableElement>(null);
-  const [scrollWidth, setScrollWidth] = useState(0);
+  
+  // Refs para sincronización de scroll (C1000)
+  const scrollN1000Top = useRef<HTMLDivElement>(null);
+  const scrollN1000Bottom = useRef<HTMLDivElement>(null);
+  const scrollN1000Table = useRef<HTMLTableElement>(null);
+  const [width1000, setWidth1000] = useState(0);
+
+  // Refs para sincronización de scroll (C2000)
+  const scrollN2000Top = useRef<HTMLDivElement>(null);
+  const scrollN2000Bottom = useRef<HTMLDivElement>(null);
+  const scrollN2000Table = useRef<HTMLTableElement>(null);
+  const [width2000, setWidth2000] = useState(0);
 
   // Efecto 1: Control de hidratación
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Efecto 2: Carga de datos maestros
+  // Efecto 2: Carga de datos maestros (1000 y 2000)
   useEffect(() => {
     if (!mounted || initialLoadDone.current) return;
 
@@ -56,29 +65,29 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       initialLoadDone.current = true;
       setIsLoading(true);
       try {
-        // 1. Grupos (Corte y Laminado - Centro 1000)
+        // 1. Grupos (Corte y Laminado / Formulación - Centros 1000 y 2000)
         const resG = await grupoService.getAll();
-        const filteredGroups = (resG.data || []).filter(g => 
-          g.nombre_grupo && 
-          g.nombre_grupo.toLowerCase().includes('corte y laminado') &&
-          String(g.centro || '').trim() === '1000'
-        );
+        const filteredGroups = (resG.data || []).filter(g => {
+          const name = (g.nombre_grupo || '').toLowerCase();
+          const centro = String(g.centro || '').trim();
+          return name.includes('corte y laminado') || name.includes('formulacion') || name.includes('formulación');
+        });
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
         // 2. Restricciones
         const resR = await restriccionService.getAll();
-        const center1000Restrictions = (resR.data || []).filter(r => 
-          groupsIds.includes(r.codigo_grupo) && String(r.grupo?.centro || '').trim() === '1000'
+        const relevantRestrictions = (resR.data || []).filter(r => 
+          groupsIds.includes(r.codigo_grupo)
         );
-        setRestricciones(center1000Restrictions);
+        setRestricciones(relevantRestrictions);
 
         // 3. Órdenes Provisionales
         const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
         const oData = resProv.data?.data || resProv.data || [];
         setOrders(Array.isArray(oData) ? oData : []);
 
-        // 4. Tiempos de Ensamblado (Carga segmentada por grupo)
+        // 4. Tiempos de Ensamblado (Carga segmentada)
         const allTiempos: any[] = [];
         for (const g of filteredGroups) {
           if (!g.centro) continue;
@@ -96,7 +105,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         inspector.captureVariable('dataLoaded', { 
             groups: filteredGroups.length,
-            restrictions: center1000Restrictions.length,
+            restrictions: relevantRestrictions.length,
             orders: Array.isArray(oData) ? oData.length : 0, 
             times: allTiempos.length 
         });
@@ -117,93 +126,205 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return match ? match[1].slice(-8) : matStr.slice(-8);
   };
 
-  // Helper para obtener códigos de restricciones
-  const getRestrictionCodes = (name: string) => {
-    return restricciones
-      .filter(r => r.nombre_restriccion.toUpperCase() === name.toUpperCase())
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
+  const getMachineValue = (item: any) => {
+    return String(item.MAQUINA || item.Maquina || item.RECURSO || '—').trim();
   };
 
-  // Lógica de filtrado compartido (Filtros de Planta 1000: RESPCTRLPROD y ALMACEN)
-  const ordenesFiltradas = useMemo(() => {
-    const respCodes = getRestrictionCodes('RESPCTRLPROD');
-    const almCodes = getRestrictionCodes('ALMACEN');
+  // Helper para filtrar por centro y restricciones
+  const filterOrdersByCenter = (centroId: string) => {
+    const relevantGroupIds = grupos
+      .filter(g => String(g.centro || '').trim() === centroId)
+      .map(g => g.codigo_grupo);
+
+    const groupRest = restricciones.filter(r => relevantGroupIds.includes(r.codigo_grupo));
+
+    const respCodes = groupRest
+      .filter(r => r.nombre_restriccion.toUpperCase() === 'RESPCTRLPROD')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+
+    const almCodes = groupRest
+      .filter(r => r.nombre_restriccion.toUpperCase() === 'ALMACEN')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
 
     return ordenes.filter(o => {
-      // 1. Filtro estricto por Planta 1000
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
-      if (itemCentro !== '' && itemCentro !== '1000') return false; 
+      if (itemCentro !== centroId && itemCentro !== '') {
+         // Si el item tiene centro definido y no coincide, filtrar
+         if (itemCentro !== centroId) return false;
+      }
 
-      // 2. Validación Responsable
       const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
-      if (!matchResp) return false;
-
-      // 3. Validación Almacén
+      
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       
-      return matchAlm;
+      return matchResp && matchAlm;
     });
-  }, [ordenes, restricciones]);
+  };
 
-  // Lista Necesidades: Unión de Provisionales Filtradas + Tiempos
-  const listaNecesidades = useMemo(() => {
+  const ordenesC1000 = useMemo(() => filterOrdersByCenter('1000'), [ordenes, grupos, restricciones]);
+  const ordenesC2000 = useMemo(() => filterOrdersByCenter('2000'), [ordenes, grupos, restricciones]);
+
+  // Unión Táctica: Necesidades
+  const generateNeedsList = (filteredOrders: any[], centerId: string) => {
     const timesMap = new Map<string, any>();
-    tiemposEnsamblado.forEach(t => {
-      const code = String(t.CodMaterial || t.Material || '').trim().slice(-8);
-      if (code) timesMap.set(code, t);
-    });
+    tiemposEnsamblado
+      .filter(t => String(t.Centro || t.centro || '').trim() === centerId)
+      .forEach(t => {
+        const code = String(t.CodMaterial || t.Material || '').trim().slice(-8);
+        if (code) timesMap.set(code, t);
+      });
 
-    return ordenesFiltradas.map(o => {
+    return filteredOrders.map(o => {
       const code = extractMaterialCode(o);
       const t = timesMap.get(code);
       const nameStr = String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim();
       const desc = nameStr || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
 
       return {
-        centro: o.Centro || o.CENTRO || t?.Centro || '1000',
+        centro: centerId,
         almacen: o.Almacen || o.ALMACEN || '—',
         categoria: o.CATEGORIA || o.Categoria || '—',
         material: code,
         descripcion: desc,
         cantidad: o.CANTIDAD || o.CANTPROGRAMADA || 0,
         lineaTecnica: t?.Linea || t?.PuestoTrabajoLinea || '—',
-        maquina: o.MAQUINA || o.Maquina || o.RECURSO || '—',
+        maquina: getMachineValue(o),
         tiempo: t?.Tiempo_Min || t?.Tiempo || 0
       };
     });
-  }, [ordenesFiltradas, tiemposEnsamblado]);
+  };
+
+  const needsC1000 = useMemo(() => generateNeedsList(ordenesC1000, '1000'), [ordenesC1000, tiemposEnsamblado]);
+  const needsC2000 = useMemo(() => generateNeedsList(ordenesC2000, '2000'), [ordenesC2000, tiemposEnsamblado]);
 
   // Sincronización de scroll
+  const setupScroll = (topRef: React.RefObject<HTMLDivElement>, bottomRef: React.RefObject<HTMLDivElement>, tableRef: React.RefObject<HTMLTableElement>, setWidth: (w: number) => void) => {
+    const top = topRef.current;
+    const bottom = bottomRef.current;
+    if (!top || !bottom) return;
+    const syncB = () => { if (bottom) bottom.scrollLeft = top.scrollLeft; };
+    const syncT = () => { if (top) top.scrollLeft = bottom.scrollLeft; };
+    top.addEventListener('scroll', syncB);
+    bottom.addEventListener('scroll', syncT);
+    setTimeout(() => { if (tableRef.current) setWidth(tableRef.current.offsetWidth); }, 500);
+    return () => {
+      top.removeEventListener('scroll', syncB);
+      bottom.removeEventListener('scroll', syncT);
+    };
+  };
+
   useEffect(() => {
     if (activeTab === 'necesidades' && mounted) {
-      const top = scrollNecesidadesTop.current;
-      const bottom = scrollNecesidadesBottom.current;
-      if (!top || !bottom) return;
-      const syncB = () => { if (bottom) bottom.scrollLeft = top.scrollLeft; };
-      const syncT = () => { if (top) top.scrollLeft = bottom.scrollLeft; };
-      top.addEventListener('scroll', syncB);
-      bottom.addEventListener('scroll', syncT);
-      const timer = setTimeout(() => {
-        if (scrollNecesidadesTable.current) setScrollWidth(scrollNecesidadesTable.current.offsetWidth);
-      }, 500);
-      return () => {
-        top.removeEventListener('scroll', syncB);
-        bottom.removeEventListener('scroll', syncT);
-        clearTimeout(timer);
-      };
+      const clean1 = setupScroll(scrollN1000Top, scrollN1000Bottom, scrollN1000Table, setWidth1000);
+      const clean2 = setupScroll(scrollN2000Top, scrollN2000Bottom, scrollN2000Table, setWidth2000);
+      return () => { clean1?.(); clean2?.(); };
     }
-  }, [activeTab, mounted, listaNecesidades]);
+  }, [activeTab, mounted, needsC1000, needsC2000]);
 
   if (!mounted) return null;
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Cargando Planta 1000 - Formulación...</p>
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Plantas de Formulación...</p>
     </div>
+  );
+
+  const renderNeedsTable = (data: any[], topRef: any, bottomRef: any, tableRef: any, width: number, title: string, colorClass: string) => (
+    <div className="space-y-4">
+      <div className={cn("p-4 rounded-t-2xl border-b text-left", colorClass)}>
+        <h3 className="text-xs font-black uppercase flex items-center gap-2">
+          <ListChecks className="w-4 h-4" /> {title}
+        </h3>
+      </div>
+      <div ref={topRef} className="overflow-x-auto h-3 bg-gray-50 border-b">
+        <div style={{ width: width, height: '1px' }} />
+      </div>
+      <div ref={bottomRef} className="overflow-x-auto max-h-[400px]">
+        <table ref={tableRef} className="w-full border-collapse text-center">
+          <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
+            <tr>
+              <th className="px-4 py-4 border-r border-gray-200">Centro</th>
+              <th className="px-4 py-4 border-r border-gray-200">Almacén</th>
+              <th className="px-4 py-4 border-r border-gray-200 text-blue-700 bg-blue-50/20">Categoría</th>
+              <th className="px-4 py-4 border-r border-gray-200">Material</th>
+              <th className="px-4 py-4 border-r border-gray-200 text-left">Descripción</th>
+              <th className="px-4 py-4 border-r border-gray-200">Cantidad</th>
+              <th className="px-4 py-4 border-r border-gray-200 text-purple-700 bg-purple-50/20">Línea Técnica</th>
+              <th className="px-4 py-4 border-r border-gray-200 text-orange-700 bg-orange-50/10">Máquina</th>
+              <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Tiempo (Min)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 text-[10px]">
+            {data.length === 0 ? (
+              <tr><td colSpan={9} className="py-12 text-center text-gray-400 italic">Sin resultados</td></tr>
+            ) : (
+              data.map((row, i) => (
+                <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-4 py-2 font-bold text-gray-400 border-r border-dashed border-gray-100">{row.centro}</td>
+                  <td className="px-4 py-2 font-mono text-gray-400 border-r border-dashed border-gray-100">{row.almacen}</td>
+                  <td className="px-4 py-2 font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5 uppercase">{row.categoria}</td>
+                  <td className="px-4 py-2 font-mono font-bold text-primary border-r border-dashed border-gray-100 tracking-tighter">{row.material}</td>
+                  <td className="px-4 py-2 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[180px]">{row.descripcion}</td>
+                  <td className="px-4 py-2 font-black text-slate-800 border-r border-dashed border-gray-100 font-mono">{row.cantidad.toLocaleString()}</td>
+                  <td className="px-4 py-2 font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5 uppercase">{row.lineaTecnica}</td>
+                  <td className="px-4 py-2 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">{row.maquina}</td>
+                  <td className="px-4 py-2 font-mono font-black text-teal-600 bg-teal-50/5">{row.tiempo.toFixed(4)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderOrdersTable = (data: any[], title: string, colorClass: string) => (
+    <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+      <div className={cn("p-4 border-b text-left", colorClass)}>
+        <h3 className="text-xs font-black uppercase text-gray-900 flex items-center gap-2">
+          <Package className="w-4 h-4" /> {title} ({data.length})
+        </h3>
+      </div>
+      <div className="overflow-x-auto max-h-[400px]">
+        <table className="w-full border-collapse text-center">
+          <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
+            <tr>
+              <th className="px-4 py-4 border-r border-gray-100">Orden</th>
+              <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
+              <th className="px-4 py-4 border-r border-gray-100 text-left">Nombre</th>
+              <th className="px-4 py-4 border-r border-gray-100 text-orange-700 bg-orange-50/10">Máquina</th>
+              <th className="px-4 py-4 border-r border-gray-100">Cantidad</th>
+              <th className="px-4 py-4">Almacén</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 text-[10px]">
+            {data.length === 0 ? (
+              <tr><td colSpan={6} className="py-12 text-center text-gray-400 italic">Sin órdenes para los filtros aplicados</td></tr>
+            ) : (
+              data.map((o, i) => (
+                <tr key={i} className="hover:bg-gray-50/30 transition-colors">
+                  <td className="px-4 py-2 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN}</td>
+                  <td className="px-4 py-2 font-mono font-bold text-teal-700 border-r border-gray-100">{extractMaterialCode(o)}</td>
+                  <td className="px-4 py-2 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[250px]">
+                    {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
+                  </td>
+                  <td className="px-4 py-2 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
+                    {getMachineValue(o)}
+                  </td>
+                  <td className="px-4 py-2 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
+                  <td className="px-4 py-2 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 
   return (
@@ -212,7 +333,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <div className="p-2 bg-teal-50 rounded-xl shadow-sm"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
         <div>
           <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación</h2>
-          <Badge variant="outline" className="text-[10px] font-bold border-teal-200 text-teal-700 bg-teal-50 mt-1 uppercase">Planta 1000 - Quito</Badge>
+          <div className="flex gap-2 mt-1">
+             <Badge variant="outline" className="text-[9px] font-black border-green-200 text-green-700 bg-green-50 uppercase">Planta 1000 (UIO)</Badge>
+             <Badge variant="outline" className="text-[9px] font-black border-indigo-200 text-indigo-700 bg-indigo-50 uppercase">Planta 2000 (GYE)</Badge>
+          </div>
         </div>
       </div>
 
@@ -220,8 +344,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'necesidades', l: 'Necesidades', i: ListChecks },
-            { v: 'grupos', l: 'Grupos (C1000)', i: Users }, 
-            { v: 'restricciones', l: 'Restricciones', i: Lock }, 
+            { v: 'grupos', l: 'Grupos / Áreas', i: Users }, 
+            { v: 'restricciones', l: 'Filtros Técnicos', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Tiempos', i: Clock }
           ].map(tab => (
@@ -231,78 +355,60 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="necesidades" className="animate-in fade-in duration-300">
-          <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-            <div className="p-4 bg-indigo-50/50 border-b border-indigo-100 text-left">
-              <h3 className="text-xs font-black uppercase text-indigo-900 flex items-center gap-2">
-                <ListChecks className="w-4 h-4" /> Unión Táctica: Provisionales + Tiempos (Planta 1000)
-              </h3>
-              <p className="text-[10px] text-indigo-600 mt-1">Filtrado por Restricciones de Corte y Laminado</p>
-            </div>
-            <div ref={scrollNecesidadesTop} className="overflow-x-auto h-3 bg-gray-50 border-b border-indigo-100">
-              <div style={{ width: scrollWidth, height: '1px' }} />
-            </div>
-            <div ref={scrollNecesidadesBottom} className="overflow-x-auto max-h-[600px]">
-              <table ref={scrollNecesidadesTable} className="w-full border-collapse text-center">
-                <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-4 border-r border-gray-200">Centro</th>
-                    <th className="px-4 py-4 border-r border-gray-200">Almacén</th>
-                    <th className="px-4 py-4 border-r border-gray-200 text-blue-700 bg-blue-50/20">Categoría</th>
-                    <th className="px-4 py-4 border-r border-gray-200">Material</th>
-                    <th className="px-4 py-4 border-r border-gray-200 text-left">Descripción</th>
-                    <th className="px-4 py-4 border-r border-gray-200">Cantidad</th>
-                    <th className="px-4 py-4 border-r border-gray-200 text-purple-700 bg-purple-50/20">Línea Técnica</th>
-                    <th className="px-4 py-4 border-r border-gray-200 text-orange-700 bg-orange-50/10">Máquina</th>
-                    <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Tiempo (Min)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {listaNecesidades.length === 0 ? (
-                    <tr><td colSpan={9} className="py-20 text-center text-gray-400 font-medium italic">Sin resultados para Planta 1000</td></tr>
-                  ) : (
-                    listaNecesidades.map((row, i) => (
-                      <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                        <td className="px-4 py-3 font-bold text-gray-400 border-r border-dashed border-gray-100">{row.centro}</td>
-                        <td className="px-4 py-3 font-mono text-gray-400 border-r border-dashed border-gray-100">{row.almacen}</td>
-                        <td className="px-4 py-3 font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5 uppercase">{row.categoria}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-primary border-r border-dashed border-gray-100 tracking-tighter">{row.material}</td>
-                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[220px]">{row.descripcion}</td>
-                        <td className="px-4 py-3 font-black text-slate-800 border-r border-dashed border-gray-100 font-mono">{row.cantidad.toLocaleString()}</td>
-                        <td className="px-4 py-3 font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5 uppercase">{row.lineaTecnica}</td>
-                        <td className="px-4 py-3 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">{row.maquina}</td>
-                        <td className="px-4 py-3 font-mono font-black text-teal-600 bg-teal-50/5">{row.tiempo.toFixed(4)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="grupos">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
-            {grupos.map(g => (
-              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
-                <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
-                <Badge className="bg-teal-50 text-teal-700 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge>
-                <h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4>
-                <p className="text-[10px] font-medium text-gray-400 mt-2 uppercase">ID: {g.codigo_grupo}</p>
-              </Card>
-            ))}
-            {grupos.length === 0 && (
-              <div className="col-span-full py-20 text-center text-gray-400 italic">No hay grupos de la Planta 1000 cargados</div>
-            )}
+        <TabsContent value="necesidades" className="space-y-10 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+              {renderNeedsTable(needsC1000, scrollN1000Top, scrollN1000Bottom, scrollN1000Table, width1000, "Necesidades Planta 1000", "bg-green-50/50 border-green-100 text-green-900")}
+            </Card>
+            <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+              {renderNeedsTable(needsC2000, scrollN2000Top, scrollN2000Bottom, scrollN2000Table, width2000, "Necesidades Planta 2000", "bg-indigo-50/50 border-indigo-100 text-indigo-900")}
+            </Card>
           </div>
         </TabsContent>
 
-        <TabsContent value="restricciones">
+        <TabsContent value="grupos" className="animate-in fade-in duration-300">
+          <div className="space-y-10">
+            {/* Planta 1000 */}
+            <div>
+              <h3 className="text-xs font-black uppercase text-green-700 mb-4 px-1 flex items-center gap-2">
+                <MapPin className="w-3 h-3" /> Áreas Planta 1000 (Quito)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {grupos.filter(g => String(g.centro) === '1000').map(g => (
+                  <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-4">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-green-500" />
+                    <h4 className="font-bold text-gray-800 uppercase text-[11px] leading-tight">{g.nombre_grupo}</h4>
+                    <p className="text-[9px] font-medium text-gray-400 mt-2 uppercase">ID: {g.codigo_grupo}</p>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            {/* Planta 2000 */}
+            <div>
+              <h3 className="text-xs font-black uppercase text-indigo-700 mb-4 px-1 flex items-center gap-2">
+                <MapPin className="w-3 h-3" /> Áreas Planta 2000 (Guayaquil)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {grupos.filter(g => String(g.centro) === '2000').map(g => (
+                  <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-4">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500" />
+                    <h4 className="font-bold text-gray-800 uppercase text-[11px] leading-tight">{g.nombre_grupo}</h4>
+                    <p className="text-[9px] font-medium text-gray-400 mt-2 uppercase">ID: {g.codigo_grupo}</p>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="restricciones" className="animate-in fade-in duration-300">
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
             <table className="w-full border-collapse text-center">
               <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro (Quito)</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Planta</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
                   <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
                   <th className="px-6 py-5 text-left">Descripción</th>
                 </tr>
@@ -310,6 +416,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <tbody className="divide-y divide-gray-100 text-[11px]">
                 {restricciones.map(r => (
                   <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
+                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
+                      <Badge variant="outline" className={cn("text-[9px] font-black uppercase", r.grupo?.centro === '1000' ? "border-green-200 text-green-700 bg-green-50" : "border-indigo-200 text-indigo-700 bg-indigo-50")}>
+                        {r.grupo?.centro === '1000' ? 'QUITO' : 'GYE'}
+                      </Badge>
+                    </td>
                     <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
                     <td className="px-6 py-4 border-r border-dashed border-gray-200">
                       <Badge variant="outline" className="font-mono text-teal-700 border-teal-200 bg-teal-50/50">{r.valor_restriccion}</Badge>
@@ -322,79 +433,52 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes">
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="p-4 bg-gray-50/50 border-b border-gray-100 text-left">
-              <h3 className="text-xs font-black uppercase text-gray-900 flex items-center gap-2">
-                <Package className="w-4 h-4" /> Órdenes Provisionales (Filtradas Planta 1000)
-              </h3>
-            </div>
-            <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full border-collapse text-center">
-                <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
-                  <tr>
-                    <th className="px-4 py-4 border-r border-gray-100">Orden</th>
-                    <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-left">Nombre</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-orange-700 bg-orange-50/10">Máquina</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Cantidad</th>
-                    <th className="px-4 py-4">Almacén</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={6} className="py-20 text-center text-gray-400 font-medium italic">Sin órdenes provisionales para los filtros de Planta 1000</td></tr>
-                  ) : (
-                    ordenesFiltradas.map((o, i) => (
-                      <tr key={i} className="hover:bg-teal-50/30 transition-colors">
-                        <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{extractMaterialCode(o)}</td>
-                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">
-                          {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
-                        </td>
-                        <td className="px-4 py-3 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
-                          {o.MAQUINA || o.Maquina || o.RECURSO || '—'}
-                        </td>
-                        <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
-                        <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            {renderOrdersTable(ordenesC1000, "Provisionales Planta 1000", "bg-green-50/50 border-green-100")}
+            {renderOrdersTable(ordenesC2000, "Provisionales Planta 2000", "bg-indigo-50/50 border-indigo-100")}
+          </div>
         </TabsContent>
 
-        <TabsContent value="tiempos">
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full border-collapse text-center">
-                <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
-                  <tr>
-                    <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-teal-700">Tiempo (Min)</th>
-                    <th className="px-4 py-4">Centro</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={4} className="py-20 text-center text-gray-400 font-medium italic">Sin tiempos de ensamblado para Planta 1000</td></tr>
-                  ) : (
-                    tiemposEnsamblado.map((t, i) => (
-                      <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{String(t.CodMaterial || t.Material || '').trim().slice(-8)}</td>
-                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Material || t.Descripcion || '—'}</td>
-                        <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
-                        <td className="px-4 py-3 font-bold text-gray-400 uppercase">{t.Centro || '—'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {[ 
+              { t: 'Tiempos Planta 1000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim() === '1000'), c: 'border-green-200 text-green-700 bg-green-50' }, 
+              { t: 'Tiempos Planta 2000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim() === '2000'), c: 'border-indigo-200 text-indigo-700 bg-indigo-50' } 
+            ].map((center, idx) => (
+              <div key={idx} className="space-y-3 text-left">
+                <h3 className="text-[10px] font-black uppercase text-gray-400 px-1 flex items-center gap-2">
+                   <Clock className="w-3 h-3" /> {center.t}
+                </h3>
+                <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+                  <div className="overflow-x-auto max-h-[400px]">
+                    <table className="w-full border-collapse text-center">
+                      <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                        <tr>
+                          <th className="px-4 py-4 border-r border-dashed border-gray-100">CodMaterial</th>
+                          <th className="px-4 py-4 border-r border-dashed border-gray-100 text-left">Descripción</th>
+                          <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Tiempo (Min)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 text-[10px]">
+                        {center.d.length === 0 ? (
+                          <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">Sin datos técnicos</td></tr>
+                        ) : (
+                          center.d.map((t, i) => (
+                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100">{String(t.CodMaterial || '').trim().slice(-8)}</td>
+                              <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">{t.Material || t.Descripcion || '—'}</td>
+                              <td className="px-4 py-3 font-mono font-black text-teal-600 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
     </div>
