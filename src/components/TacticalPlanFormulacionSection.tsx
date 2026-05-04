@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { FlaskConical, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -178,16 +178,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return { code, desc, ...dimensions };
   };
 
-  const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
-    if (ancho <= 0 || largo <= 0 || totalSubblocks <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
-    const innerRadius = MACHINE_RADIO_CM - largo;
-    if (innerRadius <= 0) return { subbloquesPorCarga: 1, totalCargas: Math.ceil(totalSubblocks) };
-    const innerCircumference = 2 * Math.PI * innerRadius;
-    const subbloquesPorCarga = Math.max(1, Math.floor(innerCircumference / ancho));
-    const totalCargas = Math.ceil(totalSubblocks / subbloquesPorCarga);
-    return { subbloquesPorCarga, totalCargas };
-  };
-
   const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
@@ -215,78 +205,74 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
+  
   const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
-  const calculateSummary = (data: any[]) => {
-    const groupsMap = new Map<string, { fecha: string; dens: string; tipo: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
-    data.forEach(o => {
-      const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
-      const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
-      const info = extractMaterialInfo(o);
-      // Nueva clave de agrupación incluyendo Tipo
-      const key = `${fecha}|${info.dens}|${info.tipo}|${info.apertura}`;
-      
-      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      const ancho = parseFloat(info.ancho) || 0;
-      const largo = parseFloat(info.largo) || 0;
-      const esp = parseFloat(info.esp) || 0;
-      const densValue = parseFloat(String(info.dens)) || 0;
-      
-      const usefulHeight = isNaN(densValue) ? 103 : (densValue < 30 ? 103 : 85);
-      const itemSubbloques = (qty * esp) / usefulHeight;
-      const itemBloques20m = (ancho * itemSubbloques) / 2000;
-      const { totalCargas } = calculateCargasLogic(itemSubbloques, ancho, largo);
-      const physicalBlocksCount = Math.ceil(itemBloques20m);
-      const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
-      const tDescarga = Math.ceil(qty / (esp > 10 ? 4 : 3)) * SECONDS_REPETITION;
-      const tCoches = Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP;
-      const itemTimeLog = (tCarga + tDescarga + tCoches) / 3600;
+  /**
+   * Lógica de Resumen Unificado
+   */
+  const calculateUnifiedSummary = (data1000: any[], data2000: any[]) => {
+    const groupsMap = new Map<string, { 
+      fecha: string; 
+      dens: string; 
+      tipo: string; 
+      apertura: string; 
+      bloques1000: number; 
+      bloques2000: number; 
+      totalBloques: number;
+    }>();
 
-      if (!groupsMap.has(key)) {
-        groupsMap.set(key, { 
-          fecha, 
-          dens: info.dens, 
-          tipo: info.tipo, 
-          apertura: info.apertura, 
-          units: 0, 
-          subbloques: 0, 
-          bloques20m: 0, 
-          cargas: 0, 
-          timeLog: 0 
-        });
-      }
-      
-      const entry = groupsMap.get(key)!;
-      entry.units += qty; 
-      entry.subbloques += itemSubbloques; 
-      entry.bloques20m += itemBloques20m; 
-      entry.cargas += totalCargas; 
-      entry.timeLog += itemTimeLog;
-    });
+    const processData = (data: any[], centerId: '1000' | '2000') => {
+      data.forEach(o => {
+        const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+        const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
+        const info = extractMaterialInfo(o);
+        const key = `${fecha}|${info.dens}|${info.tipo}|${info.apertura}`;
+        
+        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+        const ancho = parseFloat(info.ancho) || 0;
+        const esp = parseFloat(info.esp) || 0;
+        const densValue = parseFloat(String(info.dens)) || 0;
+        const usefulHeight = isNaN(densValue) ? 103 : (densValue < 30 ? 103 : 85);
+        
+        const itemSubbloques = (qty * esp) / usefulHeight;
+        const itemBloques20m = (ancho * itemSubbloques) / 2000;
+
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, { 
+            fecha, 
+            dens: info.dens, 
+            tipo: info.tipo, 
+            apertura: info.apertura, 
+            bloques1000: 0, 
+            bloques2000: 0, 
+            totalBloques: 0 
+          });
+        }
+        
+        const entry = groupsMap.get(key)!;
+        if (centerId === '1000') entry.bloques1000 += itemBloques20m;
+        else entry.bloques2000 += itemBloques20m;
+        entry.totalBloques += itemBloques20m;
+      });
+    };
+
+    processData(data1000, '1000');
+    processData(data2000, '2000');
+
     return Array.from(groupsMap.values()).sort((a, b) => 
       a.fecha.localeCompare(b.fecha) || a.dens.localeCompare(b.dens) || a.tipo.localeCompare(b.tipo) || a.apertura.localeCompare(b.apertura)
     );
   };
 
-  const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
-  const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
+  const unifiedSummaryData = useMemo(() => calculateUnifiedSummary(provC1000, provC2000), [provC1000, provC2000]);
 
-  const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ 
-    units: acc.units + row.units, 
-    subbloques: acc.subbloques + row.subbloques, 
-    bloques20m: acc.bloques20m + row.bloques20m, 
-    cargas: acc.cargas + row.cargas, 
-    timeLog: acc.timeLog + row.timeLog 
-  }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
-  
-  const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ 
-    units: acc.units + row.units, 
-    subbloques: acc.subbloques + row.subbloques, 
-    bloques20m: acc.bloques20m + row.bloques20m, 
-    cargas: acc.cargas + row.cargas, 
-    timeLog: acc.timeLog + row.timeLog 
-  }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
+  const summaryTotals = useMemo(() => unifiedSummaryData.reduce((acc, row) => ({ 
+    bloques1000: acc.bloques1000 + row.bloques1000,
+    bloques2000: acc.bloques2000 + row.bloques2000,
+    totalBloques: acc.totalBloques + row.totalBloques
+  }), { bloques1000: 0, bloques2000: 0, totalBloques: 0 }), [unifiedSummaryData]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
 
@@ -305,7 +291,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
+            { v: 'resumen', l: 'Resumen Consolidado', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Restricciones', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
@@ -322,9 +308,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-primary" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga Consolidado</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
-                  {selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                  {selectedDate === 'all' ? 'Plan Maestro Unificado (Quito & Guayaquil)' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
@@ -363,105 +349,45 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </Popover>
           </div>
 
-          {/* PLANTA 1000 - QUITO */}
           <div className="space-y-4">
-            <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-green-700">
-              <div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Almacén 1006)
+            <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-primary">
+              <div className="w-2 h-2 rounded-full bg-primary" /> Resumen Maestro de Producción Unificado
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-              <div className="overflow-x-auto max-h-[400px]">
+              <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full border-collapse text-center font-sans">
                   <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                     <tr>
-                      <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Descripción</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-primary">Tipo</th>
-                      <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Nro. Bloque Formulado</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Nro. Subbloque</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Nro. Cargas</th>
-                      <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">Tiempo Operativo</th>
+                      <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
+                      <th className="px-4 py-4 border-r border-gray-100">Descripción</th>
+                      <th className="px-4 py-4 border-r border-gray-100">Densidad</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Nro. Bloques (1000)</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Nro. Bloques (2000)</th>
+                      <th className="px-4 py-4 text-center text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-[11px]">
-                    {summaryData1000.map((row, i) => (
+                    {unifiedSummaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
-                        <td className="px-4 py-2 font-black text-gray-400 border-r border-gray-50 uppercase text-[9px]">BLOQUE FORMULADO</td>
-                        <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
-                        <td className="px-4 py-2 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
-                        <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
-                        <td className="px-4 py-2 font-mono border-r border-gray-50">{row.units.toLocaleString()}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
+                        <td className="px-4 py-3 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
+                        <td className="px-4 py-3 font-black text-gray-400 border-r border-gray-50 uppercase text-[9px]">BLOQUE FORMULADO</td>
+                        <td className="px-4 py-3 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
+                        <td className="px-4 py-3 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
+                        <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{row.bloques1000.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{row.bloques2000.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono font-black text-orange-800 text-center bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-gray-800 text-white font-bold text-[11px]">
                     <tr>
-                      <td colSpan={5} className="px-4 py-2 text-right uppercase">Total Planta 1000:</td>
-                      <td className="px-4 py-2 font-mono text-orange-200">{summaryTotals1000.bloques20m.toFixed(1)}</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals1000.units.toLocaleString()}</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals1000.subbloques.toFixed(1)}</td>
-                      <td className="px-4 py-2 font-mono">{Math.ceil(summaryTotals1000.cargas)}</td>
-                      <td className="px-4 py-2 font-mono text-teal-300">{summaryTotals1000.timeLog.toFixed(2)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </Card>
-          </div>
-
-          {/* PLANTA 2000 - GUAYAQUIL */}
-          <div className="space-y-4">
-            <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-indigo-700">
-              <div className="w-2 h-2 rounded-full bg-indigo-600" /> Planta 2000 - Guayaquil (Almacén 2006)
-            </h3>
-            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-              <div className="overflow-x-auto max-h-[400px]">
-                <table className="w-full border-collapse text-center font-sans">
-                  <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Descripción</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-primary">Tipo</th>
-                      <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Nro. Bloque Formulado</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Nro. Subbloque</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Nro. Cargas</th>
-                      <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">Tiempo Operativo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 text-[11px]">
-                    {summaryData2000.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
-                        <td className="px-4 py-2 font-black text-gray-400 border-r border-gray-50 uppercase text-[9px]">BLOQUE FORMULADO</td>
-                        <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
-                        <td className="px-4 py-2 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
-                        <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
-                        <td className="px-4 py-2 font-mono border-r border-gray-50">{row.units.toLocaleString()}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-800 text-white font-bold text-[11px]">
-                    <tr>
-                      <td colSpan={5} className="px-4 py-2 text-right uppercase">Total Planta 2000:</td>
-                      <td className="px-4 py-2 font-mono text-orange-200">{summaryTotals2000.bloques20m.toFixed(1)}</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals2000.units.toLocaleString()}</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals2000.subbloques.toFixed(1)}</td>
-                      <td className="px-4 py-2 font-mono">{Math.ceil(summaryTotals2000.cargas)}</td>
-                      <td className="px-4 py-2 font-mono text-teal-300">{summaryTotals2000.timeLog.toFixed(2)}</td>
+                      <td colSpan={5} className="px-4 py-3 text-right uppercase">Totales Consolidados:</td>
+                      <td className="px-4 py-3 font-mono text-green-300">{summaryTotals.bloques1000.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-indigo-300">{summaryTotals.bloques2000.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-orange-300 text-center">{summaryTotals.totalBloques.toFixed(1)}</td>
                     </tr>
                   </tfoot>
                 </table>
