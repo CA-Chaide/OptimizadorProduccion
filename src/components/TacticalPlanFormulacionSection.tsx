@@ -48,7 +48,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
-        // Incluir espuma y corte y laminado, pero EXCLUIR formulación por estar inactivo
         return (name.includes('espuma') || name.includes('corte y laminado')) && !name.includes('formulación');
       });
       setGrupos(filtered);
@@ -194,6 +193,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
   
+  const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
+  const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
+
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
     data.forEach(o => {
@@ -225,21 +227,25 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
 
-  const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ 
-    units: acc.units + row.units, 
-    subbloques: acc.subbloques + row.subbloques, 
-    bloques20m: acc.bloques20m + row.bloques20m, 
-    cargas: acc.cargas + row.cargas, 
-    timeLog: acc.timeLog + row.timeLog 
-  }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
+  const summaryTotals1000 = useMemo(() => {
+    return summaryData1000.reduce((acc, row) => ({
+      units: acc.units + row.units,
+      subbloques: acc.subbloques + row.subbloques,
+      bloques20m: acc.bloques20m + row.bloques20m,
+      cargas: acc.cargas + row.cargas,
+      timeLog: acc.timeLog + row.timeLog
+    }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
+  }, [summaryData1000]);
 
-  const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ 
-    units: acc.units + row.units, 
-    subbloques: acc.subbloques + row.subbloques, 
-    bloques20m: acc.bloques20m + row.bloques20m, 
-    cargas: acc.cargas + row.cargas, 
-    timeLog: acc.timeLog + row.timeLog 
-  }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
+  const summaryTotals2000 = useMemo(() => {
+    return summaryData2000.reduce((acc, row) => ({
+      units: acc.units + row.units,
+      subbloques: acc.subbloques + row.subbloques,
+      bloques20m: acc.bloques20m + row.bloques20m,
+      cargas: acc.cargas + row.cargas,
+      timeLog: acc.timeLog + row.timeLog
+    }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
+  }, [summaryData2000]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
 
@@ -476,7 +482,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-3 py-4">ALM.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-gray-100">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
@@ -508,11 +514,51 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
-          <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
-            <div className="p-12 text-center text-gray-400 font-medium italic">
-              Utilice la pestaña de Provisionales para ver el detalle por material y tiempos de ensamblado por planta.
-            </div>
-          </Card>
+          <div className="grid grid-cols-1 gap-10">
+            {[ 
+              { t: 'Catálogo de Tiempos - Quito 1000', d: tiemposC1000, c: 'text-teal-700', b: 'bg-teal-600' }, 
+              { t: 'Catálogo de Tiempos - Guayaquil 2000', d: tiemposC2000, c: 'text-cyan-700', b: 'bg-cyan-600' } 
+            ].map((center, idx) => (
+              <div key={idx} className="space-y-4">
+                <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
+                  <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}
+                </h3>
+                <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                  <div className="overflow-x-auto max-h-[400px]">
+                    <table className="w-full border-collapse text-center font-sans">
+                      <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                        <tr>
+                          <th className="px-4 py-4 border-r border-gray-100">Material</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
+                          <th className="px-4 py-4 border-r border-gray-100">Línea Prod.</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Estándar (Min)</th>
+                          <th className="px-4 py-4 text-center text-gray-400">Stock / Seguridad</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 text-[11px]">
+                        {center.d.length === 0 ? (
+                          <tr><td colSpan={5} className="py-8 text-center text-gray-400 italic">No hay tiempos técnicos cargados para esta planta</td></tr>
+                        ) : (
+                          center.d.map((t, i) => {
+                            const info = extractMaterialInfo(t);
+                            return (
+                              <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-4 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td>
+                                <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
+                                <td className="px-4 py-3 border-r border-gray-100 font-medium text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
+                                <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                                <td className="px-4 py-3 text-center text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
     </div>
