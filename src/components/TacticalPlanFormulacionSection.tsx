@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { FlaskConical, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,12 +20,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-
-// --- CONSTANTES TÉCNICAS ---
-const MACHINE_RADIO_CM = 350;    
-const SECONDS_LOAD_BLOCK = 300;   
-const SECONDS_REPETITION = 45;    
-const SECONDS_CART_SWAP = 60;     
 
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
@@ -48,6 +42,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
+        // Excluir específicamente el grupo 'formulación' ya que está inactivo, pero mantener los de espuma/corte
         return (name.includes('espuma') || name.includes('corte y laminado')) && !name.includes('formulación');
       });
       setGrupos(filtered);
@@ -135,8 +130,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     for (const field of fields) {
       if (item[field] && String(item[field]).trim() !== '') return String(item[field]).trim();
     }
-    const patternKey = Object.keys(item).find(k => k.includes('MAQU') || k.includes('RECUR') || k.includes('EQUIP'));
-    if (patternKey) return String(item[patternKey]).trim();
     return '—';
   };
 
@@ -151,15 +144,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
     
-    // Búsqueda del patrón D[Número][Letras] dentro de la categoría
-    const catSearchMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
-    if (catSearchMatch) {
-      dimensions.dens = catSearchMatch[1]; // Solo el número (ej: 15)
-      dimensions.tipo = catSearchMatch[2].toUpperCase(); // Solo las letras (ej: AMAF)
+    // Nueva lógica: Extraer Densidad (Número) y Tipo (Letras) directamente de la Categoría
+    // Patrón: Busca un bloque que inicie con D seguido de números y luego letras (ej: D15AMAF)
+    const techPatternMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
+    
+    if (techPatternMatch) {
+      dimensions.dens = techPatternMatch[1]; // El número (ej: 15)
+      dimensions.tipo = techPatternMatch[2].toUpperCase(); // Las letras (ej: AMAF)
     } else {
+      // Fallback a lógica anterior si no se encuentra en categoría
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
-      
       const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
       if (tipoMatch) dimensions.tipo = tipoMatch[1].toUpperCase();
     }
@@ -221,6 +216,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       bloques1000: number; 
       bloques2000: number; 
       totalBloques: number;
+      bloquesStock: number;
+      bloquesCurado: number;
+      bloquesProceso: number;
+      planReposicion: number;
     }>();
 
     const processData = (data: any[], centerId: '1000' | '2000') => {
@@ -247,7 +246,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             apertura: info.apertura, 
             bloques1000: 0, 
             bloques2000: 0, 
-            totalBloques: 0 
+            totalBloques: 0,
+            bloquesStock: 0,
+            bloquesCurado: 0,
+            bloquesProceso: 0,
+            planReposicion: 0
           });
         }
         
@@ -255,6 +258,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         if (centerId === '1000') entry.bloques1000 += itemBloques20m;
         else entry.bloques2000 += itemBloques20m;
         entry.totalBloques += itemBloques20m;
+        
+        // El plan de reposición se calcula como (Necesidades - Stock) + Proceso
+        // Nota: blocksStock incluye el criterio de disipación 24h
+        entry.planReposicion = Math.max(0, entry.totalBloques - entry.bloquesStock + entry.bloquesProceso);
       });
     };
 
@@ -268,11 +275,25 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const unifiedSummaryData = useMemo(() => calculateUnifiedSummary(provC1000, provC2000), [provC1000, provC2000]);
 
-  const summaryTotals = useMemo(() => unifiedSummaryData.reduce((acc, row) => ({ 
-    bloques1000: acc.bloques1000 + row.bloques1000,
-    bloques2000: acc.bloques2000 + row.bloques2000,
-    totalBloques: acc.totalBloques + row.totalBloques
-  }), { bloques1000: 0, bloques2000: 0, totalBloques: 0 }), [unifiedSummaryData]);
+  const summaryTotals = useMemo(() => {
+    return unifiedSummaryData.reduce((acc, row) => ({ 
+      bloques1000: acc.bloques1000 + row.bloques1000,
+      bloques2000: acc.bloques2000 + row.bloques2000,
+      totalBloques: acc.totalBloques + row.totalBloques,
+      bloquesStock: acc.bloquesStock + row.bloquesStock,
+      bloquesCurado: acc.bloquesCurado + row.bloquesCurado,
+      bloquesProceso: acc.bloquesProceso + row.bloquesProceso,
+      planReposicion: acc.planReposicion + row.planReposicion
+    }), { 
+      bloques1000: 0, 
+      bloques2000: 0, 
+      totalBloques: 0, 
+      bloquesStock: 0, 
+      bloquesCurado: 0, 
+      bloquesProceso: 0,
+      planReposicion: 0
+    });
+  }, [unifiedSummaryData]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
 
@@ -356,7 +377,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full border-collapse text-center font-sans">
-                  <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                  <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
                     <tr>
                       <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
                       <th className="px-4 py-4 border-r border-gray-100">Descripción</th>
@@ -368,35 +389,38 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado</th>
                       <th className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">BLOQUE STOCK</th>
                       <th className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">BLOQUE CURADO</th>
-                      <th className="px-4 py-4 bg-blue-50 text-blue-900">BLOQUE PROCESO</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50 text-blue-900">BLOQUE PROCESO</th>
+                      <th className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">PLAN REPOSICIÓN</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50 text-[11px]">
+                  <tbody className="divide-y divide-gray-50 text-[10px]">
                     {unifiedSummaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
-                        <td className="px-4 py-3 font-black text-gray-400 border-r border-gray-50 uppercase text-[9px]">BLOQUE FORMULADO</td>
+                        <td className="px-4 py-3 font-black text-gray-400 border-r border-gray-50 uppercase text-[8px]">BLOQUE FORMULADO</td>
                         <td className="px-4 py-3 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
                         <td className="px-4 py-3 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
                         <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{row.bloques1000.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{row.bloques2000.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
-                        <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">0</td>
-                        <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">0</td>
-                        <td className="px-4 py-3 font-mono text-blue-400 bg-blue-50/20">0</td>
+                        <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">{row.bloquesStock.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">{row.bloquesCurado.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono text-blue-400 border-r border-gray-50 bg-blue-50/20">{row.bloquesProceso.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono font-black text-emerald-600 bg-emerald-50/30">{row.planReposicion.toFixed(1)}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-800 text-white font-bold text-[11px]">
+                  <tfoot className="bg-gray-800 text-white font-bold text-[10px]">
                     <tr>
                       <td colSpan={5} className="px-4 py-3 text-right uppercase">Totales Consolidados:</td>
                       <td className="px-4 py-3 font-mono text-green-300">{summaryTotals.bloques1000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-indigo-300">{summaryTotals.bloques2000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-orange-300">{summaryTotals.totalBloques.toFixed(1)}</td>
-                      <td className="px-4 py-3 font-mono text-slate-400">0.0</td>
-                      <td className="px-4 py-3 font-mono text-amber-400">0.0</td>
-                      <td className="px-4 py-3 font-mono text-blue-400">0.0</td>
+                      <td className="px-4 py-3 font-mono text-slate-400">{summaryTotals.bloquesStock.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-amber-400">{summaryTotals.bloquesCurado.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-blue-400">{summaryTotals.bloquesProceso.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-emerald-300">{summaryTotals.planReposicion.toFixed(1)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -462,8 +486,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100">Material</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">Categoría</th>
-                        <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/20 text-amber-900">Tipo</th>
-                        <th className="px-2 py-4 border-r border-gray-100">Densidad</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/20 text-amber-900 font-black">Tipo</th>
+                        <th className="px-2 py-4 border-r border-gray-100 font-black">Densidad</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/20">APERT.</th>
                         <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
@@ -485,9 +509,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-2 font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase">{String(o.CATEGORIA || o.Categoria || '—')}</td>
+                            <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase text-[9px]">{String(o.CATEGORIA || o.Categoria || '—')}</td>
                             <td className="px-3 py-2 font-black text-amber-700 border-r border-gray-100 bg-amber-50/5 uppercase">{info.tipo}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{info.dens}</td>
+                            <td className="px-2 py-2 font-black text-gray-700 border-r border-gray-100">{info.dens}</td>
                             <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-gray-100 bg-blue-50/10">{info.apertura}</td>
                             <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{info.ancho}</td>
                             <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{info.largo}</td>
