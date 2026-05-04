@@ -365,7 +365,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
                       <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Nro. Bloques (1000)</th>
                       <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Nro. Bloques (2000)</th>
-                      <th className="px-4 py-4 text-center text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">BLOQUE STOCK</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">BLOQUE CURADO</th>
+                      <th className="px-4 py-4 bg-blue-50 text-blue-900">BLOQUE PROCESO</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-[11px]">
@@ -378,7 +381,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{row.bloques1000.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{row.bloques2000.toFixed(1)}</td>
-                        <td className="px-4 py-3 font-mono font-black text-orange-800 text-center bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
+                        <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">0</td>
+                        <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">0</td>
+                        <td className="px-4 py-3 font-mono text-blue-400 bg-blue-50/20">0</td>
                       </tr>
                     ))}
                   </tbody>
@@ -387,7 +393,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       <td colSpan={5} className="px-4 py-3 text-right uppercase">Totales Consolidados:</td>
                       <td className="px-4 py-3 font-mono text-green-300">{summaryTotals.bloques1000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-indigo-300">{summaryTotals.bloques2000.toFixed(1)}</td>
-                      <td className="px-4 py-3 font-mono text-orange-300 text-center">{summaryTotals.totalBloques.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-orange-300">{summaryTotals.totalBloques.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-slate-400">0.0</td>
+                      <td className="px-4 py-3 font-mono text-amber-400">0.0</td>
+                      <td className="px-4 py-3 font-mono text-blue-400">0.0</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -464,7 +473,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-3 py-4">ALM.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-gray-100">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
