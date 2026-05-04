@@ -22,6 +22,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -40,6 +47,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
+
+  // Estados para horarios de jornada
+  const [horarioDiurno, setHorarioDiurno] = useState("8");
+  const [horarioNocturno, setHorarioNocturno] = useState("0");
 
   const [tiemposPage, setTiemposPage] = useState(1);
   const [tiemposRowsPerPage, setTiemposRowsPerPage] = useState(20);
@@ -354,6 +365,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const formattedToday = todayDate ? formatValueForDisplay('FECHA', todayDate) : '...';
   const formattedTarget = targetDate ? formatValueForDisplay('FECHA', targetDate) : '...';
 
+  // Opciones para el selector de horas (0-12h)
+  const hourOptions = Array.from({ length: 13 }, (_, i) => ({
+    value: i.toString(),
+    label: `${i} horas`
+  }));
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-3">
@@ -553,13 +570,44 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   Capacidad de Forros
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 space-y-6">
                 <div className="space-y-6">
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Capacidad Total Planificada</p>
                     <div className="flex items-baseline gap-2">
                       <p className="text-3xl font-extrabold text-indigo-700">--</p>
                       <span className="text-sm font-medium text-gray-400 italic">horas / día</span>
+                    </div>
+                  </div>
+                  
+                  {/* Selectores de Horario */}
+                  <div className="space-y-4 pt-4 border-t border-gray-100">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-700 uppercase mb-1.5 block">Horario diurno</label>
+                      <Select value={horarioDiurno} onValueChange={setHorarioDiurno}>
+                        <SelectTrigger className="w-full h-9 text-xs">
+                          <SelectValue placeholder="Seleccionar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {hourOptions.map(opt => (
+                            <SelectItem key={`d-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-700 uppercase mb-1.5 block">Horario nocturno</label>
+                      <Select value={horarioNocturno} onValueChange={setHorarioNocturno}>
+                        <SelectTrigger className="w-full h-9 text-xs">
+                          <SelectValue placeholder="Seleccionar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {hourOptions.map(opt => (
+                            <SelectItem key={`n-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   
