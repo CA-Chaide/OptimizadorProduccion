@@ -26,12 +26,14 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
     const [tableWidth, setTableWidth] = useState(0);
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
+    // Extraer columnas únicas de los datos
     useEffect(() => {
         if (data && data.length > 0) {
             setColumns(Object.keys(data[0]));
         }
     }, [data]);
 
+    // Filtrar datos basados en el término de búsqueda
     const filteredData = useMemo(() => {
         if (!data) return [];
         if (!searchTerm.trim()) return data;
@@ -46,15 +48,18 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
     const totalRecords = filteredData.length;
     const totalPages = Math.max(1, Math.ceil(totalRecords / rowsPerPage));
 
+    // Obtener datos para la página actual
     const paginatedData = useMemo(() => {
         const start = (currentPage - 1) * rowsPerPage;
         return filteredData.slice(start, start + rowsPerPage);
     }, [filteredData, currentPage, rowsPerPage]);
 
+    // Resetear a la primera página cuando cambian los filtros
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, rowsPerPage]);
 
+    // Lógica para sincronizar scrollbars dobles
     useEffect(() => {
         const calculateWidth = () => {
             if (tableRef.current) {
@@ -115,12 +120,13 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
                         <div className="mb-4 relative">
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                             <Input
-                                placeholder="Buscar por material o descripción..."
+                                placeholder="Buscar por código de material o descripción..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10"
+                                className="pl-10 h-10"
                             />
                         </div>
+                        
                         {paginatedData.length > 0 ? (
                             <>
                                 <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
@@ -189,7 +195,7 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
                             </>
                         ) : (
                              <div className="text-center py-8 text-gray-500">
-                                {searchTerm ? `No se encontraron resultados para "${searchTerm}"` : 'No se encontraron datos de tiempos de ensamblado para Muebles en Centro 1000.'}
+                                {searchTerm ? `No se encontraron resultados para "${searchTerm}"` : 'No se encontraron datos de tiempos de ensamblado.'}
                             </div>
                         )}
                     </>
