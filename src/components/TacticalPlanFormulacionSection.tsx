@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { FlaskConical, Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { FlaskConical, Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // --- CONSTANTES TÉCNICAS ---
 const MACHINE_RADIO_CM = 350;    
@@ -217,14 +224,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
 
-  // Estados para Materiales Brutos
-  const [brutosData, setBrutosData] = useState<any[]>([]);
-  const [brutosTotal, setBrutosTotal] = useState(0);
-  const [brutosPage, setBrutosPage] = useState(1);
-  const [brutosRowsPerPage, setBrutosRowsPerPage] = useState(20);
-  const [brutosLoading, setBrutosLoading] = useState(false);
-  const [brutosColumns, setBrutosColumns] = useState<string[]>([]);
-
   useEffect(() => { setMounted(true); }, []);
 
   const fetchGruposRelevantes = async () => {
@@ -277,23 +276,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
   };
 
-  const fetchBrutosData = useCallback(async (page: number, rows: number) => {
-    setBrutosLoading(true);
-    try {
-      const res = await serviciosService.getMaterialesBrutosPorMaterialMateriaPrima(page, rows);
-      if (res && res.data) {
-        const data = Array.isArray(res.data) ? res.data : [res.data];
-        setBrutosData(data);
-        setBrutosTotal(res.totalRegistros || res.totalRecords || res.length || data.length);
-        if (data.length > 0) setBrutosColumns(Object.keys(data[0]));
-      }
-    } catch (error) {
-      console.error('Error cargando materiales brutos:', error);
-    } finally {
-      setBrutosLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     if (!mounted) return;
     const initData = async () => {
@@ -303,13 +285,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       await Promise.all([
         fetchRestricciones(groupsIds),
         fetchOrdenes(),
-        fetchTiemposEnsamblado(filteredGroups),
-        fetchBrutosData(1, 20)
+        fetchTiemposEnsamblado(filteredGroups)
       ]);
       setIsLoading(false);
     };
     initData();
-  }, [mounted, fetchBrutosData]);
+  }, [mounted]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -435,12 +416,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
   const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
 
-  const handleBrutosPageChange = (newPage: number) => {
-    const p = Math.max(1, Math.min(newPage, Math.ceil(brutosTotal / brutosRowsPerPage)));
-    setBrutosPage(p);
-    fetchBrutosData(p, brutosRowsPerPage);
-  };
-
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
 
   return (
@@ -450,20 +425,19 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Réplica de Control de Capacidad Neta y Evaluación de Horarios Operativos</p>
+            <p className="text-xs text-gray-500 font-medium">Control de Capacidad Neta y Evaluación de Horarios Operativos</p>
           </div>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Restricciones', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'tiempos', l: 'Tiempos', i: Clock },
-            { v: 'brutos', l: 'Maestro Brutos', i: ClipboardList }
+            { v: 'tiempos', l: 'Tiempos', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -637,7 +611,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsContent value="grupos">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
             {grupos.map(g => (
-              <Card key={g.id || g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
+              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
                 <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
                 <Badge className="bg-gray-100 text-gray-600 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge>
                 <h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4>
@@ -710,7 +684,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                        const hasCategory = String(o.CATEGORIA || o.Categoria || '').trim() !== '' && String(o.CATEGORIA || o.Categoria || '').trim() !== 'N/A';
+                        const hasCategory = String(o.CATEGORIA || '').trim() !== '' && String(o.CATEGORIA || '').trim() !== 'N/A';
                         let alturaTotal = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0, totalCargas = 0, subbloquesPorCarga = 0;
                         if (hasCategory) {
                           const e = parseFloat(info.esp) || 0;
@@ -813,113 +787,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </div>
             ))}
           </div>
-        </TabsContent>
-
-        <TabsContent value="brutos" className="animate-in fade-in duration-300">
-          <Card className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-teal-50 rounded-xl"><ClipboardList className="w-5 h-5 text-teal-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800 uppercase">Maestro de Materiales Brutos</h3>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-100 text-xs font-bold">
-                {brutosTotal.toLocaleString()} REGISTROS TOTALES
-              </div>
-            </div>
-
-            {brutosLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cargando Materia Prima...</p>
-              </div>
-            ) : brutosData.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic border-2 border-dashed rounded-2xl">No se encontraron datos de materiales brutos</div>
-            ) : (
-              <>
-                <div className="overflow-x-auto border rounded-2xl">
-                  <table className="w-full border-collapse text-left text-[10px] font-sans">
-                    <thead className="bg-gray-50 sticky top-0 font-bold uppercase text-gray-500 border-b border-gray-100">
-                      <tr>
-                        {brutosColumns.map(col => (
-                          <th key={col} className="px-4 py-3 whitespace-nowrap border-r border-gray-100 last:border-r-0">{col}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {brutosData.map((row, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                          {brutosColumns.map(col => (
-                            <td key={`${idx}-${col}`} className="px-4 py-2.5 text-gray-600 border-r border-gray-100 last:border-r-0">
-                              {typeof row[col] === 'object' ? JSON.stringify(row[col]) : String(row[col] ?? '—')}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="flex items-center justify-between pt-4 bg-white">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase">
-                    Página {brutosPage} de {Math.ceil(brutosTotal / brutosRowsPerPage)}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 rounded-xl" 
-                      onClick={() => handleBrutosPageChange(1)}
-                      disabled={brutosPage === 1}
-                    >
-                      <ChevronsLeft className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 rounded-xl" 
-                      onClick={() => handleBrutosPageChange(brutosPage - 1)}
-                      disabled={brutosPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <div className="flex items-center gap-1 mx-2">
-                      <span className="text-[10px] font-bold text-gray-700 uppercase">Filas:</span>
-                      <select 
-                        value={brutosRowsPerPage} 
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          setBrutosRowsPerPage(val);
-                          setBrutosPage(1);
-                          fetchBrutosData(1, val);
-                        }}
-                        className="text-[10px] font-bold border rounded-lg px-2 h-7 bg-gray-50"
-                      >
-                        {[20, 50, 100, 500].map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 rounded-xl" 
-                      onClick={() => handleBrutosPageChange(brutosPage + 1)}
-                      disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 rounded-xl" 
-                      onClick={() => handleBrutosPageChange(Math.ceil(brutosTotal / brutosRowsPerPage))}
-                      disabled={brutosPage >= Math.ceil(brutosTotal / brutosRowsPerPage)}
-                    >
-                      <ChevronsRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </>
-            )}
-          </Card>
         </TabsContent>
       </Tabs>
     </div>
