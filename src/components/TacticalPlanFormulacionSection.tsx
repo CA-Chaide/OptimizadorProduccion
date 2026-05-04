@@ -3,11 +3,13 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación (Multi-Centro).
  * 
- * Configuración:
- * - Grupos: Corte y Laminado / Formulación (Centros 1000 y 2000).
- * - Vistas: Adyacentes por Planta para Necesidades y Provisionales.
- * - Filtros: Aplicados según RESPCTRLPROD y ALMACEN por centro.
- * - Soporte multiafield para Máquina (MAQUINA, Maquina, RECURSO).
+ * Campos disponibles en Órdenes Provisionales:
+ * - Orden (SAP)
+ * - CodMaterial (8 dígitos)
+ * - Nombre / Descripción
+ * - Máquina (Multiafield: MAQUINA, Maquina, RECURSO)
+ * - Cantidad
+ * - Almacén (Filtrado por restricciones)
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -52,12 +54,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const scrollN2000Table = useRef<HTMLTableElement>(null);
   const [width2000, setWidth2000] = useState(0);
 
-  // Efecto 1: Control de hidratación
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Efecto 2: Carga de datos maestros (1000 y 2000)
   useEffect(() => {
     if (!mounted || initialLoadDone.current) return;
 
@@ -65,12 +65,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       initialLoadDone.current = true;
       setIsLoading(true);
       try {
-        // 1. Grupos (Corte y Laminado / Formulación - Centros 1000 y 2000)
+        // 1. Grupos (Filtro Corte/Laminado/Formulación para 1000 y 2000)
         const resG = await grupoService.getAll();
         const filteredGroups = (resG.data || []).filter(g => {
           const name = (g.nombre_grupo || '').toLowerCase();
           const centro = String(g.centro || '').trim();
-          return name.includes('corte y laminado') || name.includes('formulacion') || name.includes('formulación');
+          return (centro === '1000' || centro === '2000') && 
+                 (name.includes('corte y laminado') || name.includes('formulacion') || name.includes('formulación'));
         });
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
@@ -87,18 +88,19 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const oData = resProv.data?.data || resProv.data || [];
         setOrders(Array.isArray(oData) ? oData : []);
 
-        // 4. Tiempos de Ensamblado (Carga segmentada)
+        // 4. Tiempos de Ensamblado (Carga segmentada por planta)
         const allTiempos: any[] = [];
-        for (const g of filteredGroups) {
-          if (!g.centro) continue;
-          try {
-            const resT = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-            const tData = resT.data?.data || resT.data || [];
-            if (Array.isArray(tData)) {
-              allTiempos.push(...tData);
+        const centers = ['1000', '2000'];
+        for (const c of centers) {
+          const plantGroups = filteredGroups.filter(g => String(g.centro).trim() === c);
+          for (const g of plantGroups) {
+            try {
+              const resT = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(c, g.codigo_grupo);
+              const tData = resT.data?.data || resT.data || [];
+              if (Array.isArray(tData)) allTiempos.push(...tData);
+            } catch (err) {
+              console.warn(`Error cargando tiempos para planta ${c}, grupo ${g.codigo_grupo}`);
             }
-          } catch (err) {
-            console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}:`, err);
           }
         }
         setTiemposEnsamblado(allTiempos);
@@ -130,7 +132,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return String(item.MAQUINA || item.Maquina || item.RECURSO || '—').trim();
   };
 
-  // Helper para filtrar por centro y restricciones
   const filterOrdersByCenter = (centroId: string) => {
     const relevantGroupIds = grupos
       .filter(g => String(g.centro || '').trim() === centroId)
@@ -150,10 +151,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     return ordenes.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
-      if (itemCentro !== centroId && itemCentro !== '') {
-         // Si el item tiene centro definido y no coincide, filtrar
-         if (itemCentro !== centroId) return false;
-      }
+      if (itemCentro !== centroId && itemCentro !== '') return false;
 
       const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
@@ -168,7 +166,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const ordenesC1000 = useMemo(() => filterOrdersByCenter('1000'), [ordenes, grupos, restricciones]);
   const ordenesC2000 = useMemo(() => filterOrdersByCenter('2000'), [ordenes, grupos, restricciones]);
 
-  // Unión Táctica: Necesidades
   const generateNeedsList = (filteredOrders: any[], centerId: string) => {
     const timesMap = new Map<string, any>();
     tiemposEnsamblado
@@ -201,7 +198,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const needsC1000 = useMemo(() => generateNeedsList(ordenesC1000, '1000'), [ordenesC1000, tiemposEnsamblado]);
   const needsC2000 = useMemo(() => generateNeedsList(ordenesC2000, '2000'), [ordenesC2000, tiemposEnsamblado]);
 
-  // Sincronización de scroll
   const setupScroll = (topRef: React.RefObject<HTMLDivElement>, bottomRef: React.RefObject<HTMLDivElement>, tableRef: React.RefObject<HTMLTableElement>, setWidth: (w: number) => void) => {
     const top = topRef.current;
     const bottom = bottomRef.current;
@@ -230,7 +226,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Plantas de Formulación...</p>
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Formulación Multi-Planta...</p>
     </div>
   );
 
@@ -261,7 +257,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-gray-100 text-[10px]">
             {data.length === 0 ? (
-              <tr><td colSpan={9} className="py-12 text-center text-gray-400 italic">Sin resultados</td></tr>
+              <tr><td colSpan={9} className="py-12 text-center text-gray-400 italic">Sin resultados para esta planta</td></tr>
             ) : (
               data.map((row, i) => (
                 <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -284,40 +280,40 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   );
 
   const renderOrdersTable = (data: any[], title: string, colorClass: string) => (
-    <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+    <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white h-full">
       <div className={cn("p-4 border-b text-left", colorClass)}>
         <h3 className="text-xs font-black uppercase text-gray-900 flex items-center gap-2">
           <Package className="w-4 h-4" /> {title} ({data.length})
         </h3>
       </div>
-      <div className="overflow-x-auto max-h-[400px]">
+      <div className="overflow-x-auto max-h-[600px]">
         <table className="w-full border-collapse text-center">
           <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
             <tr>
-              <th className="px-4 py-4 border-r border-gray-100">Orden</th>
-              <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
-              <th className="px-4 py-4 border-r border-gray-100 text-left">Nombre</th>
-              <th className="px-4 py-4 border-r border-gray-100 text-orange-700 bg-orange-50/10">Máquina</th>
-              <th className="px-4 py-4 border-r border-gray-100">Cantidad</th>
-              <th className="px-4 py-4">Almacén</th>
+              <th className="px-3 py-4 border-r border-gray-100">Orden</th>
+              <th className="px-3 py-4 border-r border-gray-100">Material</th>
+              <th className="px-3 py-4 border-r border-gray-100 text-left">Nombre</th>
+              <th className="px-3 py-4 border-r border-gray-100 text-orange-700 bg-orange-50/10">Máquina</th>
+              <th className="px-3 py-4 border-r border-gray-100">Cantidad</th>
+              <th className="px-3 py-4">Almacén</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 text-[10px]">
             {data.length === 0 ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400 italic">Sin órdenes para los filtros aplicados</td></tr>
+              <tr><td colSpan={6} className="py-12 text-center text-gray-400 italic">Sin órdenes (Restricciones Aplicadas)</td></tr>
             ) : (
               data.map((o, i) => (
                 <tr key={i} className="hover:bg-gray-50/30 transition-colors">
-                  <td className="px-4 py-2 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN}</td>
-                  <td className="px-4 py-2 font-mono font-bold text-teal-700 border-r border-gray-100">{extractMaterialCode(o)}</td>
-                  <td className="px-4 py-2 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[250px]">
+                  <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN}</td>
+                  <td className="px-3 py-2 font-mono font-bold text-teal-700 border-r border-gray-100">{extractMaterialCode(o)}</td>
+                  <td className="px-3 py-2 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">
                     {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
                   </td>
-                  <td className="px-4 py-2 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
+                  <td className="px-3 py-2 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
                     {getMachineValue(o)}
                   </td>
-                  <td className="px-4 py-2 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
-                  <td className="px-4 py-2 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
+                  <td className="px-3 py-2 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
+                  <td className="px-3 py-2 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
                 </tr>
               ))
             )}
@@ -332,18 +328,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center space-x-4 pb-4 border-b border-gray-100">
         <div className="p-2 bg-teal-50 rounded-xl shadow-sm"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
         <div>
-          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación</h2>
+          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación Multi-Planta</h2>
           <div className="flex gap-2 mt-1">
-             <Badge variant="outline" className="text-[9px] font-black border-green-200 text-green-700 bg-green-50 uppercase">Planta 1000 (UIO)</Badge>
-             <Badge variant="outline" className="text-[9px] font-black border-indigo-200 text-indigo-700 bg-indigo-50 uppercase">Planta 2000 (GYE)</Badge>
+             <Badge variant="outline" className="text-[9px] font-black border-green-200 text-green-700 bg-green-50 uppercase">Planta 1000 - Quito</Badge>
+             <Badge variant="outline" className="text-[9px] font-black border-indigo-200 text-indigo-700 bg-indigo-50 uppercase">Planta 2000 - Gye</Badge>
           </div>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'necesidades', l: 'Necesidades', i: ListChecks },
+            { v: 'necesidades', l: 'Lista Necesidades', i: ListChecks },
             { v: 'grupos', l: 'Grupos / Áreas', i: Users }, 
             { v: 'restricciones', l: 'Filtros Técnicos', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
@@ -367,13 +363,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="grupos" className="animate-in fade-in duration-300">
-          <div className="space-y-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Planta 1000 */}
             <div>
               <h3 className="text-xs font-black uppercase text-green-700 mb-4 px-1 flex items-center gap-2">
-                <MapPin className="w-3 h-3" /> Áreas Planta 1000 (Quito)
+                <MapPin className="w-3 h-3" /> Quito (Centro 1000)
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {grupos.filter(g => String(g.centro) === '1000').map(g => (
                   <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-4">
                     <div className="absolute top-0 left-0 w-1 h-full bg-green-500" />
@@ -387,9 +383,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             {/* Planta 2000 */}
             <div>
               <h3 className="text-xs font-black uppercase text-indigo-700 mb-4 px-1 flex items-center gap-2">
-                <MapPin className="w-3 h-3" /> Áreas Planta 2000 (Guayaquil)
+                <MapPin className="w-3 h-3" /> Guayaquil (Centro 2000)
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {grupos.filter(g => String(g.centro) === '2000').map(g => (
                   <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-4">
                     <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500" />
@@ -414,7 +410,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-[11px]">
-                {restricciones.map(r => (
+                {restricciones.sort((a,b) => String(a.grupo?.centro).localeCompare(String(b.grupo?.centro))).map(r => (
                   <tr key={r.codigo_restriccion} className="hover:bg-teal-50/20">
                     <td className="px-6 py-4 border-r border-dashed border-gray-200">
                       <Badge variant="outline" className={cn("text-[9px] font-black uppercase", r.grupo?.centro === '1000' ? "border-green-200 text-green-700 bg-green-50" : "border-indigo-200 text-indigo-700 bg-indigo-50")}>
@@ -433,21 +429,21 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {renderOrdersTable(ordenesC1000, "Provisionales Planta 1000", "bg-green-50/50 border-green-100")}
-            {renderOrdersTable(ordenesC2000, "Provisionales Planta 2000", "bg-indigo-50/50 border-indigo-100")}
+        <TabsContent value="ordenes" className="animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 h-full items-start">
+            {renderOrdersTable(ordenesC1000, "Órdenes Planta 1000 (Filtros Aplicados)", "bg-green-50/50 border-green-100")}
+            {renderOrdersTable(ordenesC2000, "Órdenes Planta 2000 (Filtros Aplicados)", "bg-indigo-50/50 border-indigo-100")}
           </div>
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {[ 
-              { t: 'Tiempos Planta 1000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim() === '1000'), c: 'border-green-200 text-green-700 bg-green-50' }, 
-              { t: 'Tiempos Planta 2000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim() === '2000'), c: 'border-indigo-200 text-indigo-700 bg-indigo-50' } 
+              { t: 'Ingeniería Planta 1000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim() === '1000'), c: 'text-green-700', b: 'bg-green-600' }, 
+              { t: 'Ingeniería Planta 2000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim() === '2000'), c: 'text-indigo-700', b: 'bg-indigo-600' } 
             ].map((center, idx) => (
               <div key={idx} className="space-y-3 text-left">
-                <h3 className="text-[10px] font-black uppercase text-gray-400 px-1 flex items-center gap-2">
+                <h3 className={cn("text-[10px] font-black uppercase px-1 flex items-center gap-2", center.c)}>
                    <Clock className="w-3 h-3" /> {center.t}
                 </h3>
                 <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
@@ -455,14 +451,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <table className="w-full border-collapse text-center">
                       <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
                         <tr>
-                          <th className="px-4 py-4 border-r border-dashed border-gray-100">CodMaterial</th>
-                          <th className="px-4 py-4 border-r border-dashed border-gray-100 text-left">Descripción</th>
-                          <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Tiempo (Min)</th>
+                          <th className="px-4 py-4 border-r border-gray-200">Material</th>
+                          <th className="px-4 py-4 border-r border-gray-200 text-left">Descripción Técnica</th>
+                          <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Estándar (Min)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 text-[10px]">
                         {center.d.length === 0 ? (
-                          <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">Sin datos técnicos</td></tr>
+                          <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">Sin datos técnicos cargados</td></tr>
                         ) : (
                           center.d.map((t, i) => (
                             <tr key={i} className="hover:bg-gray-50/50 transition-colors">
