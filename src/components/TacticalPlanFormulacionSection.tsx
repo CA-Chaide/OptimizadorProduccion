@@ -47,6 +47,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
+        // Excluir específicamente el grupo 'formulación' que no está activo
         return (name.includes('espuma') || name.includes('corte y laminado')) && !name.includes('formulación');
       });
       setGrupos(filtered);
@@ -148,12 +149,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
     
+    // Nueva lógica: Buscar patrón D + número + tipo dentro de la categoría
+    // Ej: CM-LAM-D15AMAF-206 -> D15 (densidad) y AMAF (tipo)
     const techPatternMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
     
     if (techPatternMatch) {
-      dimensions.dens = techPatternMatch[1]; 
-      dimensions.tipo = techPatternMatch[2].toUpperCase(); 
+      dimensions.dens = techPatternMatch[1]; // El número (15, 30, etc)
+      dimensions.tipo = techPatternMatch[2].toUpperCase(); // El tipo (AMAF, NR, etc)
     } else {
+      // Fallback a lógica anterior si no se encuentra en categoría
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
       const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
@@ -228,6 +232,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
         const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
         const info = extractMaterialInfo(o);
+        // Incluir 'tipo' en la llave para agrupar correctamente
         const key = `${fecha}|${info.dens}|${info.tipo}|${info.apertura}`;
         
         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
@@ -259,10 +264,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         if (centerId === '1000') entry.bloques1000 += itemBloques20m;
         else entry.bloques2000 += itemBloques20m;
         
-        // El total acumulado mantiene decimales para precisión
+        // El total acumulado mantiene decimales para precisión (Requerimiento de usuario)
         entry.totalBloques = entry.bloques1000 + entry.bloques2000;
         
-        // El plan de reposición aplica el redondeo superior para ser unidades enteras
+        // El plan de reposición aplica el redondeo superior para ser unidades enteras (Requerimiento de usuario)
         entry.planReposicion = Math.ceil(Math.max(0, entry.totalBloques - entry.bloquesStock + entry.bloquesProceso));
       });
     };
@@ -280,6 +285,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const dailyLoadSummary = useMemo(() => {
     const map = new Map<string, number>();
     unifiedSummaryData.forEach(row => {
+      // Usar planReposicion que ya es entero
       map.set(row.fecha, (map.get(row.fecha) || 0) + row.planReposicion);
     });
     return map;
@@ -451,10 +457,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{row.bloques1000.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{row.bloques2000.toFixed(1)}</td>
+                        {/* Esta columna Total Bloque Formulado ahora muestra decimales por requerimiento */}
                         <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">{row.bloquesStock.toFixed(0)}</td>
                         <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">{row.bloquesCurado.toFixed(0)}</td>
                         <td className="px-4 py-3 font-mono text-blue-400 border-r border-gray-50 bg-blue-50/20">{row.bloquesProceso.toFixed(0)}</td>
+                        {/* Esta columna PLAN REPOSICION se mantiene en enteros cerrados */}
                         <td className="px-4 py-3 font-mono font-black text-emerald-600 bg-emerald-50/30">{row.planReposicion.toFixed(0)}</td>
                       </tr>
                     ))}
