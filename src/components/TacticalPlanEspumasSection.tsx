@@ -340,9 +340,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
-    const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
-    const densMatch = desc.match(/D-?(\d+)/i);
-    if (densMatch) dimensions.dens = densMatch[1];
+    const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
+    
+    // Búsqueda del patrón D[Número][Letras] dentro de la categoría
+    const catSearchMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
+    if (catSearchMatch) {
+      dimensions.dens = catSearchMatch[1]; // Solo el número (ej: 15)
+      dimensions.tipo = catSearchMatch[2].toUpperCase(); // Solo las letras (ej: AMAF)
+    } else {
+      const densMatch = desc.match(/D-?(\d+)/i);
+      if (densMatch) dimensions.dens = densMatch[1];
+      
+      const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
+      if (tipoMatch) dimensions.tipo = tipoMatch[1].toUpperCase();
+    }
+
     const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
     if (dimMatch) {
       dimensions.ancho = dimMatch[1];
@@ -690,6 +702,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
                         <th className="px-3 py-4 border-r border-gray-100">Material</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">Categoría</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/20 text-amber-900">Tipo</th>
                         <th className="px-2 py-4 border-r border-gray-100">DENS.</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/20">APERT.</th>
                         <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
@@ -733,6 +747,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
+                            <td className="px-3 py-2 font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase">{String(o.CATEGORIA || o.Categoria || '—')}</td>
+                            <td className="px-3 py-2 font-black text-amber-700 border-r border-gray-100 bg-amber-50/5 uppercase">{info.tipo}</td>
                             <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.dens : '—'}</td>
                             <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-gray-100 bg-blue-50/10">{hasCategory ? info.apertura : '—'}</td>
                             <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.ancho : '—'}</td>
@@ -753,7 +769,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </tbody>
                     <tfoot className="bg-gray-800 text-white font-bold text-[9px] uppercase">
                       <tr>
-                        <td colSpan={9} className="px-3 py-2 text-right">Totales {center.t}:</td>
+                        <td colSpan={11} className="px-3 py-2 text-right">Totales {center.t}:</td>
                         <td className="px-3 py-2 font-mono">{center.totals.units.toLocaleString()}</td>
                         <td className="px-2 py-2 font-mono text-indigo-200">{(center.totals.units * 15).toFixed(0)}</td>
                         <td className="px-2 py-2 font-mono text-orange-200">{center.totals.subbloques.toFixed(1)}</td>
