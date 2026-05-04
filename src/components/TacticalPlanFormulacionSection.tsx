@@ -126,40 +126,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   /**
    * Helper robusto para obtener el valor de la Máquina/Recurso
-   * Busca en múltiples campos posibles devueltos por el API de SAP
    */
   const getMachineValue = (item: any): string => {
     if (!item) return '—';
-    
-    // Lista de propiedades conocidas donde SAP guarda el recurso/máquina
-    const possibleKeys = [
-      'MAQUINA', 
-      'Maquina', 
-      'maquina', 
-      'RECURSO', 
-      'recurso', 
-      'TEXTO_RECURSO', 
-      'CENTRO_TRABAJO',
-      'PuestoTrabajo'
-    ];
-    
+    const possibleKeys = ['MAQUINA', 'Maquina', 'maquina', 'RECURSO', 'recurso', 'TEXTO_RECURSO', 'CENTRO_TRABAJO', 'PuestoTrabajo'];
     for (const key of possibleKeys) {
-      if (item[key] && String(item[key]).trim() !== '') {
-        return String(item[key]).trim();
-      }
+      if (item[key] && String(item[key]).trim() !== '') return String(item[key]).trim();
     }
-
-    // Búsqueda por patrón en claves si las anteriores fallan
-    const dynamicKey = Object.keys(item).find(k => 
-      k.toUpperCase().includes('MAQU') || 
-      k.toUpperCase().includes('RECUR') || 
-      k.toUpperCase().includes('PUESTO')
-    );
-
-    if (dynamicKey && item[dynamicKey] && String(item[dynamicKey]).trim() !== '') {
-      return String(item[dynamicKey]).trim();
-    }
-
+    const dynamicKey = Object.keys(item).find(k => k.toUpperCase().includes('MAQU') || k.toUpperCase().includes('RECUR') || k.toUpperCase().includes('PUESTO'));
+    if (dynamicKey && item[dynamicKey] && String(item[dynamicKey]).trim() !== '') return String(item[dynamicKey]).trim();
     return '—';
   };
 
@@ -188,7 +163,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
+      const hasAlmField = o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen') || o.hasOwnProperty('almacen');
+      const matchAlm = !hasAlmField || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       
       return matchResp && matchAlm;
     });
@@ -226,12 +202,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     });
   };
 
-  const needsC1000 = useMemo(() => generateNeedsList(needsC1000Original || ordenesC1000, '1000'), [ordenesC1000, tiemposEnsamblado]);
-  const needsC2000 = useMemo(() => generateNeedsList(needsC2000Original || ordenesC2000, '2000'), [ordenesC2000, tiemposEnsamblado]);
-
-  // Hack para evitar error de variable no definida si el linter falla
-  const needsC1000Original = needsC1000;
-  const needsC2000Original = needsC2000;
+  const needsC1000 = useMemo(() => generateNeedsList(ordenesC1000, '1000'), [ordenesC1000, tiemposEnsamblado]);
+  const needsC2000 = useMemo(() => generateNeedsList(ordenesC2000, '2000'), [ordenesC2000, tiemposEnsamblado]);
 
   const setupScroll = (topRef: React.RefObject<HTMLDivElement>, bottomRef: React.RefObject<HTMLDivElement>, tableRef: React.RefObject<HTMLTableElement>, setWidth: (w: number) => void) => {
     const top = topRef.current;
@@ -372,7 +344,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'necesidades', l: 'Lista Necesidades', i: ListChecks },
             { v: 'grupos', l: 'Grupos / Áreas', i: Users }, 
@@ -483,8 +455,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <table className="w-full border-collapse text-center">
                       <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
                         <tr>
-                          <th className="px-4 py-4 border-r border-gray-200">Material</th>
-                          <th className="px-4 py-4 border-r border-gray-200 text-left">Descripción Técnica</th>
+                          <th className="px-4 py-4 border-r border-gray-100">Material</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                           <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Estándar (Min)</th>
                         </tr>
                       </thead>
