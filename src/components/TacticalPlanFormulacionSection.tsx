@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { FlaskConical, Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { FlaskConical, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -20,195 +20,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 // --- CONSTANTES TÉCNICAS ---
 const MACHINE_RADIO_CM = 350;    
 const SECONDS_LOAD_BLOCK = 300;   
 const SECONDS_REPETITION = 45;    
 const SECONDS_CART_SWAP = 60;     
-
-/**
- * Helper para obtener valores de restricciones
- */
-const getParam = (restrictions: Restriccion[], key: string, defaultValue: number) => {
-  const r = restrictions.find(res => res.nombre_restriccion.toUpperCase() === key.toUpperCase());
-  if (r) {
-    return { value: parseFloat(r.valor_restriccion) || defaultValue, isOverridden: true };
-  }
-  return { value: defaultValue, isOverridden: false };
-};
-
-/**
- * COMPONENTE: Plan de Control de Horarios y Evaluación de Capacidad
- */
-const ScheduleControlPanel = ({ 
-  plannedHours, 
-  restrictions, 
-  centroId, 
-  resources 
-}: { 
-  plannedHours: number, 
-  restrictions: Restriccion[], 
-  centroId: string,
-  resources: { id: string, name: string, defaultT1?: number, defaultT2?: number }[]
-}) => {
-  const isQuito = centroId === '1000';
-  
-  const rendParam = getParam(restrictions, isQuito ? 'RENDIMIENTO_PROCESO' : 'RENDIMIENTO_PROCESO_GYE', isQuito ? 70 : 65);
-  const shiftHoursParam = getParam(restrictions, 'HORAS_TRABAJO', 9);
-  const maxExtrasParam = getParam(restrictions, 'MAX_EXTRAS_HORAS', 2);
-  const paroParam = getParam(restrictions, 'PARO_PROGRAMADO', 0.68); 
-
-  const processedResources = resources.map(m => {
-    const t1 = getParam(restrictions, `${m.id}_T1`, m.defaultT1 ?? shiftHoursParam.value);
-    const t2 = getParam(restrictions, `${m.id}_T2`, m.defaultT2 ?? 8);
-    const p = getParam(restrictions, `${m.id}_PARO`, paroParam.value);
-    
-    const baseHours = t1.value + t2.value - (p.value * 2);
-    const maxPotentialHours = baseHours + maxExtrasParam.value; 
-    
-    return { 
-      ...m, 
-      t1, 
-      t2, 
-      p, 
-      maxExtras: maxExtrasParam,
-      baseHours,
-      maxPotentialHours
-    };
-  });
-
-  const totalBaseHours = processedResources.reduce((acc, m) => acc + m.baseHours, 0);
-  const totalMaxHours = processedResources.reduce((acc, m) => acc + m.maxPotentialHours, 0);
-  
-  const netCapacityBase = totalBaseHours * (rendParam.value / 100);
-  const netCapacityMax = totalMaxHours * (rendParam.value / 100);
-  
-  const utilization = netCapacityBase > 0 ? (plannedHours / netCapacityBase) * 100 : 0;
-  const capacitySaldo = netCapacityBase - plannedHours;
-  
-  let status: 'NORMAL' | 'WARNING' | 'CRITICAL' = 'NORMAL';
-  let statusMessage = "Capacidad Normal";
-  let recommendation = "El plan es factible dentro de la jornada normal.";
-  
-  if (plannedHours > netCapacityMax) {
-    status = 'CRITICAL';
-    statusMessage = "SOBRECARGA CRÍTICA";
-    recommendation = `La demanda excede la capacidad máxima (${netCapacityMax.toFixed(1)}h). Se requiere reprogramar.`;
-  } else if (plannedHours > netCapacityBase) {
-    status = 'WARNING';
-    statusMessage = "EXTRAS REQUERIDAS";
-    const extrasNeeded = (plannedHours / (rendParam.value / 100)) - totalBaseHours;
-    recommendation = `Se requiere programar aproximadamente ${extrasNeeded.toFixed(1)}h de extras.`;
-  }
-
-  return (
-    <div className="mb-10 text-left font-sans animate-in fade-in slide-in-from-top-4 duration-700">
-      <div className={cn(
-        "text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6",
-        isQuito ? "bg-slate-900 border-b-2 border-blue-500" : "bg-indigo-950 border-b-2 border-indigo-400"
-      )}>
-        <div className="flex items-center gap-3">
-          <Clock className="w-5 h-5 text-blue-400" />
-          <span className="text-xs font-black tracking-widest uppercase">
-            Control de Horarios y Evaluación de Capacidad - Planta {centroId}
-          </span>
-        </div>
-        <Badge className={cn(
-          "font-black text-[10px]",
-          status === 'NORMAL' ? "bg-green-500" : status === 'WARNING' ? "bg-amber-500" : "bg-red-500"
-        )}>
-          {statusMessage}
-        </Badge>
-      </div>
-
-      <div className="bg-white border-x border-b border-gray-200 rounded-b-2xl shadow-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-center border-collapse text-[11px]">
-            <thead>
-              <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
-                <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Recurso Operativo</th>
-                <th className="px-4 py-4">Turno 1 (H)</th>
-                <th className="px-4 py-4">Turno 2 (H)</th>
-                <th className="px-4 py-4 text-gray-400">Paros (H)</th>
-                <th className="px-4 py-4 text-blue-600">Límite Extras (H)</th>
-                <th className="px-4 py-4 font-black bg-slate-50">Cap. Bruta</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {processedResources.map(m => (
-                <tr key={m.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3 text-left font-bold text-gray-700 sticky left-0 bg-white border-r border-gray-50">{m.name}</td>
-                  <td className="px-4 py-3 font-mono">
-                    <div className="flex items-center justify-center gap-1">
-                      {m.t1.value.toFixed(1)} {m.t1.isOverridden && <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono">
-                    <div className="flex items-center justify-center gap-1">
-                      {m.t2.value.toFixed(1)} {m.t2.isOverridden && <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-gray-400 italic">-{m.p.value.toFixed(2)}</td>
-                  <td className="px-4 py-3 font-mono text-blue-600 font-bold">+{m.maxExtras.value.toFixed(1)}</td>
-                  <td className="px-4 py-3 font-mono font-black text-slate-800 bg-slate-50/50">{m.baseHours.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-5 border-t border-gray-200">
-           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-gray-50/30">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Rendimiento Planta</span>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-black text-slate-800 font-mono">{rendParam.value}%</span>
-                {rendParam.isOverridden && <ShieldCheck className="w-4 h-4 text-blue-500" />}
-              </div>
-           </div>
-           
-           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-blue-50/20">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Capacidad Neta (Disp.)</span>
-              <span className="text-2xl font-black text-indigo-600 font-mono">{netCapacityBase.toFixed(1)}h</span>
-           </div>
-
-           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-amber-50/10">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Capacidad Ocupada (Órdenes)</span>
-              <span className="text-2xl font-black text-amber-600 font-mono">{plannedHours.toFixed(1)}h</span>
-           </div>
-
-           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Saldo Disponible</span>
-              <span className={cn(
-                "text-2xl font-black font-mono",
-                capacitySaldo < 0 ? "text-red-600" : "text-green-600"
-              )}>
-                {capacitySaldo.toFixed(1)}h
-              </span>
-           </div>
-
-           <div className={cn(
-             "p-4 flex flex-col items-start justify-center px-6",
-             status === 'NORMAL' ? "bg-green-50/50" : status === 'WARNING' ? "bg-amber-50/50" : "bg-red-50/50"
-           )}>
-              <div className="flex items-center gap-2 mb-1">
-                {status === 'NORMAL' ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
-                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">Uso: {utilization.toFixed(1)}%</span>
-              </div>
-              <p className="text-[10px] font-bold text-gray-800 leading-tight">{recommendation}</p>
-           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
@@ -413,8 +230,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
 
-  const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
-  const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
+  const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), [summaryData1000]);
+  const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), [summaryData2000]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
 
@@ -491,18 +308,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </Popover>
           </div>
 
-          <ScheduleControlPanel 
-            centroId="1000" 
-            plannedHours={summaryTotals1000.timeLog} 
-            restrictions={restricciones}
-            resources={[
-              { id: 'FECKEN', name: 'Fecken' },
-              { id: 'MAQUINA_3', name: 'Máquina 3' },
-              { id: 'MAQUINA_1', name: 'Máquina 1', defaultT1: 4 },
-              { id: 'CNC', name: 'CNC' }
-            ]}
-          />
-
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-green-700">
               <div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Almacén 1006)
@@ -550,17 +355,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </div>
             </Card>
           </div>
-
-          <ScheduleControlPanel 
-            centroId="2000" 
-            plannedHours={summaryTotals2000.timeLog} 
-            restrictions={restricciones}
-            resources={[
-              { id: 'FEMA', name: 'Fema' },
-              { id: 'MAQUINA_3_G', name: 'Máquina 3' },
-              { id: 'REPOTENCIADO', name: 'Repotenciado', defaultT1: 6 }
-            ]}
-          />
 
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-indigo-700">
