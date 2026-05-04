@@ -15,21 +15,22 @@ interface ProvisionalOrder {
 interface PaginationState {
   currentPage: number;
   totalRegistros: number;
-  rowsPerPage: number;
+  rows_per_page: number;
 }
 
 interface ProvisionalOrdersTabSectionProps {
   readonly externalFilters?: Record<string, string[]>;
+  readonly renderCell?: (column: string, row: any) => React.ReactNode;
 }
 
-export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ externalFilters }) => {
+export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ externalFilters, renderCell }) => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<ProvisionalOrder[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
     totalRegistros: 0,
-    rowsPerPage: 20,
+    rows_per_page: 20,
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const isInitialLoadDone = useRef(false);
@@ -65,7 +66,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   }, []);
 
   const formatValueForDisplay = useCallback((col: string, value: any): string => {
-    if (value === null || value === undefined) return '—';
+    if (value === null || value === undefined || value === '') return '—';
     const upperCol = col.toUpperCase().trim();
     
     if (upperCol.includes('FECHA')) {
@@ -148,16 +149,16 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   const columns = useMemo(() => {
     if (filteredOrders.length === 0) return [];
     const allKeys = Object.keys(filteredOrders[0]);
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'FECHAFIN'];
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'MAQUINA', 'FECHAFIN'];
     return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [filteredOrders]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pagination.rowsPerPage));
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pagination.rows_per_page));
   
   const displayedOrders = useMemo(() => {
-    const start = (pagination.currentPage - 1) * pagination.rowsPerPage;
-    return filteredOrders.slice(start, start + pagination.rowsPerPage);
-  }, [filteredOrders, pagination.currentPage, pagination.rowsPerPage]);
+    const start = (pagination.currentPage - 1) * pagination.rows_per_page;
+    return filteredOrders.slice(start, start + pagination.rows_per_page);
+  }, [filteredOrders, pagination.currentPage, pagination.rows_per_page]);
 
   if (!isMounted) return null;
 
@@ -212,14 +213,28 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
               ) : displayedOrders.length > 0 ? (
                 displayedOrders.map((order, idx) => (
                   <tr key={`order-row-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                    {columns.map((col) => (
-                      <td 
-                        key={`cell-${idx}-${col}`} 
-                        className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
-                      >
-                        {formatValueForDisplay(col, order[col])}
-                      </td>
-                    ))}
+                    {columns.map((col) => {
+                      // Usar el renderizador personalizado si existe
+                      if (renderCell) {
+                        const rendered = renderCell(col, order);
+                        if (rendered !== undefined) {
+                          return (
+                            <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
+                              {rendered}
+                            </td>
+                          );
+                        }
+                      }
+                      
+                      return (
+                        <td 
+                          key={`cell-${idx}-${col}`} 
+                          className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
+                        >
+                          {formatValueForDisplay(col, order[col])}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))
               ) : (
@@ -239,8 +254,8 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Filas:</span>
             <select
-              value={pagination.rowsPerPage}
-              onChange={(e) => setPagination(prev => ({ ...prev, rowsPerPage: Number(e.target.value), currentPage: 1 }))}
+              value={pagination.rows_per_page}
+              onChange={(e) => setPagination(prev => ({ ...prev, rows_per_page: Number(e.target.value), currentPage: 1 }))}
               className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
             >
               {[20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}

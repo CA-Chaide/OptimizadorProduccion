@@ -15,7 +15,8 @@ import {
   ChevronsRight, 
   CalendarCheck,
   BarChart3,
-  Clock
+  Clock,
+  Map as MapIcon
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
@@ -80,7 +81,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [safeParseDateParts]);
 
   const formatValueForDisplay = useCallback((col: string, value: any): string => {
-    if (value === null || value === undefined) return '—';
+    if (value === null || value === undefined || value === '') return '—';
     const upperCol = col.toUpperCase().trim();
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
@@ -238,7 +239,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
    */
   const getResolvedMachine = useCallback((order: any) => {
     const orderMachine = order['MAQUINA'] || order['PUESTOTRABAJO'];
-    if (orderMachine) return String(orderMachine).trim().toUpperCase();
+    if (orderMachine && String(orderMachine).trim() !== '') return String(orderMachine).trim().toUpperCase();
     
     const material = normalizeMaterialCode(order['MATERIAL'] || '');
     const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
@@ -268,6 +269,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     return totalTime.toFixed(2) + ' min';
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
+
+  /**
+   * Renderizador de celdas para la pestaña de órdenes previsionales.
+   * Resuelve la columna MAQUINA basándose en los tiempos de producción si está vacía.
+   */
+  const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
+    const upperCol = column.toUpperCase().trim();
+    if (upperCol === 'MAQUINA') {
+      const val = getResolvedMachine(order);
+      return val ? (
+        <span className="font-semibold text-blue-700">{val}</span>
+      ) : '—';
+    }
+    return undefined;
+  }, [getResolvedMachine]);
 
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
@@ -457,7 +473,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="ordenes">
           <Card>
             <CardHeader><CardTitle>Órdenes Previsionales Filtradas (Ecuador Continental)</CardTitle></CardHeader>
-            <CardContent><ProvisionalOrdersTabSection externalFilters={externalFilters} /></CardContent>
+            <CardContent>
+              <ProvisionalOrdersTabSection 
+                externalFilters={externalFilters} 
+                renderCell={renderResolvedProvisionalCell}
+              />
+            </CardContent>
           </Card>
         </TabsContent>
 
