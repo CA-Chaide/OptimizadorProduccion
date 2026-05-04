@@ -2,14 +2,13 @@
 
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación (Multi-Centro).
- * Especializado en Planta 1000 y 2000.
- * Restringido a grupos de Corte y Laminado.
+ * Especializado en Planta 1000 y 2000 (Corte y Laminado).
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FlaskConical, Users, Lock, Package, Loader2, Clock, 
-  ListChecks, MapPin
+  ListChecks, MapPin, LayoutDashboard, Scissors
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,12 +21,17 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+// --- CONSTANTES TÉCNICAS (Heredadas de Corte Espuma) ---
+const SECONDS_LOAD_BLOCK = 300;   
+const SECONDS_REPETITION = 45;    
+const SECONDS_CART_SWAP = 60;     
+
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
   const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState('necesidades');
+  const [activeTab, setActiveTab] = useState('resumen');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
@@ -36,13 +40,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const initialLoadDone = useRef(false);
   
-  // Refs para sincronización de scroll (C1000)
+  // Refs para sincronización de scroll
   const scrollN1000Top = useRef<HTMLDivElement>(null);
   const scrollN1000Bottom = useRef<HTMLDivElement>(null);
   const scrollN1000Table = useRef<HTMLTableElement>(null);
   const [width1000, setWidth1000] = useState(0);
 
-  // Refs para sincronización de scroll (C2000)
   const scrollN2000Top = useRef<HTMLDivElement>(null);
   const scrollN2000Bottom = useRef<HTMLDivElement>(null);
   const scrollN2000Table = useRef<HTMLTableElement>(null);
@@ -59,15 +62,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       initialLoadDone.current = true;
       setIsLoading(true);
       try {
-        // 1. Grupos: Filtro exclusivo "Corte y Laminado" para 1000 y 2000. 
-        // Se excluye "Formulación" por solicitud del usuario.
+        // 1. Grupos: Filtro exclusivo "Corte y Laminado" para 1000 y 2000.
         const resG = await grupoService.getAll();
         const filteredGroups = (resG.data || []).filter(g => {
           const name = (g.nombre_grupo || '').toLowerCase();
           const centro = String(g.centro || '').trim();
           return (centro === '1000' || centro === '2000') && 
-                 (name.includes('corte') || name.includes('laminado')) &&
-                 !(name.includes('formulacion') || name.includes('formulación'));
+                 (name.includes('corte') || name.includes('laminado'));
         });
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
@@ -84,7 +85,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const oData = resProv.data?.data || resProv.data || [];
         setOrders(Array.isArray(oData) ? oData : []);
 
-        // 4. Tiempos de Ensamblado (Carga segmentada por planta)
+        // 4. Tiempos de Ensamblado
         const allTiempos: any[] = [];
         const centers = ['1000', '2000'];
         for (const c of centers) {
@@ -95,7 +96,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               const tData = resT.data?.data || resT.data || [];
               if (Array.isArray(tData)) allTiempos.push(...tData);
             } catch (err) {
-              console.warn(`Error cargando tiempos para planta ${c}, grupo ${g.codigo_grupo}`);
+              console.warn(`Error cargando tiempos planta ${c}, grupo ${g.codigo_grupo}`);
             }
           }
         }
@@ -118,23 +119,33 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     loadAllBaseData();
   }, [mounted, inspector, addNotification]);
 
-  const extractMaterialCode = (item: any) => {
+  const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
     const match = matStr.match(/^(\d+)/);
-    return match ? match[1].slice(-8) : matStr.slice(-8);
+    const code = match ? match[1].slice(-8) : matStr.slice(-8);
+    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
+
+    const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—' };
+    if (desc) {
+      const densMatch = desc.match(/D-?(\d+)/i);
+      if (densMatch) dimensions.dens = densMatch[1];
+      const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
+      if (dimMatch) {
+        dimensions.ancho = dimMatch[1];
+        dimensions.largo = dimMatch[2];
+        if (dimMatch[3]) dimensions.esp = dimMatch[3];
+      }
+    }
+    return { code, desc, ...dimensions };
   };
 
-  /**
-   * Helper robusto para obtener el valor de la Máquina/Recurso
-   */
   const getMachineValue = (item: any): string => {
     if (!item) return '—';
     const possibleKeys = ['MAQUINA', 'Maquina', 'maquina', 'RECURSO', 'recurso', 'TEXTO_RECURSO', 'CENTRO_TRABAJO', 'PuestoTrabajo'];
     for (const key of possibleKeys) {
       if (item[key] && String(item[key]).trim() !== '') return String(item[key]).trim();
     }
-    const dynamicKey = Object.keys(item).find(k => k.toUpperCase().includes('MAQU') || k.toUpperCase().includes('RECUR') || k.toUpperCase().includes('PUESTO'));
-    if (dynamicKey && item[dynamicKey] && String(item[dynamicKey]).trim() !== '') return String(item[dynamicKey]).trim();
     return '—';
   };
 
@@ -163,8 +174,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const hasAlmField = o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen') || o.hasOwnProperty('almacen');
-      const matchAlm = !hasAlmField || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
+      const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       
       return matchResp && matchAlm;
     });
@@ -173,27 +183,62 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const ordenesC1000 = useMemo(() => filterOrdersByCenter('1000'), [ordenes, grupos, restricciones]);
   const ordenesC2000 = useMemo(() => filterOrdersByCenter('2000'), [ordenes, grupos, restricciones]);
 
+  /**
+   * Cálculo de Resumen similar a Corte Espuma
+   */
+  const calculateSummaryData = (filteredOrders: any[]) => {
+    const summaryMap = new Map<string, { material: string; desc: string; units: number; subblocks: number; blocks20m: number; timeLog: number }>();
+    
+    filteredOrders.forEach(o => {
+      const info = extractMaterialInfo(o);
+      const qty = Number(o.CANTIDAD || o.CANTPROGRAMADA || 0);
+      const esp = parseFloat(info.esp) || 0;
+      const densValue = parseFloat(info.dens) || 0;
+      const ancho = parseFloat(info.ancho) || 0;
+
+      const usefulHeight = isNaN(densValue) ? 103 : (densValue < 30 ? 103 : 85);
+      const subbloques = (qty * esp) / usefulHeight;
+      const blocks20m = (ancho * subbloques) / 2000;
+      
+      const physicalBlocks = Math.ceil(blocks20m);
+      const tCarga = physicalBlocks * SECONDS_LOAD_BLOCK;
+      const tDescarga = Math.ceil(qty / (esp > 10 ? 4 : 3)) * SECONDS_REPETITION;
+      const tCoches = Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP;
+      const timeLog = (tCarga + tDescarga + tCoches) / 3600;
+
+      if (!summaryMap.has(info.code)) {
+        summaryMap.set(info.code, { material: info.code, desc: info.desc, units: 0, subblocks: 0, blocks20m: 0, timeLog: 0 });
+      }
+      const entry = summaryMap.get(info.code)!;
+      entry.units += qty;
+      entry.subblocks += subbloques;
+      entry.blocks20m += blocks20m;
+      entry.timeLog += timeLog;
+    });
+
+    return Array.from(summaryMap.values());
+  };
+
+  const summaryC1000 = useMemo(() => calculateSummaryData(ordenesC1000), [ordenesC1000]);
+  const summaryC2000 = useMemo(() => calculateSummaryData(ordenesC2000), [ordenesC2000]);
+
   const generateNeedsList = (filteredOrders: any[], centerId: string) => {
     const timesMap = new Map<string, any>();
     tiemposEnsamblado
-      .filter(t => String(t.Centro || t.centro || '').trim() === centerId)
+      .filter(t => String(t.Centro || '').trim() === centerId)
       .forEach(t => {
-        const code = String(t.CodMaterial || t.Material || '').trim().slice(-8);
+        const code = String(t.CodMaterial || '').trim().slice(-8);
         if (code) timesMap.set(code, t);
       });
 
     return filteredOrders.map(o => {
-      const code = extractMaterialCode(o);
-      const t = timesMap.get(code);
-      const nameStr = String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim();
-      const desc = nameStr || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
-
+      const info = extractMaterialInfo(o);
+      const t = timesMap.get(info.code);
       return {
         centro: centerId,
         almacen: o.Almacen || o.ALMACEN || '—',
-        categoria: o.CATEGORIA || o.Categoria || '—',
-        material: code,
-        descripcion: desc,
+        material: info.code,
+        descripcion: info.desc,
         cantidad: o.CANTIDAD || o.CANTPROGRAMADA || 0,
         lineaTecnica: t?.Linea || t?.PuestoTrabajoLinea || '—',
         maquina: getMachineValue(o),
@@ -221,113 +266,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   useEffect(() => {
-    if (activeTab === 'necesidades' && mounted) {
+    if (activeTab === 'provisionales' && mounted) {
       const clean1 = setupScroll(scrollN1000Top, scrollN1000Bottom, scrollN1000Table, setWidth1000);
       const clean2 = setupScroll(scrollN2000Top, scrollN2000Bottom, scrollN2000Table, setWidth2000);
       return () => { clean1?.(); clean2?.(); };
     }
-  }, [activeTab, mounted, needsC1000, needsC2000]);
+  }, [activeTab, mounted, ordenesC1000, ordenesC2000]);
 
   if (!mounted) return null;
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-teal-600" />
-      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Formulación Multi-Planta...</p>
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sincronizando Formulación...</p>
     </div>
-  );
-
-  const renderNeedsTable = (data: any[], topRef: any, bottomRef: any, tableRef: any, width: number, title: string, colorClass: string) => (
-    <div className="space-y-4">
-      <div className={cn("p-4 rounded-t-2xl border-b text-left", colorClass)}>
-        <h3 className="text-xs font-black uppercase flex items-center gap-2 text-slate-800">
-          <ListChecks className="w-4 h-4" /> {title}
-        </h3>
-      </div>
-      <div ref={topRef} className="overflow-x-auto h-3 bg-gray-50 border-b">
-        <div style={{ width: width, height: '1px' }} />
-      </div>
-      <div ref={bottomRef} className="overflow-x-auto max-h-[400px]">
-        <table ref={tableRef} className="w-full border-collapse text-center">
-          <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
-            <tr>
-              <th className="px-4 py-4 border-r border-gray-200">Centro</th>
-              <th className="px-4 py-4 border-r border-gray-200">Almacén</th>
-              <th className="px-4 py-4 border-r border-gray-200 text-blue-700 bg-blue-50/20">Categoría</th>
-              <th className="px-4 py-4 border-r border-gray-200">Material</th>
-              <th className="px-4 py-4 border-r border-gray-200 text-left">Descripción</th>
-              <th className="px-4 py-4 border-r border-gray-200">Cantidad</th>
-              <th className="px-4 py-4 border-r border-gray-200 text-purple-700 bg-purple-50/20">Línea Técnica</th>
-              <th className="px-4 py-4 border-r border-gray-200 text-orange-700 bg-orange-50/10">Máquina</th>
-              <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Tiempo (Min)</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 text-[10px]">
-            {data.length === 0 ? (
-              <tr><td colSpan={9} className="py-12 text-center text-gray-400 italic">Sin resultados para esta planta</td></tr>
-            ) : (
-              data.map((row, i) => (
-                <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-2 font-bold text-gray-400 border-r border-dashed border-gray-100">{row.centro}</td>
-                  <td className="px-4 py-2 font-mono text-gray-400 border-r border-dashed border-gray-100">{row.almacen}</td>
-                  <td className="px-4 py-2 font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/5 uppercase">{row.categoria}</td>
-                  <td className="px-4 py-2 font-mono font-bold text-primary border-r border-dashed border-gray-100 tracking-tighter">{row.material}</td>
-                  <td className="px-4 py-2 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[180px]">{row.descripcion}</td>
-                  <td className="px-4 py-2 font-black text-slate-800 border-r border-dashed border-gray-100 font-mono">{row.cantidad.toLocaleString()}</td>
-                  <td className="px-4 py-2 font-bold text-purple-700 border-r border-dashed border-gray-100 bg-purple-50/5 uppercase">{row.lineaTecnica}</td>
-                  <td className="px-4 py-2 font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">{row.maquina}</td>
-                  <td className="px-4 py-2 font-mono font-black text-teal-600 bg-teal-50/5">{row.tiempo.toFixed(4)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
-  const renderOrdersTable = (data: any[], title: string, colorClass: string) => (
-    <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white h-full">
-      <div className={cn("p-4 border-b text-left", colorClass)}>
-        <h3 className="text-xs font-black uppercase text-slate-800 flex items-center gap-2">
-          <Package className="w-4 h-4" /> {title} ({data.length})
-        </h3>
-      </div>
-      <div className="overflow-x-auto max-h-[600px]">
-        <table className="w-full border-collapse text-center">
-          <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
-            <tr>
-              <th className="px-3 py-4 border-r border-gray-100">Orden</th>
-              <th className="px-3 py-4 border-r border-gray-100">Material</th>
-              <th className="px-3 py-4 border-r border-gray-100 text-left">Nombre</th>
-              <th className="px-3 py-4 border-r border-gray-100 text-orange-700 bg-orange-50/10">Máquina</th>
-              <th className="px-3 py-4 border-r border-gray-100">Cantidad</th>
-              <th className="px-3 py-4">Almacén</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 text-[10px]">
-            {data.length === 0 ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400 italic">Sin órdenes (Restricciones Aplicadas)</td></tr>
-            ) : (
-              data.map((o, i) => (
-                <tr key={i} className="hover:bg-gray-50/30 transition-colors">
-                  <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN}</td>
-                  <td className="px-3 py-2 font-mono font-bold text-teal-700 border-r border-gray-100">{extractMaterialCode(o)}</td>
-                  <td className="px-3 py-2 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">
-                    {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
-                  </td>
-                  <td className="px-3 py-2 font-black text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
-                    {getMachineValue(o)}
-                  </td>
-                  <td className="px-3 py-2 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
-                  <td className="px-3 py-2 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </Card>
   );
 
   return (
@@ -335,7 +287,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center space-x-4 pb-4 border-b border-gray-100">
         <div className="p-2 bg-teal-50 rounded-xl shadow-sm"><FlaskConical className="w-6 h-6 text-teal-600" /></div>
         <div>
-          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Táctica Formulación (Corte y Laminado)</h2>
+          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Planificación Táctica Formulación</h2>
           <div className="flex gap-2 mt-1">
              <Badge variant="outline" className="text-[9px] font-black border-green-200 text-green-700 bg-green-50 uppercase">Planta 1000 - Quito</Badge>
              <Badge variant="outline" className="text-[9px] font-black border-indigo-200 text-indigo-700 bg-indigo-50 uppercase">Planta 2000 - Gye</Badge>
@@ -346,11 +298,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
+            { v: 'resumen', l: 'Resumen Táctico', i: LayoutDashboard },
             { v: 'necesidades', l: 'Lista Necesidades', i: ListChecks },
             { v: 'grupos', l: 'Grupos / Áreas', i: Users }, 
-            { v: 'restricciones', l: 'Filtros Técnicos', i: Lock }, 
-            { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'tiempos', l: 'Tiempos', i: Clock }
+            { v: 'restricciones', l: 'Restricciones', i: Lock }, 
+            { v: 'provisionales', l: 'Provisionales Dual', i: Package }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -358,13 +310,152 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ))}
         </TabsList>
 
+        <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
+           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+              {/* Resumen Planta 1000 */}
+              <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                <div className="p-4 bg-green-50/50 border-b border-green-100 flex justify-between items-center">
+                  <h3 className="text-xs font-black uppercase text-green-800 flex items-center gap-2">
+                    <LayoutDashboard className="w-4 h-4" /> Resumen Planta 1000
+                  </h3>
+                  <Badge className="bg-green-600 text-[9px]">{summaryC1000.length} SKUs</Badge>
+                </div>
+                <div className="overflow-x-auto max-h-[400px]">
+                  <table className="w-full border-collapse text-center">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 border-r border-gray-100 text-left">Material</th>
+                        <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
+                        <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Subbloques</th>
+                        <th className="px-4 py-3 border-r border-gray-100 text-orange-800">Bloques 20m</th>
+                        <th className="px-4 py-3 text-teal-700">Tiempo (H)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                      {summaryC1000.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-4 py-2 text-left font-bold text-gray-700 border-r border-dashed border-gray-100">
+                             <div className="font-mono text-primary">{row.material}</div>
+                             <div className="text-[8px] text-gray-400 truncate max-w-[150px] uppercase">{row.desc}</div>
+                          </td>
+                          <td className="px-4 py-2 font-black text-slate-800 border-r border-dashed border-gray-100">{row.units.toLocaleString()}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100">{row.subblocks.toFixed(1)}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-dashed border-gray-100">{row.blocks20m.toFixed(1)}</td>
+                          <td className="px-4 py-2 font-mono font-black text-teal-600">{row.timeLog.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* Resumen Planta 2000 */}
+              <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                <div className="p-4 bg-indigo-50/50 border-b border-indigo-100 flex justify-between items-center">
+                  <h3 className="text-xs font-black uppercase text-indigo-800 flex items-center gap-2">
+                    <LayoutDashboard className="w-4 h-4" /> Resumen Planta 2000
+                  </h3>
+                  <Badge className="bg-indigo-600 text-[9px]">{summaryC2000.length} SKUs</Badge>
+                </div>
+                <div className="overflow-x-auto max-h-[400px]">
+                  <table className="w-full border-collapse text-center">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 border-r border-gray-100 text-left">Material</th>
+                        <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
+                        <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Subbloques</th>
+                        <th className="px-4 py-3 border-r border-gray-100 text-orange-800">Bloques 20m</th>
+                        <th className="px-4 py-3 text-teal-700">Tiempo (H)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                      {summaryC2000.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-4 py-2 text-left font-bold text-gray-700 border-r border-dashed border-gray-100">
+                             <div className="font-mono text-indigo-700">{row.material}</div>
+                             <div className="text-[8px] text-gray-400 truncate max-w-[150px] uppercase">{row.desc}</div>
+                          </td>
+                          <td className="px-4 py-2 font-black text-slate-800 border-r border-dashed border-gray-100">{row.units.toLocaleString()}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-dashed border-gray-100">{row.subblocks.toFixed(1)}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-dashed border-gray-100">{row.blocks20m.toFixed(1)}</td>
+                          <td className="px-4 py-2 font-mono font-black text-teal-600">{row.timeLog.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+           </div>
+        </TabsContent>
+
         <TabsContent value="necesidades" className="space-y-10 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-              {renderNeedsTable(needsC1000, scrollN1000Top, scrollN1000Bottom, scrollN1000Table, width1000, "Necesidades Planta 1000", "bg-green-50/50 border-green-100")}
+            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+              <div className="p-4 bg-green-50/50 border-b border-green-100">
+                <h3 className="text-xs font-black uppercase text-green-800 flex items-center gap-2">
+                  <ListChecks className="w-4 h-4" /> Necesidades Planta 1000
+                </h3>
+              </div>
+              <div className="overflow-x-auto max-h-[450px]">
+                <table className="w-full border-collapse text-center">
+                  <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
+                    <tr>
+                      <th className="px-3 py-4 border-r border-gray-200">Alm.</th>
+                      <th className="px-3 py-4 border-r border-gray-200">Material</th>
+                      <th className="px-3 py-4 border-r border-gray-200 text-left">Descripción</th>
+                      <th className="px-3 py-4 border-r border-gray-200">Cant.</th>
+                      <th className="px-3 py-4 border-r border-gray-200">Máquina</th>
+                      <th className="px-3 py-4 text-teal-700">T. Min.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-[10px]">
+                    {needsC1000.map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50/50">
+                        <td className="px-3 py-2 font-mono text-gray-400 border-r border-dashed border-gray-100">{row.almacen}</td>
+                        <td className="px-3 py-2 font-mono font-bold text-primary border-r border-dashed border-gray-100">{row.material}</td>
+                        <td className="px-3 py-2 text-left border-r border-dashed border-gray-100 truncate max-w-[150px] uppercase text-gray-500">{row.descripcion}</td>
+                        <td className="px-3 py-2 font-black border-r border-dashed border-gray-100">{row.cantidad.toLocaleString()}</td>
+                        <td className="px-3 py-2 font-black text-orange-700 border-r border-dashed border-gray-100 uppercase">{row.maquina}</td>
+                        <td className="px-3 py-2 font-mono font-black text-teal-600">{row.tiempo.toFixed(4)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </Card>
-            <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-              {renderNeedsTable(needsC2000, scrollN2000Top, scrollN2000Bottom, scrollN2000Table, width2000, "Necesidades Planta 2000", "bg-indigo-50/50 border-indigo-100")}
+
+            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+              <div className="p-4 bg-indigo-50/50 border-b border-indigo-100">
+                <h3 className="text-xs font-black uppercase text-indigo-800 flex items-center gap-2">
+                  <ListChecks className="w-4 h-4" /> Necesidades Planta 2000
+                </h3>
+              </div>
+              <div className="overflow-x-auto max-h-[450px]">
+                <table className="w-full border-collapse text-center">
+                  <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
+                    <tr>
+                      <th className="px-3 py-4 border-r border-gray-200">Alm.</th>
+                      <th className="px-3 py-4 border-r border-gray-200">Material</th>
+                      <th className="px-3 py-4 border-r border-gray-200 text-left">Descripción</th>
+                      <th className="px-3 py-4 border-r border-gray-200">Cant.</th>
+                      <th className="px-3 py-4 border-r border-gray-200">Máquina</th>
+                      <th className="px-3 py-4 text-teal-700">T. Min.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-[10px]">
+                    {needsC2000.map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50/50">
+                        <td className="px-3 py-2 font-mono text-gray-400 border-r border-dashed border-gray-100">{row.almacen}</td>
+                        <td className="px-3 py-2 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100">{row.material}</td>
+                        <td className="px-3 py-2 text-left border-r border-dashed border-gray-100 truncate max-w-[150px] uppercase text-gray-500">{row.descripcion}</td>
+                        <td className="px-3 py-2 font-black border-r border-dashed border-gray-100">{row.cantidad.toLocaleString()}</td>
+                        <td className="px-3 py-2 font-black text-orange-700 border-r border-dashed border-gray-100 uppercase">{row.maquina}</td>
+                        <td className="px-3 py-2 font-mono font-black text-teal-600">{row.tiempo.toFixed(4)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           </div>
         </TabsContent>
@@ -433,53 +524,85 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 h-full items-start">
-            {renderOrdersTable(ordenesC1000, "Órdenes Planta 1000 (Filtros Planta)", "bg-green-50/50 border-green-100")}
-            {renderOrdersTable(ordenesC2000, "Órdenes Planta 2000 (Filtros Planta)", "bg-indigo-50/50 border-indigo-100")}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {[ 
-              { t: 'Ingeniería Planta 1000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim() === '1000'), c: 'text-green-700', b: 'bg-green-600' }, 
-              { t: 'Ingeniería Planta 2000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim() === '2000'), c: 'text-indigo-700', b: 'bg-indigo-600' } 
-            ].map((center, idx) => (
-              <div key={idx} className="space-y-3 text-left">
-                <h3 className={cn("text-[10px] font-black uppercase px-1 flex items-center gap-2", center.c)}>
-                   <Clock className="w-3 h-3" /> {center.t}
+        <TabsContent value="provisionales" className="space-y-10 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            {/* Planta 1000 */}
+            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+              <div className="p-4 bg-green-50/50 border-b border-green-100 flex justify-between items-center">
+                <h3 className="text-xs font-black uppercase text-green-800 flex items-center gap-2">
+                  <Package className="w-4 h-4" /> Órdenes Planta 1000
                 </h3>
-                <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-                  <div className="overflow-x-auto max-h-[400px]">
-                    <table className="w-full border-collapse text-center">
-                      <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
-                        <tr>
-                          <th className="px-4 py-4 border-r border-gray-100">Material</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
-                          <th className="px-4 py-4 text-teal-700 bg-teal-50/20">Estándar (Min)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 text-[10px]">
-                        {center.d.length === 0 ? (
-                          <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">Sin datos técnicos cargados</td></tr>
-                        ) : (
-                          center.d.map((t, i) => {
-                            return (
-                              <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100">{String(t.CodMaterial || '').trim().slice(-8)}</td>
-                                <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">{t.Material || t.Descripcion || '—'}</td>
-                                <td className="px-4 py-3 font-mono font-black text-teal-600 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
+                <Badge className="bg-green-600 text-[9px]">{ordenesC1000.length} ÓRDENES</Badge>
               </div>
-            ))}
+              <div ref={scrollN1000Top} className="overflow-x-auto h-3 bg-gray-50 border-b">
+                <div style={{ width: width1000, height: '1px' }} />
+              </div>
+              <div ref={scrollN1000Bottom} className="overflow-x-auto max-h-[450px]">
+                <table ref={scrollN1000Table} className="w-full border-collapse text-center">
+                  <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-4 border-r border-gray-200">Orden</th>
+                      <th className="px-4 py-4 border-r border-gray-200">Material</th>
+                      <th className="px-4 py-4 border-r border-gray-200 text-left">Nombre</th>
+                      <th className="px-4 py-4 border-r border-gray-200 text-orange-700">Máquina</th>
+                      <th className="px-4 py-4 border-r border-gray-200">Cant.</th>
+                      <th className="px-4 py-4">Alm.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-[10px]">
+                    {ordenesC1000.map((o, i) => (
+                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-4 py-2 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN}</td>
+                        <td className="px-4 py-2 font-mono font-bold text-primary border-r border-dashed border-gray-100">{extractMaterialInfo(o).code}</td>
+                        <td className="px-4 py-2 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] uppercase text-gray-500">{extractMaterialInfo(o).desc}</td>
+                        <td className="px-4 py-2 font-black text-orange-700 border-r border-dashed border-gray-100 uppercase">{getMachineValue(o)}</td>
+                        <td className="px-4 py-2 font-black border-r border-dashed border-gray-100 font-mono">{Number(o.CANTIDAD || o.CANTPROGRAMADA || 0).toLocaleString()}</td>
+                        <td className="px-4 py-2 font-bold text-gray-400 uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* Planta 2000 */}
+            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+              <div className="p-4 bg-indigo-50/50 border-b border-indigo-100 flex justify-between items-center">
+                <h3 className="text-xs font-black uppercase text-indigo-800 flex items-center gap-2">
+                  <Package className="w-4 h-4" /> Órdenes Planta 2000
+                </h3>
+                <Badge className="bg-indigo-600 text-[9px]">{ordenesC2000.length} ÓRDENES</Badge>
+              </div>
+              <div ref={scrollN2000Top} className="overflow-x-auto h-3 bg-gray-50 border-b">
+                <div style={{ width: width2000, height: '1px' }} />
+              </div>
+              <div ref={scrollN2000Bottom} className="overflow-x-auto max-h-[450px]">
+                <table ref={scrollN2000Table} className="w-full border-collapse text-center">
+                  <thead className="bg-gray-100 sticky top-0 z-10 text-[9px] font-black uppercase text-gray-500 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-4 border-r border-gray-200">Orden</th>
+                      <th className="px-4 py-4 border-r border-gray-200">Material</th>
+                      <th className="px-4 py-4 border-r border-gray-200 text-left">Nombre</th>
+                      <th className="px-4 py-4 border-r border-gray-200 text-orange-700">Máquina</th>
+                      <th className="px-4 py-4 border-r border-gray-200">Cant.</th>
+                      <th className="px-4 py-4">Alm.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-[10px]">
+                    {ordenesC2000.map((o, i) => (
+                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-4 py-2 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN}</td>
+                        <td className="px-4 py-2 font-mono font-bold text-indigo-700 border-r border-dashed border-gray-100">{extractMaterialInfo(o).code}</td>
+                        <td className="px-4 py-2 text-left border-r border-dashed border-gray-100 truncate max-w-[200px] uppercase text-gray-500">{extractMaterialInfo(o).desc}</td>
+                        <td className="px-4 py-2 font-black text-orange-700 border-r border-dashed border-gray-100 uppercase">{getMachineValue(o)}</td>
+                        <td className="px-4 py-2 font-black border-r border-dashed border-gray-100 font-mono">{Number(o.CANTIDAD || o.CANTPROGRAMADA || 0).toLocaleString()}</td>
+                        <td className="px-4 py-2 font-bold text-gray-400 uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>
