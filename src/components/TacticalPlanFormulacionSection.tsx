@@ -48,7 +48,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
-        return name.includes('espuma') || name.includes('corte y laminado') || name.includes('formulación');
+        // Incluir espuma y corte y laminado, pero EXCLUIR formulación por estar inactivo
+        return (name.includes('espuma') || name.includes('corte y laminado')) && !name.includes('formulación');
       });
       setGrupos(filtered);
       return filtered;
@@ -224,7 +225,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
 
-  // CORRECCIÓN DEL ERROR: Initial value must not reference acc or row
   const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ 
     units: acc.units + row.units, 
     subbloques: acc.subbloques + row.subbloques, 
@@ -508,18 +508,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 gap-10">
-            {[ { t: 'Quito 1000', d: summaryTotals1000 }, { t: 'Guayaquil 2000', d: summaryTotals2000 } ].map((center, idx) => (
-              <div key={idx} className="space-y-4">
-                <h3 className="text-sm font-bold uppercase text-gray-400 text-left">Catálogo de Tiempos</h3>
-                <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-                  <div className="p-8 text-center text-gray-400 italic">
-                    Utilice la pestaña de Provisionales para ver el detalle por material.
-                  </div>
-                </Card>
-              </div>
-            ))}
-          </div>
+          <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+            <div className="p-12 text-center text-gray-400 font-medium italic">
+              Utilice la pestaña de Provisionales para ver el detalle por material y tiempos de ensamblado por planta.
+            </div>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
