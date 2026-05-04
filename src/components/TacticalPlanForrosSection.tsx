@@ -250,11 +250,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
    * Calcula el tiempo total de producción para una orden buscando el tiempo unitario en los datos maestros.
    */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
-    if (!material) return '—';
+    if (!material) return '0';
     const normMaterial = normalizeMaterialCode(material);
     const resolvedMachine = getResolvedMachine(order);
     
-    if (!resolvedMachine) return '—';
+    if (!resolvedMachine) return '0';
     
     const match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
@@ -262,17 +262,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return tMaterial === normMaterial && tMachine === resolvedMachine;
     });
 
-    if (!match) return '—';
+    if (!match) return '0';
     
     const unitTime = Number(match.Tiempo || 0);
-    const totalTime = unitTime * quantity;
-    
-    return totalTime.toFixed(2) + ' min';
+    return (unitTime * quantity).toFixed(2);
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
   /**
    * Renderizador de celdas para la pestaña de órdenes previsionales.
-   * Resuelve la columna MAQUINA basándose en los tiempos de producción si está vacía.
    */
   const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
@@ -319,35 +316,40 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [dailyOrders, dailyPage, dailyRowsPerPage]);
 
   const productionSummary = useMemo(() => {
-    const summaryMap = new Map<string, { date: string; dateSort: string; category: string; quantity: number; count: number }>();
+    const summaryMap = new Map<string, { date: string; dateSort: string; machine: string; quantity: number; count: number; totalTime: number }>();
     
     dailyOrders.forEach(order => {
       const normDate = normalizeDateForFilter(order['FECHAINICIO']);
       if (!normDate) return;
       
       const dateDisplay = formatValueForDisplay('FECHA', normDate);
-      const category = String(order['CATEGORIA'] || 'General').trim();
-      const key = `${normDate}-${category}`;
+      const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
+      const quantity = Number(order['CANTIDAD'] || 0);
+      const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'], quantity, order)) || 0;
+      
+      const key = `${normDate}-${machine}`;
       
       if (!summaryMap.has(key)) {
         summaryMap.set(key, {
           date: dateDisplay,
           dateSort: normDate,
-          category: category,
+          machine: machine,
           quantity: 0,
-          count: 0
+          count: 0,
+          totalTime: 0
         });
       }
       
       const entry = summaryMap.get(key)!;
-      entry.quantity += Number(order['CANTIDAD'] || 0);
+      entry.quantity += quantity;
       entry.count += 1;
+      entry.totalTime += timeVal;
     });
     
     return Array.from(summaryMap.values()).sort((a, b) => {
-      return a.dateSort.localeCompare(b.dateSort) || a.category.localeCompare(b.category);
+      return a.dateSort.localeCompare(b.dateSort) || a.machine.localeCompare(b.machine);
     });
-  }, [dailyOrders, formatValueForDisplay, normalizeDateForFilter]);
+  }, [dailyOrders, formatValueForDisplay, normalizeDateForFilter, getResolvedMachine, calculateProductionTime]);
 
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
@@ -514,7 +516,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               >
                                 {col === 'TIEMPOS DE PRODUCCIÓN' ? (
                                   <span className="font-bold text-emerald-700">
-                                    {calculateProductionTime(order['MATERIAL'], Number(order['CANTIDAD'] || 0), order)}
+                                    {calculateProductionTime(order['MATERIAL'], Number(order['CANTIDAD'] || 0), order)} min
                                   </span>
                                 ) : upperCol === 'MAQUINA' ? (
                                   <span className="font-semibold text-blue-700">
@@ -553,7 +555,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <CardHeader className="bg-indigo-50/50 border-b border-indigo-100">
                 <CardTitle className="text-sm font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-2">
                   <Clock className="w-4 h-4" />
-                  Horas disponibles
+                  Capacidad de Forros
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6">
@@ -596,64 +598,67 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <BarChart3 className="w-5 h-5 text-primary" />
-                  Resumen de Carga de Producción (Detalle por Categoría)
+                  Resumen de Carga de Producción (Detalle por Máquina)
                 </CardTitle>
                 <CardDescription>
-                  Consolidado de unidades a producir para las fechas seleccionadas ({formattedToday} y {formattedTarget}).
+                  Consolidado de unidades y tiempos de carga por puesto de trabajo ({formattedToday} y {formattedTarget}).
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="rounded-md border overflow-hidden">
-                  <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
-                    <div style={{ transform: 'rotateX(180deg)' }}>
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Máquina / Puesto</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-emerald-700 uppercase tracking-wider">Tiempo Total (min)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {isLoadingDaily ? (
                           <tr>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Categoría</th>
-                            <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
-                            <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
+                            <td colSpan={5} className="py-12 text-center">
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 bg-white">
-                          {isLoadingDaily ? (
-                            <tr>
-                              <td colSpan={4} className="py-12 text-center">
-                                <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-                              </td>
+                        ) : productionSummary.length > 0 ? (
+                          productionSummary.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-900">{item.date}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">{item.totalTime.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                             </tr>
-                          ) : productionSummary.length > 0 ? (
-                            productionSummary.map((item, idx) => (
-                              <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-900">{item.date}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{item.category}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
-                              </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td colSpan={4} className="py-12 text-center text-gray-400 italic">
-                                No hay datos en la programación diaria para resumir.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                        {productionSummary.length > 0 && (
-                          <tfoot className="bg-gray-50 font-bold border-t-2">
-                            <tr>
-                              <td colSpan={2} className="px-6 py-3 text-right text-xs text-gray-600 uppercase">Totales Generales:</td>
-                              <td className="px-6 py-3 text-right font-mono text-sm">
-                                {productionSummary.reduce((acc, curr) => acc + curr.count, 0)}
-                              </td>
-                              <td className="px-6 py-3 text-right font-mono text-sm text-blue-800">
-                                {productionSummary.reduce((acc, curr) => acc + curr.quantity, 0).toLocaleString()}
-                              </td>
-                            </tr>
-                          </tfoot>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-12 text-center text-gray-400 italic">
+                              No hay datos en la programación diaria para resumir.
+                            </td>
+                          </tr>
                         )}
-                      </table>
-                    </div>
+                      </tbody>
+                      {productionSummary.length > 0 && (
+                        <tfoot className="bg-gray-50 font-bold border-t-2">
+                          <tr>
+                            <td colSpan={2} className="px-6 py-3 text-right text-xs text-gray-600 uppercase">Totales Generales:</td>
+                            <td className="px-6 py-3 text-right font-mono text-sm">
+                              {productionSummary.reduce((acc, curr) => acc + curr.count, 0)}
+                            </td>
+                            <td className="px-6 py-3 text-right font-mono text-sm text-blue-800">
+                              {productionSummary.reduce((acc, curr) => acc + curr.quantity, 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-3 text-right font-mono text-sm text-emerald-800">
+                              {productionSummary.reduce((acc, curr) => acc + curr.totalTime, 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
                   </div>
                 </div>
               </CardContent>
