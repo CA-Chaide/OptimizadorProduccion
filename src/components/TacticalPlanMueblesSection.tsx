@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -199,15 +198,15 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="ordenes" className="w-full">
-          <TabsList className="grid w-full grid-cols-8">
-              <TabsTrigger value="grupos">Grupos</TabsTrigger>
-              <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
-              <TabsTrigger value="ordenes">Órdenes Previsionales</TabsTrigger>
-              <TabsTrigger value="ordenesFert">Órdenes Fert</TabsTrigger>
-              <TabsTrigger value="tiemposMuebles">Tiempos Muebles</TabsTrigger>
-              <TabsTrigger value="cascos">Inv. Cascos</TabsTrigger>
-              <TabsTrigger value="telas">Inv. Telas</TabsTrigger>
-              <TabsTrigger value="plan">PLAN</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-8 h-auto p-1 bg-muted">
+              <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0">Grupos</TabsTrigger>
+              <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0">Restricciones</TabsTrigger>
+              <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0">Órdenes Previsionales</TabsTrigger>
+              <TabsTrigger value="ordenesFert" className="border-r border-dashed border-gray-300 last:border-r-0">Órdenes Fert</TabsTrigger>
+              <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0">Tiempos Muebles</TabsTrigger>
+              <TabsTrigger value="cascos" className="border-r border-dashed border-gray-300 last:border-r-0">Cascos</TabsTrigger>
+              <TabsTrigger value="telas" className="border-r border-dashed border-gray-300 last:border-r-0">Telas</TabsTrigger>
+              <TabsTrigger value="plan" className="last:border-r-0">PLAN</TabsTrigger>
           </TabsList>
           <TabsContent value="grupos" className="mt-4">
               <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
@@ -247,7 +246,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
           <TabsContent value="cascos" className="mt-4">
               <Card>
                   <CardHeader>
-                      <CardTitle>Inv. Cascos</CardTitle>
+                      <CardTitle>Inventario Cascos</CardTitle>
                       <CardDescription>
                           Visualización de los datos de inventario filtrados por "CASCO".
                       </CardDescription>
@@ -260,7 +259,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
            <TabsContent value="telas" className="mt-4">
               <Card>
                   <CardHeader>
-                      <CardTitle>Inv. Telas</CardTitle>
+                      <CardTitle>Inventario Telas</CardTitle>
                       <CardDescription>
                           Visualización de los datos de inventario filtrados por "TELA".
                       </CardDescription>
