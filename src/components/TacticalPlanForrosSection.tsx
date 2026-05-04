@@ -345,6 +345,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
   }, [dailyOrders, getResolvedMachine, calculateProductionTime]);
 
+  const plannedCapacity = useMemo(() => {
+    const diurno = parseFloat(horarioDiurno) || 0;
+    const nocturno = parseFloat(horarioNocturno) || 0;
+    // Cálculo: (Diurno + Nocturno) - 16% (multiplicar por 0.84)
+    return (diurno + nocturno) * 0.84;
+  }, [horarioDiurno, horarioNocturno]);
+
   const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
 
@@ -570,7 +577,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Capacidad Total Planificada</p>
                     <div className="flex items-baseline gap-2">
-                      <p className="text-3xl font-extrabold text-indigo-700">--</p>
+                      <p className="text-3xl font-extrabold text-indigo-700">
+                        {plannedCapacity.toFixed(2)}
+                      </p>
                       <span className="text-sm font-medium text-gray-400 italic">horas / día</span>
                     </div>
                   </div>
@@ -608,7 +617,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
                   <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                     <p className="text-[10px] leading-relaxed text-amber-800 italic">
-                      * Las horas se calculan en base a los turnos vigentes y el personal asignado al área de Forros.
+                      * Las horas se calculan sumando las jornadas y restando el 16% de factor de eficiencia operativa.
                     </p>
                   </div>
                 </div>
