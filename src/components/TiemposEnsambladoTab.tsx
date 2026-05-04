@@ -1,20 +1,24 @@
-
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import type { Grupo } from '@/types/interfaces';
-import { Button } from '@/components/ui/button';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 interface TiemposEnsambladoTabProps {
     data: any[];
     isLoading: boolean;
 }
 
+const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
+
 export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data, isLoading }) => {
     const [columns, setColumns] = useState<string[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[0]);
     
     const topScrollRef = useRef<HTMLDivElement>(null);
     const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -23,10 +27,33 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
     useEffect(() => {
-        if (data.length > 0) {
+        if (data && data.length > 0) {
             setColumns(Object.keys(data[0]));
         }
     }, [data]);
+
+    const filteredData = useMemo(() => {
+        if (!data) return [];
+        if (!searchTerm.trim()) return data;
+        const term = searchTerm.toLowerCase();
+        return data.filter(row => {
+            const materialValue = String(row.CodMaterial ?? row.MATERIAL ?? row.Material ?? '').toLowerCase();
+            const descValue = String(row.Descripcion ?? row.Material ?? '').toLowerCase();
+            return materialValue.includes(term) || descValue.includes(term);
+        });
+    }, [data, searchTerm]);
+
+    const totalRecords = filteredData.length;
+    const totalPages = Math.max(1, Math.ceil(totalRecords / rowsPerPage));
+
+    const paginatedData = useMemo(() => {
+        const start = (currentPage - 1) * rowsPerPage;
+        return filteredData.slice(start, start + rowsPerPage);
+    }, [filteredData, currentPage, rowsPerPage]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, rowsPerPage]);
 
     useEffect(() => {
         const calculateWidth = () => {
@@ -48,7 +75,7 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
                 resizeObserver.unobserve(tableRef.current);
             }
         };
-    }, [data]);
+    }, [paginatedData]);
 
     const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (lastScrolledRef.current === 'table') {
@@ -80,43 +107,94 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
             </CardHeader>
             <CardContent>
                 {isLoading ? (
-                    <div className="flex justify-center items-center p-8"><Loader2 className="w-8 h-8 animate-spin" /></div>
+                    <div className="flex justify-center items-center p-8">
+                        <Loader2 className="w-8 h-8 animate-spin" />
+                    </div>
                 ) : (
-                    data.length > 0 ? (
-                        <>
-                            <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
-                                <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
-                            </div>
-                            <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh]">
-                                <table ref={tableRef} className="min-w-full text-xs divide-y divide-gray-200">
-                                    <TableHeader>
-                                        <TableRow>
-                                            {columns.map(col => <TableHead key={col}>{col === 'CodMaterial' ? 'MATERIAL' : col}</TableHead>)}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {data.map((row, idx) => (
-                                            <TableRow key={idx}>
-                                                {columns.map(col => {
-                                                    const value = row[col];
-                                                    const displayValue = (col === 'Tiempo_Min' || col === 'Tiempo') && typeof value === 'number'
-                                                        ? value.toFixed(2)
-                                                        : String(value ?? '-');
-                                                    return <TableCell key={`${idx}-${col}`}>{displayValue}</TableCell>;
-                                                })}
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </table>
-                            </div>
-                        </>
-                    ) : (
-                         <div className="text-center py-8 text-gray-500">
-                            No se encontraron datos de tiempos de ensamblado para Muebles en Centro 1000.
+                    <>
+                        <div className="mb-4 relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                            <Input
+                                placeholder="Buscar por material o descripción..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-10"
+                            />
                         </div>
-                    )
+                        {paginatedData.length > 0 ? (
+                            <>
+                                <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
+                                    <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
+                                </div>
+                                <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh]">
+                                    <table ref={tableRef} className="min-w-full text-xs divide-y divide-gray-200">
+                                        <TableHeader>
+                                            <TableRow>
+                                                {columns.map(col => (
+                                                    <TableHead key={col}>
+                                                        {col === 'CodMaterial' ? 'MATERIAL' : col}
+                                                    </TableHead>
+                                                ))}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {paginatedData.map((row, idx) => (
+                                                <TableRow key={`row-${idx}`}>
+                                                    {columns.map(col => {
+                                                        const value = row[col];
+                                                        const displayValue = (col === 'Tiempo_Min' || col === 'Tiempo') && typeof value === 'number'
+                                                            ? value.toFixed(2)
+                                                            : String(value ?? '-');
+                                                        return <TableCell key={`${idx}-${col}`}>{displayValue}</TableCell>;
+                                                    })}
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </table>
+                                </div>
+
+                                <div className="flex items-center justify-between mt-4">
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-sm text-gray-600">Filas por página:</span>
+                                        <select
+                                            value={rowsPerPage}
+                                            onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                                            className="px-3 py-1 border border-gray-300 rounded-md text-sm bg-white"
+                                        >
+                                            {ROWS_PER_PAGE_OPTIONS.map(size => (
+                                                <option key={size} value={size}>{size}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-sm text-gray-600">
+                                            Página {currentPage} de {totalPages} ({totalRecords} registros)
+                                        </span>
+                                        <div className="flex gap-1">
+                                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>
+                                                Primera
+                                            </Button>
+                                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
+                                                Anterior
+                                            </Button>
+                                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
+                                                Siguiente
+                                            </Button>
+                                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>
+                                                Última
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                             <div className="text-center py-8 text-gray-500">
+                                {searchTerm ? `No se encontraron resultados para "${searchTerm}"` : 'No se encontraron datos de tiempos de ensamblado para Muebles en Centro 1000.'}
+                            </div>
+                        )}
+                    </>
                 )}
             </CardContent>
         </Card>
     );
-}
+};
