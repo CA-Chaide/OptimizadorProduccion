@@ -237,7 +237,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const usefulHeight = isNaN(densValue) ? 103 : (densValue < 30 ? 103 : 85);
         
         const itemSubbloques = (qty * esp) / usefulHeight;
-        // 2000cm = 20m. Dividimos para obtener unidades de 20m.
         const itemBloques20m = (ancho * itemSubbloques) / (BLOCK_LENGTH_METERS * 100);
 
         if (!groupsMap.has(key)) {
@@ -260,11 +259,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         if (centerId === '1000') entry.bloques1000 += itemBloques20m;
         else entry.bloques2000 += itemBloques20m;
         
-        // Sumamos y aplicamos Math.ceil para tener "numeros cerrados"
-        entry.totalBloques = Math.ceil(entry.bloques1000 + entry.bloques2000);
+        // El total acumulado mantiene decimales para precisión
+        entry.totalBloques = entry.bloques1000 + entry.bloques2000;
         
-        // El plan de reposición se basa en unidades enteras
-        entry.planReposicion = Math.max(0, entry.totalBloques - entry.bloquesStock + entry.bloquesProceso);
+        // El plan de reposición aplica el redondeo superior para ser unidades enteras
+        entry.planReposicion = Math.ceil(Math.max(0, entry.totalBloques - entry.bloquesStock + entry.bloquesProceso));
       });
     };
 
@@ -278,7 +277,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const unifiedSummaryData = useMemo(() => calculateUnifiedSummary(provC1000, provC2000), [provC1000, provC2000]);
 
-  // Cálculo de Carga Diaria para monitoreo contra límite de 36
   const dailyLoadSummary = useMemo(() => {
     const map = new Map<string, number>();
     unifiedSummaryData.forEach(row => {
@@ -453,7 +451,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{row.bloques1000.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{row.bloques2000.toFixed(1)}</td>
-                        <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{row.totalBloques.toFixed(0)}</td>
+                        <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">{row.bloquesStock.toFixed(0)}</td>
                         <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">{row.bloquesCurado.toFixed(0)}</td>
                         <td className="px-4 py-3 font-mono text-blue-400 border-r border-gray-50 bg-blue-50/20">{row.bloquesProceso.toFixed(0)}</td>
@@ -466,7 +464,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       <td colSpan={5} className="px-4 py-3 text-right uppercase">Totales Consolidados:</td>
                       <td className="px-4 py-3 font-mono text-green-300">{summaryTotals.bloques1000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-indigo-300">{summaryTotals.bloques2000.toFixed(1)}</td>
-                      <td className="px-4 py-3 font-mono text-orange-300">{summaryTotals.totalBloques.toFixed(0)}</td>
+                      <td className="px-4 py-3 font-mono text-orange-300">{summaryTotals.totalBloques.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-slate-400">{summaryTotals.bloquesStock.toFixed(0)}</td>
                       <td className="px-4 py-3 font-mono text-amber-400">{summaryTotals.bloquesCurado.toFixed(0)}</td>
                       <td className="px-4 py-3 font-mono text-blue-400">{summaryTotals.bloquesProceso.toFixed(0)}</td>
