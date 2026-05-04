@@ -18,6 +18,7 @@ export * from './ProductionCapacitySection';
 export * from './TacticalPlanSection';
 export * from './TacticalPlan2Section';
 export * from './TacticalPlanEspumasSection';
+export * from './TacticalPlanFormulacionSection';
 export * from './TacticalPlanVentaExternaSection';
 export * from './TacticalPlanCorteLaminadoSection';
 export * from './ProvisionalOrdersTabSection';
