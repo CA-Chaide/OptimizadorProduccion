@@ -65,13 +65,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       initialLoadDone.current = true;
       setIsLoading(true);
       try {
-        // 1. Grupos (Filtro Corte/Laminado/Formulación para 1000 y 2000)
+        // 1. Grupos (Filtro Corte y Laminado para 1000 y 2000 - Se excluye Formulación por obsolescencia)
         const resG = await grupoService.getAll();
         const filteredGroups = (resG.data || []).filter(g => {
           const name = (g.nombre_grupo || '').toLowerCase();
           const centro = String(g.centro || '').trim();
           return (centro === '1000' || centro === '2000') && 
-                 (name.includes('corte y laminado') || name.includes('formulacion') || name.includes('formulación'));
+                 (name.includes('corte y laminado'));
         });
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
@@ -460,13 +460,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         {center.d.length === 0 ? (
                           <tr><td colSpan={3} className="py-12 text-center text-gray-400 italic">Sin datos técnicos cargados</td></tr>
                         ) : (
-                          center.d.map((t, i) => (
-                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                              <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100">{String(t.CodMaterial || '').trim().slice(-8)}</td>
-                              <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">{t.Material || t.Descripcion || '—'}</td>
-                              <td className="px-4 py-3 font-mono font-black text-teal-600 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
-                            </tr>
-                          ))
+                          center.d.map((t, i) => {
+                            return (
+                              <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-dashed border-gray-100">{String(t.CodMaterial || '').trim().slice(-8)}</td>
+                                <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[200px]">{t.Material || t.Descripcion || '—'}</td>
+                                <td className="px-4 py-3 font-mono font-black text-teal-600 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
