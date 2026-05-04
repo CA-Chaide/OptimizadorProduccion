@@ -644,27 +644,45 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-emerald-700 uppercase tracking-wider">Tiempo Total (min)</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad (%)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
                         {isLoadingDaily ? (
                           <tr>
-                            <td colSpan={4} className="py-12 text-center">
+                            <td colSpan={5} className="py-12 text-center">
                               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                             </td>
                           </tr>
                         ) : productionSummary.length > 0 ? (
-                          productionSummary.map((item, idx) => (
-                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">{item.totalTime.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                            </tr>
-                          ))
+                          productionSummary.map((item, idx) => {
+                            const capacityInMinutes = plannedCapacity * 60;
+                            const utilizationPercent = capacityInMinutes > 0 ? (item.totalTime / capacityInMinutes) * 100 : 0;
+                            
+                            return (
+                              <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">{item.totalTime.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                  <Badge 
+                                    className={cn(
+                                      "font-mono font-bold",
+                                      utilizationPercent > 100 ? "bg-red-100 text-red-700 hover:bg-red-200" : 
+                                      utilizationPercent > 80 ? "bg-amber-100 text-amber-700 hover:bg-amber-200" :
+                                      "bg-green-100 text-green-700 hover:bg-green-200"
+                                    )}
+                                  >
+                                    {utilizationPercent.toFixed(1)}%
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })
                         ) : (
                           <tr>
-                            <td colSpan={4} className="py-12 text-center text-gray-400 italic">
+                            <td colSpan={5} className="py-12 text-center text-gray-400 italic">
                               No hay datos en la programación diaria para resumir.
                             </td>
                           </tr>
@@ -682,6 +700,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             </td>
                             <td className="px-6 py-3 text-right font-mono text-sm text-emerald-800">
                               {productionSummary.reduce((acc, curr) => acc + curr.totalTime, 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-6 py-3 text-right">
+                              {(() => {
+                                const totalTimeAll = productionSummary.reduce((acc, curr) => acc + curr.totalTime, 0);
+                                const totalCapacityAll = plannedCapacity * 60 * productionSummary.length;
+                                const avgUtilization = totalCapacityAll > 0 ? (totalTimeAll / totalCapacityAll) * 100 : 0;
+                                return (
+                                  <span className="text-xs text-gray-500 italic">
+                                    Promedio: {avgUtilization.toFixed(1)}%
+                                  </span>
+                                );
+                              })()}
                             </td>
                           </tr>
                         </tfoot>
