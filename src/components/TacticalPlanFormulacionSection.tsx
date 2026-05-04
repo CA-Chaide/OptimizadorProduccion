@@ -3,10 +3,10 @@
 /**
  * @fileOverview Módulo de Planificación Táctica para Formulación.
  * 
- * Corrección: Soporte multiafield para Máquina (MAQUINA, Maquina, RECURSO).
- * - Lista Necesidades: Unión técnica de Órdenes y Tiempos filtrada por Planta 1000.
- * - Restricciones: Parámetros técnicos exclusivos del Centro 1000.
- * - Grupos: Áreas operativas del Centro 1000.
+ * Configuración:
+ * - Grupos: Corte y Laminado (Centro 1000).
+ * - Filtros: Aplicados a Necesidades y Provisionales según RESPCTRLPROD y ALMACEN.
+ * - Soporte multiafield para Máquina (MAQUINA, Maquina, RECURSO).
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -43,12 +43,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const scrollNecesidadesTable = useRef<HTMLTableElement>(null);
   const [scrollWidth, setScrollWidth] = useState(0);
 
-  // Efecto 1: Control de hidratación (Montaje seguro)
+  // Efecto 1: Control de hidratación
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Efecto 2: Carga de datos maestros (Solo una vez tras el montaje)
+  // Efecto 2: Carga de datos maestros
   useEffect(() => {
     if (!mounted || initialLoadDone.current) return;
 
@@ -56,7 +56,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       initialLoadDone.current = true;
       setIsLoading(true);
       try {
-        // 1. Grupos (Filtrado exclusivo por Centro 1000)
+        // 1. Grupos (Corte y Laminado - Centro 1000)
         const resG = await grupoService.getAll();
         const filteredGroups = (resG.data || []).filter(g => 
           g.nombre_grupo && 
@@ -66,7 +66,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
-        // 2. Restricciones (Planta 1000)
+        // 2. Restricciones
         const resR = await restriccionService.getAll();
         const center1000Restrictions = (resR.data || []).filter(r => 
           groupsIds.includes(r.codigo_grupo) && String(r.grupo?.centro || '').trim() === '1000'
@@ -78,7 +78,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const oData = resProv.data?.data || resProv.data || [];
         setOrders(Array.isArray(oData) ? oData : []);
 
-        // 4. Tiempos de Ensamblado (Carga segmentada por grupo Planta 1000)
+        // 4. Tiempos de Ensamblado (Carga segmentada por grupo)
         const allTiempos: any[] = [];
         for (const g of filteredGroups) {
           if (!g.centro) continue;
@@ -109,8 +109,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     };
 
     loadAllBaseData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted]); // Solo depende del estado mounted para iniciar
+  }, [mounted, inspector, addNotification]);
 
   const extractMaterialCode = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
@@ -118,59 +117,66 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return match ? match[1].slice(-8) : matStr.slice(-8);
   };
 
-  // Lógica de unión técnica: Provisionales + Tiempos + Filtros de Planta 1000
+  // Helper para obtener códigos de restricciones
+  const getRestrictionCodes = (name: string) => {
+    return restricciones
+      .filter(r => r.nombre_restriccion.toUpperCase() === name.toUpperCase())
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+  };
+
+  // Lógica de filtrado compartido (Filtros de Planta 1000: RESPCTRLPROD y ALMACEN)
+  const ordenesFiltradas = useMemo(() => {
+    const respCodes = getRestrictionCodes('RESPCTRLPROD');
+    const almCodes = getRestrictionCodes('ALMACEN');
+
+    return ordenes.filter(o => {
+      // 1. Filtro estricto por Planta 1000
+      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+      if (itemCentro !== '' && itemCentro !== '1000') return false; 
+
+      // 2. Validación Responsable
+      const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
+      const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
+      if (!matchResp) return false;
+
+      // 3. Validación Almacén
+      const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
+      
+      return matchAlm;
+    });
+  }, [ordenes, restricciones]);
+
+  // Lista Necesidades: Unión de Provisionales Filtradas + Tiempos
   const listaNecesidades = useMemo(() => {
-    const respCodes = restricciones
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
-    const almCodes = restricciones
-      .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
     const timesMap = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
       const code = String(t.CodMaterial || t.Material || '').trim().slice(-8);
       if (code) timesMap.set(code, t);
     });
 
-    return ordenes
-      .filter(o => {
-        // Filtro estricto por Planta 1000
-        const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
-        if (itemCentro !== '' && itemCentro !== '1000') return false; 
+    return ordenesFiltradas.map(o => {
+      const code = extractMaterialCode(o);
+      const t = timesMap.get(code);
+      const nameStr = String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim();
+      const desc = nameStr || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
 
-        // Validación contra restricciones dinámicas
-        const itemResp = String(o.RESPCONTROLPROD || o.RESPCTRLPROD || o.RespCtrlProd || '').trim();
-        const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
-        const itemAlm = String(o.Almacen || o.ALMACEN || o.almacen || '').trim();
-        const matchAlm = almCodes.length === 0 || almCodes.some(c => itemAlm === c || itemAlm.includes(c));
-        
-        return matchResp && matchAlm;
-      })
-      .map(o => {
-        const code = extractMaterialCode(o);
-        const t = timesMap.get(code);
-        const nameStr = String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim();
-        const desc = nameStr || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
+      return {
+        centro: o.Centro || o.CENTRO || t?.Centro || '1000',
+        almacen: o.Almacen || o.ALMACEN || '—',
+        categoria: o.CATEGORIA || o.Categoria || '—',
+        material: code,
+        descripcion: desc,
+        cantidad: o.CANTIDAD || o.CANTPROGRAMADA || 0,
+        lineaTecnica: t?.Linea || t?.PuestoTrabajoLinea || '—',
+        maquina: o.MAQUINA || o.Maquina || o.RECURSO || '—',
+        tiempo: t?.Tiempo_Min || t?.Tiempo || 0
+      };
+    });
+  }, [ordenesFiltradas, tiemposEnsamblado]);
 
-        return {
-          centro: o.Centro || o.CENTRO || t?.Centro || '1000',
-          almacen: o.Almacen || o.ALMACEN || '—',
-          categoria: o.CATEGORIA || o.Categoria || '—',
-          material: code,
-          descripcion: desc,
-          cantidad: o.CANTIDAD || o.CANTPROGRAMADA || 0,
-          lineaTecnica: t?.Linea || t?.PuestoTrabajoLinea || '—',
-          maquina: o.MAQUINA || o.Maquina || o.RECURSO || '—',
-          tiempo: t?.Tiempo_Min || t?.Tiempo || 0
-        };
-      });
-  }, [ordenes, tiemposEnsamblado, restricciones]);
-
-  // Sincronización de scroll para la tabla de necesidades
+  // Sincronización de scroll
   useEffect(() => {
     if (activeTab === 'necesidades' && mounted) {
       const top = scrollNecesidadesTop.current;
@@ -231,7 +237,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <h3 className="text-xs font-black uppercase text-indigo-900 flex items-center gap-2">
                 <ListChecks className="w-4 h-4" /> Unión Táctica: Provisionales + Tiempos (Planta 1000)
               </h3>
-              <p className="text-[10px] text-indigo-600 mt-1">Cruce por CodMaterial basado en Restricciones Técnicas</p>
+              <p className="text-[10px] text-indigo-600 mt-1">Filtrado por Restricciones de Corte y Laminado</p>
             </div>
             <div ref={scrollNecesidadesTop} className="overflow-x-auto h-3 bg-gray-50 border-b border-indigo-100">
               <div style={{ width: scrollWidth, height: '1px' }} />
@@ -253,7 +259,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
                   {listaNecesidades.length === 0 ? (
-                    <tr><td colSpan={9} className="py-20 text-center text-gray-400 font-medium italic">Sin resultados filtrados para Planta 1000</td></tr>
+                    <tr><td colSpan={9} className="py-20 text-center text-gray-400 font-medium italic">Sin resultados para Planta 1000</td></tr>
                   ) : (
                     listaNecesidades.map((row, i) => (
                       <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
@@ -318,6 +324,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         <TabsContent value="ordenes">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            <div className="p-4 bg-gray-50/50 border-b border-gray-100 text-left">
+              <h3 className="text-xs font-black uppercase text-gray-900 flex items-center gap-2">
+                <Package className="w-4 h-4" /> Órdenes Provisionales (Filtradas Planta 1000)
+              </h3>
+            </div>
             <div className="overflow-x-auto max-h-[500px]">
               <table className="w-full border-collapse text-center">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
@@ -331,12 +342,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {ordenes.length === 0 ? (
-                    <tr><td colSpan={6} className="py-20 text-center text-gray-400 font-medium italic">Sin órdenes provisonales cargadas</td></tr>
+                  {ordenesFiltradas.length === 0 ? (
+                    <tr><td colSpan={6} className="py-20 text-center text-gray-400 font-medium italic">Sin órdenes provisionales para los filtros de Planta 1000</td></tr>
                   ) : (
-                    ordenes.map((o, i) => (
+                    ordenesFiltradas.map((o, i) => (
                       <tr key={i} className="hover:bg-teal-50/30 transition-colors">
-                        <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL}</td>
+                        <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN}</td>
                         <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{extractMaterialCode(o)}</td>
                         <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">
                           {String(o.NOMBRE || o.NombreMaterial || o.Descripcion || '').trim() || String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—'}
@@ -344,7 +355,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 font-bold text-orange-700 border-r border-dashed border-gray-100 bg-orange-50/5 uppercase">
                           {o.MAQUINA || o.Maquina || o.RECURSO || '—'}
                         </td>
-                        <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || 0}</td>
+                        <td className="px-4 py-3 font-black text-slate-800 border-r border-gray-100 font-mono">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
                         <td className="px-4 py-3 text-gray-400 font-bold uppercase">{o.Almacen || o.ALMACEN || '—'}</td>
                       </tr>
                     ))
@@ -368,14 +379,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {tiemposEnsamblado.map((t, i) => (
-                    <tr key={i} className="hover:bg-teal-50/20 transition-colors">
-                      <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{String(t.CodMaterial || t.Material || '').trim().slice(-8)}</td>
-                      <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Material || t.Descripcion || '—'}</td>
-                      <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
-                      <td className="px-4 py-3 font-bold text-gray-400 uppercase">{t.Centro || '—'}</td>
-                    </tr>
-                  ))}
+                  {tiemposEnsamblado.length === 0 ? (
+                    <tr><td colSpan={4} className="py-20 text-center text-gray-400 font-medium italic">Sin tiempos de ensamblado para Planta 1000</td></tr>
+                  ) : (
+                    tiemposEnsamblado.map((t, i) => (
+                      <tr key={i} className="hover:bg-teal-50/20 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-teal-700 border-r border-gray-100">{String(t.CodMaterial || t.Material || '').trim().slice(-8)}</td>
+                        <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 text-gray-500 uppercase truncate max-w-[300px]">{t.Material || t.Descripcion || '—'}</td>
+                        <td className="px-4 py-3 font-mono font-black text-teal-600 border-r border-gray-100">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                        <td className="px-4 py-3 font-bold text-gray-400 uppercase">{t.Centro || '—'}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
