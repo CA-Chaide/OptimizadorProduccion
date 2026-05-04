@@ -15,8 +15,7 @@ import {
   ChevronsRight, 
   CalendarCheck,
   BarChart3,
-  Clock,
-  Map as MapIcon
+  Clock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -241,14 +240,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [tiemposProduccion]);
 
-  const dailyColumns = useMemo(() => {
-    if (dailyOrders.length === 0) return [];
-    const allKeys = Object.keys(dailyOrders[0]);
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
-    return [...priority.filter(k => k === 'TIEMPOS DE PRODUCCIÓN' || (allKeys.includes(k) && k !== 'CATEGORIA')), ...allKeys.filter(k => !priority.includes(k) && k !== 'CATEGORIA')];
-  }, [dailyOrders]);
-
   const calculateProductionTime = useCallback((material: string, quantity: number, machine: string) => {
+    if (!material || !machine) return '—';
     const normMaterial = normalizeMaterialCode(material);
     const normMachine = String(machine || '').trim().toUpperCase();
     
@@ -261,8 +254,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!match) return '—';
     
     const unitTime = Number(match.Tiempo || 0);
-    return (unitTime * quantity).toFixed(2) + ' min';
+    const totalTime = unitTime * quantity;
+    
+    return totalTime.toFixed(2) + ' min';
   }, [tiemposProduccion, normalizeMaterialCode]);
+
+  const dailyColumns = useMemo(() => {
+    if (dailyOrders.length === 0) return [];
+    const allKeys = Object.keys(dailyOrders[0]);
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
+    return [...priority.filter(k => k === 'TIEMPOS DE PRODUCCIÓN' || (allKeys.includes(k) && k !== 'CATEGORIA')), ...allKeys.filter(k => !priority.includes(k) && k !== 'CATEGORIA')];
+  }, [dailyOrders]);
 
   const paginatedTiemposData = useMemo(() => {
     const start = (tiemposPage - 1) * tiemposRowsPerPage;
