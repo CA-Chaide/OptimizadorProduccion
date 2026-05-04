@@ -18,7 +18,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
@@ -233,22 +233,32 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
-  const tiemposColumns = useMemo(() => {
-    if (tiemposProduccion.length === 0) return [];
-    const allKeys = Object.keys(tiemposProduccion[0]);
-    const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'Tiempo'];
-    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
-  }, [tiemposProduccion]);
+  /**
+   * Resuelve la máquina para una orden. Si no viene en la orden, busca en los tiempos de producción.
+   */
+  const getResolvedMachine = useCallback((order: any) => {
+    const orderMachine = order['MAQUINA'] || order['PUESTOTRABAJO'];
+    if (orderMachine) return String(orderMachine).trim().toUpperCase();
+    
+    const material = normalizeMaterialCode(order['MATERIAL'] || '');
+    const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
+    return match ? String(match.PuestoTrabajo || '').trim().toUpperCase() : '';
+  }, [tiemposProduccion, normalizeMaterialCode]);
 
-  const calculateProductionTime = useCallback((material: string, quantity: number, machine: string) => {
-    if (!material || !machine) return '—';
+  /**
+   * Calcula el tiempo total de producción para una orden buscando el tiempo unitario en los datos maestros.
+   */
+  const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
+    if (!material) return '—';
     const normMaterial = normalizeMaterialCode(material);
-    const normMachine = String(machine || '').trim().toUpperCase();
+    const resolvedMachine = getResolvedMachine(order);
+    
+    if (!resolvedMachine) return '—';
     
     const match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tMachine = String(t.PuestoTrabajo || '').trim().toUpperCase();
-      return tMaterial === normMaterial && tMachine === normMachine;
+      return tMaterial === normMaterial && tMachine === resolvedMachine;
     });
 
     if (!match) return '—';
@@ -257,13 +267,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const totalTime = unitTime * quantity;
     
     return totalTime.toFixed(2) + ' min';
-  }, [tiemposProduccion, normalizeMaterialCode]);
+  }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
+
+  const tiemposColumns = useMemo(() => {
+    if (tiemposProduccion.length === 0) return [];
+    const allKeys = Object.keys(tiemposProduccion[0]);
+    const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'Tiempo'];
+    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+  }, [tiemposProduccion]);
 
   const dailyColumns = useMemo(() => {
-    if (dailyOrders.length === 0) return [];
+    if (dailyOrders.length === 0) return ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
+    
     const allKeys = Object.keys(dailyOrders[0]);
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
-    return [...priority.filter(k => k === 'TIEMPOS DE PRODUCCIÓN' || (allKeys.includes(k) && k !== 'CATEGORIA')), ...allKeys.filter(k => !priority.includes(k) && k !== 'CATEGORIA')];
+    
+    const cols = [...priority];
+    allKeys.forEach(k => {
+      if (!priority.includes(k) && k !== 'CATEGORIA' && k !== 'MAQUINA') {
+        cols.push(k);
+      }
+    });
+    
+    return cols;
   }, [dailyOrders]);
 
   const paginatedTiemposData = useMemo(() => {
@@ -457,17 +483,28 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : dailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
                         <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                          {dailyColumns.map((col) => (
-                            <td 
-                              key={`cell-${idx}-${col}`} 
-                              className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
-                            >
-                              {col === 'TIEMPOS DE PRODUCCIÓN'
-                                ? <span className="font-bold text-emerald-700">{calculateProductionTime(order['MATERIAL'], Number(order['CANTIDAD'] || 0), order['MAQUINA'])}</span>
-                                : formatValueForDisplay(col, order[col])
-                              }
-                            </td>
-                          ))}
+                          {dailyColumns.map((col) => {
+                            const upperCol = col.toUpperCase().trim();
+                            
+                            return (
+                              <td 
+                                key={`cell-${idx}-${col}`} 
+                                className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
+                              >
+                                {col === 'TIEMPOS DE PRODUCCIÓN' ? (
+                                  <span className="font-bold text-emerald-700">
+                                    {calculateProductionTime(order['MATERIAL'], Number(order['CANTIDAD'] || 0), order)}
+                                  </span>
+                                ) : upperCol === 'MAQUINA' ? (
+                                  <span className="font-semibold text-blue-700">
+                                    {getResolvedMachine(order) || '—'}
+                                  </span>
+                                ) : (
+                                  formatValueForDisplay(col, order[col])
+                                )}
+                              </td>
+                            );
+                          })}
                         </tr>
                       )) : (<tr><td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada.</td></tr>)}
                     </tbody>
