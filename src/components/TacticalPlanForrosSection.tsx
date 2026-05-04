@@ -48,7 +48,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // Estados para horarios de jornada - Inicializados con valores sugeridos
+  // Estados para horarios de jornada
   const [horarioDiurno, setHorarioDiurno] = useState("8.75");
   const [horarioNocturno, setHorarioNocturno] = useState("0");
 
@@ -353,14 +353,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const formattedToday = todayDate ? formatValueForDisplay('FECHA', todayDate) : '...';
   const formattedTarget = targetDate ? formatValueForDisplay('FECHA', targetDate) : '...';
 
-  // Opciones de Horario Diurno (Solicitadas)
+  // Opciones de Horario Diurno
   const diurnoOptions = [
     { value: "8.75", label: "7:00 - 15:45 (8.75h)" },
     { value: "10", label: "7:00 - 17:00 (10h)" },
     { value: "11", label: "7:00 - 18:00 (11h)" },
   ];
 
-  // Opciones de Horario Nocturno (Solicitadas)
+  // Opciones de Horario Nocturno
   const nocturnoOptions = [
     { value: "0", label: "Sin turno nocturno" },
     { value: "8.5", label: "21:00 - 5:30 (8.5h)" },
@@ -575,7 +575,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </div>
                   </div>
                   
-                  {/* Selectores de Horario con opciones solicitadas */}
+                  {/* Selectores de Horario */}
                   <div className="space-y-4 pt-4 border-t border-gray-100">
                     <div>
                       <label className="text-[10px] font-bold text-gray-700 uppercase mb-1.5 block">Horario diurno</label>
@@ -603,23 +603,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                  </div>
-                  
-                  <div className="pt-6 border-t border-gray-100">
-                    <p className="text-xs font-bold text-gray-700 uppercase mb-3 flex items-center gap-1.5">
-                      <Timer className="w-3.5 h-3.5" />
-                      Desglose por Fecha
-                    </p>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50/50 border border-blue-100">
-                        <span className="text-xs font-medium text-blue-900">{formattedToday}</span>
-                        <span className="text-sm font-mono font-bold text-blue-700">-- h</span>
-                      </div>
-                      <div className="flex items-center justify-between p-2 rounded-lg bg-teal-50/50 border border-teal-100">
-                        <span className="text-xs font-medium text-teal-900">{formattedTarget}</span>
-                        <span className="text-sm font-mono font-bold text-blue-700">-- h</span>
-                      </div>
                     </div>
                   </div>
 
