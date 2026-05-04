@@ -151,15 +151,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
     
-    // NUEVA LÓGICA: Separación por Categoría (D15AMAF -> Dens: D15, Tipo: AMAF)
-    const catPatternMatch = catStr.match(/^(D-?\d+)(.*)$/i);
-    if (catPatternMatch) {
-      dimensions.dens = catPatternMatch[1].toUpperCase();
-      dimensions.tipo = catPatternMatch[2].toUpperCase() || '—';
+    // MEJORADO: Búsqueda del patrón D[Número][Letras] dentro de la categoría
+    const catSearchMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
+    if (catSearchMatch) {
+      dimensions.dens = catSearchMatch[1]; // Solo el número (ej: 15)
+      dimensions.tipo = catSearchMatch[2].toUpperCase(); // Solo las letras (ej: AMAF)
     } else {
-      // Fallback a descripción si la categoría no sigue el patrón
-      const densMatch = desc.match(/(D-?\d+)/i);
-      if (densMatch) dimensions.dens = densMatch[1].toUpperCase();
+      // Fallback a descripción si la categoría no tiene el bloque técnico esperado
+      const densMatch = desc.match(/D-?(\d+)/i);
+      if (densMatch) dimensions.dens = densMatch[1];
+      
       const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
       if (tipoMatch) dimensions.tipo = tipoMatch[1].toUpperCase();
     }
@@ -229,8 +230,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const ancho = parseFloat(info.ancho) || 0;
       const largo = parseFloat(info.largo) || 0;
       const esp = parseFloat(info.esp) || 0;
-      // Limpiar 'D' para cálculos numéricos
-      const densValue = parseFloat(info.dens.replace(/D-?/i, '')) || 0;
+      // Limpiar prefijos para cálculos numéricos
+      const densValue = parseFloat(String(info.dens).replace(/D-?/i, '')) || 0;
       const usefulHeight = isNaN(densValue) ? 103 : (densValue < 30 ? 103 : 85);
       const itemSubbloques = (qty * esp) / usefulHeight;
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
