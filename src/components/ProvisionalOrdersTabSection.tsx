@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { serviciosService } from '@/services/servicios.service';
 import { runtimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, RefreshCw, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, RefreshCw, Search, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -21,9 +21,16 @@ interface PaginationState {
 interface ProvisionalOrdersTabSectionProps {
   readonly externalFilters?: Record<string, string[]>;
   readonly renderCell?: (column: string, row: any) => React.ReactNode;
+  readonly groupBy?: string;
+  readonly resolveValue?: (col: string, row: any) => string;
 }
 
-export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ externalFilters, renderCell }) => {
+export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ 
+  externalFilters, 
+  renderCell,
+  groupBy,
+  resolveValue
+}) => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<ProvisionalOrder[]>([]);
@@ -66,7 +73,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   }, []);
 
   const formatValueForDisplay = useCallback((col: string, value: any): string => {
-    if (value === null || value === undefined || value === '') return '—';
+    if (value === null || value === undefined || value === '') return '';
     const upperCol = col.toUpperCase().trim();
     
     if (upperCol.includes('FECHA')) {
@@ -118,7 +125,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   }, [fetchData, isMounted]);
 
   const filteredOrders = useMemo(() => {
-    let result = orders;
+    let result = [...orders];
 
     if (externalFilters && Object.keys(externalFilters).length > 0) {
       result = result.filter(order => {
@@ -143,8 +150,18 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       });
     });
 
+    // Si hay agrupamiento, debemos ordenar por la columna de agrupamiento
+    if (groupBy) {
+      const gCol = groupBy.toUpperCase().trim();
+      result.sort((a, b) => {
+        const valA = resolveValue ? resolveValue(gCol, a) : String(a[gCol] ?? '');
+        const valB = resolveValue ? resolveValue(gCol, b) : String(b[gCol] ?? '');
+        return valA.localeCompare(valB);
+      });
+    }
+
     return result;
-  }, [orders, externalFilters, columnFilters, formatValueForDisplay]);
+  }, [orders, externalFilters, columnFilters, formatValueForDisplay, groupBy, resolveValue]);
 
   const columns = useMemo(() => {
     if (filteredOrders.length === 0) return [];
@@ -161,6 +178,8 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   }, [filteredOrders, pagination.currentPage, pagination.rows_per_page]);
 
   if (!isMounted) return null;
+
+  let lastGroupValue: string | null = null;
 
   return (
     <div className="space-y-4">
@@ -211,32 +230,57 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                   </td>
                 </tr>
               ) : displayedOrders.length > 0 ? (
-                displayedOrders.map((order, idx) => (
-                  <tr key={`order-row-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                    {columns.map((col) => {
-                      // Usar el renderizador personalizado si existe
-                      if (renderCell) {
-                        const rendered = renderCell(col, order);
-                        if (rendered !== undefined) {
-                          return (
-                            <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
-                              {rendered}
-                            </td>
-                          );
-                        }
-                      }
-                      
-                      return (
-                        <td 
-                          key={`cell-${idx}-${col}`} 
-                          className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
-                        >
-                          {formatValueForDisplay(col, order[col])}
-                        </td>
+                displayedOrders.map((order, idx) => {
+                  let groupHeader = null;
+                  if (groupBy) {
+                    const gCol = groupBy.toUpperCase().trim();
+                    const currentGroupValue = resolveValue 
+                      ? resolveValue(gCol, order) 
+                      : String(order[gCol] ?? '—').trim() || '—';
+                    
+                    if (currentGroupValue !== lastGroupValue) {
+                      lastGroupValue = currentGroupValue;
+                      groupHeader = (
+                        <tr key={`group-${currentGroupValue}-${idx}`} className="bg-indigo-50/60">
+                          <td colSpan={columns.length} className="px-4 py-2 text-[11px] font-bold text-indigo-900 border-y border-indigo-100">
+                            <div className="flex items-center gap-2">
+                              <Layers className="w-3 h-3" />
+                              {groupBy}: <span className="uppercase">{currentGroupValue}</span>
+                            </div>
+                          </td>
+                        </tr>
                       );
-                    })}
-                  </tr>
-                ))
+                    }
+                  }
+
+                  const row = (
+                    <tr key={`order-row-${idx}`} className="hover:bg-blue-50/40 transition-colors">
+                      {columns.map((col) => {
+                        if (renderCell) {
+                          const rendered = renderCell(col, order);
+                          if (rendered !== undefined) {
+                            return (
+                              <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
+                                {rendered}
+                              </td>
+                            );
+                          }
+                        }
+                        
+                        return (
+                          <td 
+                            key={`cell-${idx}-${col}`} 
+                            className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
+                          >
+                            {formatValueForDisplay(col, order[col])}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+
+                  return groupHeader ? [groupHeader, row] : row;
+                })
               ) : (
                 <tr>
                   <td colSpan={columns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">

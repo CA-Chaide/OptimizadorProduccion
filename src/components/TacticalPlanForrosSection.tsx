@@ -284,6 +284,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return undefined;
   }, [getResolvedMachine]);
 
+  const resolveLogicValue = useCallback((column: string, order: any) => {
+    const upperCol = column.toUpperCase().trim();
+    if (upperCol === 'MAQUINA') {
+      return getResolvedMachine(order);
+    }
+    return String(order[column] ?? '');
+  }, [getResolvedMachine]);
+
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
     const allKeys = Object.keys(tiemposProduccion[0]);
@@ -493,6 +501,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <ProvisionalOrdersTabSection 
                 externalFilters={externalFilters} 
                 renderCell={renderResolvedProvisionalCell}
+                groupBy="MAQUINA"
+                resolveValue={resolveLogicValue}
               />
             </CardContent>
           </Card>
