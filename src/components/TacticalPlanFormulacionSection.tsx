@@ -48,7 +48,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
-        // Filtrar solo grupos de Espumas/Corte que estén activos
+        // Filtrar solo grupos de Espumas/Corte que estén activos y excluir el grupo "Formulación"
         return (name.includes('espuma') || name.includes('corte y laminado')) && !name.includes('formulación');
       });
       setGrupos(filtered);
@@ -165,15 +165,23 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
-    const dimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—' };
+    const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
+    
+    // Extracción de Densidad
     const densMatch = desc.match(/D-?(\d+)/i);
     if (densMatch) dimensions.dens = densMatch[1];
+
+    // Extracción de Tipo (ejem: D30NR = NR, d25blsf = blsf)
+    const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
+    if (tipoMatch) dimensions.tipo = tipoMatch[1];
+    
     const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
     if (dimMatch) {
       dimensions.ancho = dimMatch[1];
       dimensions.largo = dimMatch[2];
       if (dimMatch[3]) dimensions.esp = dimMatch[3];
     }
+    
     const apertureRegex = /194\.5|206|219/;
     const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
     const apertureMatch = catStr.match(apertureRegex) || desc.match(apertureRegex);
@@ -280,12 +288,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
   }, [summaryData2000]);
 
-  const renderTableBody = (data: any[]) => {
+  const renderTableBody = (data: any[], tMap: Map<string, number>) => {
     return data.map((o, i) => {
       const info = extractMaterialInfo(o);
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const categoria = String(o.CATEGORIA || o.Categoria || '—').trim();
       const maquina = getMachineValue(o);
+      
+      let hoursPL = 0, calculatedCorteHours = 0;
+
+      if (categoria !== '—' && categoria !== 'N/A') {
+        const minutesStandard = tMap.get(info.code) || 0;
+        hoursPL = (qty * minutesStandard) / 60;
+        calculatedCorteHours = (qty * 5) / 3600;
+      }
       
       return (
         <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
@@ -294,6 +310,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <td className="px-3 py-2 font-mono font-bold text-primary border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
           <td className="px-3 py-2 text-left border-r border-dashed border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
           <td className="px-3 py-2 font-semibold text-blue-800 border-r border-dashed border-gray-100 uppercase bg-blue-50/5">{categoria}</td>
+          <td className="px-3 py-2 font-black text-amber-700 border-r border-dashed border-gray-100 uppercase bg-amber-50/5">{info.tipo}</td>
           <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-dashed border-gray-100">{info.dens}</td>
           <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-dashed border-gray-100 bg-blue-50/10">{info.apertura}</td>
           <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-dashed border-gray-100">{info.ancho}</td>
@@ -533,6 +550,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100">Material</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">Categoría</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/20 text-amber-900">Tipo</th>
                         <th className="px-2 py-4 border-r border-gray-100">DENS.</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/20">APERT.</th>
                         <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
@@ -544,7 +562,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {renderTableBody(center.d)}
+                      {renderTableBody(center.d, getTiemposMap(center.id === '1000' ? tiemposC1000 : tiemposC2000))}
                     </tbody>
                   </table>
                 </div>
@@ -603,4 +621,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </Tabs>
     </div>
   );
+};
+
+const getTiemposMap = (tiempos: any[]) => {
+  const map = new Map<string, number>();
+  tiempos.forEach(t => {
+    const matStr = String(t.CodMaterial || t.Material || '').trim();
+    const match = matStr.match(/^(\d+)/);
+    const code = match ? match[1].slice(-8) : matStr.slice(-8);
+    if (code) {
+      map.set(code, Number(t.Tiempo_Min ?? t.Tiempo ?? 0));
+    }
+  });
+  return map;
 };
