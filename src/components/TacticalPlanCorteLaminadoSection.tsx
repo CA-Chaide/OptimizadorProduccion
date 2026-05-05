@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Scissors, Users, Lock, Package, Loader2, Clock, ChevronLeft, ChevronRight, LayoutDashboard, Search } from 'lucide-react';
+import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -11,7 +11,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -24,18 +24,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refs para scroll sincronizado (si se requiere en tablas muy anchas)
-  const scrollProv = { 
-    top: useRef<HTMLDivElement>(null), 
-    bottom: useRef<HTMLDivElement>(null), 
-    table: useRef<HTMLTableElement>(null), 
-    width: useState(0) 
-  };
-
   const fetchGrupos = async () => {
     try {
       const res = await grupoService.getAll();
-      // Filtrar por nombre y específicamente por Centro 1000
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
         const center = String(g.centro || '').trim();
@@ -118,7 +109,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', tipo: '—' };
     
-    // Extracción técnica basada en categoría
     const techPatternMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
     if (techPatternMatch) {
       dimensions.dens = techPatternMatch[1]; 
@@ -141,7 +131,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   };
 
   const ordenesFiltradas = useMemo(() => {
-    // Filtrar órdenes que pertenezcan al Centro 1000 y a los almacenes/responsables de Laminado
     const respCodes = restricciones
       .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -171,13 +160,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Restricciones', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'tiempos', l: 'Tiempos', i: Clock }
+            { v: 'tiempos', l: 'Tiempos', i: Clock },
+            { v: 'maestro', l: 'M. Materiales', i: ClipboardList }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -208,17 +198,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
           </div>
-          
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <CardHeader className="bg-gray-50/50 border-b border-gray-100">
-              <CardTitle className="text-xs font-black uppercase text-gray-400 tracking-tighter">Vista Rápida de Operaciones</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-               <div className="p-8 text-center text-gray-400 italic text-sm">
-                 Seleccione la pestaña de "Provisionales" para ver el desglose detallado de órdenes por máquina y material.
-               </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="grupos">
@@ -231,11 +210,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <p className="text-[9px] font-mono text-gray-400 mt-2">ID GRUPO: {g.codigo_grupo}</p>
               </Card>
             ))}
-            {grupos.length === 0 && (
-              <div className="col-span-full py-12 text-center text-gray-400 italic bg-gray-50 rounded-2xl border-2 border-dashed">
-                No se encontraron grupos configurados para "Corte y Laminado" en el Centro 1000.
-              </div>
-            )}
           </div>
         </TabsContent>
 
@@ -261,9 +235,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
                   </tr>
                 ))}
-                {restricciones.length === 0 && (
-                  <tr><td colSpan={4} className="py-12 text-center text-gray-400 italic">No hay restricciones cargadas para estos grupos</td></tr>
-                )}
               </tbody>
             </table>
           </Card>
@@ -295,7 +266,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {ordenesFiltradas.map((o, i) => {
                     const info = extractMaterialInfo(o);
                     const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                    const corteHours = (qty * 5) / 3600; // Estimación estándar de corte
+                    const corteHours = (qty * 5) / 3600; 
                     
                     return (
                       <tr key={i} className="hover:bg-red-50/20 transition-colors">
@@ -316,9 +287,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       </tr>
                     );
                   })}
-                  {ordenesFiltradas.length === 0 && (
-                    <tr><td colSpan={14} className="py-20 text-center text-gray-400 italic">No hay órdenes provisonales cargadas para Planta 1000</td></tr>
-                  )}
                 </tbody>
               </table>
             </div>
@@ -354,12 +322,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       </tr>
                     );
                   })}
-                  {tiemposEnsamblado.length === 0 && (
-                    <tr><td colSpan={5} className="py-20 text-center text-gray-400 italic">No hay tiempos técnicos cargados para los grupos de Quito</td></tr>
-                  )}
                 </tbody>
               </table>
             </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="maestro" className="animate-in fade-in duration-300">
+          <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+            <CardContent className="p-0">
+              <MaestroMaterialesExplosionSection />
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
