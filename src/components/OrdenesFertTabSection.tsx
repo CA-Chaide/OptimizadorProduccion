@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -128,7 +127,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
     const map = new Map<string, number>();
     tiemposData.forEach(item => {
-        const materialCode = normalizeMaterialCode(item.CodMaterial);
+        const materialCode = normalizeMaterialCode(item.CodMaterial ?? item.MATERIAL ?? item.Material ?? '');
         const tiempo = item.Tiempo_Min ?? item.Tiempo ?? 0;
         if (materialCode && tiempo > 0) {
             if (!map.has(materialCode)) {
@@ -354,7 +353,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                     <p className="font-bold text-gray-900">{cantProgramada.toLocaleString()}</p>
                                 </div>
                                 <div>
-                                    <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO TOTAL (h)</p>
+                                    <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO REQUERIDO (h)</p>
                                     <p className="font-bold text-gray-900">{(tiempoTotal / 60).toFixed(2)}</p>
                                 </div>
                             </div>
