@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ClipboardList } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,13 +13,13 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
+import { es } from 'date-fns/locale';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
@@ -34,6 +34,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
+  const [viewDate, setViewDate] = useState(new Date());
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -96,21 +97,37 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setIsLoading(true);
       const groups = await fetchGrupos();
       const ids = groups.map(g => g.codigo_grupo);
-      await fetchRestricciones(ids);
-      await loadData(groups);
+      await Promise.all([
+        fetchRestricciones(ids),
+        fetchOrdenes(),
+        fetchTiemposEnsamblado(groups)
+      ]);
       setIsLoading(false);
     };
     init();
   }, [mounted]);
 
-  const fertDates = useMemo(() => {
+  // Logic for dates with orders in the calendar
+  const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
-    ordenesFert.forEach(o => { 
-      const d = String(o.FECHA || '').trim();
-      if (d && d !== 'null' && d !== 'undefined') dates.add(d); 
+    ordenesFert.forEach(o => {
+      const d = String(o.FECHA || o.FECHAINICIO || '').trim();
+      if (d && d !== 'null' && d !== 'undefined') {
+        const normalized = d.includes('T') ? d.split('T')[0] : d;
+        dates.add(normalized);
+      }
     });
-    return Array.from(dates).sort().reverse();
+    return dates;
   }, [ordenesFert]);
+
+  const calendarDays = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
 
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
@@ -123,9 +140,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', tipo: '—' };
     
-    // Lógica sincronizada con Formulación/Espumas
     const techPatternMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
-    
     if (techPatternMatch) {
       dimensions.dens = techPatternMatch[1]; 
       dimensions.tipo = techPatternMatch[2].toUpperCase(); 
@@ -188,15 +203,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const matchResp = respCodes.length === 0 || respCodes.some(code => itemResp === code || itemResp.includes(code));
       
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const hasAlmField = o.hasOwnProperty('ALMACEN') || o.hasOwnProperty('Almacen') || o.hasOwnProperty('almacen');
-      const matchAlm = !hasAlmField || almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
+      const matchAlm = almCodes.length === 0 || itemAlmValue === '' || almCodes.includes(itemAlmValue);
       
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
-      const hasSectorField = o.hasOwnProperty('SECTORDESC') || o.hasOwnProperty('Sector') || o.hasOwnProperty('SECTOR');
-      const matchSector = !hasSectorField || sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
+      const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
 
       if (applyDateFilter) {
-        const itemDate = String(o.FECHA || o.FECHAINICIO || '').trim();
+        const itemDateFull = String(o.FECHA || o.FECHAINICIO || '').trim();
+        const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
         const matchDate = selectedDate === 'all' || itemDate === selectedDate;
         return matchResp && matchAlm && matchSector && matchDate;
       }
@@ -288,25 +302,46 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-primary" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Fecha de Programación</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga Venta Externa</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
-                  {selectedDate === 'all' ? 'Consolidado General' : selectedDate}
+                  {selectedDate === 'all' ? 'PLAN MAESTRO CONSOLIDADO' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Select value={selectedDate} onValueChange={setSelectedDate}>
-                <SelectTrigger className="w-[180px] h-8 font-bold text-[10px] uppercase rounded-xl border-gray-200">
-                  <SelectValue placeholder="Todas las fechas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">TODAS LAS FECHAS</SelectItem>
-                  {fertDates.map(date => (
-                    <SelectItem key={date} value={date}>{date}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-10 px-6 rounded-2xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-bold text-xs uppercase transition-all shadow-sm">
+                  <Filter className="w-4 h-4" /> Fecha
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
+                <div className="bg-white p-4 font-sans">
+                  <div className="flex items-center justify-between mb-4 text-left">
+                    <h3 className="text-xs font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                    <div className="flex gap-1 bg-gray-50 rounded-xl p-1">
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-7 gap-y-1 text-center mb-3">
+                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[9px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
+                    {calendarDays.map((day, idx) => {
+                      if (!day) return <div key={`cal-pad-${idx}`} className="p-1" />;
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const isSelected = selectedDate === dateStr;
+                      return (
+                        <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
+                          <span className={cn("text-xs font-bold", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                          {datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1.5 w-1 h-1 bg-primary/40 rounded-full" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-primary h-8 mt-1 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {[ 
@@ -436,7 +471,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-50 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-50 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
                             <td className="px-3 py-2 text-blue-800 border-r border-gray-50 bg-blue-50/5 uppercase font-bold">{String(o.CATEGORIA || '—')}</td>
@@ -501,7 +536,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDEN || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-50 font-mono text-[9px] text-gray-400">{o.FECHA || '—'}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
                             <td className="px-3 py-2 text-blue-800 border-r border-gray-50 bg-blue-50/5 uppercase font-black">{String(o.CATEGORIA || '—')}</td>
@@ -509,7 +544,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.ancho}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.largo}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.esp}</td>
-                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
+                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
                             <td className="px-3 py-2 font-mono font-bold text-indigo-600 border-r border-gray-50">{hoursPL.toFixed(2)}</td>
                             <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-50 bg-teal-50/10">{corteHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
@@ -532,7 +567,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               { t: 'Catálogo de Tiempos - Guayaquil 2000', d: tiemposC2000, c: 'text-cyan-700', b: 'bg-cyan-600' } 
             ].map((center, idx) => (
               <div key={idx} className="space-y-4">
-                <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
+                <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
                   <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}
                 </h3>
                 <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
