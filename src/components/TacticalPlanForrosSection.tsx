@@ -246,11 +246,23 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   const getResolvedMachine = useCallback((order: any) => {
-    const orderMachine = order['MAQUINA'] || order['PUESTOTRABAJO'];
-    if (orderMachine && String(orderMachine).trim() !== '') return String(orderMachine).trim().toUpperCase();
+    const rawVal = order['MAQUINA'] || order['Maquina'] || order['maquina'] || 
+                   order['PUESTOTRABAJO'] || order['PuestoTrabajo'] || order['puestotrabajo'];
     
-    const material = normalizeMaterialCode(order['MATERIAL'] || '');
-    const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
+    if (rawVal !== null && rawVal !== undefined && String(rawVal).trim() !== '' && String(rawVal).toLowerCase() !== 'null') {
+      return String(rawVal).trim().toUpperCase();
+    }
+    
+    const materialRaw = order['MATERIAL'] || order['Material'] || order['material'] || 
+                        order['CodMaterial'] || order['CODMATERIAL'] || order['codmaterial'] || '';
+    
+    const material = normalizeMaterialCode(materialRaw);
+    if (!material) return '';
+
+    const match = tiemposProduccion.find(t => 
+      normalizeMaterialCode(t.CodMaterial || t.Material || '') === material
+    );
+
     return match ? String(match.PuestoTrabajo || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
@@ -307,7 +319,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     const cols = [...priority];
     allKeys.forEach(k => {
-      if (!priority.includes(k) && k !== 'CATEGORIA' && k !== 'MAQUINA') {
+      const uk = k.toUpperCase().trim();
+      if (!priority.includes(uk) && uk !== 'CATEGORIA' && uk !== 'MAQUINA' && uk !== 'PUESTOTRABAJO') {
         cols.push(k);
       }
     });
@@ -328,14 +341,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const plannedCapacity = useMemo(() => {
     const diurno = parseFloat(horarioDiurno) || 0;
     const nocturno = parseFloat(horarioNocturno) || 0;
-    // Cálculo: (Diurno + Nocturno) - 16% (multiplicar por 0.84)
     return (diurno + nocturno) * 0.84;
   }, [horarioDiurno, horarioNocturno]);
 
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
-    // Inicializar con todas las máquinas conocidas en la data técnica (para ver capacidad vacía)
     const allKnownMachines = [...new Set(tiemposProduccion.map(t => String(t.PuestoTrabajo || '').trim().toUpperCase()))].filter(m => m !== '');
     allKnownMachines.forEach(m => {
       summaryMap.set(m, {
@@ -379,14 +390,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const formattedToday = todayDate ? formatValueForDisplay('FECHA', todayDate) : '...';
   const formattedTarget = targetDate ? formatValueForDisplay('FECHA', targetDate) : '...';
 
-  // Opciones de Horario Diurno
   const diurnoOptions = [
     { value: "8.75", label: "7:00 - 15:45 (8.75h)" },
     { value: "10", label: "7:00 - 17:00 (10h)" },
     { value: "11", label: "7:00 - 18:00 (11h)" },
   ];
 
-  // Opciones de Horario Nocturno
   const nocturnoOptions = [
     { value: "0", label: "Sin turno nocturno" },
     { value: "8.5", label: "21:00 - 5:30 (8.5h)" },
@@ -605,7 +614,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </div>
                   </div>
                   
-                  {/* Selectores de Horario */}
                   <div className="space-y-4 pt-4 border-t border-gray-100">
                     <div>
                       <label className="text-[10px] font-bold text-gray-700 uppercase mb-1.5 block">Horario diurno</label>

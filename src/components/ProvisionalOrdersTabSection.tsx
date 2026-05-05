@@ -54,36 +54,24 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     setIsMounted(true);
   }, []);
 
-  /**
-   * Extrae las partes de la fecha SIN usar el objeto Date de JS para evitar offsets.
-   */
   const safeParseDateParts = useCallback((value: any) => {
     if (!value) return null;
     const str = String(value).trim();
-    
-    // Intenta formato YYYY-MM-DD
     const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
-    
-    // Intenta formato DD/MM/YYYY
     const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
-    
     return null;
   }, []);
 
   const formatValueForDisplay = useCallback((col: string, value: any): string => {
     if (value === null || value === undefined || value === '') return '';
     const upperCol = col.toUpperCase().trim();
-    
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
-      if (parts) {
-        return `${parts.d}/${parts.m}/${parts.y}`;
-      }
+      if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
       return String(value);
     }
-    
     return String(value);
   }, [safeParseDateParts]);
 
@@ -94,11 +82,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
   const fetchData = useCallback(async () => {
     if (isLoading) return;
-    
     try {
       setIsLoading(true);
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
-      
       if (response && response.data) {
         setOrders(response.data);
         setPagination(prev => ({
@@ -106,7 +92,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
           totalRegistros: response.totalRegistros || response.data.length,
           currentPage: 1
         }));
-        
         runtimeInspector.captureVariable('ProvisionalOrdersTab', 'component', 'loadedOrdersCount', response.data.length);
       }
     } catch (err) {
@@ -150,7 +135,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       });
     });
 
-    // Si hay agrupamiento, debemos ordenar por la columna de agrupamiento para que la lógica de render sea correcta
     if (groupBy) {
       const gCol = groupBy.toUpperCase().trim();
       result.sort((a, b) => {
@@ -164,14 +148,29 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   }, [orders, externalFilters, columnFilters, formatValueForDisplay, groupBy, resolveValue]);
 
   const columns = useMemo(() => {
-    if (filteredOrders.length === 0) return [];
+    if (filteredOrders.length === 0) return ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'MAQUINA', 'FECHAFIN'];
+    
     const allKeys = Object.keys(filteredOrders[0]);
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'MAQUINA', 'FECHAFIN'];
-    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+    
+    const matchedDataKeys = new Set<string>();
+    const orderedPriorityCols: string[] = [];
+
+    priority.forEach(pCol => {
+      const match = allKeys.find(k => k.toUpperCase().trim() === pCol);
+      if (match) {
+        orderedPriorityCols.push(match);
+        matchedDataKeys.add(match);
+      } else if (pCol === 'MAQUINA') {
+        orderedPriorityCols.push('MAQUINA');
+      }
+    });
+
+    const otherCols = allKeys.filter(k => !matchedDataKeys.has(k));
+    return [...orderedPriorityCols, ...otherCols];
   }, [filteredOrders]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pagination.rows_per_page));
-  
   const displayedOrders = useMemo(() => {
     const start = (pagination.currentPage - 1) * pagination.rows_per_page;
     return filteredOrders.slice(start, start + pagination.rows_per_page);
@@ -189,10 +188,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
             <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
               <tr>
                 {columns.map((col) => (
-                  <th 
-                    key={col} 
-                    className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600"
-                  >
+                  <th key={col} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600">
                     {col}
                   </th>
                 ))}
@@ -201,7 +197,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                 {columns.map((col) => {
                   const upperCol = col.toUpperCase().trim();
                   const isFilterable = ['MATERIAL', 'CATEGORIA', 'FECHAINICIO', 'RESPCONTROLPROD', 'MAQUINA'].includes(upperCol);
-                  
                   return (
                     <th key={`filter-${col}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
                       {isFilterable ? (
@@ -243,10 +238,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                       groupHeader = (
                         <tr key={`group-${currentGroupValue}-${idx}`} className="bg-indigo-50/60">
                           <td colSpan={columns.length} className="px-4 py-2 text-[11px] font-bold text-indigo-900 border-y border-indigo-100">
-                            <div className="flex items-center gap-2">
-                              <Layers className="w-3 h-3" />
-                              {groupBy}: <span className="uppercase">{currentGroupValue}</span>
-                            </div>
+                            <div className="flex items-center gap-2"><Layers className="w-3 h-3" />{groupBy}: <span className="uppercase">{currentGroupValue}</span></div>
                           </td>
                         </tr>
                       );
@@ -259,22 +251,10 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                         if (renderCell) {
                           const rendered = renderCell(col, order);
                           if (rendered !== undefined) {
-                            return (
-                              <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
-                                {rendered}
-                              </td>
-                            );
+                            return <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{rendered}</td>;
                           }
                         }
-                        
-                        return (
-                          <td 
-                            key={`cell-${idx}-${col}`} 
-                            className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
-                          >
-                            {formatValueForDisplay(col, order[col])}
-                          </td>
-                        );
+                        return <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
                       })}
                     </tr>
                   );
@@ -282,11 +262,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
                   return groupHeader ? [groupHeader, row] : row;
                 })
               ) : (
-                <tr>
-                  <td colSpan={columns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
-                    No se encontraron registros.
-                  </td>
-                </tr>
+                <tr><td colSpan={columns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No se encontraron registros.</td></tr>
               )}
             </tbody>
           </table>
@@ -305,9 +281,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
               {[20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
-          <div className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">
-            {filteredOrders.length} registros filtrados
-          </div>
+          <div className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">{filteredOrders.length} registros filtrados</div>
         </div>
 
         <div className="flex items-center gap-3">

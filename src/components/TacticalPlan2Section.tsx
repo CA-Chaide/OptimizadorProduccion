@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -70,15 +69,17 @@ export const TacticalPlan2Section: React.FC = () => {
 
   // 3. Lógica para resolver la máquina si viene null en la orden
   const getResolvedMachine = useCallback((order: any) => {
-    // El backend puede enviar "Maquina" o "MAQUINA"
-    const orderMachine = order['MAQUINA'] || order['Maquina'] || order['PUESTOTRABAJO'] || order['PuestoTrabajo'];
+    const rawVal = order['MAQUINA'] || order['Maquina'] || order['maquina'] || 
+                   order['PUESTOTRABAJO'] || order['PuestoTrabajo'] || order['puestotrabajo'];
     
-    if (orderMachine && String(orderMachine).trim() !== '' && orderMachine !== null) {
-      return String(orderMachine).trim().toUpperCase();
+    if (rawVal !== null && rawVal !== undefined && String(rawVal).trim() !== '' && String(rawVal).toLowerCase() !== 'null') {
+      return String(rawVal).trim().toUpperCase();
     }
     
-    // Si es null, buscamos en los datos maestros (Tiempos de Producción)
-    const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
+    const materialRaw = order['MATERIAL'] || order['Material'] || order['material'] || 
+                        order['CodMaterial'] || order['CODMATERIAL'] || order['codmaterial'] || '';
+    
+    const material = normalizeMaterialCode(materialRaw);
     if (!material) return '';
 
     const match = tiemposProduccion.find(t => 
