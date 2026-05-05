@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
 import { Package, Loader2 } from 'lucide-react';
@@ -12,6 +12,25 @@ interface CuboInventariosItem {
 }
 
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 200];
+
+// Listado oficial de Cascos proporcionado por el usuario
+const CASCOS_ORDEN = [
+  "40002023", "40003063", "40003064", "40003065", "40003066", "40000958", "40000959", "40000941", 
+  "40001871", "40001872", "40002044", "40001895", "40001873", "40001874", "40002944", "40002942", 
+  "40002946", "40002945", "40002943", "40002947", "40002859", "40002860", "40002861", "40002862", 
+  "40003067", "40003068", "40003069", "40003070", "40001204", "40001205", "40001206", "40001296", 
+  "40001605", "40001606", "40001607", "40001794", "40001742", "40001743", "40001744", "40001915", 
+  "40002747", "40002748", "40002749", "40002750", "40002752", "40001608", "40000021", "40000022", 
+  "40000023", "40001381", "40001415", "40001844", "40002022", "40002011", "40001163", "40000982", 
+  "40000050", "40003075", "40002857", "40001722", "40002962", "40002173", "40000822", "40001798", 
+  "40003076", "40003142", "40003143", "40003144", "40003145", "40003183", "40003212", "40003252", 
+  "40003332", "40003333", "40003334", "40003265"
+];
+
+const normalizeMaterialCode = (code: string | number): string => {
+  const codeStr = String(code).trim();
+  return codeStr.slice(-8);
+};
 
 export const CuboInventariosTab: React.FC = () => {
     const { addNotification } = useAppContext();
@@ -49,7 +68,6 @@ export const CuboInventariosTab: React.FC = () => {
                 let fetchedData: CuboInventariosItem[] = [];
 
                 for (let i = 1; i <= totalPagesToFetch; i++) {
-                    addNotification('info', `Cargando lote ${i} de ${totalPagesToFetch} de inventario...`);
                     const pageResponse = await serviciosService.getCuboInventarios(i, BATCH_SIZE);
                     if (pageResponse.data && Array.isArray(pageResponse.data)) {
                         fetchedData = fetchedData.concat(pageResponse.data);
@@ -57,23 +75,19 @@ export const CuboInventariosTab: React.FC = () => {
                 }
 
                 setAllData(fetchedData);
-                addNotification('success', `Se cargaron ${fetchedData.length} registros de inventario.`);
 
                 if (fetchedData.length > 0 && columns.length === 0) {
                     let originalColumns = Object.keys(fetchedData[0]);
                     const stockActualCol = 'StockActual';
                     const descripcionCol = 'Descripcion';
 
-                    // Remove 'StockActual' from its current position to re-insert it
+                    // Reorganize columns for better visibility
                     const stockActualIndex = originalColumns.indexOf(stockActualCol);
                     if (stockActualIndex > -1) {
                         originalColumns.splice(stockActualIndex, 1);
                     }
 
-                    // Find the position of 'Descripcion'
                     const descripcionIndex = originalColumns.indexOf(descripcionCol);
-                    
-                    // Insert 'StockActual' after 'Descripcion', or as the third column if Descripcion is not found
                     const targetIndex = descripcionIndex !== -1 ? descripcionIndex + 1 : 2;
                     originalColumns.splice(targetIndex, 0, stockActualCol);
                     
@@ -91,10 +105,24 @@ export const CuboInventariosTab: React.FC = () => {
         fetchAllInventario();
     }, [addNotification, columns.length]);
 
+    // Filtrado y Ordenamiento según el listado oficial de CASCOS
     const filteredData = useMemo(() => {
-        return allData.filter(row => 
-            row.Descripcion && String(row.Descripcion).toUpperCase().includes('CASCO')
-        );
+        if (!allData || allData.length === 0) return [];
+        
+        const cascosSet = new Set(CASCOS_ORDEN);
+        
+        // 1. Filtrar solo los materiales que están en la lista oficial
+        const results = allData.filter(row => {
+          const normalized = normalizeMaterialCode(row.Material);
+          return cascosSet.has(normalized);
+        });
+
+        // 2. Ordenar basándose en el índice de la lista CASCOS_ORDEN
+        return results.sort((a, b) => {
+            const indexA = CASCOS_ORDEN.indexOf(normalizeMaterialCode(a.Material));
+            const indexB = CASCOS_ORDEN.indexOf(normalizeMaterialCode(b.Material));
+            return indexA - indexB;
+        });
     }, [allData]);
 
     const totalRecords = filteredData.length;
@@ -179,6 +207,12 @@ export const CuboInventariosTab: React.FC = () => {
     
     return (
         <div className="space-y-4">
+             <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-md mb-2">
+               <p className="text-xs text-indigo-800">
+                 Mostrando información filtrada y ordenada según el listado oficial de <strong>{CASCOS_ORDEN.length} cascos</strong>.
+               </p>
+             </div>
+
              {/* Top Scrollbar */}
              <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
                 <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
@@ -192,14 +226,16 @@ export const CuboInventariosTab: React.FC = () => {
                      </TableHeader>
                      <TableBody>
                         {displayedData.map((row, idx) => (
-                           <TableRow key={idx}>
+                           <TableRow key={idx} className="hover:bg-gray-50">
                                 {columns.map(col => {
                                     let displayValue = String(row[col] ?? '-');
                                     if (col === 'Material') {
-                                        displayValue = displayValue.slice(-8);
+                                        displayValue = normalizeMaterialCode(displayValue);
                                     }
                                     return (
-                                        <TableCell key={`${idx}-${col}`}>{displayValue}</TableCell>
+                                        <TableCell key={`${idx}-${col}`} className={col === 'Material' ? 'font-mono font-bold text-indigo-700' : ''}>
+                                          {displayValue}
+                                        </TableCell>
                                     );
                                 })}
                            </TableRow>
@@ -220,7 +256,7 @@ export const CuboInventariosTab: React.FC = () => {
                     </select>
                 </div>
                 <div className="flex items-center space-x-2">
-                     <span className="text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+                     <span className="text-sm text-gray-600">Página {currentPage} de {totalPages} ({totalRecords} registros)</span>
                      <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={currentPage === 1}>Primera</Button>
                      <Button variant="outline" size="sm" onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>Anterior</Button>
                      <Button variant="outline" size="sm" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages}>Siguiente</Button>
