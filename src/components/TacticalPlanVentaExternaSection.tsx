@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ClipboardList } from 'lucide-react';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -64,7 +64,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     }
   };
 
-  const loadData = async (filteredGroups: Grupo[]) => {
+  const fetchOrdenes = async () => {
     try {
       const pProv = serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] }));
       const pFert = serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] }));
@@ -73,7 +73,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       
       setOrders(resProv.data || []);
       setOrdersFert(resFert.data || []);
+    } catch (error) {
+      console.error('Error cargando órdenes:', error);
+    }
+  };
 
+  const fetchTiemposEnsamblado = async (filteredGroups: Grupo[]) => {
+    try {
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
@@ -87,7 +93,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       }
       setTiemposEnsamblado(allTiempos);
     } catch (error) {
-      console.error('Error en loadData:', error);
+      console.error('Error cargando tiempos:', error);
     }
   };
 
@@ -472,7 +478,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                            <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-50 tracking-tighter">{info.code}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
                             <td className="px-3 py-2 text-blue-800 border-r border-gray-50 bg-blue-50/5 uppercase font-bold">{String(o.CATEGORIA || '—')}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.dens}</td>
@@ -525,7 +531,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4">ALM.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-[10px]">
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
@@ -544,7 +550,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.ancho}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.largo}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.esp}</td>
-                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
+                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
                             <td className="px-3 py-2 font-mono font-bold text-indigo-600 border-r border-gray-50">{hoursPL.toFixed(2)}</td>
                             <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-50 bg-teal-50/10">{corteHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
@@ -570,10 +576,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
                   <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}
                 </h3>
-                <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
                   <div className="overflow-x-auto max-h-[400px]">
                     <table className="w-full border-collapse text-center">
-                      <thead className="bg-gray-100 sticky top-0 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                      <thead className="bg-gray-100 sticky top-0 text-[10px] font-bold uppercase text-gray-500">
                         <tr>
                           <th className="px-4 py-4 border-r border-gray-100">Material</th>
                           <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
