@@ -201,9 +201,9 @@ export const TacticalPlanMueblesSection: React.FC = () => {
           <TabsList className="grid w-full grid-cols-8 h-auto p-1 bg-muted">
               <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0">Restricciones</TabsTrigger>
-              <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0">Órdenes Previsionales</TabsTrigger>
-              <TabsTrigger value="ordenesFert" className="border-r border-dashed border-gray-300 last:border-r-0">Órdenes Fert</TabsTrigger>
-              <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0">Tiempos Muebles</TabsTrigger>
+              <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Prev.</TabsTrigger>
+              <TabsTrigger value="ordenesFert" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Fert</TabsTrigger>
+              <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0">Tiempos</TabsTrigger>
               <TabsTrigger value="cascos" className="border-r border-dashed border-gray-300 last:border-r-0">Cascos</TabsTrigger>
               <TabsTrigger value="telas" className="border-r border-dashed border-gray-300 last:border-r-0">Telas</TabsTrigger>
               <TabsTrigger value="plan" className="last:border-r-0">PLAN</TabsTrigger>
