@@ -343,25 +343,25 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
             {displayMode === 'plan' && selectedDates.length > 0 && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm mt-6 w-full max-w-2xl">
-                    <h4 className="text-sm font-semibold text-gray-800 mb-2">Resumen por Fecha Seleccionada</h4>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
+                    <div className="space-y-0 max-h-64 overflow-y-auto border rounded-md">
                         {planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => (
-                            <div key={date} className="grid grid-cols-4 gap-4 items-center text-sm p-2 border-b last:border-b-0">
-                                <div>
-                                    <p className="text-xs text-gray-500 font-semibold uppercase">FECHA</p>
+                            <div key={date} className="grid grid-cols-4 gap-0 items-center text-sm p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
+                                <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
+                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
                                     <p className="font-bold text-gray-900">{date}</p>
                                 </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 font-semibold uppercase">CANT. PROGRAMADA</p>
+                                <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
+                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA</p>
                                     <p className="font-bold text-gray-900">{cantProgramada.toLocaleString()}</p>
                                 </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO REQUERIDO (h)</p>
-                                    <p className="font-bold text-gray-900">{(tiempoTotal / 60).toFixed(2)}</p>
+                                <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
+                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO (h)</p>
+                                    <p className="font-bold text-indigo-700">{(tiempoTotal / 60).toFixed(2)}</p>
                                 </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO DISPONIBLE (h)</p>
-                                    <p className="font-bold text-gray-900">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
+                                <div className="text-center px-2 h-full flex flex-col justify-center">
+                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO DISPONIBLE (h)</p>
+                                    <p className="font-bold text-emerald-700">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
                                 </div>
                             </div>
                         ))}
