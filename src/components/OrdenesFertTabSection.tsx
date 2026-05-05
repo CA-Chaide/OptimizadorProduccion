@@ -94,14 +94,16 @@ const MultiSelect: React.FC<{
           </Command>
         </PopoverContent>
       </Popover>
-      <div className="pt-1 text-left w-full min-h-[22px]">
-        {selected.slice(0, 3).map(value => (
-          <Badge key={value} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={value}>
-            {value}
-          </Badge>
-        ))}
-        {selected.length > 3 && <Badge variant="secondary">+{selected.length - 3}</Badge>}
-      </div>
+      {selected.length > 0 && (
+          <div className="pt-1 text-left w-full min-h-[22px]">
+            {selected.slice(0, 3).map(value => (
+              <Badge key={value} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={value}>
+                {value}
+              </Badge>
+            ))}
+            {selected.length > 3 && <Badge variant="secondary">+{selected.length - 3}</Badge>}
+          </div>
+      )}
     </div>
   );
 };
@@ -120,6 +122,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [error, setError] = useState<string | null>(null);
   
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [hasSetDefaultDate, setHasSetDefaultDate] = useState(false);
 
   // Constante de tiempo disponible diario: 8h * 11 mesas * 87% eficiencia = 76.56h
   const TIEMPO_DISPONIBLE_DIARIO = 8 * 11 * 0.87;
@@ -196,6 +199,31 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     const dates = new Set(orders.map(order => order.FECHA));
     return Array.from(dates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
   }, [orders]);
+
+  // Lógica para establecer la fecha por defecto (Hoy + 3 días laborables) en el modo PLAN
+  useEffect(() => {
+    if (!hasSetDefaultDate && uniqueDates.length > 0 && displayMode === 'plan') {
+      const getTargetDate = () => {
+        const today = new Date();
+        let daysAdded = 0;
+        let result = new Date(today);
+        
+        // Loop para añadir exactamente 3 días laborables (saltando Sábados y Domingos)
+        while (daysAdded < 3) {
+          result.setDate(result.getDate() + 1);
+          const day = result.getDay();
+          if (day !== 0 && day !== 6) { // 0 es Domingo, 6 es Sábado
+            daysAdded++;
+          }
+        }
+        return result.toISOString().split('T')[0];
+      };
+
+      const target = getTargetDate();
+      setSelectedDates([target]);
+      setHasSetDefaultDate(true);
+    }
+  }, [uniqueDates, hasSetDefaultDate, displayMode]);
 
   const filteredOrders = useMemo(() => {
     return orders
