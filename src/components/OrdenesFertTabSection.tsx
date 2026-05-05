@@ -121,6 +121,9 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
 
+  // Constante de tiempo disponible diario: 8h * 11 mesas * 87% eficiencia = 76.56h
+  const TIEMPO_DISPONIBLE_DIARIO = 8 * 11 * 0.87;
+
   const tiemposMap = useMemo(() => {
     if (!tiemposData || tiemposData.length === 0) {
         return new Map<string, number>();
@@ -339,11 +342,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             )}
 
             {displayMode === 'plan' && selectedDates.length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm mt-6 w-full max-w-md">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm mt-6 w-full max-w-2xl">
                     <h4 className="text-sm font-semibold text-gray-800 mb-2">Resumen por Fecha Seleccionada</h4>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                         {planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => (
-                            <div key={date} className="grid grid-cols-3 gap-4 items-center text-sm p-2 border-b last:border-b-0">
+                            <div key={date} className="grid grid-cols-4 gap-4 items-center text-sm p-2 border-b last:border-b-0">
                                 <div>
                                     <p className="text-xs text-gray-500 font-semibold uppercase">FECHA</p>
                                     <p className="font-bold text-gray-900">{date}</p>
@@ -355,6 +358,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                 <div>
                                     <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO REQUERIDO (h)</p>
                                     <p className="font-bold text-gray-900">{(tiempoTotal / 60).toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500 font-semibold uppercase">TIEMPO DISPONIBLE (h)</p>
+                                    <p className="font-bold text-gray-900">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
                                 </div>
                             </div>
                         ))}
