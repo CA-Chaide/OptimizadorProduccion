@@ -198,7 +198,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="plan" className="w-full">
-          <TabsList className="grid w-full grid-cols-8 h-auto p-1 bg-muted">
+          <TabsList className="grid w-full grid-cols-8 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
               <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0">Restricciones</TabsTrigger>
               <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Prev.</TabsTrigger>
