@@ -6,6 +6,7 @@ import { useAppContext } from '@/context/AppProvider';
 import { Package, Loader2 } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface CuboInventariosItem {
   [key: string]: any;
@@ -89,6 +90,7 @@ export const CuboInventariosTab: React.FC = () => {
 
                     const stockActualCol = 'StockActual';
                     const descripcionCol = 'Descripcion';
+                    const peticionBorradoCol = 'PeticionBorrado';
 
                     // Reorganize columns for better visibility
                     const stockActualIndex = filteredColumns.indexOf(stockActualCol);
@@ -99,6 +101,13 @@ export const CuboInventariosTab: React.FC = () => {
                     const descripcionIndex = filteredColumns.indexOf(descripcionCol);
                     const targetIndex = descripcionIndex !== -1 ? descripcionIndex + 1 : 2;
                     filteredColumns.splice(targetIndex, 0, stockActualCol);
+                    
+                    // Move PeticionBorrado to the end
+                    const peticionIndex = filteredColumns.indexOf(peticionBorradoCol);
+                    if (peticionIndex > -1) {
+                        filteredColumns.splice(peticionIndex, 1);
+                        filteredColumns.push(peticionBorradoCol);
+                    }
                     
                     setColumns(filteredColumns);
                 }
@@ -230,7 +239,11 @@ export const CuboInventariosTab: React.FC = () => {
                  <table ref={tableRef} className="min-w-full text-xs divide-y divide-gray-200">
                      <TableHeader className="bg-gray-100 sticky top-0">
                          <TableRow>
-                             {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
+                             {columns.map(col => (
+                               <TableHead key={col} className={cn(col === 'Descripcion' && 'min-w-[450px]')}>
+                                 {col}
+                               </TableHead>
+                             ))}
                          </TableRow>
                      </TableHeader>
                      <TableBody>
@@ -242,7 +255,13 @@ export const CuboInventariosTab: React.FC = () => {
                                         displayValue = normalizeMaterialCode(displayValue);
                                     }
                                     return (
-                                        <TableCell key={`${idx}-${col}`} className={col === 'Material' ? 'font-mono font-bold text-indigo-700' : ''}>
+                                        <TableCell 
+                                            key={`${idx}-${col}`} 
+                                            className={cn(
+                                                col === 'Material' && 'font-mono font-bold text-indigo-700',
+                                                col === 'Descripcion' && 'min-w-[450px] whitespace-nowrap'
+                                            )}
+                                        >
                                           {displayValue}
                                         </TableCell>
                                     );
