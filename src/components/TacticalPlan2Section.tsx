@@ -20,9 +20,13 @@ export const TacticalPlan2Section: React.FC = () => {
     setIsMounted(true);
   }, []);
 
+  /**
+   * Normaliza códigos de material eliminando ceros a la izquierda
+   * para una comparación robusta entre diferentes fuentes.
+   */
   const normalizeMaterialCode = useCallback((code: string | number): string => {
-    const codeStr = String(code).trim();
-    return codeStr.slice(-8);
+    if (!code) return '';
+    return String(code).trim().replace(/^0+/, '');
   }, []);
 
   // 1. Cargar grupos y filtrar los de Colchones

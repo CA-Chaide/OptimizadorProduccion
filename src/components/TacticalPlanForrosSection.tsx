@@ -61,9 +61,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
 
+  /**
+   * Normaliza códigos de material eliminando ceros a la izquierda
+   * para una comparación robusta entre diferentes fuentes (18 vs 8 vs 10 dígitos)
+   */
   const normalizeMaterialCode = useCallback((code: string | number): string => {
-    const codeStr = String(code).trim();
-    return codeStr.slice(-8);
+    if (!code) return '';
+    return String(code).trim().replace(/^0+/, '');
   }, []);
 
   const getEcuadorTodayString = useCallback((): string => {
@@ -283,11 +287,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     if (!resolvedMachine) return '0';
     
-    // Búsqueda estricta por Código de Material y Puesto de Trabajo (Máquina)
+    // Búsqueda robusta por Código de Material y Puesto de Trabajo (Máquina)
     const match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tMachine = String(t.PuestoTrabajo || t.Maquina || '').trim().toUpperCase();
       return tMaterial === normMaterial && tMachine === resolvedMachine;
+    }) || tiemposProduccion.find(t => {
+      // Fallback: solo por material si la máquina no coincide exactamente
+      return normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial;
     });
 
     if (!match) return '0';
