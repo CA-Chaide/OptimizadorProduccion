@@ -78,20 +78,29 @@ export const CuboInventariosTab: React.FC = () => {
 
                 if (fetchedData.length > 0 && columns.length === 0) {
                     let originalColumns = Object.keys(fetchedData[0]);
+                    
+                    // Columnas a excluir solicitadas por el usuario
+                    const columnsToExclude = [
+                        'Etiqueta', 'Sector', 'TipoMaterial', 'Estrategia', 
+                        'PaisOrigen', 'Categoria', 'HojaRuta', 'TamLoteMin', 'TamLoteMax'
+                    ];
+
+                    let filteredColumns = originalColumns.filter(col => !columnsToExclude.includes(col));
+
                     const stockActualCol = 'StockActual';
                     const descripcionCol = 'Descripcion';
 
                     // Reorganize columns for better visibility
-                    const stockActualIndex = originalColumns.indexOf(stockActualCol);
+                    const stockActualIndex = filteredColumns.indexOf(stockActualCol);
                     if (stockActualIndex > -1) {
-                        originalColumns.splice(stockActualIndex, 1);
+                        filteredColumns.splice(stockActualIndex, 1);
                     }
 
-                    const descripcionIndex = originalColumns.indexOf(descripcionCol);
+                    const descripcionIndex = filteredColumns.indexOf(descripcionCol);
                     const targetIndex = descripcionIndex !== -1 ? descripcionIndex + 1 : 2;
-                    originalColumns.splice(targetIndex, 0, stockActualCol);
+                    filteredColumns.splice(targetIndex, 0, stockActualCol);
                     
-                    setColumns(originalColumns);
+                    setColumns(filteredColumns);
                 }
 
             } catch (error) {
