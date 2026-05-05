@@ -225,7 +225,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
           if (!matchesExternal) return false;
 
           const normalizedOrderDate = normalizeDateForFilter(order['FECHAINICIO']);
-          return normalizedOrderDate === todayDate || normalizedOrderDate === targetDate;
+          if (!normalizedOrderDate) return false;
+          return normalizedOrderDate >= todayDate && normalizedOrderDate <= targetDate;
         });
         setDailyOrders(filtered);
         setDailyPage(1);
@@ -275,7 +276,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     const match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
-      const tMachine = String(t.PuestoTrabajo || '').trim().toUpperCase();
+      const tMachine = String(t.PuestoTrabajo || t.Maquina || '').trim().toUpperCase();
       return tMaterial === normMaterial && tMachine === resolvedMachine;
     });
 
