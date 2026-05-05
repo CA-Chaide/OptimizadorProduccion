@@ -22,6 +22,7 @@ export * from './TacticalPlanFormulacionSection';
 export * from './TacticalPlanVentaExternaSection';
 export * from './TacticalPlanCorteLaminadoSection';
 export * from './ProvisionalOrdersTabSection';
+export * from './MaestroMaterialesExplosionSection';
 export * from './WorkShiftPlanningSection';
 export * from './RealDataSection';
 export * from './InventoryNeedsSection';
