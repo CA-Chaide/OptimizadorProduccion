@@ -274,7 +274,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   <CardHeader>
                       <CardTitle>PLAN</CardTitle>
                       <CardDescription>
-                          Visualización de las órdenes de fabricación (FERT).
+                          Visualización de capacidad por fecha
                       </CardDescription>
                   </CardHeader>
                   <CardContent>
