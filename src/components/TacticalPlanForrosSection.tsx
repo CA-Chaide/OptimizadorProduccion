@@ -273,7 +273,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const material = normalizeMaterialCode(materialRaw);
     if (!material) return '';
 
+    // Buscar en maestros priorizando registros con tiempo definido
     const match = tiemposProduccion.find(t => 
+      normalizeMaterialCode(t.CodMaterial || t.Material || '') === material && (Number(t.Tiempo) > 0)
+    ) || tiemposProduccion.find(t => 
       normalizeMaterialCode(t.CodMaterial || t.Material || '') === material
     );
 
@@ -282,21 +285,40 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   /**
    * Calcula el tiempo total de producción buscando por MATERIAL y MÁQUINA
+   * Lógica mejorada para búsqueda flexible en todos los campos técnicos
    */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0';
     const normMaterial = normalizeMaterialCode(material);
-    const resolvedMachine = getResolvedMachine(order);
+    const resolvedMachine = getResolvedMachine(order).trim().toUpperCase();
     
-    if (!resolvedMachine) return '0';
+    if (!resolvedMachine || resolvedMachine === '') return '0';
     
-    const match = tiemposProduccion.find(t => {
+    // 1. Intentar coincidencia exacta Material + Máquina (PuestoTrabajo o Maquina)
+    let match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tMachine = String(t.PuestoTrabajo || t.Maquina || '').trim().toUpperCase();
-      return tMaterial === normMaterial && tMachine === resolvedMachine;
-    }) || tiemposProduccion.find(t => {
-      return normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial;
+      return tMaterial === normMaterial && tMachine === resolvedMachine && Number(t.Tiempo) > 0;
     });
+
+    // 2. Si no hay coincidencia exacta, buscar la cadena resolvedMachine en CUALQUIER campo del registro técnico
+    if (!match) {
+      match = tiemposProduccion.find(t => {
+        const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
+        if (tMaterial !== normMaterial) return false;
+        
+        // Buscar el identificador de la máquina en todos los campos descriptivos
+        const searchPool = Object.values(t).map(v => String(v || '').trim().toUpperCase()).join('|');
+        return searchPool.includes(resolvedMachine);
+      });
+    }
+
+    // 3. Fallback final: Primer registro del material con tiempo > 0
+    if (!match) {
+      match = tiemposProduccion.find(t => 
+        normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial && Number(t.Tiempo) > 0
+      );
+    }
 
     if (!match) return '0';
     
