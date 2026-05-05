@@ -15,7 +15,8 @@ import {
   ChevronsRight, 
   CalendarCheck,
   BarChart3,
-  Clock
+  Clock,
+  Search
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
@@ -51,9 +52,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [horarioDiurno, setHorarioDiurno] = useState("8.75");
   const [horarioNocturno, setHorarioNocturno] = useState("0");
 
-  // Paginación para pestañas internas
+  // Filtros y Paginación para Tiempos
+  const [tiemposFilters, setTiemposFilters] = useState<Record<string, string>>({});
   const [tiemposPage, setTiemposPage] = useState(1);
   const [tiemposRowsPerPage, setTiemposRowsPerPage] = useState(20);
+  
+  // Paginación para Diario
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
@@ -62,8 +66,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [targetDate, setTargetDate] = useState<string>('');
 
   /**
-   * Normaliza códigos de material eliminando ceros a la izquierda
-   * para una comparación robusta entre diferentes fuentes (18 vs 8 vs 10 dígitos)
+   * Normaliza códigos de material eliminando todos los ceros a la izquierda
    */
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
@@ -197,7 +200,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filters;
   }, [forrosRestricciones]);
 
-  // Carga de maestros técnicos (Tiempos de Ensamblado)
+  // Carga de maestros técnicos
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
     setIsLoadingTiempos(true);
@@ -215,7 +218,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
-  // Carga de órdenes del horizonte
+  // Carga de órdenes
   const fetchDailyOrders = useCallback(async () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
     setIsLoadingDaily(true);
@@ -254,7 +257,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   /**
-   * Resuelve la máquina de una orden haciendo cruce con maestros si es necesario
+   * Resuelve la máquina de una orden haciendo cruce con maestros
    */
   const getResolvedMachine = useCallback((order: any) => {
     const rawVal = order['MAQUINA'] || order['Maquina'] || order['maquina'] || 
@@ -287,13 +290,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     if (!resolvedMachine) return '0';
     
-    // Búsqueda robusta por Código de Material y Puesto de Trabajo (Máquina)
     const match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tMachine = String(t.PuestoTrabajo || t.Maquina || '').trim().toUpperCase();
       return tMaterial === normMaterial && tMachine === resolvedMachine;
     }) || tiemposProduccion.find(t => {
-      // Fallback: solo por material si la máquina no coincide exactamente
       return normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial;
     });
 
@@ -322,6 +323,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(order[column] ?? '');
   }, [getResolvedMachine]);
 
+  // Columnas y Filtrado de Tiempos
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
     const allKeys = Object.keys(tiemposProduccion[0]);
@@ -329,6 +331,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
   }, [tiemposProduccion]);
 
+  const filteredTiempos = useMemo(() => {
+    return tiemposProduccion.filter(item => {
+      return Object.entries(tiemposFilters).every(([col, val]) => {
+        if (!val) return true;
+        const itemVal = String(item[col] ?? '').toLowerCase();
+        return itemVal.includes(val.toLowerCase());
+      });
+    });
+  }, [tiemposProduccion, tiemposFilters]);
+
+  const paginatedTiemposData = useMemo(() => {
+    const start = (tiemposPage - 1) * tiemposRowsPerPage;
+    return filteredTiempos.slice(start, start + tiemposRowsPerPage);
+  }, [filteredTiempos, tiemposPage, tiemposRowsPerPage]);
+
+  const totalTiemposPages = Math.max(1, Math.ceil(filteredTiempos.length / tiemposRowsPerPage));
+
+  const handleTiemposFilterChange = (column: string, value: string) => {
+    setTiemposFilters(prev => ({ ...prev, [column]: value }));
+    setTiemposPage(1);
+  };
+
+  // Diario
   const dailyColumns = useMemo(() => {
     if (dailyOrders.length === 0) return ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
     
@@ -346,16 +371,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return cols;
   }, [dailyOrders]);
 
-  const paginatedTiemposData = useMemo(() => {
-    const start = (tiemposPage - 1) * tiemposRowsPerPage;
-    return tiemposProduccion.slice(start, start + tiemposRowsPerPage);
-  }, [tiemposProduccion, tiemposPage, tiemposRowsPerPage]);
-
   const paginatedDailyData = useMemo(() => {
     const start = (dailyPage - 1) * dailyRowsPerPage;
     return dailyOrders.slice(start, start + dailyRowsPerPage);
   }, [dailyOrders, dailyPage, dailyRowsPerPage]);
 
+  const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
+
+  // Capacidad
   const plannedCapacity = useMemo(() => {
     const diurno = parseFloat(horarioDiurno) || 0;
     const nocturno = parseFloat(horarioNocturno) || 0;
@@ -392,9 +415,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
   }, [dailyOrders, tiemposProduccion, getResolvedMachine, calculateProductionTime]);
-
-  const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
-  const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
 
   if (!isMounted) return null;
 
@@ -494,10 +514,39 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="overflow-auto max-h-[60vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                      <tr>{tiemposColumns.map(col => (<th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">{col}</th>))}</tr>
+                      <tr>
+                        {tiemposColumns.map(col => (
+                          <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                      {/* Fila de filtros */}
+                      <tr className="bg-gray-50/50">
+                        {tiemposColumns.map(col => (
+                          <th key={`filter-t-${col}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
+                              <input
+                                type="text"
+                                placeholder="Filtrar..."
+                                value={tiemposFilters[col] || ''}
+                                onChange={(e) => handleTiemposFilterChange(col, e.target.value)}
+                                className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white"
+                              />
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
-                      {isLoadingTiempos ? (<tr><td colSpan={tiemposColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : tiemposProduccion.length > 0 ? paginatedTiemposData.map((t, idx) => (
+                      {isLoadingTiempos && tiemposProduccion.length === 0 ? (
+                        <tr>
+                          <td colSpan={tiemposColumns.length || 1} className="py-24 text-center">
+                            <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
+                          </td>
+                        </tr>
+                      ) : paginatedTiemposData.length > 0 ? paginatedTiemposData.map((t, idx) => (
                         <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">
                           {tiemposColumns.map(col => (
                             <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
@@ -505,7 +554,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             </td>
                           ))}
                         </tr>
-                      )) : (<tr><td colSpan={tiemposColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay datos disponibles.</td></tr>)}
+                      )) : (
+                        <tr>
+                          <td colSpan={tiemposColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
+                            {tiemposProduccion.length === 0 ? 'No hay datos disponibles.' : 'No se encontraron resultados para los filtros.'}
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -519,7 +574,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(p => Math.min(totalTiemposPages, p + 1))} disabled={tiemposPage === totalTiemposPages}><ChevronRight className="h-4 w-4" /></Button>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(totalTiemposPages)} disabled={tiemposPage === totalTiemposPages}><ChevronsRight className="h-4 w-4" /></Button>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingTiempos && "animate-spin")} /> Actualizar</Button>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredTiempos.length} registros filtrados</span>
+                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingTiempos && "animate-spin")} /> Actualizar</Button>
+                </div>
               </div>
             </CardContent>
           </Card>
