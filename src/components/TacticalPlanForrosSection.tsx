@@ -15,8 +15,7 @@ import {
   ChevronsRight, 
   CalendarCheck,
   BarChart3,
-  Clock,
-  Map as MapIcon
+  Clock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
@@ -48,16 +47,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // Estados para horarios de jornada
+  // Horarios de jornada
   const [horarioDiurno, setHorarioDiurno] = useState("8.75");
   const [horarioNocturno, setHorarioNocturno] = useState("0");
 
+  // Paginación para pestañas internas
   const [tiemposPage, setTiemposPage] = useState(1);
   const [tiemposRowsPerPage, setTiemposRowsPerPage] = useState(20);
-
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
+  // Fechas de planificación
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
 
@@ -102,6 +102,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(value);
   }, [safeParseDateParts]);
 
+  // Carga inicial de grupos y restricciones
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -192,6 +193,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filters;
   }, [forrosRestricciones]);
 
+  // Carga de maestros técnicos (Tiempos de Ensamblado)
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
     setIsLoadingTiempos(true);
@@ -209,6 +211,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
+  // Carga de órdenes del horizonte
   const fetchDailyOrders = useCallback(async () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
     setIsLoadingDaily(true);
@@ -246,6 +249,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
+  /**
+   * Resuelve la máquina de una orden haciendo cruce con maestros si es necesario
+   */
   const getResolvedMachine = useCallback((order: any) => {
     const rawVal = order['MAQUINA'] || order['Maquina'] || order['maquina'] || 
                    order['PUESTOTRABAJO'] || order['PuestoTrabajo'] || order['puestotrabajo'];
@@ -267,6 +273,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? String(match.PuestoTrabajo || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
+  /**
+   * Calcula el tiempo total de producción buscando por MATERIAL y MÁQUINA
+   */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0';
     const normMaterial = normalizeMaterialCode(material);
@@ -274,6 +283,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     if (!resolvedMachine) return '0';
     
+    // Búsqueda estricta por Código de Material y Puesto de Trabajo (Máquina)
     const match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tMachine = String(t.PuestoTrabajo || t.Maquina || '').trim().toUpperCase();
@@ -363,18 +373,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const quantity = Number(order['CANTIDAD'] || 0);
       const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'], quantity, order)) || 0;
       
-      const key = machine;
-      
-      if (!summaryMap.has(key)) {
-        summaryMap.set(key, {
-          machine: machine,
-          quantity: 0,
-          count: 0,
-          totalTime: 0
-        });
+      if (!summaryMap.has(machine)) {
+        summaryMap.set(machine, { machine, quantity: 0, count: 0, totalTime: 0 });
       }
       
-      const entry = summaryMap.get(key)!;
+      const entry = summaryMap.get(machine)!;
       entry.quantity += quantity;
       entry.count += 1;
       entry.totalTime += timeVal;
