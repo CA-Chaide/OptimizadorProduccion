@@ -197,7 +197,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
         <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica muebles</h2>
       </div>
 
-      <Tabs defaultValue="ordenes" className="w-full">
+      <Tabs defaultValue="plan" className="w-full">
           <TabsList className="grid w-full grid-cols-8 h-auto p-1 bg-muted">
               <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0">Restricciones</TabsTrigger>
