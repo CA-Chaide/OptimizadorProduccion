@@ -65,7 +65,7 @@ const MultiSelect: React.FC<{
                 ? placeholder || 'Seleccionar...'
                 : `${selected.length} seleccionada(s)`}
             </span>
-            <ChevronsUpDown className="ml-1 h-4 w-4 shrink-0 opacity-50" />
+            <Check className="ml-1 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[250px] p-0">
@@ -87,7 +87,7 @@ const MultiSelect: React.FC<{
                       selected.includes(option.value) ? 'opacity-100' : 'opacity-0'
                     )}
                   />
-                  {option.label}
+                  <span className="text-xs">{option.label}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -342,11 +342,15 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             )}
 
             {displayMode === 'plan' && selectedDates.length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm mt-6 w-full max-w-2xl">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm mt-6 w-full max-w-4xl">
                     <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
                     <div className="space-y-0 max-h-64 overflow-y-auto border rounded-md">
-                        {planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => (
-                            <div key={date} className="grid grid-cols-4 gap-0 items-center text-sm p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
+                        {planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => {
+                            const tiempoRequeridoH = tiempoTotal / 60;
+                            const capacidadOcupada = (tiempoRequeridoH / TIEMPO_DISPONIBLE_DIARIO) * 100;
+                            
+                            return (
+                            <div key={date} className="grid grid-cols-5 gap-0 items-center text-sm p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
                                 <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
                                     <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
                                     <p className="font-bold text-gray-900">{date}</p>
@@ -357,14 +361,21 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                 </div>
                                 <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
                                     <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO (h)</p>
-                                    <p className="font-bold text-indigo-700">{(tiempoTotal / 60).toFixed(2)}</p>
+                                    <p className="font-bold text-indigo-700">{tiempoRequeridoH.toFixed(2)}</p>
                                 </div>
-                                <div className="text-center px-2 h-full flex flex-col justify-center">
+                                <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
                                     <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO DISPONIBLE (h)</p>
                                     <p className="font-bold text-emerald-700">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
                                 </div>
+                                <div className="text-center px-2 h-full flex flex-col justify-center">
+                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD</p>
+                                    <p className={cn("font-bold", capacidadOcupada > 100 ? "text-red-600" : "text-blue-600")}>
+                                      {capacidadOcupada.toFixed(2)}%
+                                    </p>
+                                </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
