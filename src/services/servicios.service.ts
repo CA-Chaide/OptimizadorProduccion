@@ -296,12 +296,16 @@ export const serviciosService = {
     }
   },
 
-  async getMaestroMaterialesExplosion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+  async getMaestroMaterialesExplosion(page: number, rowsPerPage: number, search?: string): Promise<BodyResponse<any>> {
     try {
       const response = await fetch(API_URL + "/MaestroMaterialesExplosionPaginado", {
         method: "POST",
         headers: getHeaders(),
-        body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+        body: JSON.stringify({ 
+          page: page, 
+          rowsPerPage: rowsPerPage,
+          search: search // Término de búsqueda para filtrar FERT_PRINCIPAL
+        }),
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
