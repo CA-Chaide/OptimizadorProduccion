@@ -67,11 +67,20 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   const formatValueForDisplay = useCallback((col: string, value: any): string => {
     if (value === null || value === undefined || value === '') return '';
     const upperCol = col.toUpperCase().trim();
+    
+    // Formatear Fechas
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
       if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
       return String(value);
     }
+    
+    // Formatear Números/Tiempos
+    if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS') || upperCol === 'CANTIDAD') {
+      const num = parseFloat(value);
+      if (!isNaN(num)) return num.toFixed(2);
+    }
+
     return String(value);
   }, [safeParseDateParts]);
 

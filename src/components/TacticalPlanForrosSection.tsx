@@ -101,11 +101,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const formatValueForDisplay = useCallback((col: string, value: any): string => {
     if (value === null || value === undefined || value === '') return '—';
     const upperCol = col.toUpperCase().trim();
+    
+    // Formatear Fechas
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
       if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
       return String(value);
     }
+    
+    // Formatear Tiempos (2 decimales)
+    if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS')) {
+      const num = parseFloat(value);
+      if (!isNaN(num)) return num.toFixed(2);
+    }
+
     return String(value);
   }, [safeParseDateParts]);
 
@@ -258,10 +267,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   /**
-   * Resuelve la máquina con prioridad a identificadores que inicien con "HR"
+   * Resuelve la máquina priorizando identificadores que inicien con "HR"
    */
   const getResolvedMachine = useCallback((order: any) => {
-    // 1. Escanear campos de la propia orden
     const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
     for (const k of orderFields) {
       const val = order[k];
@@ -271,7 +279,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
     }
     
-    // 2. Escanear maestros técnicos por material
     const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     if (!material) return '';
 
@@ -280,41 +287,36 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
 
     if (matches.length > 0) {
-      // Buscar CUALQUIER valor en el maestro que empiece con HR
       for (const m of matches) {
         const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
         const hrValue = values.find(v => v.startsWith('HR'));
         if (hrValue) return hrValue;
       }
-      
-      // Si no hay HR, devolver el primer puesto disponible
       const first = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
       return String(first.PuestoTrabajo || first.Maquina || first.nombre_estacion || '').trim().toUpperCase();
     }
     
-    // 3. Fallback final al valor original de la orden si existe
     const fallback = order['MAQUINA'] || order['Maquina'] || order['PuestoTrabajo'] || '';
     return String(fallback).trim().toUpperCase() || '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
   /**
-   * Calcula el tiempo total de producción
+   * Calcula el tiempo total de producción con 2 decimales
    */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
-    if (!material) return '0';
+    if (!material) return '0.00';
     const normMaterial = normalizeMaterialCode(material);
     const resolvedMachine = getResolvedMachine(order).trim().toUpperCase();
     
-    if (!resolvedMachine) return '0';
+    if (!resolvedMachine) return '0.00';
     
-    // Buscar coincidencia en maestros
     const match = tiemposProduccion.find(t => {
       if (normalizeMaterialCode(t.CodMaterial || t.Material || '') !== normMaterial) return false;
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
       return values.includes(resolvedMachine);
     }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial && Number(t.Tiempo || t.Tiempo_Min) > 0);
 
-    if (!match) return '0';
+    if (!match) return '0.00';
     const unitTime = Number(match.Tiempo || match.Tiempo_Min || 0);
     return (unitTime * quantity).toFixed(2);
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
@@ -343,7 +345,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (tiemposProduccion.length === 0) return [];
     const allKeys = Object.keys(tiemposProduccion[0]);
     
-    // Nuevo orden solicitado
     const priority = [
       'CodMaterial', 
       'HojaRuta', 
@@ -363,9 +364,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       'ClaseAprovisionam'
     ];
 
-    // Columnas a eliminar
     const toExclude = ['StockActual', 'GrupoCompras'];
-
     const matchedPriority = priority.filter(k => allKeys.includes(k));
     const otherCols = allKeys.filter(k => !priority.includes(k) && !toExclude.includes(k));
     
@@ -425,7 +424,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
-    // Asegurar que todas las máquinas conocidas aparezcan
     const allKnownMachines = [...new Set(tiemposProduccion.map(t => {
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
       return values.find(v => v.startsWith('HR')) || String(t.PuestoTrabajo || '').trim().toUpperCase();
@@ -798,7 +796,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">{item.totalTime.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">
+                                  {item.totalTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                                   <Badge 
                                     className={cn(
@@ -833,7 +833,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               {productionSummary.reduce((acc, curr) => acc + curr.quantity, 0).toLocaleString()}
                             </td>
                             <td className="px-6 py-3 text-right font-mono text-sm text-emerald-800">
-                              {productionSummary.reduce((acc, curr) => acc + curr.totalTime, 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                              {productionSummary.reduce((acc, curr) => acc + curr.totalTime, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="px-6 py-3 text-right">
                               {(() => {
