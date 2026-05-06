@@ -20,7 +20,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState('resumen');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
-  const [restricciones, setRestricciones] = useState<Set<any>>(new Set()); // Not strictly typed for flexibility
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
@@ -326,7 +325,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsContent value="maestro" className="animate-in fade-in duration-300">
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
             <CardContent className="p-0">
-              <MaestroMaterialesExplosionSection />
+              <MaestroMaterialesExplosionSection ordenes={ordenesFiltradas} />
             </CardContent>
           </Card>
         </TabsContent>

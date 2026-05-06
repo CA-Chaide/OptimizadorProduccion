@@ -296,15 +296,16 @@ export const serviciosService = {
     }
   },
 
-  async getMaestroMaterialesExplosion(page: number, rowsPerPage: number, search?: string): Promise<BodyResponse<any>> {
+  async getMaestroMaterialesExplosion(centro: string, fert: string, page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     try {
       const response = await fetch(API_URL + "/MaestroMaterialesExplosionPaginado", {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ 
+          Centro: centro,
+          Fert: fert,
           page: page, 
           rowsPerPage: rowsPerPage,
-          search: search 
         }),
       });
       if (!response.ok) {
