@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle, DatabaseZap, Search, X, FileTree } from 'lucide-react';
+import { ClipboardList, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle, DatabaseZap, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -26,7 +26,7 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
   const inspector = useRuntimeInspector('MaestroMaterialesExplosion');
   const { addNotification } = useAppContext();
 
-  // Configuración inicial enfocada en el material solicitado
+  // Configuración inicial enfocada en el material solicitado por el usuario: 30001338
   const [hasStarted, setHasStarted] = useState(true);
   const [data, setData] = useState<MaterialExplosionItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,9 +35,9 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const [error, setError] = useState<string | null>(null);
   
-  // Término de búsqueda predeterminado: 20011622
-  const [searchTerm, setSearchTerm] = useState('20011622');
-  const [activeSearch, setActiveSearch] = useState('20011622');
+  // Término de búsqueda predeterminado: 30001338
+  const [searchTerm, setSearchTerm] = useState('30001338');
+  const [activeSearch, setActiveSearch] = useState('30001338');
 
   const fetchData = useCallback(async (page: number, limit: number, search: string) => {
     setIsLoading(true);
@@ -48,9 +48,11 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
       const response = await serviciosService.getMaestroMaterialesExplosion(page, limit, search);
       
       if (response && response.data) {
-        setData(response.data);
-        setTotalRecords(response.totalRegistros || 0);
-        inspector.captureVariable('maestroMaterialesCount', response.data.length);
+        // En algunos casos el API puede devolver la data en response.data.data
+        const actualData = Array.isArray(response.data) ? response.data : (response.data.data || []);
+        setData(actualData);
+        setTotalRecords(response.totalRegistros || response.length || actualData.length || 0);
+        inspector.captureVariable('maestroMaterialesCount', actualData.length);
         inspector.captureVariable('materialConsultado', search);
       } else {
         setData([]);
@@ -67,12 +69,12 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
 
   // Efecto de carga automática al montar el componente
   useEffect(() => {
-    if (hasStarted) {
+    if (hasStarted && activeSearch) {
       fetchData(currentPage, rowsPerPage, activeSearch);
     }
   }, [currentPage, rowsPerPage, fetchData, hasStarted, activeSearch]);
 
-  const totalPages = Math.ceil(totalRecords / rowsPerPage);
+  const totalPages = Math.max(1, Math.ceil(totalRecords / rowsPerPage));
 
   const handlePageChange = (newPage: number) => {
     setCurrentPage(Math.max(1, Math.min(newPage, totalPages)));
@@ -81,7 +83,7 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchTerm.trim()) return;
-    setActiveSearch(searchTerm);
+    setActiveSearch(searchTerm.trim());
     setCurrentPage(1);
     setHasStarted(true);
   };
@@ -109,7 +111,7 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
           <form onSubmit={handleSearch} className="relative flex items-center">
             <Search className="absolute left-3 w-4 h-4 text-gray-400" />
             <Input 
-              placeholder="Buscar Cod. FERT (ej: 20011622)" 
+              placeholder="Buscar Cod. FERT (ej: 30001338)" 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 pr-10 h-9 w-64 rounded-xl border-gray-200 focus:ring-indigo-500 text-xs font-bold uppercase shadow-sm"
@@ -144,10 +146,10 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
             <p className="text-xs text-gray-400 mt-1 mb-6">Ingrese un código de producto terminado para ver su estructura técnica de componentes.</p>
             <div className="flex justify-center">
               <Button 
-                onClick={() => { setSearchTerm('20011622'); setActiveSearch('20011622'); setHasStarted(true); }}
+                onClick={() => { setSearchTerm('30001338'); setActiveSearch('30001338'); setHasStarted(true); }}
                 className="rounded-xl px-8 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 font-black uppercase text-[10px] tracking-widest h-10"
               >
-                Cargar "20011622"
+                Cargar "30001338"
               </Button>
             </div>
           </div>
@@ -158,19 +160,21 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
             <table className="w-full border-collapse text-center text-[10px] font-sans">
               <thead className="bg-gray-50 sticky top-0 z-10 border-b border-gray-200">
                 <tr className="uppercase font-black text-gray-500 tracking-tighter">
-                  <th className="px-3 py-4 border-r border-dashed w-16">NIVEL</th>
-                  <th className="px-3 py-4 border-r border-dashed text-indigo-600">FERT PRINCIPAL</th>
+                  <th className="px-2 py-4 border-r border-dashed w-12">NIVEL</th>
+                  <th className="px-2 py-4 border-r border-dashed text-indigo-600 w-24">FERT PRINCIPAL</th>
                   <th className="px-3 py-4 border-r border-dashed text-left w-[20%]">DESCRIPCIÓN FERT</th>
-                  <th className="px-3 py-4 border-r border-dashed text-orange-600">COMPONENTE</th>
-                  <th className="px-3 py-4 border-r border-dashed text-left w-[25%]">DESCRIPCIÓN COMPONENTE</th>
-                  <th className="px-3 py-4 border-r border-dashed text-right bg-slate-50">CANT. UNITARIA</th>
-                  <th className="px-3 py-4 text-right bg-slate-50">CANT. ACUMULADA</th>
+                  <th className="px-2 py-4 border-r border-dashed text-slate-500 w-24">MATERIAL PADRE</th>
+                  <th className="px-3 py-4 border-r border-dashed text-left w-[20%]">DESCRIPCIÓN PADRE</th>
+                  <th className="px-2 py-4 border-r border-dashed text-orange-600 w-24">COMPONENTE</th>
+                  <th className="px-3 py-4 border-r border-dashed text-left w-[20%]">DESCRIPCIÓN COMPONENTE</th>
+                  <th className="px-2 py-4 border-r border-dashed text-right bg-slate-50">CANT. UNIT.</th>
+                  <th className="px-2 py-4 text-right bg-slate-50">CANT. ACUM.</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="py-32 text-center">
+                    <td colSpan={9} className="py-32 text-center">
                       <div className="flex flex-col items-center justify-center gap-3">
                         <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
                         <p className="text-xs font-black text-gray-400 uppercase tracking-widest animate-pulse">Explosionando estructura BOM...</p>
@@ -179,7 +183,7 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={7} className="py-32 text-center">
+                    <td colSpan={9} className="py-32 text-center">
                       <div className="flex flex-col items-center justify-center gap-3 px-10">
                         <AlertTriangle className="w-12 h-12 text-red-500" />
                         <p className="text-sm font-bold text-red-600 uppercase">Fallo en la sincronización</p>
@@ -192,7 +196,7 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
                   </tr>
                 ) : data.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-32 text-center text-gray-400 space-y-4">
+                    <td colSpan={9} className="py-32 text-center text-gray-400 space-y-4">
                       <div className="p-4 bg-gray-50 rounded-full w-16 h-16 flex items-center justify-center mx-auto">
                         <Search className="w-8 h-8 text-gray-200" />
                       </div>
@@ -202,28 +206,34 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
                 ) : (
                   data.map((item, idx) => (
                     <tr key={idx} className="hover:bg-indigo-50/20 transition-all group">
-                      <td className="px-3 py-3 border-r border-dashed font-black text-gray-800 bg-gray-50/30">
+                      <td className="px-2 py-3 border-r border-dashed font-black text-gray-800 bg-gray-50/30">
                         <div className="flex items-center justify-center gap-1">
                           {item.NIVEL > 1 && <div className="w-2 h-[1px] bg-indigo-200" />}
                           {item.NIVEL}
                         </div>
                       </td>
-                      <td className="px-3 py-3 border-r border-dashed font-mono font-bold text-indigo-600 tracking-tighter">
+                      <td className="px-2 py-3 border-r border-dashed font-mono font-bold text-indigo-600 tracking-tighter">
                         {String(item.FERT_PRINCIPAL || '').slice(-8)}
                       </td>
-                      <td className="px-3 py-3 border-r border-dashed text-left font-bold text-gray-400 uppercase text-[9px] truncate max-w-[200px]" title={item.DESCRIPCION_FERT}>
+                      <td className="px-3 py-3 border-r border-dashed text-left font-bold text-gray-400 uppercase text-[9px] truncate max-w-[150px]" title={item.DESCRIPCION_FERT}>
                         {item.DESCRIPCION_FERT}
                       </td>
-                      <td className="px-3 py-3 border-r border-dashed font-mono font-black text-orange-600 bg-orange-50/5 tracking-tighter">
+                      <td className="px-2 py-3 border-r border-dashed font-mono text-gray-400 tracking-tighter">
+                        {String(item.MATERIAL_PADRE || '').slice(-8)}
+                      </td>
+                      <td className="px-3 py-3 border-r border-dashed text-left text-gray-400 text-[8px] truncate max-w-[150px]" title={item.DESCRIPCION_PADRE}>
+                        {item.DESCRIPCION_PADRE}
+                      </td>
+                      <td className="px-2 py-3 border-r border-dashed font-mono font-black text-orange-600 bg-orange-50/5 tracking-tighter">
                         {String(item.COMPONENTE || '').slice(-8)}
                       </td>
                       <td className="px-3 py-3 border-r border-dashed text-left font-black text-gray-700 uppercase tracking-tight">
                         {item.DESCRIPCION_COMPONENTE}
                       </td>
-                      <td className="px-3 py-3 border-r border-dashed text-right font-mono font-black text-indigo-700 bg-slate-50/30">
+                      <td className="px-2 py-3 border-r border-dashed text-right font-mono font-black text-indigo-700 bg-slate-50/30">
                         {Number(item.CANTIDAD_UNITARIA || 0).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                       </td>
-                      <td className="px-3 py-3 text-right font-mono font-black text-slate-800 bg-slate-50/50">
+                      <td className="px-2 py-3 text-right font-mono font-black text-slate-800 bg-slate-50/50">
                         {Number(item.CANTIDAD_ACUMULADA || 0).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                       </td>
                     </tr>
