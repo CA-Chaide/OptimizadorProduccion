@@ -101,7 +101,7 @@ const MultiSelect: React.FC<{
 
 
 export const DataImportSection: React.FC<DataImportSectionProps> = ({ onDataImported, onFiltersChange }) => {
-  const { addNotification, isAppLoading } = useAppContext();
+  const { addNotification, isLoading: isAppLoading } = useAppContext();
   
   const [filterOptions, setFilterOptions] = useState({
       años: [] as {value: string, label: string}[],

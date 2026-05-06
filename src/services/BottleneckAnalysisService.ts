@@ -127,7 +127,9 @@ class BottleneckAnalysisService {
     const filteredData = data.filter(row => {
       const cFab = String(row.CentroFabricacion || '').trim();
       const cDem = String(row.Centro || '').trim();
-      return cFab === '1000' || (cFab === '' && cDem === '1000');
+      // Centro 1000 debe evaluar su propia demanda (centro demandante 1000).
+      // La demanda de centro 2000 que fabrica en 1000 entra por la vía de traslados.
+      return cDem === '1000' || (cDem === '' && cFab === '1000');
     });
 
     // AGRUPACIÓN POR MATERIAL

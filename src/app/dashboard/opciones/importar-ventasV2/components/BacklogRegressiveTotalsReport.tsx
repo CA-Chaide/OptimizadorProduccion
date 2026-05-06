@@ -1,10 +1,15 @@
 'use client';
 
 import React, { useMemo, useState, useCallback } from 'react';
-import { computeBacklogRegressiveFinalRows } from './backlogRegressiveCompute';
+import {
+  aggregateViableTransferList,
+  computeBacklogRegressiveFinalRows,
+  viableTransfersFromC1000RegressiveRows,
+} from './backlogRegressiveCompute';
 import { MONTH_NAMES } from './constants';
 import { safeNumber, exportToXLSX } from './utils';
-import type { TiempoCanonResult, ViableTransfer } from './types';
+import type { TiempoCanonResult, ViableTransfer, PioMap } from './types';
+import { MultiSelectDropdown } from './MultiSelectDropdown';
 
 export interface BacklogRegressiveTotalsReportProps {
   dataC1000: any[];
@@ -13,6 +18,7 @@ export interface BacklogRegressiveTotalsReportProps {
   maxExtrasHoras: number;
   horasExtrasFin: number;
   trasladosViables: ViableTransfer[];
+  pioMap?: PioMap;
 }
 
 type MesAgg = {
@@ -21,7 +27,9 @@ type MesAgg = {
   mesNumero: number;
   mesNombre: string;
   stockIni: number;
+  prodBase: number;
   produccion: number;
+  prodPio: number;
   despachos: number;
   traslado: number;
   saldoFinal: number;
@@ -47,7 +55,9 @@ function TotalsTableCentro({ titulo, filas }: { titulo: string; filas: MesAgg[] 
               <th className="px-3 py-2 text-left">Año</th>
               <th className="px-3 py-2 text-left">Mes</th>
               <th className="px-3 py-2 text-right">Stock ini</th>
-              <th className="px-3 py-2 text-right">Producción</th>
+              <th className="px-3 py-2 text-right text-slate-700">Prod. Base</th>
+              <th className="px-3 py-2 text-right" title="Total = Base + Adelantada + Recuperada + Inv.Obj.">Producción Total</th>
+              <th className="px-3 py-2 text-right text-green-800">Prod. Inv. Obj.</th>
               <th className="px-3 py-2 text-right">Despachos</th>
               <th className="px-3 py-2 text-right">Traslado</th>
               <th className="px-3 py-2 text-right">Saldo final</th>
@@ -56,7 +66,7 @@ function TotalsTableCentro({ titulo, filas }: { titulo: string; filas: MesAgg[] 
           <tbody className="divide-y divide-gray-100">
             {filas.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                   Sin filas para los filtros actuales.
                 </td>
               </tr>
@@ -66,7 +76,9 @@ function TotalsTableCentro({ titulo, filas }: { titulo: string; filas: MesAgg[] 
                   <td className="px-3 py-2">{row.anio}</td>
                   <td className="px-3 py-2 font-medium text-gray-800">{row.mesNombre}</td>
                   <td className="px-3 py-2 text-right text-indigo-700">{formatNum(row.stockIni)}</td>
-                  <td className="px-3 py-2 text-right text-purple-700">{formatNum(row.produccion)}</td>
+                  <td className="px-3 py-2 text-right text-slate-600">{formatNum(row.prodBase)}</td>
+                  <td className="px-3 py-2 text-right text-purple-700 font-semibold">{formatNum(row.produccion)}</td>
+                  <td className={`px-3 py-2 text-right font-semibold ${row.prodPio > 0 ? 'text-green-700' : 'text-gray-300'}`}>{formatNum(row.prodPio)}</td>
                   <td className="px-3 py-2 text-right text-gray-800">{formatNum(row.despachos)}</td>
                   <td className="px-3 py-2 text-right text-amber-800">{formatNum(row.traslado)}</td>
                   <td className="px-3 py-2 text-right text-emerald-700 font-semibold">{formatNum(row.saldoFinal)}</td>
@@ -126,24 +138,27 @@ function splitDespachosVentasVsTraslado(r: any, isC1000: boolean): { ventas: num
 
 function applyRowFilters(
   rows: any[],
-  anio: string,
-  mesNombre: string,
-  sector: string,
-  linea: string
+  anios: string[],
+  meses: string[],
+  sectores: string[],
+  lineas: string[]
 ): any[] {
   let out = rows;
-  if (anio.trim() !== '') {
-    const y = parseInt(anio, 10);
-    out = out.filter(r => anioFila(r) === y);
+  if (anios.length > 0) {
+    const ys = new Set(anios.map(a => parseInt(a, 10)));
+    out = out.filter(r => ys.has(anioFila(r)));
   }
-  if (mesNombre.trim() !== '') {
-    out = out.filter(r => String(r.mesNombre) === mesNombre);
+  if (meses.length > 0) {
+    const ms = new Set(meses);
+    out = out.filter(r => ms.has(String(r.mesNombre)));
   }
-  if (sector.trim() !== '') {
-    out = out.filter(r => String(r.Sector || '') === sector);
+  if (sectores.length > 0) {
+    const ss = new Set(sectores);
+    out = out.filter(r => ss.has(String(r.Sector || '')));
   }
-  if (linea.trim() !== '') {
-    out = out.filter(r => lineaOf(r) === linea);
+  if (lineas.length > 0) {
+    const ls = new Set(lineas);
+    out = out.filter(r => ls.has(lineaOf(r)));
   }
   return out;
 }
@@ -167,13 +182,17 @@ function aggregateByMonth(rows: any[], isC1000: boolean): MesAgg[] {
         mesNumero,
         mesNombre,
         stockIni: 0,
+        prodBase: 0,
         produccion: 0,
+        prodPio: 0,
         despachos: 0,
         traslado: 0,
         saldoFinal: 0,
       } as MesAgg);
     cur.stockIni += safeNumber(r._stockInitial);
+    cur.prodBase += safeNumber(r._prodBase);
     cur.produccion += safeNumber(r._prodViableTotal);
+    cur.prodPio += safeNumber(r._prodObjetivoInventario);
     cur.despachos += safeNumber(r._despachosReales);
     cur.traslado += trasl;
     cur.saldoFinal += safeNumber(r._saldoFinal);
@@ -192,37 +211,37 @@ export const BacklogRegressiveTotalsReport: React.FC<BacklogRegressiveTotalsRepo
   maxExtrasHoras,
   horasExtrasFin,
   trasladosViables,
+  pioMap,
 }) => {
-  const [anio, setAnio] = useState('');
-  const [mesNombre, setMesNombre] = useState('');
-  const [sector, setSector] = useState('');
-  const [linea, setLinea] = useState('');
+  const [anios, setAnios] = useState<string[]>([]);
+  const [meses, setMeses] = useState<string[]>([]);
+  const [sectores, setSectores] = useState<string[]>([]);
+  const [lineas, setLineas] = useState<string[]>([]);
 
-  const rowsC1000 = useMemo(
-    () =>
-      computeBacklogRegressiveFinalRows({
-        data: dataC1000,
-        tiemposCanon,
-        centro: '1000',
-        maxExtrasHoras,
-        horasExtrasFin,
-        trasladosViables,
-      }),
-    [dataC1000, tiemposCanon, maxExtrasHoras, horasExtrasFin, trasladosViables]
-  );
-
-  const rowsC2000 = useMemo(
-    () =>
-      computeBacklogRegressiveFinalRows({
-        data: dataC2000,
-        tiemposCanon,
-        centro: '2000',
-        maxExtrasHoras,
-        horasExtrasFin,
-        trasladosViables,
-      }),
-    [dataC2000, tiemposCanon, maxExtrasHoras, horasExtrasFin, trasladosViables]
-  );
+  const { rowsC1000, rowsC2000 } = useMemo(() => {
+    const agg = aggregateViableTransferList(trasladosViables);
+    const r1 = computeBacklogRegressiveFinalRows({
+      data: dataC1000,
+      tiemposCanon,
+      centro: '1000',
+      maxExtrasHoras,
+      horasExtrasFin,
+      trasladosViables: agg,
+      pioMap,
+    });
+    const eff = viableTransfersFromC1000RegressiveRows(r1);
+    const v2 = eff.length > 0 ? eff : agg;
+    const r2 = computeBacklogRegressiveFinalRows({
+      data: dataC2000,
+      tiemposCanon,
+      centro: '2000',
+      maxExtrasHoras,
+      horasExtrasFin,
+      trasladosViables: v2,
+      pioMap,
+    });
+    return { rowsC1000: r1, rowsC2000: r2 };
+  }, [dataC1000, dataC2000, tiemposCanon, maxExtrasHoras, horasExtrasFin, trasladosViables, pioMap]);
 
   const aniosOpciones = useMemo(() => {
     const s = new Set<number>();
@@ -230,7 +249,7 @@ export const BacklogRegressiveTotalsReport: React.FC<BacklogRegressiveTotalsRepo
       const y = anioFila(r);
       if (y) s.add(y);
     });
-    return Array.from(s).sort((a, b) => b - a);
+    return Array.from(s).sort((a, b) => b - a).map(y => ({ value: String(y), label: String(y) }));
   }, [rowsC1000, rowsC2000]);
 
   const sectoresOpciones = useMemo(() => {
@@ -239,13 +258,13 @@ export const BacklogRegressiveTotalsReport: React.FC<BacklogRegressiveTotalsRepo
       const v = String(r.Sector || '').trim();
       if (v) s.add(v);
     });
-    return Array.from(s).sort();
+    return Array.from(s).sort().map(v => ({ value: v, label: v }));
   }, [rowsC1000, rowsC2000]);
 
   const lineasOpciones = useMemo(() => {
     const s = new Set<string>();
     [...rowsC1000, ...rowsC2000].forEach(r => s.add(lineaOf(r)));
-    return Array.from(s).sort();
+    return Array.from(s).sort().map(v => ({ value: v, label: v }));
   }, [rowsC1000, rowsC2000]);
 
   const mesesOpciones = useMemo(() => {
@@ -253,20 +272,22 @@ export const BacklogRegressiveTotalsReport: React.FC<BacklogRegressiveTotalsRepo
     [...rowsC1000, ...rowsC2000].forEach(r => {
       if (r.mesNombre) s.add(String(r.mesNombre));
     });
-    return Array.from(s).sort((a, b) => {
-      const na = Object.entries(MONTH_NAMES).find(([, v]) => v === a)?.[0];
-      const nb = Object.entries(MONTH_NAMES).find(([, v]) => v === b)?.[0];
-      return parseInt(na || '0', 10) - parseInt(nb || '0', 10);
-    });
+    return Array.from(s)
+      .sort((a, b) => {
+        const na = Object.entries(MONTH_NAMES).find(([, v]) => v === a)?.[0];
+        const nb = Object.entries(MONTH_NAMES).find(([, v]) => v === b)?.[0];
+        return parseInt(na || '0', 10) - parseInt(nb || '0', 10);
+      })
+      .map(v => ({ value: v, label: v }));
   }, [rowsC1000, rowsC2000]);
 
   const filteredC1000 = useMemo(
-    () => applyRowFilters(rowsC1000, anio, mesNombre, sector, linea),
-    [rowsC1000, anio, mesNombre, sector, linea]
+    () => applyRowFilters(rowsC1000, anios, meses, sectores, lineas),
+    [rowsC1000, anios, meses, sectores, lineas]
   );
   const filteredC2000 = useMemo(
-    () => applyRowFilters(rowsC2000, anio, mesNombre, sector, linea),
-    [rowsC2000, anio, mesNombre, sector, linea]
+    () => applyRowFilters(rowsC2000, anios, meses, sectores, lineas),
+    [rowsC2000, anios, meses, sectores, lineas]
   );
 
   const agg1000 = useMemo(() => aggregateByMonth(filteredC1000, true), [filteredC1000]);
@@ -279,10 +300,10 @@ export const BacklogRegressiveTotalsReport: React.FC<BacklogRegressiveTotalsRepo
   }, [agg1000, agg2000]);
 
   const handleExport = useCallback(() => {
-    const filtroAnio = anio || 'Todos';
-    const filtroMes = mesNombre || 'Todos';
-    const filtroSector = sector || 'Todos';
-    const filtroLinea = linea || 'Todos';
+    const filtroAnio = anios.length ? anios.join(', ') : 'Todos';
+    const filtroMes = meses.length ? meses.join(', ') : 'Todos';
+    const filtroSector = sectores.length ? sectores.join(', ') : 'Todos';
+    const filtroLinea = lineas.length ? lineas.join(', ') : 'Todos';
 
     const pushDetalle = (rows: any[], centro: '1000' | '2000') => {
       const out: Record<string, string | number>[] = [];
@@ -310,7 +331,9 @@ export const BacklogRegressiveTotalsReport: React.FC<BacklogRegressiveTotalsRepo
           TrasladoIntercentro: isC1000
             ? safeNumber(r._despachosTraslado ?? r._trasladoSalienteC2000)
             : safeNumber(r._trasladoEntranteDesdeC1000),
+          ProduccionBase: safeNumber(r._prodBase),
           ProduccionTotal: safeNumber(r._prodViableTotal),
+          ProduccionPIO: safeNumber(r._prodObjetivoInventario),
           ProdAdelantada: safeNumber(r._prodAdelantada),
           ProdRecuperada: safeNumber(r._prodRecuperada),
           Despachos: safeNumber(r._despachosReales),
@@ -331,7 +354,7 @@ export const BacklogRegressiveTotalsReport: React.FC<BacklogRegressiveTotalsRepo
       return;
     }
     exportToXLSX(flat, 'Backlog_Regresivo_detalle');
-  }, [filteredC1000, filteredC2000, anio, mesNombre, sector, linea]);
+  }, [filteredC1000, filteredC2000, anios, meses, sectores, lineas]);
 
   const sinDatos = rowsC1000.length === 0 && rowsC2000.length === 0;
 
@@ -348,66 +371,30 @@ export const BacklogRegressiveTotalsReport: React.FC<BacklogRegressiveTotalsRepo
     <div className="space-y-6">
       <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-end gap-3 flex-wrap">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Año (campo Año de cada fila)</label>
-            <select
-              value={anio}
-              onChange={e => setAnio(e.target.value)}
-              className="border rounded-md px-3 py-2 text-sm bg-white min-w-[120px]"
-            >
-              <option value="">Todos los años</option>
-              {aniosOpciones.map(y => (
-                <option key={y} value={String(y)}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Mes</label>
-            <select
-              value={mesNombre}
-              onChange={e => setMesNombre(e.target.value)}
-              className="border rounded-md px-3 py-2 text-sm bg-white min-w-[160px]"
-            >
-              <option value="">Todos los meses</option>
-              {mesesOpciones.map(m => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Sector</label>
-            <select
-              value={sector}
-              onChange={e => setSector(e.target.value)}
-              className="border rounded-md px-3 py-2 text-sm bg-white min-w-[160px]"
-            >
-              <option value="">Todos los sectores</option>
-              {sectoresOpciones.map(s => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Línea</label>
-            <select
-              value={linea}
-              onChange={e => setLinea(e.target.value)}
-              className="border rounded-md px-3 py-2 text-sm bg-white min-w-[200px]"
-            >
-              <option value="">Todas las líneas</option>
-              {lineasOpciones.map(l => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </div>
+          <MultiSelectDropdown
+            label="Año"
+            options={aniosOpciones}
+            selected={anios}
+            onChange={setAnios}
+          />
+          <MultiSelectDropdown
+            label="Mes"
+            options={mesesOpciones}
+            selected={meses}
+            onChange={setMeses}
+          />
+          <MultiSelectDropdown
+            label="Sector"
+            options={sectoresOpciones}
+            selected={sectores}
+            onChange={setSectores}
+          />
+          <MultiSelectDropdown
+            label="Línea"
+            options={lineasOpciones}
+            selected={lineas}
+            onChange={setLineas}
+          />
           <button
             type="button"
             onClick={handleExport}

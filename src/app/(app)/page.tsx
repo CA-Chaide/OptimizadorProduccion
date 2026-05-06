@@ -2,23 +2,21 @@
 
 import React from 'react';
 import Image from 'next/image';
-import {
-  DashboardSection,
-  DataImportSection,
-  ConstraintConfigurationSection,
-  PersonnelManagementSection,
-  MaintenanceSection,
-  AbsenteeismSection,
-  ProductionPlanSection,
-  TacticalPlanSection,
-  TacticalPlan2Section,
-  WorkShiftPlanningSection,
-  RealDataSection,
-  InventoryNeedsSection,
-  ProductionCapacitySection,
-  TacticalPlanMueblesSection,
-  NeedsCalculationC2000Section,
-} from '@/components';
+import { DashboardSection } from '@/components/DashboardSection';
+import { DataImportSection } from '@/components/DataImportSection';
+import { ConstraintConfigurationSection } from '@/components/ConstraintConfigurationSection';
+import { PersonnelManagementSection } from '@/components/PersonnelManagementSection';
+import { MaintenanceSection } from '@/components/MaintenanceSection';
+import { AbsenteeismSection } from '@/components/AbsenteeismSection';
+import { ProductionPlanSection } from '@/components/ProductionPlanSection';
+import { TacticalPlanSection } from '@/components/TacticalPlanSection';
+import { TacticalPlan2Section } from '@/components/TacticalPlan2Section';
+import { WorkShiftPlanningSection } from '@/components/WorkShiftPlanningSection';
+import { RealDataSection } from '@/components/RealDataSection';
+import { InventoryNeedsSection } from '@/components/InventoryNeedsSection';
+import { ProductionCapacitySection } from '@/components/ProductionCapacitySection';
+import { TacticalPlanMueblesSection } from '@/components/TacticalPlanMueblesSection';
+import { NeedsCalculationC2000Section } from '@/components/NeedsCalculationC2000Section';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 import { Toaster } from "@/components/ui/toaster";

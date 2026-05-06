@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ActiveView, viewConfig, OPCIONES_ITEMS, PARAMETROS_ITEMS, CONFIGURACIONES_ITEMS } from '@/constants/constants';
-import { useAppContext } from '@/context/AppProvider';
+import { useAppLoading } from '@/context/AppProvider';
 import { cn } from '@/lib/utils';
 import { Loader2, ChevronDown, ChevronRight, LayoutDashboard, Settings, Folder } from 'lucide-react';
 
@@ -66,6 +66,7 @@ function CollapsibleSection({
               <Link
                 key={viewId}
                 href={config.href}
+                prefetch={false}
                 className={cn(
                   'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
                   isActive && 'bg-white/25',
@@ -91,7 +92,7 @@ function CollapsibleSection({
 }
 
 export function MainNav({ className, isCollapsed = false, ...props }: Readonly<React.HTMLAttributes<HTMLElement> & { isCollapsed?: boolean }>) {
-  const { isLoading } = useAppContext();
+  const isLoading = useAppLoading();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   
@@ -116,6 +117,7 @@ export function MainNav({ className, isCollapsed = false, ...props }: Readonly<R
       {/* Dashboard - enlace directo */}
       <Link
         href={dashboardConfig?.href || '/dashboard'}
+        prefetch={false}
         className={cn(
           'flex items-center px-3 py-2 text-primary-foreground rounded-md text-sm font-medium hover:bg-white/20 gap-x-3',
           isDashboardActive && 'bg-white/25',

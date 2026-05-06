@@ -234,28 +234,46 @@ export const InventoryNeedsSection: React.FC = () => {
                 }
             });
 
+            // Pre-indexar para eliminar .find() O(n²) en el loop de transformación
+            const cuboByKey = new Map<string, typeof cuboData[0]>();
+            cuboData.forEach(i => {
+                const k = `${normalizeMaterialCode(i.Material)}---${String(i.Centro).trim()}`;
+                if (!cuboByKey.has(k)) cuboByKey.set(k, i);
+            });
+            const tiemposByKey = new Map<string, typeof tiemposData[0]>();
+            tiemposData.forEach(t => {
+                const k = `${normalizeMaterialCode(t.CodMaterial)}---${String(t.Centro).trim()}---${t.Linea.trim()}---${t.PuestoTrabajo.trim()}`;
+                if (!tiemposByKey.has(k)) tiemposByKey.set(k, t);
+            });
+            const tiemposLineSet = new Map<string, Set<string>>();
+            tiemposData.forEach(t => {
+                const k = `${normalizeMaterialCode(t.CodMaterial)}---${String(t.Centro).trim()}`;
+                if (!tiemposLineSet.has(k)) tiemposLineSet.set(k, new Set());
+                tiemposLineSet.get(k)!.add(t.Linea.trim());
+            });
+            const wdById = new Map(constraints.workstationDefinitions.map(wd => [wd.id, wd]));
+            const presupuestoByKey = new Map<string, number>();
+            presupuestoData.forEach(p => {
+                const k = `${normalizeMaterialCode(p.CodMaterial)}---${String(p.Centro).trim()}`;
+                const units = parseFloat(String(p.UnidadesProyectado || '0'));
+                presupuestoByKey.set(k, (presupuestoByKey.get(k) || 0) + (isNaN(units) ? 0 : units));
+            });
+
             const transformedData = Array.from(allProductCenterPairs).map(key => {
                 const [productId, centerId] = key.split('---');
 
-                const cuboItem = cuboData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === centerId) || {};
-                
+                const cuboItem = cuboByKey.get(key) || {} as typeof cuboData[0];
                 const stockCenter = centerId;
                 const sector = cuboItem.Sector || 'Sin Sector';
-                
+
                 let producingCenter = stockCenter;
-                const primaryEntry = cuboData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === stockCenter);
-                if (stockCenter === '2000' && primaryEntry?.ClaseAprovisionam === 'F') {
+                if (stockCenter === '2000' && cuboItem?.ClaseAprovisionam === 'F') {
                     producingCenter = '1000';
                 }
 
-                const possibleLines = constraints.productionLines.filter(line => 
-                    line.workCenterId === producingCenter &&
-                    tiemposData.some(t => 
-                        normalizeMaterialCode(t.CodMaterial) === productId &&
-                        String(t.Centro).trim() === producingCenter &&
-                        t.Linea.trim() === line.name
-                    )
-                );
+                const linesForCenter = constraints.productionLines.filter(line => line.workCenterId === producingCenter);
+                const allowedLines = tiemposLineSet.get(`${productId}---${producingCenter}`) || new Set<string>();
+                const possibleLines = linesForCenter.filter(line => allowedLines.has(line.name));
 
                 let bestLineInfo: { line: ProductionLine | null; bottleneckTime: number | null } = { line: null, bottleneckTime: null };
 
@@ -263,46 +281,25 @@ export const InventoryNeedsSection: React.FC = () => {
                     const linePerformances = possibleLines.map(line => {
                         const workstationEffectiveTimes: number[] = [];
                         line.assignedWorkstations.forEach(assignedWs => {
-                            const workstationDef = constraints.workstationDefinitions.find(wd => wd.id === assignedWs.definitionId);
+                            const workstationDef = wdById.get(assignedWs.definitionId);
                             if (!workstationDef) return;
-
-                            const tiempoEntry = tiemposData.find(t => 
-                                normalizeMaterialCode(t.CodMaterial) === productId &&
-                                String(t.Centro).trim() === producingCenter &&
-                                t.Linea.trim() === line.name &&
-                                t.PuestoTrabajo.trim() === workstationDef.name
-                            );
-                            
+                            const tiempoEntry = tiemposByKey.get(`${productId}---${producingCenter}---${line.name}---${workstationDef.name}`);
                             if (tiempoEntry && tiempoEntry.Tiempo > 0) {
-                                const quantityOfStations = assignedWs.quantity > 0 ? assignedWs.quantity : 1;
-                                const effectiveTime = tiempoEntry.Tiempo / quantityOfStations;
-                                workstationEffectiveTimes.push(effectiveTime);
+                                const qty = assignedWs.quantity > 0 ? assignedWs.quantity : 1;
+                                workstationEffectiveTimes.push(tiempoEntry.Tiempo / qty);
                             }
                         });
-                        const lineBottleneck = workstationEffectiveTimes.length > 0 ? Math.max(...workstationEffectiveTimes) : Infinity;
-                        return { line, bottleneckTime: lineBottleneck };
+                        return { line, bottleneckTime: workstationEffectiveTimes.length > 0 ? Math.max(...workstationEffectiveTimes) : Infinity };
                     });
-                    
-                    const bestPerformance = linePerformances.reduce((best, current) => {
-                        return (current.bottleneckTime < best.bottleneckTime) ? current : best;
-                    }, { line: null as ProductionLine | null, bottleneckTime: Infinity });
 
-                    if (bestPerformance.line && bestPerformance.bottleneckTime !== Infinity) {
-                        bestLineInfo = { line: bestPerformance.line, bottleneckTime: bestPerformance.bottleneckTime };
-                    }
+                    const best = linePerformances.reduce((b, c) => c.bottleneckTime < b.bottleneckTime ? c : b, { line: null as ProductionLine | null, bottleneckTime: Infinity });
+                    if (best.line && best.bottleneckTime !== Infinity) bestLineInfo = best;
                 }
 
                 const stockActual = parseFloat(String(cuboItem.StockActual || '0'));
                 const stockSeguridad = parseFloat(String(cuboItem.StockSeguridad || '0'));
                 const necesidad = Math.max(0, Math.round(stockSeguridad) - Math.round(stockActual));
-                
-                const salesDemand = presupuestoData
-                    .filter(p => normalizeMaterialCode(p.CodMaterial) === productId && String(p.Centro).trim() === stockCenter)
-                    .reduce((sum, p) => {
-                         const unitsStr = String(p.UnidadesProyectado || '0');
-                         const units = parseFloat(unitsStr);
-                         return sum + (isNaN(units) ? 0 : units);
-                    }, 0);
+                const salesDemand = presupuestoByKey.get(`${productId}---${stockCenter}`) || 0;
 
                 const tiempoUnitario = bestLineInfo.bottleneckTime;
                 const tiempoTotalStock = tiempoUnitario !== null ? necesidad * tiempoUnitario : null;
@@ -340,13 +337,13 @@ export const InventoryNeedsSection: React.FC = () => {
         }
     }, [addNotification, constraints, planningYear, planningMonth]);
     
-    const handleFilterChange = (column: keyof DisplayRow, value: string) => {
+    const handleFilterChange = useCallback((column: keyof DisplayRow, value: string) => {
         setFilters(prev => ({ ...prev, [column]: value }));
-    };
+    }, []);
 
-    const handleMultiSelectFilterChange = (column: keyof DisplayRow, value: string[]) => {
+    const handleMultiSelectFilterChange = useCallback((column: keyof DisplayRow, value: string[]) => {
         setFilters(prev => ({ ...prev, [column]: value }));
-    };
+    }, []);
 
     const filteredData = useMemo(() => {
         if (!inventoryData) return [];

@@ -1,6 +1,6 @@
 'use client';
 
-import { DataImportSection } from '@/components';
+import { DataImportSection } from '@/components/DataImportSection';
 import { useAppContext } from '@/context/AppProvider';
 
 export default function ImportarVentasPage() {

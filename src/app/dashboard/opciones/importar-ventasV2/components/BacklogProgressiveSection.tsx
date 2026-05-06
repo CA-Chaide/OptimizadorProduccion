@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useEffect, memo } from 'react';
+import React, { useState, useMemo, useEffect, memo, useCallback } from 'react';
 import { MONTH_NAMES, MONTH_NUMBERS } from './constants';
 import { safeNumber, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, ViableTransfer } from './types';
@@ -62,6 +62,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
   const [isMounted, setIsMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMes, setSelectedMes] = useState('');
+  const [selectedSector, setSelectedSector] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
@@ -211,20 +212,23 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
     return todasLasFilas;
   }, [data, tiemposCanon, centro, maxExtrasHoras, horasExtrasFin]);
 
+  const sectoresUnicos = useMemo(() =>
+    Array.from(new Set(allSimulationResults.map(r => String(r.Sector || '')).filter(s => s !== ''))).sort()
+  , [allSimulationResults]);
+
   const filteredResults = useMemo(() => {
     let results = allSimulationResults;
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
-      results = results.filter(r => 
-        String(r.CodMaterial).toLowerCase().includes(q) || 
+      results = results.filter(r =>
+        String(r.CodMaterial).toLowerCase().includes(q) ||
         String(r.Descripcion).toLowerCase().includes(q)
       );
     }
-    if (selectedMes) {
-      results = results.filter(r => r.mesNombre === selectedMes);
-    }
+    if (selectedMes) results = results.filter(r => r.mesNombre === selectedMes);
+    if (selectedSector) results = results.filter(r => String(r.Sector || '') === selectedSector);
     return results;
-  }, [allSimulationResults, searchTerm, selectedMes]);
+  }, [allSimulationResults, searchTerm, selectedMes, selectedSector]);
 
   const totalPages = Math.max(1, Math.ceil(filteredResults.length / itemsPerPage));
   const paginatedResults = useMemo(() => {
@@ -249,10 +253,10 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
     return res;
   }, [filteredResults]);
 
-  const format = (val: number, decimals: number = 0) => {
+  const format = useCallback((val: number, decimals: number = 0) => {
     if (!isMounted) return '';
     return val.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  };
+  }, [isMounted]);
 
   const uniqueMonths = useMemo(() => {
     return Array.from(new Set(allSimulationResults.map(r => r.mesNombre))).sort((a, b) => {
@@ -293,7 +297,16 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
             <option value="">Todos los meses</option>
             {uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
-          
+
+          <select
+            className="px-3 py-2 border rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            value={selectedSector}
+            onChange={(e) => { setSelectedSector(e.target.value); setCurrentPage(1); }}
+          >
+            <option value="">Sector: Todos</option>
+            {sectoresUnicos.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+
           <Badge variant="outline" className="bg-blue-50 text-blue-700 ml-auto md:ml-0">
             {filteredResults.length} Registros
           </Badge>
@@ -350,7 +363,7 @@ export const BacklogProgressiveSection: React.FC<BacklogProgressiveSectionProps>
           </tbody>
           <tfoot className="sticky bottom-0 z-20 bg-gray-800 text-white font-bold text-[10px]">
             <tr>
-              <td colSpan={4} className="px-2 py-2 border-r border-gray-600">TOTALES FILTRADOS (Pág {currentPage})</td>
+              <td colSpan={4} className="px-2 py-2 border-r border-gray-600">TOTALES FILTRADOS ({filteredResults.length} reg.)</td>
               <td className="px-2 py-2 text-right font-mono text-blue-300">{format(totals.stockIni)}</td>
               <td className={`px-2 py-2 text-right font-mono border-r border-gray-600 ${centro === '1000' ? 'text-orange-300' : 'text-blue-300'}`}>
                 {centro === '1000' && totals.traslados > 0 ? '-' : ''}{format(totals.traslados)}

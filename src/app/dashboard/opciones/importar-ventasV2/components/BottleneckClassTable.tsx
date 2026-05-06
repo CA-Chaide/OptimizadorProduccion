@@ -7,6 +7,9 @@ import { safeNumber, exportToXLSX, normalizeMaterialCode } from './utils';
 import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
 import { Download } from 'lucide-react';
 
+const EMPTY_TRANSFER_NEEDS: TransferNeed[] = [];
+const EMPTY_VIABLE_TRANSFERS: ViableTransfer[] = [];
+
 // Componente de fila optimizado con guarda de hidratación
 const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos, isMounted }: { row: any, idx: number, linea: string, isCentro1000: boolean, showSaldos: boolean, isMounted: boolean }) => {
   const mesDisplay = !isNaN(parseInt(row.mesRef)) ? (MONTH_NAMES[parseInt(row.mesRef)] || row.mesRef) : row.mesRef;
@@ -99,9 +102,9 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   forzarTrasladoTotal = false,
   maxExtrasHoras = 2,
   horasExtrasFin = 2,
-  trasladosDesdeCentro2000 = [],
+  trasladosDesdeCentro2000 = EMPTY_TRANSFER_NEEDS,
   isCentro1000 = false,
-  trasladosViables = [],
+  trasladosViables = EMPTY_VIABLE_TRANSFERS,
   showSaldos = false
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -115,7 +118,8 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   // Guarda de hidratación
   useEffect(() => setIsMounted(true), []);
 
-  const lastEmittedSignature = useRef<string>("");
+  const lastEmittedSignature = useRef<string>('');
+  const lastTransferNeedsSignature = useRef<string>('');
 
   const getTimelineKey = (row: any) => {
     const year = safeNumber(row.Año || row.año || new Date().getFullYear());
@@ -400,12 +404,25 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
   }, [filasCalculadas, onComputedDataReady]);
 
   useEffect(() => {
-    if (onTransferNeedsCalculated && filasCalculadas.length > 0 && !isCentro1000) {
-      const newNeeds = filasCalculadas.filter(r => r._deficitGeneral > 0).map(r => ({
-        CodMaterial: r.CodMaterial, mes: String(r.mesRef), necesidadTraslado: r._deficitGeneral
-      }));
-      onTransferNeedsCalculated(newNeeds);
-    }
+    if (!onTransferNeedsCalculated || filasCalculadas.length === 0 || isCentro1000) return;
+
+    const newNeeds = filasCalculadas
+      .filter(r => safeNumber(r._deficitGeneral) > 0)
+      .map(r => ({
+        CodMaterial: normalizeMaterialCode(r.CodMaterial),
+        mes: String(r.mesRef ?? ''),
+        necesidadTraslado: safeNumber(r._deficitGeneral),
+      }))
+      .sort(
+        (a, b) =>
+          a.CodMaterial.localeCompare(b.CodMaterial) ||
+          a.mes.localeCompare(b.mes, undefined, { numeric: true })
+      );
+
+    const signature = JSON.stringify(newNeeds);
+    if (lastTransferNeedsSignature.current === signature) return;
+    lastTransferNeedsSignature.current = signature;
+    onTransferNeedsCalculated(newNeeds);
   }, [filasCalculadas, onTransferNeedsCalculated, isCentro1000]);
 
   const datosFiltrados = useMemo(() => {
@@ -427,7 +444,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
       result = result.filter(row => String(row.Sector || '') === selectedSector);
     }
     return result;
-  }, [filasCalculadas, searchTerm, selectedLinea, selectedMes]);
+  }, [filasCalculadas, searchTerm, selectedLinea, selectedMes, selectedSector]);
 
   const totals = useMemo(() => {
     const res = {

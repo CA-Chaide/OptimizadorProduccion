@@ -4,8 +4,14 @@
 import React, { useState, useMemo, useEffect, memo, useCallback } from 'react';
 import { MONTH_NAMES, MONTH_NUMBERS } from './constants';
 import { safeNumber, normalizeMaterialCode } from './utils';
-import { TiempoCanonResult, ViableTransfer } from './types';
-import { computeBacklogRegressiveFinalRows } from './backlogRegressiveCompute';
+import { TiempoCanonResult, ViableTransfer, PioMap } from './types';
+
+const EMPTY_VIABLE_TRANSFERS: ViableTransfer[] = [];
+import {
+  aggregateViableTransferList,
+  computeBacklogRegressiveFinalRows,
+  viableTransfersFromC1000RegressiveRows,
+} from './backlogRegressiveCompute';
 import { Badge } from '@/components/ui/badge';
 import { Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownToLine, ArrowUpRight } from 'lucide-react';
 
@@ -19,6 +25,11 @@ interface BacklogRegressiveSectionProps {
   horasTrabajo?: number;
   horasExtrasFin: number;
   trasladosViables?: ViableTransfer[];
+  /** Datos C1000 (misma fuente que el tab C1000) para recalcular traslados efectivos hacia C2000 en el tab C2000. */
+  pairedC1000Data?: any[];
+  /** Si true, los datos provienen del Resumen mensual (vista firme). */
+  usesMonthlySummarySource?: boolean;
+  pioMap?: PioMap;
 }
 
 const DataRow = memo(({ r, isMounted, format, centro }: { r: any, isMounted: boolean, format: (v: number, d?: number) => string, centro: string }) => {
@@ -82,7 +93,9 @@ const DataRow = memo(({ r, isMounted, format, centro }: { r: any, isMounted: boo
       </td>
       
       {/* Totales y Cierre */}
+      <td className="px-2 py-2 text-right font-mono text-slate-600 bg-slate-50/50">{format(safeNumber(r._prodBase))}</td>
       <td className="px-2 py-2 text-right font-mono text-purple-700 font-bold bg-purple-50/30">{format(r._prodViableTotal)}</td>
+      <td className={`px-2 py-2 text-right font-mono font-bold ${(r._prodObjetivoInventario ?? 0) > 0 ? 'text-green-700 bg-green-50' : 'text-gray-300'}`}>{format(safeNumber(r._prodObjetivoInventario))}</td>
       <td className="px-2 py-2 text-right font-mono text-gray-800 font-semibold">{format(r._despachosReales)}</td>
       <td className="px-2 py-2 text-right font-mono text-slate-700">{format(safeNumber(r._despachosVentas))}</td>
       <td className="px-2 py-2 text-right font-mono text-amber-800">{format(safeNumber(r._despachosTraslado))}</td>
@@ -102,7 +115,10 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
   maxExtrasHoras,
   horasTrabajo = 8,
   horasExtrasFin,
-  trasladosViables = []
+  trasladosViables = EMPTY_VIABLE_TRANSFERS,
+  pairedC1000Data,
+  usesMonthlySummarySource = false,
+  pioMap,
 }) => {
   const [isMounted, setIsMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -121,6 +137,28 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
     return MONTH_NUMBERS[val as keyof typeof MONTH_NUMBERS] || 0;
   };
 
+  const aggregatedViables = useMemo(
+    () => aggregateViableTransferList(trasladosViables),
+    [trasladosViables]
+  );
+
+  const trasladosParaCompute = useMemo(() => {
+    if (centro !== '2000' || !pairedC1000Data?.length) {
+      return aggregatedViables;
+    }
+    const rowsC1000 = computeBacklogRegressiveFinalRows({
+      data: pairedC1000Data,
+      tiemposCanon,
+      centro: '1000',
+      maxExtrasHoras,
+      horasExtrasFin,
+      trasladosViables: aggregatedViables,
+      pioMap,
+    });
+    const fromSim = viableTransfersFromC1000RegressiveRows(rowsC1000);
+    return fromSim.length > 0 ? fromSim : aggregatedViables;
+  }, [centro, pairedC1000Data, tiemposCanon, maxExtrasHoras, horasExtrasFin, aggregatedViables]);
+
   const results = useMemo(
     () =>
       computeBacklogRegressiveFinalRows({
@@ -129,9 +167,10 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
         centro,
         maxExtrasHoras,
         horasExtrasFin,
-        trasladosViables,
+        trasladosViables: trasladosParaCompute,
+        pioMap,
       }),
-    [data, tiemposCanon, centro, maxExtrasHoras, horasExtrasFin, trasladosViables]
+    [data, tiemposCanon, centro, maxExtrasHoras, horasExtrasFin, trasladosParaCompute, pioMap]
   );
 
   const sectoresUnicos = useMemo(() =>
@@ -168,7 +207,9 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
       prodAdel: 0,
       blPasado: 0,
       prodRec: 0,
+      prodBase: 0,
       prodTotal: 0,
+      prodPio: 0,
       despachos: 0,
       despVentas: 0,
       despTrasl: 0,
@@ -186,7 +227,9 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
       res.prodAdel += safeNumber(r._prodAdelantada);
       res.blPasado += safeNumber(r._backlogPasado);
       res.prodRec += safeNumber(r._prodRecuperada);
+      res.prodBase += safeNumber(r._prodBase);
       res.prodTotal += safeNumber(r._prodViableTotal);
+      res.prodPio += safeNumber(r._prodObjetivoInventario);
       res.despachos += safeNumber(r._despachosReales);
       res.despVentas += safeNumber(r._despachosVentas);
       res.despTrasl += safeNumber(r._despachosTraslado);
@@ -197,15 +240,15 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
   }, [filteredResults, isC1000Tab]);
 
   const sumaTrasladosViablesFiltrados = useMemo(() => {
-    if (filteredResults.length === 0 || trasladosViables.length === 0) return 0;
+    if (filteredResults.length === 0 || trasladosParaCompute.length === 0) return 0;
     const keys = new Set(
       filteredResults.map(r => `${normalizeMaterialCode(r.CodMaterial)}|${getMesNumerico(r.mesRef || r.Mes)}`)
     );
-    return trasladosViables.reduce((sum, v) => {
+    return trasladosParaCompute.reduce((sum, v) => {
       const k = `${normalizeMaterialCode(v.CodMaterial)}|${getMesNumerico(v.mes)}`;
       return keys.has(k) ? sum + safeNumber(v.cantidad) : sum;
     }, 0);
-  }, [filteredResults, trasladosViables]);
+  }, [filteredResults, trasladosParaCompute]);
 
   const format = useCallback((v: number) => (isMounted ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : ''), [isMounted]);
 
@@ -215,6 +258,21 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
         <div>
           <h3 className="text-lg font-bold text-gray-800 uppercase">{titulo}</h3>
           <p className="text-xs text-gray-500">Lógica de Nivelación: Adelanto de producción futura + Recuperación de deuda pasada</p>
+          {!usesMonthlySummarySource && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mt-1 max-w-3xl">
+              Fuente de filas: análisis C1000/C2000. Abra el tab <strong>Resumen mensual</strong> correspondiente al menos una vez para alinear con la vista consolidada (EXF).
+            </p>
+          )}
+          {usesMonthlySummarySource && (
+            <p className="text-xs text-teal-900 bg-teal-50/90 border border-teal-100 rounded px-2 py-1.5 mt-1 max-w-3xl">
+              Fuente de filas: <strong>Resumen mensual</strong> (EXF) — misma base que el tab consolidado.
+            </p>
+          )}
+          {centro === '2000' && pairedC1000Data && pairedC1000Data.length > 0 && (
+            <p className="text-xs text-indigo-800 bg-indigo-50/80 border border-indigo-100 rounded px-2 py-1.5 mt-1 max-w-3xl">
+              Traslado desde C1000: se recalcula con el <strong>despacho traslado</strong> del backlog regresivo C1000 (un paso de retroalimentación respecto al listado viable del análisis).
+            </p>
+          )}
           <p className="text-xs text-teal-800 bg-teal-50/80 border border-teal-100 rounded px-2 py-1.5 mt-2 max-w-3xl">
             {isC1000Tab ? (
               <>
@@ -263,7 +321,7 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
               <th colSpan={4} className="px-2 py-2 border-r bg-indigo-50 text-indigo-800">Necesidad e intercentro</th>
               <th colSpan={2} className="px-2 py-2 border-r bg-emerald-50 text-emerald-800">Regresivo (Adelanto)</th>
               <th colSpan={2} className="px-2 py-2 border-r bg-blue-50 text-blue-800">Progresivo (Deuda)</th>
-              <th colSpan={6} className="px-2 py-2 bg-purple-50 text-purple-800">Resultados Finales</th>
+              <th colSpan={8} className="px-2 py-2 bg-purple-50 text-purple-800">Resultados Finales</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-2 py-1 text-left min-w-[80px]">Mes</th>
@@ -287,7 +345,9 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
               <th className="px-2 py-1 text-right min-w-[80px] border-r">Prod. Adel (+)</th>
               <th className="px-2 py-1 text-right min-w-[80px]">BL Pasado</th>
               <th className="px-2 py-1 text-right min-w-[80px] border-r">Prod. Rec (+)</th>
-              <th className="px-2 py-1 text-right min-w-[80px]">Prod. Total</th>
+              <th className="px-2 py-1 text-right min-w-[80px] text-slate-700" title="Producción base del plan">Prod. Base</th>
+              <th className="px-2 py-1 text-right min-w-[80px]" title="Total = Base + Adelantada + Recuperada + Inv.Obj.">Prod. Total</th>
+              <th className="px-2 py-1 text-right min-w-[80px] text-green-800" title="Producción adicional para Inventario Objetivo (PIO)">Prod. Inv. Obj.</th>
               <th className="px-2 py-1 text-right min-w-[80px]">Despachos</th>
               <th className="px-2 py-1 text-right min-w-[76px]" title="Prioridad ventas">Desp. ventas</th>
               <th className="px-2 py-1 text-right min-w-[76px]" title="Remanente hacia traslado">Desp. trasl.</th>
@@ -320,7 +380,9 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
               <td className="px-2 py-2 text-right font-mono text-emerald-300 border-r border-gray-600">{format(totals.prodAdel)}</td>
               <td className="px-2 py-2 text-right font-mono text-red-300">{format(totals.blPasado)}</td>
               <td className="px-2 py-2 text-right font-mono text-blue-300 border-r border-gray-600">{format(totals.prodRec)}</td>
+              <td className="px-2 py-2 text-right font-mono text-slate-300">{format(totals.prodBase)}</td>
               <td className="px-2 py-2 text-right font-mono text-purple-300">{format(totals.prodTotal)}</td>
+              <td className="px-2 py-2 text-right font-mono text-green-300">{format(totals.prodPio)}</td>
               <td className="px-2 py-2 text-right font-mono text-gray-300">{format(totals.despachos)}</td>
               <td className="px-2 py-2 text-right font-mono text-slate-200">{format(totals.despVentas)}</td>
               <td className="px-2 py-2 text-right font-mono text-amber-200">{format(totals.despTrasl)}</td>
@@ -331,7 +393,7 @@ export const BacklogRegressiveSection: React.FC<BacklogRegressiveSectionProps> =
         </table>
       </div>
 
-      {trasladosViables.length > 0 && filteredResults.length > 0 && (
+      {trasladosParaCompute.length > 0 && filteredResults.length > 0 && (
         <div className="px-4 py-2 text-[10px] text-gray-700 border-t border-amber-100 bg-amber-50/40 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-semibold text-gray-800">Intercentro (filtro actual):</span>
           <span>

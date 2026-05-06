@@ -1,9 +1,69 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { MONTH_NAMES } from './constants';
 import { safeNumber, exportToXLSX } from './utils';
 import { TiempoCanonResult } from './types';
+
+const Centro1000ResumenRow = memo(function Centro1000ResumenRow({ resumen }: { resumen: Record<string, unknown> }) {
+  const r = resumen as Record<string, string | number>;
+  const mesNum = parseInt(String(r.mes));
+  const mesLabel = !isNaN(mesNum) && MONTH_NAMES[mesNum] ? MONTH_NAMES[mesNum] : String(r.mes);
+  return (
+    <tr className="hover:bg-teal-50/50 transition-colors">
+      <td className="px-4 py-3 text-sm font-medium text-gray-900">{mesLabel}</td>
+      <td className="px-4 py-3 text-sm text-gray-600">{String(r.respCtrlProd ?? '')}</td>
+      <td className="px-4 py-3 text-sm font-medium text-gray-900">{String(r.linea ?? '')}</td>
+      <td className="px-4 py-3 text-sm">
+        <span className="inline-block bg-red-100 text-red-800 px-2.5 py-1 rounded font-semibold text-xs">
+          {String(r.puestoSeleccionado ?? '')}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{r.diasLaborables}</td>
+      <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{r.numeroSemanas}</td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-indigo-700 font-semibold">
+        {Math.floor(Number(r.necesidadTotal ?? 0)).toLocaleString()}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-indigo-600">
+        {Number(r.necesidadPromedioDiaria ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-purple-700 font-semibold">
+        {Math.floor(Number(r.necesidadAFabricarTotal ?? 0)).toLocaleString()}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-purple-600">
+        {Number(r.necesidadAFabricarPromedioDiaria ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
+        {Number(r.tiempoTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
+        {(Number(r.tiempoTotal ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
+        {Number(r.tiempoCanonicoInicial ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
+        {(Number(r.tiempoCanonicoInicial ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-amber-600">
+        {Number(r.minutosExtrasTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-amber-600">
+        {Number(r.horasExtrasTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-emerald-600">
+        {Number(r.minutosRestantes ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-emerald-600">
+        {Number(r.horasRestantes ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
+        {Number(r.horasPromedioPorDia ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </td>
+    </tr>
+  );
+});
+Centro1000ResumenRow.displayName = 'Centro1000ResumenRow';
 
 interface Centro1000SummaryTableProps {
   datosEnriquecidos: any[];
@@ -360,62 +420,10 @@ export const Centro1000SummaryTable: React.FC<Centro1000SummaryTableProps> = ({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {resumenFiltered.map((resumen, idx) => (
-              <tr key={`${resumen.mes}-${resumen.linea}-${idx}`} className="hover:bg-teal-50/50 transition-colors">
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                  {(() => {
-                    const mesNum = parseInt(resumen.mes);
-                    return !isNaN(mesNum) && MONTH_NAMES[mesNum] ? MONTH_NAMES[mesNum] : resumen.mes;
-                  })()}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{resumen.respCtrlProd}</td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{resumen.linea}</td>
-                <td className="px-4 py-3 text-sm">
-                  <span className="inline-block bg-red-100 text-red-800 px-2.5 py-1 rounded font-semibold text-xs">
-                    {resumen.puestoSeleccionado}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.diasLaborables}</td>
-                <td className="px-4 py-3 text-sm text-center font-mono text-gray-600">{resumen.numeroSemanas}</td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-indigo-700 font-semibold">
-                  {Math.floor(resumen.necesidadTotal).toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-indigo-600">
-                  {Number(resumen.necesidadPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-purple-700 font-semibold">
-                  {Math.floor(resumen.necesidadAFabricarTotal).toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-purple-600">
-                  {Number(resumen.necesidadAFabricarPromedioDiaria).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
-                  {Number(resumen.tiempoTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
-                  {(Number(resumen.tiempoTotal ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
-                  {Number(resumen.tiempoCanonicoInicial ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-red-700 font-semibold bg-red-50">
-                  {(Number(resumen.tiempoCanonicoInicial ?? 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-amber-600">
-                  {Number(resumen.minutosExtrasTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-amber-600">
-                  {Number(resumen.horasExtrasTotal ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-emerald-600">
-                  {Number(resumen.minutosRestantes ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-emerald-600">
-                  {Number(resumen.horasRestantes ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
-                  {Number(resumen.horasPromedioPorDia ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </td>
-              </tr>
+              <Centro1000ResumenRow
+                key={`${resumen.mes}-${resumen.linea}-${idx}`}
+                resumen={resumen as Record<string, unknown>}
+              />
             ))}
           </tbody>
         </table>
