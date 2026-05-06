@@ -236,11 +236,18 @@ export const CuboInventariosTab: React.FC = () => {
                 <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
             </div>
              <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh]">
-                 <table ref={tableRef} className="min-w-full text-xs divide-y divide-gray-200">
-                     <TableHeader className="bg-gray-100 sticky top-0">
-                         <TableRow>
-                             {columns.map(col => (
-                               <TableHead key={col} className={cn(col === 'Descripcion' && 'min-w-[450px]')}>
+                 <table ref={tableRef} className="min-w-full text-xs border-collapse">
+                     <TableHeader className="bg-gray-100 sticky top-0 z-10">
+                         <TableRow className="border-b-2 border-gray-300">
+                             {columns.map((col, index) => (
+                               <TableHead 
+                                 key={col} 
+                                 className={cn(
+                                   "text-center border-r border-dashed border-gray-300 font-bold text-gray-700 uppercase tracking-wider",
+                                   col === 'Descripcion' && 'min-w-[450px]',
+                                   index === columns.length - 1 && "border-r-0"
+                                 )}
+                               >
                                  {col}
                                </TableHead>
                              ))}
@@ -248,8 +255,8 @@ export const CuboInventariosTab: React.FC = () => {
                      </TableHeader>
                      <TableBody>
                         {displayedData.map((row, idx) => (
-                           <TableRow key={idx} className="hover:bg-gray-50">
-                                {columns.map(col => {
+                           <TableRow key={idx} className="hover:bg-gray-50 border-b border-dashed border-gray-200">
+                                {columns.map((col, colIndex) => {
                                     let displayValue = String(row[col] ?? '-');
                                     if (col === 'Material') {
                                         displayValue = normalizeMaterialCode(displayValue);
@@ -258,8 +265,10 @@ export const CuboInventariosTab: React.FC = () => {
                                         <TableCell 
                                             key={`${idx}-${col}`} 
                                             className={cn(
+                                                "text-center border-r border-dashed border-gray-200",
                                                 col === 'Material' && 'font-mono font-bold text-indigo-700',
-                                                col === 'Descripcion' && 'min-w-[450px] whitespace-nowrap'
+                                                col === 'Descripcion' && 'min-w-[450px] whitespace-nowrap',
+                                                colIndex === columns.length - 1 && "border-r-0"
                                             )}
                                         >
                                           {displayValue}
