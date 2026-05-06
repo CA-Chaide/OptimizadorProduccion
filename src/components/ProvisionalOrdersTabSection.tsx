@@ -148,11 +148,26 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   }, [orders, externalFilters, columnFilters, formatValueForDisplay, groupBy, resolveValue]);
 
   const columns = useMemo(() => {
-    if (filteredOrders.length === 0) return ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'MAQUINA', 'FECHAFIN'];
+    const priority = [
+      'ORDENPREVISIONAL', 
+      'FECHAINICIO', 
+      'FECHAFIN', 
+      'CATEGORIA', 
+      'CODMATERIAL', 
+      'NOMBRE', 
+      'MAQUINA', 
+      'CANTIDAD', 
+      'UNIDAD', 
+      'RESPCONTROLPROD', 
+      'CENTRO', 
+      'ALMACEN', 
+      'CLASEORDEN', 
+      'MATERIAL'
+    ];
+
+    if (filteredOrders.length === 0) return priority;
     
     const allKeys = Object.keys(filteredOrders[0]);
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'MAQUINA', 'FECHAFIN'];
-    
     const matchedDataKeys = new Set<string>();
     const orderedPriorityCols: string[] = [];
 
