@@ -440,9 +440,9 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                         <p className="font-bold text-indigo-700">{(totalTiempoRequeridoGeneral / 60).toFixed(2)}</p>
                     </div>
                     <div className="text-center p-3 h-full flex flex-col justify-center">
-                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD TOTAL</p>
+                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">DIAS PENDIENTES</p>
                         <p className="font-bold text-blue-600">
-                          {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO).toFixed(2)}%
+                          {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO).toFixed(2)} H
                         </p>
                     </div>
                 </div>
