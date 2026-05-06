@@ -20,7 +20,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState('resumen');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
-  const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
+  const [restricciones, setRestricciones] = useState<Set<any>>(new Set()); // Not strictly typed for flexibility
+  const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,7 +47,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     try {
       const res = await restriccionService.getAll();
       const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
-      setRestricciones(filtered);
+      setRestriccionesArray(filtered);
       inspector.captureVariable('restriccionesLaminado1000', filtered);
       return filtered;
     } catch (error) {
@@ -67,7 +68,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const fetchTiemposEnsamblado = async () => {
     try {
-      const res = await serviciosService.getTiemposEnsamblado(1, 5000);
+      const res = await serviciosService.getTiemposEnsamblado(1, 10000);
       const data = res.data?.data || res.data || [];
       if (Array.isArray(data)) {
         const filtered = data.filter((t: any) => String(t.Centro || t.centro || '').trim() === '1000');
@@ -94,15 +95,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     init();
   }, []);
 
-  const appliedRestrictionsSummary = useMemo(() => {
-    const resps = restricciones.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map(r => r.valor_restriccion);
-    const alms = restricciones.filter(r => r.nombre_restriccion === 'ALMACEN').map(r => r.valor_restriccion);
-    return {
-      responsables: [...new Set(resps.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean),
-      almacenes: [...new Set(alms.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean)
-    };
-  }, [restricciones]);
-
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -112,16 +104,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
+  // Mapa de Tiempos usando Código de 8 dígitos como ID
   const tiemposMap = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, { tiempo: number; puesto: string }>();
     tiemposEnsamblado.forEach(t => {
       const info = extractMaterialInfo(t);
       if (info.code) {
-        map.set(info.code, Number(t.Tiempo_Min || t.Tiempo || 0));
+        map.set(info.code, { 
+          tiempo: Number(t.Tiempo_Min || t.Tiempo || 0),
+          puesto: String(t.PuestoTrabajo || t.Puesto || '—')
+        });
       }
     });
     return map;
   }, [tiemposEnsamblado]);
+
+  const appliedRestrictionsSummary = useMemo(() => {
+    const resps = restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map(r => r.valor_restriccion);
+    return {
+      responsables: [...new Set(resps.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean)
+    };
+  }, [restriccionesArray]);
 
   const ordenesFiltradas = useMemo(() => {
     const respCodes = appliedRestrictionsSummary.responsables;
@@ -181,7 +184,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
               <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
                 <p className="text-[9px] font-bold text-gray-400 uppercase">Parámetros</p>
-                <p className="text-xl font-black text-gray-800">{restricciones.length}</p>
+                <p className="text-xl font-black text-gray-800">{restriccionesArray.length}</p>
               </div>
               <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
                 <p className="text-[9px] font-bold text-gray-400 uppercase">Capacidad Base</p>
@@ -220,7 +223,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-[11px]">
-                {restricciones.map(r => (
+                {restriccionesArray.map(r => (
                   <tr key={r.codigo_restriccion} className="hover:bg-gray-50/50">
                     <td className="px-6 py-4 font-mono text-gray-400 border-r border-dashed border-gray-200">{r.codigo_grupo}</td>
                     <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
@@ -247,6 +250,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                     <th className="px-3 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/20 font-black">T. estandar (H)</th>
+                    <th className="px-3 py-4 border-r border-gray-100 font-black">Puesto Trabajo</th>
                     <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
                     <th className="px-3 py-4 font-black">Almacén</th>
                   </tr>
@@ -255,8 +259,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {ordenesFiltradas.map((o, i) => {
                     const info = extractMaterialInfo(o);
                     const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                    const stdMin = tiemposMap.get(info.code) || 0;
+                    
+                    // Buscar coincidencia en el mapa de tiempos por ID de material
+                    const match = tiemposMap.get(info.code);
+                    const stdMin = match?.tiempo || 0;
                     const totalHours = (qty * stdMin) / 60;
+                    const puestoTrabajo = match?.puesto || '—';
                     
                     return (
                       <tr key={i} className="hover:bg-red-50/20 transition-colors">
@@ -268,6 +276,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-50 bg-teal-50/5">
                           {totalHours > 0 ? totalHours.toFixed(2) : '—'}
                         </td>
+                        <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{puestoTrabajo}</td>
                         <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
                         <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                       </tr>
