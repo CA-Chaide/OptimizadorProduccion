@@ -288,7 +288,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
       
       // Si no hay HR, devolver el primer puesto disponible
-      const first = matches.find(m => Number(m.Tiempo) > 0) || matches[0];
+      const first = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
       return String(first.PuestoTrabajo || first.Maquina || first.nombre_estacion || '').trim().toUpperCase();
     }
     
@@ -312,10 +312,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (normalizeMaterialCode(t.CodMaterial || t.Material || '') !== normMaterial) return false;
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
       return values.includes(resolvedMachine);
-    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial && Number(t.Tiempo) > 0);
+    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial && Number(t.Tiempo || t.Tiempo_Min) > 0);
 
     if (!match) return '0';
-    return (Number(match.Tiempo || 0) * quantity).toFixed(2);
+    const unitTime = Number(match.Tiempo || match.Tiempo_Min || 0);
+    return (unitTime * quantity).toFixed(2);
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
   const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
@@ -341,8 +342,34 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const tiemposColumns = useMemo(() => {
     if (tiemposProduccion.length === 0) return [];
     const allKeys = Object.keys(tiemposProduccion[0]);
-    const priority = ['CodMaterial', 'Material', 'Centro', 'Linea', 'PuestoTrabajo', 'Tiempo'];
-    return [...priority.filter(k => allKeys.includes(k)), ...allKeys.filter(k => !priority.includes(k))];
+    
+    // Nuevo orden solicitado
+    const priority = [
+      'CodMaterial', 
+      'HojaRuta', 
+      'VersionFabricacion_Manual', 
+      'CONTADORHOJARUTA', 
+      'Tiempo_Min', 
+      'Linea', 
+      'PuestoTrabajo', 
+      'PuestoTrabajoLinea', 
+      'centro', 
+      'RespCtrlProd', 
+      'NombRespControlProd', 
+      'TamLoteMin', 
+      'TamLoteMax', 
+      'StockSeguridad', 
+      'StockMaximo', 
+      'ClaseAprovisionam'
+    ];
+
+    // Columnas a eliminar
+    const toExclude = ['StockActual', 'GrupoCompras'];
+
+    const matchedPriority = priority.filter(k => allKeys.includes(k));
+    const otherCols = allKeys.filter(k => !priority.includes(k) && !toExclude.includes(k));
+    
+    return [...matchedPriority, ...otherCols];
   }, [tiemposProduccion]);
 
   const filteredTiempos = useMemo(() => {
@@ -398,7 +425,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
-    // Asegurar que todas las máquinas conocidas aparezcan, incluso con 0 órdenes
+    // Asegurar que todas las máquinas conocidas aparezcan
     const allKnownMachines = [...new Set(tiemposProduccion.map(t => {
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
       return values.find(v => v.startsWith('HR')) || String(t.PuestoTrabajo || '').trim().toUpperCase();
