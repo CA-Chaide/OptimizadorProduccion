@@ -244,7 +244,7 @@ export const CuboInventariosTab: React.FC = () => {
                                  key={col} 
                                  className={cn(
                                    "text-center border-r border-dashed border-gray-300 font-bold text-gray-700 uppercase tracking-wider",
-                                   col === 'Descripcion' && 'min-w-[450px]',
+                                   col === 'Descripcion' && 'min-w-[382px]',
                                    index === columns.length - 1 && "border-r-0"
                                  )}
                                >
@@ -267,7 +267,7 @@ export const CuboInventariosTab: React.FC = () => {
                                             className={cn(
                                                 "text-center border-r border-dashed border-gray-200",
                                                 col === 'Material' && 'font-mono font-bold text-indigo-700',
-                                                col === 'Descripcion' && 'min-w-[450px] whitespace-nowrap',
+                                                col === 'Descripcion' && 'min-w-[382px] whitespace-nowrap',
                                                 colIndex === columns.length - 1 && "border-r-0"
                                             )}
                                         >
