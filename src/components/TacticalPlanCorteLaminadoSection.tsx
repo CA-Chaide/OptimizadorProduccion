@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Filter } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -64,16 +64,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   };
 
-  const fetchTiemposEnsamblado = async (filteredGroups: Grupo[]) => {
+  const fetchTiemposEnsamblado = async () => {
     try {
-      const allTiempos: any[] = [];
-      for (const g of filteredGroups) {
-        if (!g.centro) continue;
-        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-        const data = res.data?.data || res.data || [];
-        if (Array.isArray(data)) allTiempos.push(...data);
+      // Se solicita la data completa (paginada a 5000 para cubrir el catálogo)
+      const res = await serviciosService.getTiemposEnsamblado(1, 5000);
+      const data = res.data?.data || res.data || [];
+      if (Array.isArray(data)) {
+        // Filtrar solo por centro 1000 como base, sin restricciones adicionales de grupo
+        const filtered = data.filter((t: any) => String(t.Centro || t.centro || '').trim() === '1000');
+        setTiemposEnsamblado(filtered);
+        inspector.captureVariable('tiemposCompletosLaminado1000', filtered.length);
       }
-      setTiemposEnsamblado(allTiempos);
     } catch (error) {
       console.error('Error cargando tiempos:', error);
     }
@@ -83,16 +84,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const init = async () => {
       setIsLoading(true);
       const groups = await fetchGrupos();
-      if (groups.length > 0) {
-        const ids = groups.map(g => g.codigo_grupo);
-        await Promise.all([
-          fetchRestricciones(ids),
-          fetchOrdenes(),
-          fetchTiemposEnsamblado(groups)
-        ]);
-      } else {
-        await fetchOrdenes();
-      }
+      const ids = groups.map(g => g.codigo_grupo);
+      await Promise.all([
+        fetchRestricciones(ids),
+        fetchOrdenes(),
+        fetchTiemposEnsamblado()
+      ]);
       setIsLoading(false);
     };
     init();
@@ -299,7 +296,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50">{info.code}</td>
                         <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
                         <td className="px-4 py-3 border-r border-gray-50 font-bold text-gray-400 uppercase">
-                          <div className="text-[10px]">{t.PuestoTrabajoLinea || t.Linea}</div>
+                          <div className="text-[10px]">{t.Linea || t.PuestoTrabajoLinea}</div>
                           <div className="text-[8px] font-mono opacity-60">{t.PuestoTrabajo}</div>
                         </td>
                         <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
