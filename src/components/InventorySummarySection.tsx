@@ -33,22 +33,6 @@ export const InventorySummarySection: React.FC = () => {
         const [allRows, setAllRows] = useState<SectorRow[]>([]);
         const [centers, setCenters] = useState<string[]>([]);
         const [error, setError] = useState<string | null>(null);
-        useEffect(() => {
-            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Cambio en isProcessing: ${isProcessing}`);
-        }, [isProcessing]);
-        useEffect(() => {
-            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Cambio en allRows: ${JSON.stringify(allRows)}`);
-        }, [allRows]);
-        useEffect(() => {
-            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Cambio en centers: ${JSON.stringify(centers)}`);
-        }, [centers]);
-        useEffect(() => {
-            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Cambio en error: ${error}`);
-        }, [error]);
-        // Log de montaje del componente
-        useEffect(() => {
-            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[InventorySummarySection] Montado.`);
-        }, []);
 
     const fetchInventorySummary = useCallback(async () => {
         setIsProcessing(true);
@@ -261,5 +245,5 @@ export const InventorySummarySection: React.FC = () => {
             </div>
         </div>
     );
+};
 
-    

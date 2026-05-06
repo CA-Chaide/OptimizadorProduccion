@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { operationTracker, Operation } from '@/services/OperationTracker';
 import { logger } from '@/services/LogService';
 
@@ -20,7 +20,7 @@ interface OperationContextType {
 const OperationContext = createContext<OperationContextType | undefined>(undefined);
 
 export function OperationProvider({ children }: { children: React.ReactNode }) {
-  const [, setTrigger] = useState(0);
+  const [trigger, setTrigger] = useState(0);
 
   useEffect(() => {
     const unsubscribe = operationTracker.subscribe((operation) => {
@@ -45,18 +45,32 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Obtener datos directamente de operationTracker (single source of truth)
-  const operations = operationTracker.getLatestOperations(50);
-  const activeOperations = operationTracker.getActiveOperations();
-  const summary = operationTracker.getSummary();
+  // Datos derivados memoizados por `trigger`: evita nuevas referencias en cada re-render del árbol (p. ej. al navegar).
+  const operations = useMemo(
+    () => operationTracker.getLatestOperations(50),
+    [trigger]
+  );
+  const activeOperations = useMemo(
+    () => operationTracker.getActiveOperations(),
+    [trigger]
+  );
+  const summary = useMemo(
+    () => operationTracker.getSummary(),
+    [trigger]
+  );
 
-  const clearOperations = () => {
+  const clearOperations = useCallback(() => {
     operationTracker.clearOperations();
     setTrigger(prev => prev + 1);
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ operations, activeOperations, summary, clearOperations }),
+    [operations, activeOperations, summary, clearOperations]
+  );
 
   return (
-    <OperationContext.Provider value={{ operations, activeOperations, summary, clearOperations }}>
+    <OperationContext.Provider value={value}>
       {children}
     </OperationContext.Provider>
   );

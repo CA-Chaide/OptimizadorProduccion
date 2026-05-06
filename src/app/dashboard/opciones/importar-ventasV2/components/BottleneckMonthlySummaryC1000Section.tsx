@@ -1,9 +1,9 @@
 
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { TiempoCanonResult, ViableTransfer, TransferNeed } from './types';
-import { BottleneckSummaryTable } from './BottleneckSummaryTable';
+import { BottleneckSummaryTable, EMPTY_SUMMARY_ENRICHED } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { safeNumber, normalizeMaterialCode } from './utils';
 
@@ -16,7 +16,13 @@ interface BottleneckMonthlySummaryC1000SectionProps {
   horasExtrasFin: number;
   trasladosViables?: ViableTransfer[];
   trasladosDesdeCentro2000?: TransferNeed[];
+  /** Filas calculadas del resumen (EXF) elevadas al padre para backlog regresivo y otros tabs. */
+  onSummaryComputed?: (rows: any[]) => void;
 }
+
+const EMPTY_VIABLE_TRANSFERS: ViableTransfer[] = [];
+const EMPTY_TRANSFER_NEEDS: TransferNeed[] = [];
+const EMPTY_TIEMPO_CONSUMIDO: Record<string, number> = {};
 
 export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySummaryC1000SectionProps> = ({ 
   data, 
@@ -25,10 +31,19 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
   maxExtrasHoras, 
   horasTrabajo, 
   horasExtrasFin,
-  trasladosViables = [],
-  trasladosDesdeCentro2000 = []
+  trasladosViables = EMPTY_VIABLE_TRANSFERS,
+  trasladosDesdeCentro2000 = EMPTY_TRANSFER_NEEDS,
+  onSummaryComputed
 }) => {
   const [computedDataEXF, setComputedDataEXF] = useState<any[]>([]);
+
+  const handleComputedDataReady = useCallback(
+    (rows: any[]) => {
+      setComputedDataEXF(rows);
+      onSummaryComputed?.(rows);
+    },
+    [onSummaryComputed]
+  );
 
   // Filtrar solo datos que involucren al Centro 1000 como fabricante
   const filteredDataCentro1000 = useMemo(() => {
@@ -142,8 +157,8 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
       </div>
 
       <BottleneckSummaryTable 
-        datosEnriquecidosE={[]}
-        datosEnriquecidosX={[]}
+        datosEnriquecidosE={EMPTY_SUMMARY_ENRICHED}
+        datosEnriquecidosX={EMPTY_SUMMARY_ENRICHED}
         datosCalculados={computedDataEXF}
         tiemposCanon={tiemposCanon}
         numMaximoSabados={numMaximoSabados}
@@ -160,8 +175,8 @@ export const BottleneckMonthlySummaryC1000Section: React.FC<BottleneckMonthlySum
         datosCompletos={filteredDataCentro1000}
         titulo="Visión Unificada: Clases E + X + F (Quito)"
         tiemposCanon={tiemposCanon}
-        tiempoConsumidoAnterior={{}}
-        onComputedDataReady={setComputedDataEXF}
+        tiempoConsumidoAnterior={EMPTY_TIEMPO_CONSUMIDO}
+        onComputedDataReady={handleComputedDataReady}
         maxExtrasHoras={maxExtrasHoras}
         horasExtrasFin={horasExtrasFin}
         isCentro1000={true}

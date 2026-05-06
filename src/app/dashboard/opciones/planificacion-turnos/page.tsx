@@ -1,6 +1,6 @@
 'use client';
 
-import { WorkShiftPlanningSection } from '@/components';
+import { WorkShiftPlanningSection } from '@/components/WorkShiftPlanningSection';
 import { useAppContext } from '@/context/AppProvider';
 
 export default function PlanificacionTurnosPage() {

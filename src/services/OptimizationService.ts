@@ -68,6 +68,27 @@ export const analyzeSalesDemand = async (
         allProductCenterPairs.add(key);
     });
 
+    // Pre-index cuboInventariosData y salesInFirstMonth para eliminar .find() en loops
+    const cuboByKey = new Map<string, CuboInventariosItem>();
+    const cuboBy1000 = new Map<string, CuboInventariosItem>();
+    cuboInventariosData.forEach(item => {
+        if (item.Material && item.Centro) {
+            const pId = normalizeMaterialCode(item.Material);
+            const cId = String(item.Centro).trim();
+            const k = `${pId}---${cId}`;
+            if (!cuboByKey.has(k)) cuboByKey.set(k, item);
+            if (cId === '1000' && !cuboBy1000.has(pId)) cuboBy1000.set(pId, item);
+        }
+    });
+    const salesFirstMonthByKey = new Map<string, SalesDataRow>();
+    const salesFirstMonthByProductId = new Map<string, SalesDataRow>();
+    salesInFirstMonth.forEach(s => {
+        const k = `${normalizeMaterialCode(s.código)}---${s.centro.trim()}`;
+        if (!salesFirstMonthByKey.has(k)) salesFirstMonthByKey.set(k, s);
+        if (!salesFirstMonthByProductId.has(normalizeMaterialCode(s.código))) salesFirstMonthByProductId.set(normalizeMaterialCode(s.código), s);
+    });
+    const ppiByProductIdDemand = new Map(constraints.productProcessInfos.map(p => [p.productId, p]));
+
     // --- STEP 1: DEMANDA BRUTA (Para tabla del Paso 1) ---
     const demandByGroupMap = new Map<string, {
         claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A';
@@ -80,12 +101,12 @@ export const analyzeSalesDemand = async (
 
     demandFirstMonth.forEach((totalUnidades, key) => {
         const [productId, centerId] = key.split('---');
-        const saleRow = salesInFirstMonth.find(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === centerId)!;
-        const sector = saleRow.sector || 'Sin Sector';
+        const saleRow = salesFirstMonthByKey.get(key)!;
+        const sector = saleRow?.sector || 'Sin Sector';
 
         let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
-        const primaryEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}` === key);
-        const fallbackEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---1000` === `${productId}---1000`);
+        const primaryEntry = cuboByKey.get(key);
+        const fallbackEntry = cuboBy1000.get(productId);
 
         if (primaryEntry && primaryEntry.ClaseAprovisionam) {
             claseAprovisionamiento = primaryEntry.ClaseAprovisionam;
@@ -126,10 +147,10 @@ export const analyzeSalesDemand = async (
         const netNeed = Math.max(0, demand + safetyStock - initialStock);
 
         if (netNeed > 0) {
-            const saleRow = salesData.find(s => normalizeMaterialCode(s.código) === productId); // Busca en toda la data de ventas
+            const saleRow = salesFirstMonthByProductId.get(productId);
             const sector = saleRow?.sector || 'Sin Sector';
-            const primaryEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---${String(item.Centro).trim()}` === key);
-            const fallbackEntry = cuboInventariosData.find(item => `${normalizeMaterialCode(item.Material)}---1000` === `${productId}---1000`);
+            const primaryEntry = cuboByKey.get(key);
+            const fallbackEntry = cuboBy1000.get(productId);
 
             let claseAprovisionamiento: 'E' | 'X' | 'F' | 'N/A' = 'N/A';
             if (primaryEntry && primaryEntry.ClaseAprovisionam) {
@@ -139,8 +160,7 @@ export const analyzeSalesDemand = async (
             }
 
             if (claseAprovisionamiento !== 'N/A') {
-                 // **FIXED**: Use normalized code for lookup
-                 const ppi = constraints.productProcessInfos.find(p => normalizeMaterialCode(p.productId) === productId);
+                 const ppi = ppiByProductIdDemand.get(productId);
                  const requiredHours = (ppi?.totalManufacturingTimeHours || 0) * netNeed;
                  
                  productionNeedsFirstMonth.push({
@@ -211,6 +231,24 @@ export function processAndValidateAssemblyData(
         return { newConstraints: currentConstraints, validationErrors, dataCompletenessErrors };
     }
 
+    // Pre-index apiData para eliminar búsquedas O(n) en loops anidados
+    const apiByLineKey = new Map<string, TiempoEnsambleItem[]>();
+    const apiByProductCenter = new Map<string, TiempoEnsambleItem[]>();
+    const apiByCompositeKey = new Map<string, TiempoEnsambleItem>();
+    apiData.forEach(row => {
+        const centerId = String(row.Centro).trim();
+        const lineName = String(row.Linea).trim();
+        const productId = normalizeMaterialCode(row.CodMaterial);
+        const wsName = String(row.PuestoTrabajo).trim();
+        const lineKey = `${centerId}---${lineName}`;
+        if (!apiByLineKey.has(lineKey)) apiByLineKey.set(lineKey, []);
+        apiByLineKey.get(lineKey)!.push(row);
+        const pcKey = `${productId}---${centerId}`;
+        if (!apiByProductCenter.has(pcKey)) apiByProductCenter.set(pcKey, []);
+        apiByProductCenter.get(pcKey)!.push(row);
+        apiByCompositeKey.set(`${centerId}---${lineName}---${productId}---${wsName}`, row);
+    });
+
     const discoveredWorkCenters = new Map<string, WorkCenter>();
     const discoveredLines = new Map<string, ProductionLine>();
     const discoveredWorkstations = new Map<string, WorkstationDefinition>();
@@ -245,15 +283,11 @@ export function processAndValidateAssemblyData(
     
     discoveredLines.forEach(line => {
         const workstationIdsForLine = new Set<string>();
-        apiData.forEach(row => {
-            const centerId = String(row.Centro).trim();
-            const lineName = String(row.Linea).trim();
-            
-            if (centerId === line.workCenterId && lineName === line.name) {
-                const workstationName = String(row.PuestoTrabajo).trim();
-                const workstationId = `wd---${centerId}---${workstationName}`;
-                workstationIdsForLine.add(workstationId);
-            }
+        const lineRows = apiByLineKey.get(`${line.workCenterId}---${line.name}`) || [];
+        lineRows.forEach(row => {
+            const workstationName = String(row.PuestoTrabajo).trim();
+            const workstationId = `wd---${line.workCenterId}---${workstationName}`;
+            workstationIdsForLine.add(workstationId);
         });
         
         line.assignedWorkstations = Array.from(workstationIdsForLine).map(wsId => ({
@@ -300,11 +334,8 @@ export function processAndValidateAssemblyData(
         const workstationDefsForLine = line.assignedWorkstations.map(as => discoveredWorkstations.get(as.definitionId)).filter(Boolean) as WorkstationDefinition[];
 
         for (const workstationDef of workstationDefsForLine) {
-            const apiRow = apiData.find(d => 
-                normalizeMaterialCode(d.CodMaterial) === productId &&
-                String(d.Centro).trim() === line.workCenterId &&
-                String(d.Linea).trim() === line.name &&
-                String(d.PuestoTrabajo).trim() === workstationDef.name
+            const apiRow = apiByCompositeKey.get(
+                `${line.workCenterId}---${line.name}---${productId}---${workstationDef.name}`
             );
 
             if (apiRow && apiRow.Tiempo > 0) {
@@ -319,7 +350,7 @@ export function processAndValidateAssemblyData(
             totalManufacturingTimeHours = Math.max(...workstationTimes.map(wt => wt.timeHours));
         }
 
-        const representativeRow = apiData.find(d => normalizeMaterialCode(d.CodMaterial) === productId && String(d.Centro).trim() === line.workCenterId);
+        const representativeRow = apiByProductCenter.get(`${productId}---${line.workCenterId}`)?.[0];
 
         productProcessInfos.push({
             id: `${productId}---${lineId}`,
@@ -339,7 +370,7 @@ export function processAndValidateAssemblyData(
     
     uniqueProductCenterPairsForInv.forEach(pairKey => {
         const [productId, centerId] = pairKey.split('---');
-        const rowsForPair = apiData.filter(row => normalizeMaterialCode(row.CodMaterial) === productId && String(row.Centro).trim() === centerId);
+        const rowsForPair = apiByProductCenter.get(pairKey) || [];
         
         const inventoryDataSource = rowsForPair.find(r => r.StockSeguridad || r.StockMaximo) || rowsForPair[0];
         if (inventoryDataSource) {
@@ -411,17 +442,22 @@ export const getMonthlyCapacityDetails = (year: number, month: number, constrain
     const daysInMonth = new Date(year, month, 0).getDate();
     let workingWeekdays = 0;
     let workingSaturdays = 0;
-    
+
+    const holidayByDate = new Map(constraints.holidays.map(h => [h.date, h]));
+
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month - 1, day);
         const dayOfWeek = date.getDay();
-        const holiday = constraints.holidays.find(h => h.date === date.toISOString().split('T')[0]);
+        const yy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const holiday = holidayByDate.get(`${yy}-${mm}-${dd}`);
 
         if (holiday && holiday.dayType === 'asueto') continue;
 
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Lunes a Viernes
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
              if (!holiday || holiday.isProductionAllowed) workingWeekdays++;
-        } else if (dayOfWeek === 6) { // Sábado
+        } else if (dayOfWeek === 6) {
             if (!holiday || holiday.isProductionAllowed) workingSaturdays++;
         }
     }
@@ -492,29 +528,54 @@ export const generateProductionPlan = async (
     const horizonMsg = `Horizonte de planificación: ${planningMonths.length > 0 ? `${planningMonths[0]} a ${planningMonths[planningMonths.length-1]}` : 'Ninguno'}`;
     auditLog.push(`[${new Date().toLocaleTimeString()}] INFO: ${horizonMsg}`);
 
+    // Pre-index para lookups O(1) en loops internos
+    const ppiByProductId = new Map(constraints.productProcessInfos.map(p => [p.productId, p]));
+    const ppiByKey = new Map(constraints.productProcessInfos.map(p => [`${p.productId}---${p.productionLineId}`, p]));
+    const salesByProductId = new Map<string, SalesDataRow>();
+    salesData.forEach(s => salesByProductId.set(normalizeMaterialCode(s.código), s));
+    const productsByLine = new Map<string, Set<string>>();
+    constraints.productProcessInfos.forEach(ppi => {
+        if (!productsByLine.has(ppi.productionLineId)) productsByLine.set(ppi.productionLineId, new Set());
+        productsByLine.get(ppi.productionLineId)!.add(ppi.productId);
+    });
+    const salesByMonth = new Map<string, SalesDataRow[]>();
+    filteredSalesData.forEach(s => {
+        const key = `${s.año}-${String(s.mes).padStart(2, '0')}`;
+        if (!salesByMonth.has(key)) salesByMonth.set(key, []);
+        salesByMonth.get(key)!.push(s);
+    });
+    const inventorySettingsById = new Map(constraints.inventorySettings.map(s => [s.id, s]));
+
     for (let i = 0; i < planningMonths.length; i++) {
         const monthKey = planningMonths[i];
         const [year, monthNum] = monthKey.split('-').map(Number);
-        
+
         onProgress({ message: `Planificando mes ${monthNum}...`, step: 'monthly', current: i + 1, total: planningMonths.length });
         auditLog.push(`\n[${new Date().toLocaleTimeString()}] --- Planificando Mes ${monthNum}/${year} ---`);
-        
-        const salesThisMonth = filteredSalesData.filter(s => `${s.año}-${String(s.mes).padStart(2, '0')}` === monthKey);
-        
+
+        const salesThisMonth = salesByMonth.get(monthKey) || [];
+
+        const salesThisMonthByKey = new Map<string, number>();
+        const salesDescByProductId = new Map<string, string>();
+        salesThisMonth.forEach(s => {
+            const key = `${normalizeMaterialCode(s.código)}---${s.centro.trim()}`;
+            salesThisMonthByKey.set(key, (salesThisMonthByKey.get(key) || 0) + s.unidadesProyectado);
+            if (s.descripciónMaterial) salesDescByProductId.set(normalizeMaterialCode(s.código), s.descripciónMaterial);
+        });
+
         const productionNeedsByCenter = new Map<string, { needs: { productId: string; demandCenterId: string; units: number }[], totalHoursNeeded: number }>();
         const allProductDemandPairsThisMonth = new Set(salesThisMonth.map(s => `${normalizeMaterialCode(s.código)}---${s.centro.trim()}`));
 
         allProductDemandPairsThisMonth.forEach(pairKey => {
             const [productId, demandCenterId] = pairKey.split('---');
-            const totalDemand = salesThisMonth.filter(s => normalizeMaterialCode(s.código) === productId && s.centro.trim() === demandCenterId)
-                                              .reduce((sum, s) => sum + s.unidadesProyectado, 0);
+            const totalDemand = salesThisMonthByKey.get(pairKey) || 0;
 
             const currentStock = inventoryState.get(pairKey) || 0;
-            const safetyStock = constraints.inventorySettings.find(s => s.id === pairKey)?.minStock || 0;
+            const safetyStock = inventorySettingsById.get(pairKey)?.minStock || 0;
             const netNeed = Math.max(0, totalDemand + safetyStock - currentStock);
 
             if (netNeed > 0) {
-                const ppi = constraints.productProcessInfos.find(p => p.productId === productId);
+                const ppi = ppiByProductId.get(productId);
                 const prodClass = ppi?.ClaseAprovisionamiento;
                 const producingCenterId = prodClass === 'F' ? '1000' : demandCenterId;
 
@@ -546,7 +607,7 @@ export const generateProductionPlan = async (
                 const totalUnitsInCenter = data.needs.reduce((sum, n) => sum + n.units, 0);
                 
                 data.needs.forEach(need => {
-                    const ppi = constraints.productProcessInfos.find(p => p.productId === need.productId);
+                    const ppi = ppiByProductId.get(need.productId);
                     const timePerUnit = ppi?.totalManufacturingTimeHours || 0;
                     
                     const participation = totalUnitsInCenter > 0 ? need.units / totalUnitsInCenter : 0;
@@ -568,7 +629,7 @@ export const generateProductionPlan = async (
         });
 
         const monthlyMovements = new Map<string, { production: number; salesDemand: number; transfersIn: number; transfersOut: number; initialStock: number; finalStock: number; dispatches: number; backlog: number }>();
-        const allRelevantPairs = new Set([...inventoryState.keys(), ...salesThisMonth.map(s => `${normalizeMaterialCode(s.código)}---${s.centro.trim()}`)]);
+        const allRelevantPairs = new Set([...inventoryState.keys(), ...salesThisMonthByKey.keys()]);
         
         allRelevantPairs.forEach(key => monthlyMovements.set(key, { production: 0, salesDemand: 0, transfersIn: 0, transfersOut: 0, initialStock: inventoryState.get(key) || 0, finalStock: 0, dispatches: 0, backlog: 0 }));
         
@@ -611,14 +672,13 @@ export const generateProductionPlan = async (
             newInventoryState.set(key, finalStock);
             
             const [productId, centerId] = key.split('---');
-            const sale = salesThisMonth.find(s => normalizeMaterialCode(s.código) === productId && String(s.centro).trim() === centerId);
-            const ppi = constraints.productProcessInfos.find(p => p.productId === productId);
+            const ppi = ppiByProductId.get(productId);
             const prodClass = ppi?.ClaseAprovisionamiento;
             const producingCenterId = prodClass === 'F' ? '1000' : centerId;
-            
+
             monthlyPlanItems.push({
                 id: `${monthKey}---${key}`, year, month: monthNum, productId, centerId, producingCenterId,
-                productName: sale?.descripciónMaterial || productId,
+                productName: salesDescByProductId.get(productId) || productId,
                 totalQuantityToProduce: mov.production,
                 totalDemand: mov.salesDemand,
                 dispatches: mov.dispatches,
@@ -642,14 +702,23 @@ export const generateProductionPlan = async (
     // --- Daily Plan Generation ---
     const dailyPlan: ProductionPlanItem[] = [];
     if (monthlyPlanItems.length > 0) {
+        // Pre-agrupar plan mensual por mes para evitar filtrar toda la lista cada mes
+        const monthlyPlanByKey = new Map<string, MonthlyProductionPlanItem[]>();
+        monthlyPlanItems.forEach(p => {
+            if (p.totalQuantityToProduce > 0) {
+                const key = `${p.year}-${String(p.month).padStart(2, '0')}`;
+                if (!monthlyPlanByKey.has(key)) monthlyPlanByKey.set(key, []);
+                monthlyPlanByKey.get(key)!.push(p);
+            }
+        });
+
         onProgress({ message: 'Generando plan diario...', step: 'daily', current: 0, total: planningMonths.length });
         for (let i = 0; i < planningMonths.length; i++) {
             const monthKey = planningMonths[i];
             const [year, monthNum] = monthKey.split('-').map(Number);
-            
+
             const monthlyProductionByCenter: { [centerId: string]: { productId: string, units: number }[] } = {};
-            monthlyPlanItems
-                .filter(p => p.year === year && p.month === monthNum && p.totalQuantityToProduce > 0)
+            (monthlyPlanByKey.get(monthKey) || [])
                 .forEach(p => {
                     if (!monthlyProductionByCenter[p.producingCenterId]) {
                         monthlyProductionByCenter[p.producingCenterId] = [];
@@ -658,35 +727,50 @@ export const generateProductionPlan = async (
                 });
 
             const daysInMonth = new Date(year, monthNum, 0).getDate();
-            const dailyCapacityPerLine: { [lineId: string]: number } = {};
-            
-            constraints.productionLines.forEach(line => {
-                dailyCapacityPerLine[line.id] = (line.capacity.normalUnitsPerHour || 1) * shiftParameters.regularHoursPerDay * 0.87;
-            });
+
+            const linesByCenter = new Map<string, ProductionLine[]>();
+            for (const centerId in monthlyProductionByCenter) {
+                linesByCenter.set(centerId, constraints.productionLines.filter(l => l.workCenterId === centerId && l.isActive));
+            }
+
+            // Pre-ordenar needs por urgencia una sola vez por mes (inventoryState no cambia dentro del mes)
+            const sortedNeedsPerLine = new Map<string, { productId: string; units: number }[]>();
+            for (const centerId in monthlyProductionByCenter) {
+                for (const line of (linesByCenter.get(centerId) || [])) {
+                    const lineProducts = productsByLine.get(line.id) || new Set<string>();
+                    const needs = monthlyProductionByCenter[centerId]
+                        .filter(need => lineProducts.has(need.productId))
+                        .sort((a, b) =>
+                            (inventoryState.get(`${a.productId}---${centerId}`) || 0) -
+                            (inventoryState.get(`${b.productId}---${centerId}`) || 0)
+                        );
+                    sortedNeedsPerLine.set(`${centerId}---${line.id}`, needs);
+                }
+            }
+
+            // Pre-calcular día de semana y horas para cada día del mes
+            const dayHours: number[] = new Array(daysInMonth + 1);
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dow = new Date(year, monthNum - 1, d).getDay();
+                dayHours[d] = dow === 0 ? 0 : dow === 6 ? shiftParameters.saturdayAndHolidayHours : shiftParameters.regularHoursPerDay;
+            }
 
             for (let day = 1; day <= daysInMonth; day++) {
                  onProgress({ message: `Generando plan diario...`, step: 'daily', current: day, total: daysInMonth });
 
-                for (const centerId in monthlyProductionByCenter) {
-                    const linesForCenter = constraints.productionLines.filter(l => l.workCenterId === centerId && l.isActive);
-                    
-                    for (const line of linesForCenter) {
-                        let lineCapacityToday = dailyCapacityPerLine[line.id] || 0;
-                        const needsForLine = monthlyProductionByCenter[centerId].filter(need => 
-                            constraints.productProcessInfos.some(ppi => ppi.productId === need.productId && ppi.productionLineId === line.id) && need.units > 0
-                        );
-                        
-                        // Simple urgency: less stock coverage = higher priority
-                        needsForLine.sort((a, b) => {
-                            const stockA = inventoryState.get(`${a.productId}---${centerId}`) || 0;
-                            const stockB = inventoryState.get(`${b.productId}---${centerId}`) || 0;
-                            return stockA - stockB;
-                        });
+                const hoursToday = dayHours[day];
 
-                        for(const need of needsForLine) {
+                for (const centerId in monthlyProductionByCenter) {
+                    const linesForCenter = linesByCenter.get(centerId) || [];
+
+                    for (const line of linesForCenter) {
+                        let lineCapacityToday = (line.capacity.normalUnitsPerHour || 1) * hoursToday * 0.87;
+
+                        for (const need of (sortedNeedsPerLine.get(`${centerId}---${line.id}`) || [])) {
+                            if (need.units <= 0) continue;
                             if (lineCapacityToday <= 0) break;
 
-                            const ppi = constraints.productProcessInfos.find(p => p.productId === need.productId && ppi.productionLineId === line.id);
+                            const ppi = ppiByKey.get(`${need.productId}---${line.id}`);
                             if (!ppi) continue;
 
                             const timePerUnit = ppi.totalManufacturingTimeHours;
@@ -694,7 +778,7 @@ export const generateProductionPlan = async (
                             const unitsToProduce = Math.min(need.units, unitsInHours);
 
                             if (unitsToProduce > 0) {
-                                const sale = salesData.find(s => normalizeMaterialCode(s.código) === need.productId);
+                                const sale = salesByProductId.get(need.productId);
                                 dailyPlan.push({
                                     id: `${year}-${monthNum}-${day}-${need.productId}-${line.id}`,
                                     productId: need.productId,

@@ -1,7 +1,7 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { Detalles } from "../types/interfaces";
+import { Detalles, DetallePlanSemanal } from "../types/interfaces";
 
 const API_URL = `${environment.apiURL}/api/detalles`;
 
@@ -33,6 +33,32 @@ export const detallesService = {
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
       throw new Error(errorBody.message || 'Error al guardar el detalle');
+    }
+    return response.json();
+  },
+
+  async savePlanSemanal(detalle: DetallePlanSemanal): Promise<BodyResponse<DetallePlanSemanal>> {
+    const response = await fetch(`${API_URL}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(detalle),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorBody.message || 'Error al guardar el detalle del plan semanal');
+    }
+    return response.json();
+  },
+
+  async savePlanSemanalBulk(detalles: DetallePlanSemanal[]): Promise<BodyResponse<{ created: number; updated: number }>> {
+    const response = await fetch(`${API_URL}/bulk/createorupdate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(detalles),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorBody.message || 'Error al guardar detalles del plan semanal por lote');
     }
     return response.json();
   },

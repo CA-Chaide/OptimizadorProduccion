@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { logger, LogEntry } from '@/services/LogService';
 
 interface LogContextType {
@@ -15,7 +15,7 @@ export function LogProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = logger.subscribe((newLog) => {
-      setLogs((prevLogs) => [...prevLogs, newLog]);
+      setLogs((prevLogs) => prevLogs.length >= 500 ? [...prevLogs.slice(-499), newLog] : [...prevLogs, newLog]);
     });
 
     return () => {
@@ -23,12 +23,17 @@ export function LogProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const clearLogs = () => {
+  const clearLogs = useCallback(() => {
     setLogs([]);
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ logs, clearLogs }),
+    [logs, clearLogs]
+  );
 
   return (
-    <LogContext.Provider value={{ logs, clearLogs }}>
+    <LogContext.Provider value={value}>
       {children}
     </LogContext.Provider>
   );

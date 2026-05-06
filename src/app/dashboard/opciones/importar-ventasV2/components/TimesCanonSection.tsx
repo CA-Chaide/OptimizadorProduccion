@@ -244,7 +244,7 @@ export const TimesCanonSection: React.FC<TimesCanonSectionProps> = ({ results, i
                             label: `Sábado ${i + 1}`,
                             diasLV: 0,
                             horasExtrasLV: 0,
-                            totalHoras: 5
+                            totalHoras: horasExtrasFin ?? 0
                           });
                         }
                         

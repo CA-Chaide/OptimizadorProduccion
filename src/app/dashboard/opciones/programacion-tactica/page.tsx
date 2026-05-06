@@ -1,6 +1,6 @@
 'use client';
 
-import { TacticalPlanSection } from '@/components';
+import { TacticalPlanSection } from '@/components/TacticalPlanSection';
 import { useAppContext } from '@/context/AppProvider';
 
 export default function ProgramacionTacticaPage() {

@@ -52,30 +52,7 @@ export const WorkShiftPlanningSection: React.FC<
   const [selectedProcessType, setSelectedProcessType] = useState<
     ProcessType | ""
   >("");
-  useEffect(() => {
-    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[WorkShiftPlanningSection] Cambio en currentDate: ${currentDate}`);
-    inspector.captureVariable('currentDate', currentDate);
-  }, [currentDate]);
-  useEffect(() => {
-    logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[WorkShiftPlanningSection] Cambio en selectedProcessType: ${selectedProcessType}`);
-    inspector.captureVariable('selectedProcessType', selectedProcessType);
-  }, [selectedProcessType]);
   const { addNotification } = useAppContext();
-  // Log de montaje del componente
-  useEffect(() => {
-    logger.log(
-      `\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[WorkShiftPlanningSection] Montado.`
-    );
-  }, []);
-  
-  useEffect(() => {
-    inspector.captureState({
-      shiftsCount: shifts.length,
-      employeesCount: employees.length,
-      absenteeismEventsCount: absenteeismEvents.length,
-      selectedProcessType
-    });
-  }, [shifts, employees, absenteeismEvents, selectedProcessType]);
 
   const weekStart = getWeekStart(currentDate);
   const weekDates = Array.from({ length: 7 }, (_, i) => {

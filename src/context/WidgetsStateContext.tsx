@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 interface WidgetsStateContextType {
   chatIsOpen: boolean;
@@ -51,18 +51,33 @@ export function WidgetsStateProvider({ children }: { children: React.ReactNode }
     setDebugIsOpen(false);
   }, []);
 
+  const value = useMemo(
+    () => ({
+      chatIsOpen,
+      logsIsOpen,
+      debugIsOpen,
+      openChat,
+      closeChat,
+      openLogs,
+      closeLogs,
+      openDebug,
+      closeDebug,
+    }),
+    [
+      chatIsOpen,
+      logsIsOpen,
+      debugIsOpen,
+      openChat,
+      closeChat,
+      openLogs,
+      closeLogs,
+      openDebug,
+      closeDebug,
+    ]
+  );
+
   return (
-    <WidgetsStateContext.Provider value={{ 
-      chatIsOpen, 
-      logsIsOpen, 
-      debugIsOpen, 
-      openChat, 
-      closeChat, 
-      openLogs, 
-      closeLogs, 
-      openDebug, 
-      closeDebug 
-    }}>
+    <WidgetsStateContext.Provider value={value}>
       {children}
     </WidgetsStateContext.Provider>
   );

@@ -298,8 +298,9 @@ export const ProductionPlanSection: React.FC = () => {
       const uniqueSectores = [...new Set(salesData.map(item => item.sector || 'Sin Sector'))];
       const uniqueLineas = [...new Set(productionPlan.dailyPlan.map(item => item.assignedLineId).filter(Boolean) as string[])];
       
+      const linesById = new Map(constraints.productionLines.map(l => [l.id, l]));
       const lineDetails = uniqueLineas.map(lineId => {
-        const line = constraints.productionLines.find(l => l.id === lineId);
+        const line = linesById.get(lineId);
         return { value: lineId, label: line ? `${line.name} (${line.workCenterId})` : lineId };
       });
 
@@ -544,8 +545,8 @@ export const ProductionPlanSection: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
-                            {unclassifiedMaterials.map((item, index) => (
-                                <tr key={index} className="hover:bg-yellow-100">
+                            {unclassifiedMaterials.map((item) => (
+                                <tr key={`${item.productId}-${item.centerId}`} className="hover:bg-yellow-100">
                                     <td className="px-2 py-1">
                                         <div className="font-mono text-gray-800">{item.productId}</div>
                                         <div className="text-gray-500">{item.productName}</div>

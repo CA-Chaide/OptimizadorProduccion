@@ -27,6 +27,8 @@ export enum ActiveView {
   DASHBOARD = 'DASHBOARD',
   DATA_IMPORT = 'DATA_IMPORT',
   DATA_IMPORT_V2 = 'DATA_IMPORT_V2',
+  DATA_IMPORT_V3 = 'DATA_IMPORT_V3',
+  DATA_IMPORT_V4 = 'DATA_IMPORT_V4',
   CONSTRAINTS = 'CONSTRAINTS',
   NEEDS_CALCULATION_C2000 = 'NEEDS_CALCULATION_C2000',
   INVENTORY_NEEDS = 'INVENTORY_NEEDS',
@@ -50,6 +52,7 @@ export enum ActiveView {
   PARAMETROS_CONEXIONES = 'PARAMETROS_CONEXIONES',
   CONFIGURACIONES_CALENDARIO_AREA = 'CONFIGURACIONES_CALENDARIO_AREA',
   CONFIGURACIONES_GRUPO_OPERADORES = 'CONFIGURACIONES_GRUPO_OPERADORES',
+  PLAN_SEMANAL = 'PLAN_SEMANAL',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -107,6 +110,8 @@ export const APP_VERSION = '1.0.0-next';
 const NAVIGATION_ITEMS = [
   { id: ActiveView.DASHBOARD, label: 'Dashboard', icon: <DashboardIcon />, href: '/dashboard' },
   { id: ActiveView.DATA_IMPORT_V2, label: 'Importar Ventas 2', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV2' },
+  { id: ActiveView.DATA_IMPORT_V3, label: 'Importar Ventas 3', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV3' },
+  { id: ActiveView.DATA_IMPORT_V4, label: 'Importar Ventas 4', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV4' },
   { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon />, href: '/dashboard/opciones/gestion-ausentismos' },
   { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon />, href: '/dashboard/opciones/calificacion-tecnica' },
   { id: ActiveView.MAINTENANCE, label: 'Gestion de Mantenimiento Programado', icon: <MaintenanceIcon />, href: '/dashboard/opciones/mantenimiento' },
@@ -117,6 +122,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica-muebles' },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
+  { id: ActiveView.PLAN_SEMANAL, label: 'Plan Semanal', icon: <CalendarClock className="w-5 h-5" />, href: '/dashboard/opciones/plan-semanal' },
   { id: ActiveView.PARAMETROS, label: 'Parámetros', icon: <ClipboardList />, href: '/dashboard/parametros' },
   { id: ActiveView.PARAMETROS_TURNOS, label: 'Turnos', icon: <WorkShiftIcon />, href: '/dashboard/parametros/turnos' },
   { id: ActiveView.PARAMETROS_TIPO_DETALLE, label: 'Tipos de Detalle', icon: <PlanIcon />, href: '/dashboard/parametros/tipo-detalle' },
@@ -130,6 +136,8 @@ const NAVIGATION_ITEMS = [
 // Items que van dentro de la sección "Opciones" (contraíble)
 export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.DATA_IMPORT_V2,
+  ActiveView.DATA_IMPORT_V3,
+  ActiveView.DATA_IMPORT_V4,
   ActiveView.ABSENTEEISM,
   ActiveView.PERSONNEL,
   ActiveView.MAINTENANCE,
@@ -140,6 +148,7 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.TACTICAL_SCHEDULING_MUEBLES,
   ActiveView.WORK_SHIFT_PLANNING,
   ActiveView.DICTIONARY,
+  ActiveView.PLAN_SEMANAL,
 ];
 
 // Items que van dentro de la sección "Parámetros" (contraíble)

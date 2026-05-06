@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import {
     AppState, AppAction, SalesDataRow, ProductionPlan, TacticalRequest,
@@ -184,12 +184,24 @@ type AppContextType = {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+/** Aisla `isLoading` del valor completo de AppContext: el nav no debe re-renderizarse al cambiar ventas/plan/etc. */
+type AppLoadingContextType = { isLoading: boolean };
+const AppLoadingContext = createContext<AppLoadingContextType | undefined>(undefined);
+
 export const useAppContext = () => {
   const context = useContext(AppContext);
   if (context === undefined) {
     throw new Error('useAppContext must be used within an AppProvider');
   }
   return context;
+};
+
+export const useAppLoading = () => {
+  const context = useContext(AppLoadingContext);
+  if (context === undefined) {
+    throw new Error('useAppLoading must be used within an AppProvider');
+  }
+  return context.isLoading;
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -202,82 +214,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_ACTIVE_VIEW', payload: ActiveView.DATA_IMPORT });
     }, []);
     
-    // HYPERVISOR: Capturar automáticamente TODO el estado del AppContext
+    // HYPERVISOR: Sincronizar automáticamente al DataStore - un effect por slice para evitar syncs innecesarios
     useEffect(() => {
-        // Capturar estado completo cada vez que cambia
-        runtimeInspector.captureState('AppContext', JSON.parse(JSON.stringify(state)));
-    }, [state]);
-    
-    // HYPERVISOR: Sincronizar automáticamente TODO al DataStore
+        if (state.salesData.length === 0) return;
+        const id = setTimeout(() => {
+            syncDataToStore('salesData', state.salesData, 'AppContext-AutoSync', { count: state.salesData.length, autoSync: true })
+                .catch((e) => console.error('[AppProvider] Error sync salesData:', e));
+        }, 3000);
+        return () => clearTimeout(id);
+    }, [state.salesData]);
+
     useEffect(() => {
-        const syncAllData = async () => {
-            try {
-                // Sincronizar datos principales solo si existen
-                if (state.salesData.length > 0) {
-                    await syncDataToStore('salesData', state.salesData, 'AppContext-AutoSync', {
-                        count: state.salesData.length,
-                        autoSync: true
-                    });
-                }
-                
-                if (state.constraints.productionLines.length > 0) {
-                    await syncDataToStore('constraints', state.constraints, 'AppContext-AutoSync', {
-                        productionLines: state.constraints.productionLines.length,
-                        autoSync: true
-                    });
-                }
-                
-                if (state.productionPlan.monthlyPlan.length > 0 || state.productionPlan.weeklyPlan.length > 0 || state.productionPlan.dailyPlan.length > 0) {
-                    await syncDataToStore('productionPlan', state.productionPlan, 'AppContext-AutoSync', {
-                        autoSync: true
-                    });
-                }
-                
-                if (state.employees.length > 0) {
-                    await syncDataToStore('employees', state.employees, 'AppContext-AutoSync', {
-                        count: state.employees.length,
-                        autoSync: true
-                    });
-                }
-                
-                if (state.employeeSkills.length > 0) {
-                    await syncDataToStore('employeeSkills', state.employeeSkills, 'AppContext-AutoSync', {
-                        count: state.employeeSkills.length,
-                        autoSync: true
-                    });
-                }
-                
-                if (state.maintenanceEvents.length > 0) {
-                    await syncDataToStore('maintenanceEvents', state.maintenanceEvents, 'AppContext-AutoSync', {
-                        count: state.maintenanceEvents.length,
-                        autoSync: true
-                    });
-                }
-                
-                if (state.absenteeismEvents.length > 0) {
-                    await syncDataToStore('absenteeismEvents', state.absenteeismEvents, 'AppContext-AutoSync', {
-                        count: state.absenteeismEvents.length,
-                        autoSync: true
-                    });
-                }
-                
-                if (state.workShifts.length > 0) {
-                    await syncDataToStore('workShifts', state.workShifts, 'AppContext-AutoSync', {
-                        count: state.workShifts.length,
-                        autoSync: true
-                    });
-                }
-                
-                console.log('[AppProvider HYPERVISOR] Todos los datos sincronizados con DataStore');
-            } catch (error) {
-                console.error('[AppProvider HYPERVISOR] Error en auto-sincronización:', error);
-            }
-        };
-        
-        // Debounce: solo sincronizar después de 500ms de inactividad
-        const timeoutId = setTimeout(syncAllData, 500);
-        return () => clearTimeout(timeoutId);
-    }, [state.salesData, state.constraints, state.productionPlan, state.employees, state.employeeSkills, state.maintenanceEvents, state.absenteeismEvents, state.workShifts]);
+        if (state.constraints.productionLines.length === 0) return;
+        const id = setTimeout(() => {
+            syncDataToStore('constraints', state.constraints, 'AppContext-AutoSync', { productionLines: state.constraints.productionLines.length, autoSync: true })
+                .catch((e) => console.error('[AppProvider] Error sync constraints:', e));
+        }, 3000);
+        return () => clearTimeout(id);
+    }, [state.constraints]);
+
+    useEffect(() => {
+        if (state.productionPlan.monthlyPlan.length === 0 && state.productionPlan.dailyPlan.length === 0) return;
+        const id = setTimeout(() => {
+            syncDataToStore('productionPlan', state.productionPlan, 'AppContext-AutoSync', { autoSync: true })
+                .catch((e) => console.error('[AppProvider] Error sync productionPlan:', e));
+        }, 3000);
+        return () => clearTimeout(id);
+    }, [state.productionPlan]);
+
+    useEffect(() => {
+        if (state.employees.length === 0) return;
+        const id = setTimeout(() => {
+            syncDataToStore('employees', state.employees, 'AppContext-AutoSync', { count: state.employees.length, autoSync: true })
+                .catch((e) => console.error('[AppProvider] Error sync employees:', e));
+        }, 3000);
+        return () => clearTimeout(id);
+    }, [state.employees]);
 
     const addNotification = useCallback((type: NotificationMessage['type'], text: string, errors: string[] = []) => {
         let description: React.ReactNode = text;
@@ -454,29 +426,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [addNotification]);
 
-    const setEmployees = async (employees: Employee[]) => {
+    const setEmployees = useCallback(async (employees: Employee[]) => {
         dispatch({ type: 'SET_EMPLOYEES', payload: employees });
-    };
-    
-    const setSkills = async (skills: EmployeeSkill[]) => {
+    }, []);
+
+    const setSkills = useCallback(async (skills: EmployeeSkill[]) => {
         dispatch({ type: 'SET_EMPLOYEE_SKILLS', payload: skills });
-    };
-    
-    const setAbsenteeismEvents = async (events: AbsenteeismEvent[]) => {
+    }, []);
+
+    const setAbsenteeismEvents = useCallback(async (events: AbsenteeismEvent[]) => {
         dispatch({ type: 'SET_ABSENTEEISM_EVENTS', payload: events });
-    };
-    
-    const setMaintenanceEvents = async (events: MaintenanceEvent[]) => {
+    }, []);
+
+    const setMaintenanceEvents = useCallback(async (events: MaintenanceEvent[]) => {
         dispatch({ type: 'SET_MAINTENANCE_EVENTS', payload: events });
-    };
-    
-    const setWorkShifts = async (shifts: WorkShift[]) => {
+    }, []);
+
+    const setWorkShifts = useCallback(async (shifts: WorkShift[]) => {
         dispatch({ type: 'SET_WORK_SHIFTS', payload: shifts });
-    };
-    
-    const setConstraints = async (constraints: AppConstraints) => {
+    }, []);
+
+    const setConstraints = useCallback(async (constraints: AppConstraints) => {
         dispatch({ type: 'SET_CONSTRAINTS', payload: constraints });
-    };
+    }, []);
     
     const setPlanningYear = useCallback((year: string) => {
         dispatch({ type: 'SET_PLANNING_YEAR', payload: year });
@@ -490,7 +462,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_C2000_REQUIRED_HOURS', payload: hours });
     }, []);
 
-    const value: AppContextType = {
+    const value: AppContextType = useMemo(() => ({
         ...state,
         dispatch,
         addNotification,
@@ -510,11 +482,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleContinueToStep2,
         handleContinueToStep3,
         handleContinueToStep4,
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [
+        state,
+        addNotification,
+        handleDataImported,
+        handleGenerateFullPlan,
+        handleGenerateTacticalPlan,
+        setEmployees,
+        setSkills,
+        setAbsenteeismEvents,
+        setMaintenanceEvents,
+        setWorkShifts,
+        setConstraints,
+        setPlanningYear,
+        setPlanningMonth,
+        setC2000RequiredHours,
+        handleSyncAndValidate,
+        handleContinueToStep2,
+        handleContinueToStep3,
+        handleContinueToStep4,
+    ]);
+
+  const loadingContextValue = useMemo(
+    () => ({ isLoading: state.isLoading }),
+    [state.isLoading]
+  );
 
   return (
-    <AppContext.Provider value={value}>
-      {children}
-    </AppContext.Provider>
+    <AppLoadingContext.Provider value={loadingContextValue}>
+      <AppContext.Provider value={value}>
+        {children}
+      </AppContext.Provider>
+    </AppLoadingContext.Provider>
   );
 };

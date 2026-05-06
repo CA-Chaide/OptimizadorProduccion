@@ -1,10 +1,10 @@
 
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { exportToXLSX } from './utils';
 import { TransferNeed, BottleneckAnalysisSectionCentro1000Props } from './types';
-import { BottleneckSummaryTable } from './BottleneckSummaryTable';
+import { BottleneckSummaryTable, EMPTY_SUMMARY_ENRICHED } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
 
@@ -33,6 +33,14 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
     exportSheet = []
   } = analysis || {};
 
+  const handleComputedDataReady = useCallback(
+    (results: any[]) => {
+      setComputedData(results);
+      onComputedDataReady?.(results);
+    },
+    [onComputedDataReady]
+  );
+
   if (data.length === 0) {
     return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend"</div>;
   }
@@ -56,8 +64,8 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
       </div>
 
       <BottleneckSummaryTable 
-        datosEnriquecidosE={[]}
-        datosEnriquecidosX={[]}
+        datosEnriquecidosE={EMPTY_SUMMARY_ENRICHED}
+        datosEnriquecidosX={EMPTY_SUMMARY_ENRICHED}
         datosCalculados={computedData} 
         tiemposCanon={tiemposCanon}
         numMaximoSabados={numMaximoSabados}
@@ -73,10 +81,7 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
         datosCompletos={filteredData}
         titulo="Centro 1000 - Análisis de Cuello de Botella (Incluye Traslados Gye)"
         tiemposCanon={tiemposCanon}
-        onComputedDataReady={(results) => {
-          setComputedData(results);
-          onComputedDataReady?.(results);
-        }}
+        onComputedDataReady={handleComputedDataReady}
         maxExtrasHoras={maxExtrasHoras}
         horasExtrasFin={horasExtrasFin}
         trasladosDesdeCentro2000={trasladosDesdeCentro2000}

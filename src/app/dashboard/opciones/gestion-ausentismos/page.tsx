@@ -1,6 +1,6 @@
 'use client';
 
-import { AbsenteeismSection } from '@/components';
+import { AbsenteeismSection } from '@/components/AbsenteeismSection';
 import { useAppContext } from '@/context/AppProvider';
 
 export default function GestionAusentismosPage() {

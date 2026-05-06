@@ -27,3 +27,6 @@ export { BottleneckMonthlySummaryC2000Section } from './BottleneckMonthlySummary
 export { BottleneckMonthlySummaryC1000Section } from './BottleneckMonthlySummaryC1000Section';
 export { BacklogProgressiveSection } from './BacklogProgressiveSection';
 export { BacklogRegressiveSection } from './BacklogRegressiveSection';
+export { BacklogRegressiveTotalsReport } from './BacklogRegressiveTotalsReport';
+export { InventarioObjetivoSection } from './InventarioObjetivoSection';
+export { buildPioMap } from './pioCompute';

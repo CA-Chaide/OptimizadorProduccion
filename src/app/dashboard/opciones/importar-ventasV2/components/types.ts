@@ -154,3 +154,13 @@ export interface HorasExtrasPorMesCentro {
 }
 
 export type HorasExtrasPorLinea = FilaHorasExtras[];
+
+// PIO — Producción por Inventario Objetivo
+export interface PioMaterialEntry {
+  promDiario: number;   // uds/día promedio del trimestre activo
+  invObjetivo: number;  // promDiario × días objetivo de la restricción
+  etiqueta: string;
+}
+
+/** Clave: `${normalizedMatCode}|${centro}` */
+export type PioMap = Map<string, PioMaterialEntry>;

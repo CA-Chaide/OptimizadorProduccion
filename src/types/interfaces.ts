@@ -157,6 +157,26 @@ export interface PlanGlobal {
     usuario_creacion: string;
 }
 
+/** Registro de detalle semanal para el Plan Semanal — refleja el schema real de la tabla `detalles`. */
+export interface DetallePlanSemanal {
+    codigo_detalle?:          number;
+    codigo_plan:              number;
+    codigo_familia_producto:  number;
+    centro:                   string;
+    centro_produccion:        string;
+    codigo_material:          string;
+    cantidad_proyectada:      number;
+    cantidad_producir:        number;
+    semana:                   number;
+    cantidad_transferencia:   number;
+    linea_produccion:         string;
+    estado:                   string;
+    fecha_creacion?:          Date;
+    usuario_creacion?:        string;
+    fecha_modificacion?:      Date;
+    usuario_modificacion?:    string;
+}
+
 export interface PlanGrupo {
     codigo_plan_grupo: number;
     codigo_plan: number;
