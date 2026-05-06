@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList } from 'lucide-react';
+import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -98,6 +98,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     init();
   }, []);
 
+  const appliedRestrictionsSummary = useMemo(() => {
+    const resps = restricciones.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map(r => r.valor_restriccion);
+    const alms = restricciones.filter(r => r.nombre_restriccion === 'ALMACEN').map(r => r.valor_restriccion);
+    return {
+      responsables: [...new Set(resps.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean),
+      almacenes: [...new Set(alms.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean)
+    };
+  }, [restricciones]);
+
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -131,10 +140,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   };
 
   const ordenesFiltradas = useMemo(() => {
-    const respCodes = restricciones
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
+    const respCodes = appliedRestrictionsSummary.responsables;
 
     return ordenes.filter(o => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
@@ -143,7 +149,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       return respCodes.length === 0 || respCodes.includes(itemResp);
     });
-  }, [ordenes, restricciones]);
+  }, [ordenes, appliedRestrictionsSummary]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -293,7 +299,24 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="tiempos">
+        <TabsContent value="tiempos" className="space-y-4">
+          <div className="flex flex-wrap gap-2 px-1">
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 p-2 rounded-xl">
+              <Filter className="w-3.5 h-3.5 text-gray-400" />
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filtros Activos:</span>
+            </div>
+            {appliedRestrictionsSummary.responsables.length > 0 && (
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-bold text-[9px] py-1 px-3 rounded-lg uppercase">
+                Responsables: {appliedRestrictionsSummary.responsables.join(', ')}
+              </Badge>
+            )}
+            {appliedRestrictionsSummary.almacenes.length > 0 && (
+              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 font-bold text-[9px] py-1 px-3 rounded-lg uppercase">
+                Almacenes: {appliedRestrictionsSummary.almacenes.join(', ')}
+              </Badge>
+            )}
+          </div>
+
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[500px]">
               <table className="w-full border-collapse text-center">
@@ -303,6 +326,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100">Puesto Trabajo / Línea</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Estándar (Min)</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Almacén</th>
                     <th className="px-4 py-4">Stock Actual / Seguridad</th>
                   </tr>
                 </thead>
@@ -318,6 +342,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <div className="text-[8px] font-mono opacity-60">{t.PuestoTrabajo}</div>
                         </td>
                         <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                        <td className="px-4 py-3 border-r border-gray-50 font-medium text-gray-400 uppercase">{t.Almacen || t.ALMACEN || '—'}</td>
                         <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
                       </tr>
                     );
