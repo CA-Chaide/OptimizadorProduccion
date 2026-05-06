@@ -132,7 +132,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [fetchData]);
 
   const forrosGruposList = useMemo(() => {
-    return grupos.filter(g => (g.nombre_grupo || '').toUpperCase().includes('FORRO'));
+    return grupos.filter(g => {
+      const name = (g.nombre_grupo || '').toUpperCase();
+      return name.includes('FORRO');
+    });
   }, [grupos]);
 
   const forrosRestricciones = useMemo(() => {
@@ -200,7 +203,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filters;
   }, [forrosRestricciones]);
 
-  // Carga de maestros técnicos
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
     setIsLoadingTiempos(true);
@@ -218,7 +220,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
-  // Carga de órdenes
   const fetchDailyOrders = useCallback(async () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
     setIsLoadingDaily(true);
@@ -257,80 +258,64 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   /**
-   * Resuelve la máquina de una orden haciendo cruce con maestros.
-   * Lógica mejorada para buscar en todos los campos técnicos del maestro.
+   * Resuelve la máquina con prioridad a identificadores que inicien con "HR"
    */
   const getResolvedMachine = useCallback((order: any) => {
-    const rawVal = order['MAQUINA'] || order['Maquina'] || order['maquina'] || 
-                   order['PUESTOTRABAJO'] || order['PuestoTrabajo'] || order['puestotrabajo'];
-    
-    if (rawVal !== null && rawVal !== undefined && String(rawVal).trim() !== '' && String(rawVal).toLowerCase() !== 'null') {
-      return String(rawVal).trim().toUpperCase();
+    // 1. Escanear campos de la propia orden
+    const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
+    for (const k of orderFields) {
+      const val = order[k];
+      if (val && String(val).trim() !== '' && String(val).toLowerCase() !== 'null') {
+        const sVal = String(val).trim().toUpperCase();
+        if (sVal.startsWith('HR')) return sVal;
+      }
     }
     
-    const materialRaw = order['MATERIAL'] || order['Material'] || order['material'] || 
-                        order['CodMaterial'] || order['CODMATERIAL'] || order['codmaterial'] || '';
-    
-    const material = normalizeMaterialCode(materialRaw);
+    // 2. Escanear maestros técnicos por material
+    const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     if (!material) return '';
 
-    // Buscar en maestros priorizando registros con tiempo definido
-    // Si no hay match directo en PuestoTrabajo, buscamos en CUALQUIER campo del registro técnico (búsqueda profunda)
-    const match = tiemposProduccion.find(t => {
-      const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
-      if (tMaterial !== material) return false;
-      return Number(t.Tiempo) > 0;
-    }) || tiemposProduccion.find(t => {
-      return normalizeMaterialCode(t.CodMaterial || t.Material || '') === material;
-    });
+    const matches = tiemposProduccion.filter(t => 
+      normalizeMaterialCode(t.CodMaterial || t.Material || '') === material
+    );
 
-    if (!match) return '';
-
-    // Devolver el PuestoTrabajo principal si existe
-    return String(match.PuestoTrabajo || match.Maquina || match.nombre_estacion || '').trim().toUpperCase();
+    if (matches.length > 0) {
+      // Buscar CUALQUIER valor en el maestro que empiece con HR
+      for (const m of matches) {
+        const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
+        const hrValue = values.find(v => v.startsWith('HR'));
+        if (hrValue) return hrValue;
+      }
+      
+      // Si no hay HR, devolver el primer puesto disponible
+      const first = matches.find(m => Number(m.Tiempo) > 0) || matches[0];
+      return String(first.PuestoTrabajo || first.Maquina || first.nombre_estacion || '').trim().toUpperCase();
+    }
+    
+    // 3. Fallback final al valor original de la orden si existe
+    const fallback = order['MAQUINA'] || order['Maquina'] || order['PuestoTrabajo'] || '';
+    return String(fallback).trim().toUpperCase() || '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
   /**
-   * Calcula el tiempo total de producción buscando por MATERIAL y MÁQUINA
-   * Lógica mejorada para búsqueda flexible en todos los campos técnicos
+   * Calcula el tiempo total de producción
    */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0';
     const normMaterial = normalizeMaterialCode(material);
     const resolvedMachine = getResolvedMachine(order).trim().toUpperCase();
     
-    if (!resolvedMachine || resolvedMachine === '') return '0';
+    if (!resolvedMachine) return '0';
     
-    // 1. Intentar coincidencia exacta Material + Máquina (PuestoTrabajo o Maquina)
-    let match = tiemposProduccion.find(t => {
-      const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
-      const tMachine = String(t.PuestoTrabajo || t.Maquina || t.nombre_estacion || '').trim().toUpperCase();
-      return tMaterial === normMaterial && tMachine === resolvedMachine && Number(t.Tiempo) > 0;
-    });
-
-    // 2. Si no hay coincidencia exacta, buscar la cadena resolvedMachine en CUALQUIER campo del registro técnico
-    if (!match) {
-      match = tiemposProduccion.find(t => {
-        const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
-        if (tMaterial !== normMaterial) return false;
-        
-        // Buscar el identificador de la máquina en todos los campos descriptivos del maestro técnico
-        const searchPool = Object.values(t).map(v => String(v || '').trim().toUpperCase()).join('|');
-        return searchPool.includes(resolvedMachine);
-      });
-    }
-
-    // 3. Fallback final: Primer registro del material con tiempo > 0
-    if (!match) {
-      match = tiemposProduccion.find(t => 
-        normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial && Number(t.Tiempo) > 0
-      );
-    }
+    // Buscar coincidencia en maestros
+    const match = tiemposProduccion.find(t => {
+      if (normalizeMaterialCode(t.CodMaterial || t.Material || '') !== normMaterial) return false;
+      const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
+      return values.includes(resolvedMachine);
+    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial && Number(t.Tiempo) > 0);
 
     if (!match) return '0';
-    
-    const unitTime = Number(match.Tiempo || 0);
-    return (unitTime * quantity).toFixed(2);
+    return (Number(match.Tiempo || 0) * quantity).toFixed(2);
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
   const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
@@ -347,7 +332,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const resolveLogicValue = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
     if (upperCol === 'MAQUINA') {
-      return getResolvedMachine(order) || 'SIN_MAQUINA';
+      return getResolvedMachine(order) || 'Z_SIN_MAQUINA';
     }
     return String(order[column] ?? '');
   }, [getResolvedMachine]);
@@ -385,10 +370,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // Diario
   const dailyColumns = useMemo(() => {
     if (dailyOrders.length === 0) return ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
-    
     const allKeys = Object.keys(dailyOrders[0]);
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
-    
     const cols = [...priority];
     allKeys.forEach(k => {
       const uk = k.toUpperCase().trim();
@@ -396,7 +379,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
         cols.push(k);
       }
     });
-    
     return cols;
   }, [dailyOrders]);
 
@@ -407,7 +389,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
 
-  // Capacidad
   const plannedCapacity = useMemo(() => {
     const diurno = parseFloat(horarioDiurno) || 0;
     const nocturno = parseFloat(horarioNocturno) || 0;
@@ -417,14 +398,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
-    const allKnownMachines = [...new Set(tiemposProduccion.map(t => String(t.PuestoTrabajo || t.Maquina || t.nombre_estacion || '').trim().toUpperCase()))].filter(m => m !== '');
+    // Asegurar que todas las máquinas conocidas aparezcan, incluso con 0 órdenes
+    const allKnownMachines = [...new Set(tiemposProduccion.map(t => {
+      const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
+      return values.find(v => v.startsWith('HR')) || String(t.PuestoTrabajo || '').trim().toUpperCase();
+    }))].filter(m => m !== '');
+
     allKnownMachines.forEach(m => {
-      summaryMap.set(m, {
-        machine: m,
-        quantity: 0,
-        count: 0,
-        totalTime: 0
-      });
+      summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 });
     });
 
     dailyOrders.forEach(order => {
@@ -550,7 +531,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           </th>
                         ))}
                       </tr>
-                      {/* Fila de filtros */}
                       <tr className="bg-gray-50/50">
                         {tiemposColumns.map(col => (
                           <th key={`filter-t-${col}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
@@ -558,7 +538,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
                               <input
                                 type="text"
-                                placeholder="Filtrar..."
+                                placeholder="Buscar..."
                                 value={tiemposFilters[col] || ''}
                                 onChange={(e) => handleTiemposFilterChange(col, e.target.value)}
                                 className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white"
@@ -658,7 +638,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               >
                                 {col === 'TIEMPOS DE PRODUCCIÓN' ? (
                                   <span className="font-bold text-emerald-700">
-                                    {calculateProductionTime(order['MATERIAL'], Number(order['CANTIDAD'] || 0), order)} min
+                                    {calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', Number(order['CANTIDAD'] || 0), order)} min
                                   </span>
                                 ) : upperCol === 'MAQUINA' ? (
                                   <span className="font-semibold text-blue-700">

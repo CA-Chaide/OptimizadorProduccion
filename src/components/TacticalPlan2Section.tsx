@@ -22,14 +22,13 @@ export const TacticalPlan2Section: React.FC = () => {
 
   /**
    * Normaliza códigos de material eliminando ceros a la izquierda
-   * para una comparación robusta entre diferentes fuentes.
    */
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
     return String(code).trim().replace(/^0+/, '');
   }, []);
 
-  // 1. Cargar grupos y filtrar los de Colchones (incluyendo variaciones de nombre)
+  // 1. Cargar grupos y filtrar los de Colchones
   const fetchGrupos = useCallback(async () => {
     try {
       const gRes = await grupoService.getAll();
@@ -50,7 +49,7 @@ export const TacticalPlan2Section: React.FC = () => {
     });
   }, [grupos]);
 
-  // 2. Cargar tiempos de producción para los grupos de colchones
+  // 2. Cargar tiempos de producción
   const fetchTiemposProduccion = useCallback(async () => {
     if (colchonesGruposList.length === 0) return;
     setIsLoadingTiempos(true);
@@ -75,36 +74,42 @@ export const TacticalPlan2Section: React.FC = () => {
   }, [isMounted, colchonesGruposList, fetchTiemposProduccion]);
 
   /**
-   * Lógica para resolver la máquina si viene null en la orden.
-   * Realiza una búsqueda profunda en todos los campos del registro técnico.
+   * Resuelve la máquina priorizando identificadores que comiencen con "HR"
    */
   const getResolvedMachine = useCallback((order: any) => {
-    const rawVal = order['MAQUINA'] || order['Maquina'] || order['maquina'] || 
-                   order['PUESTOTRABAJO'] || order['PuestoTrabajo'] || order['puestotrabajo'];
-    
-    if (rawVal !== null && rawVal !== undefined && String(rawVal).trim() !== '' && String(rawVal).toLowerCase() !== 'null') {
-      return String(rawVal).trim().toUpperCase();
+    // Escanear orden
+    const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo'];
+    for (const k of orderFields) {
+      const val = order[k];
+      if (val && String(val).trim() !== '' && String(val).toLowerCase() !== 'null') {
+        const sVal = String(val).trim().toUpperCase();
+        if (sVal.startsWith('HR')) return sVal;
+      }
     }
     
-    const materialRaw = order['MATERIAL'] || order['Material'] || order['material'] || 
-                        order['CodMaterial'] || order['CODMATERIAL'] || order['codmaterial'] || '';
-    
+    const materialRaw = order['MATERIAL'] || order['CodMaterial'] || '';
     const material = normalizeMaterialCode(materialRaw);
     if (!material) return '';
 
-    // Buscar en maestros priorizando registros con tiempo definido.
-    // Si no hay match en los grupos filtrados, intentamos cualquier match por material como respaldo.
-    const match = tiemposProduccion.find(t => {
-      const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
-      return tMaterial === material && (Number(t.Tiempo) > 0);
-    }) || tiemposProduccion.find(t => {
-      return normalizeMaterialCode(t.CodMaterial || t.Material || '') === material;
-    });
+    const matches = tiemposProduccion.filter(t => 
+      normalizeMaterialCode(t.CodMaterial || t.Material || '') === material
+    );
 
-    return match ? String(match.PuestoTrabajo || match.Maquina || match.nombre_estacion || '').trim().toUpperCase() : '';
+    if (matches.length > 0) {
+      // Escaneo total de campos en el maestro buscando identificador HR
+      for (const m of matches) {
+        const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
+        const hrValue = values.find(v => v.startsWith('HR'));
+        if (hrValue) return hrValue;
+      }
+      
+      const best = matches.find(m => Number(m.Tiempo) > 0) || matches[0];
+      return String(best.PuestoTrabajo || best.Maquina || best.nombre_estacion || '').trim().toUpperCase();
+    }
+
+    return '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
-  // 4. Personalizar el renderizado de la celda de Máquina
   const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
     if (upperCol === 'MAQUINA') {
@@ -120,7 +125,6 @@ export const TacticalPlan2Section: React.FC = () => {
     return undefined;
   }, [getResolvedMachine]);
 
-  // 5. Resolver valor lógico para el agrupamiento
   const resolveLogicValue = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
     if (upperCol === 'MAQUINA') {
@@ -163,21 +167,6 @@ export const TacticalPlan2Section: React.FC = () => {
           />
         </CardContent>
       </Card>
-
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-        <div className="p-2 bg-blue-100 rounded-full text-blue-700 mt-0.5">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div>
-          <p className="text-xs text-blue-800 font-medium">Nota de Resolución Técnica:</p>
-          <p className="text-[11px] text-blue-700 mt-1">
-            El sistema está cruzando automáticamente las órdenes con la tabla de Tiempos de Ensamblado. 
-            Si la máquina aparece como "null" en el servidor, se asigna el puesto de trabajo técnico correspondiente al código de material realizando una búsqueda profunda en el maestro.
-          </p>
-        </div>
-      </div>
     </div>
   );
 };
