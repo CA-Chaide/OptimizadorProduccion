@@ -132,7 +132,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [fetchData]);
 
   const forrosGruposList = useMemo(() => {
-    return grupos.filter(g => (g.nombre_grupo || '').toUpperCase().includes('FORROS'));
+    return grupos.filter(g => (g.nombre_grupo || '').toUpperCase().includes('FORRO'));
   }, [grupos]);
 
   const forrosRestricciones = useMemo(() => {
@@ -257,7 +257,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   /**
-   * Resuelve la máquina de una orden haciendo cruce con maestros
+   * Resuelve la máquina de una orden haciendo cruce con maestros.
+   * Lógica mejorada para buscar en todos los campos técnicos del maestro.
    */
   const getResolvedMachine = useCallback((order: any) => {
     const rawVal = order['MAQUINA'] || order['Maquina'] || order['maquina'] || 
@@ -274,13 +275,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!material) return '';
 
     // Buscar en maestros priorizando registros con tiempo definido
-    const match = tiemposProduccion.find(t => 
-      normalizeMaterialCode(t.CodMaterial || t.Material || '') === material && (Number(t.Tiempo) > 0)
-    ) || tiemposProduccion.find(t => 
-      normalizeMaterialCode(t.CodMaterial || t.Material || '') === material
-    );
+    // Si no hay match directo en PuestoTrabajo, buscamos en CUALQUIER campo del registro técnico (búsqueda profunda)
+    const match = tiemposProduccion.find(t => {
+      const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
+      if (tMaterial !== material) return false;
+      return Number(t.Tiempo) > 0;
+    }) || tiemposProduccion.find(t => {
+      return normalizeMaterialCode(t.CodMaterial || t.Material || '') === material;
+    });
 
-    return match ? String(match.PuestoTrabajo || '').trim().toUpperCase() : '';
+    if (!match) return '';
+
+    // Devolver el PuestoTrabajo principal si existe
+    return String(match.PuestoTrabajo || match.Maquina || match.nombre_estacion || '').trim().toUpperCase();
   }, [tiemposProduccion, normalizeMaterialCode]);
 
   /**
@@ -297,7 +304,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     // 1. Intentar coincidencia exacta Material + Máquina (PuestoTrabajo o Maquina)
     let match = tiemposProduccion.find(t => {
       const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
-      const tMachine = String(t.PuestoTrabajo || t.Maquina || '').trim().toUpperCase();
+      const tMachine = String(t.PuestoTrabajo || t.Maquina || t.nombre_estacion || '').trim().toUpperCase();
       return tMaterial === normMaterial && tMachine === resolvedMachine && Number(t.Tiempo) > 0;
     });
 
@@ -307,7 +314,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
         if (tMaterial !== normMaterial) return false;
         
-        // Buscar el identificador de la máquina en todos los campos descriptivos
+        // Buscar el identificador de la máquina en todos los campos descriptivos del maestro técnico
         const searchPool = Object.values(t).map(v => String(v || '').trim().toUpperCase()).join('|');
         return searchPool.includes(resolvedMachine);
       });
@@ -340,7 +347,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const resolveLogicValue = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
     if (upperCol === 'MAQUINA') {
-      return getResolvedMachine(order);
+      return getResolvedMachine(order) || 'SIN_MAQUINA';
     }
     return String(order[column] ?? '');
   }, [getResolvedMachine]);
@@ -410,7 +417,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
-    const allKnownMachines = [...new Set(tiemposProduccion.map(t => String(t.PuestoTrabajo || '').trim().toUpperCase()))].filter(m => m !== '');
+    const allKnownMachines = [...new Set(tiemposProduccion.map(t => String(t.PuestoTrabajo || t.Maquina || t.nombre_estacion || '').trim().toUpperCase()))].filter(m => m !== '');
     allKnownMachines.forEach(m => {
       summaryMap.set(m, {
         machine: m,

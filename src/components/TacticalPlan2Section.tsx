@@ -29,7 +29,7 @@ export const TacticalPlan2Section: React.FC = () => {
     return String(code).trim().replace(/^0+/, '');
   }, []);
 
-  // 1. Cargar grupos y filtrar los de Colchones
+  // 1. Cargar grupos y filtrar los de Colchones (incluyendo variaciones de nombre)
   const fetchGrupos = useCallback(async () => {
     try {
       const gRes = await grupoService.getAll();
@@ -44,7 +44,10 @@ export const TacticalPlan2Section: React.FC = () => {
   }, [isMounted, fetchGrupos]);
 
   const colchonesGruposList = useMemo(() => {
-    return grupos.filter(g => (g.nombre_grupo || '').toUpperCase().includes('COLCHONES'));
+    return grupos.filter(g => {
+      const name = (g.nombre_grupo || '').toUpperCase();
+      return name.includes('COLCHON') || name.includes('COLCHÓN');
+    });
   }, [grupos]);
 
   // 2. Cargar tiempos de producción para los grupos de colchones
@@ -71,7 +74,10 @@ export const TacticalPlan2Section: React.FC = () => {
     }
   }, [isMounted, colchonesGruposList, fetchTiemposProduccion]);
 
-  // 3. Lógica para resolver la máquina si viene null en la orden
+  /**
+   * Lógica para resolver la máquina si viene null en la orden.
+   * Realiza una búsqueda profunda en todos los campos del registro técnico.
+   */
   const getResolvedMachine = useCallback((order: any) => {
     const rawVal = order['MAQUINA'] || order['Maquina'] || order['maquina'] || 
                    order['PUESTOTRABAJO'] || order['PuestoTrabajo'] || order['puestotrabajo'];
@@ -86,11 +92,16 @@ export const TacticalPlan2Section: React.FC = () => {
     const material = normalizeMaterialCode(materialRaw);
     if (!material) return '';
 
-    const match = tiemposProduccion.find(t => 
-      normalizeMaterialCode(t.CodMaterial || t.Material || '') === material
-    );
+    // Buscar en maestros priorizando registros con tiempo definido.
+    // Si no hay match en los grupos filtrados, intentamos cualquier match por material como respaldo.
+    const match = tiemposProduccion.find(t => {
+      const tMaterial = normalizeMaterialCode(t.CodMaterial || t.Material || '');
+      return tMaterial === material && (Number(t.Tiempo) > 0);
+    }) || tiemposProduccion.find(t => {
+      return normalizeMaterialCode(t.CodMaterial || t.Material || '') === material;
+    });
 
-    return match ? String(match.PuestoTrabajo || '').trim().toUpperCase() : '';
+    return match ? String(match.PuestoTrabajo || match.Maquina || match.nombre_estacion || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
   // 4. Personalizar el renderizado de la celda de Máquina
@@ -163,7 +174,7 @@ export const TacticalPlan2Section: React.FC = () => {
           <p className="text-xs text-blue-800 font-medium">Nota de Resolución Técnica:</p>
           <p className="text-[11px] text-blue-700 mt-1">
             El sistema está cruzando automáticamente las órdenes con la tabla de Tiempos de Ensamblado. 
-            Si la máquina aparece como "null" en el servidor, se asigna el puesto de trabajo técnico correspondiente al código de material.
+            Si la máquina aparece como "null" en el servidor, se asigna el puesto de trabajo técnico correspondiente al código de material realizando una búsqueda profunda en el maestro.
           </p>
         </div>
       </div>
