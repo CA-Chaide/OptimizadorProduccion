@@ -118,22 +118,40 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return map;
   }, [tiemposEnsamblado]);
 
+  // Consolidación de Restricciones del Grupo
   const appliedRestrictionsSummary = useMemo(() => {
     const resps = restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map(r => r.valor_restriccion);
+    const alms = restriccionesArray.filter(r => r.nombre_restriccion === 'ALMACEN').map(r => r.valor_restriccion);
+    const sectors = restriccionesArray.filter(r => r.nombre_restriccion === 'SECTOR').map(r => r.valor_restriccion);
+
     return {
-      responsables: [...new Set(resps.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean)
+      responsables: [...new Set(resps.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean),
+      almacenes: [...new Set(alms.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean),
+      sectores: [...new Set(sectors.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean)
     };
   }, [restriccionesArray]);
 
+  // Filtrado de Órdenes aplicando TODAS las restricciones del grupo
   const ordenesFiltradas = useMemo(() => {
-    const respCodes = appliedRestrictionsSummary.responsables;
+    const { responsables, almacenes, sectores } = appliedRestrictionsSummary;
 
     return ordenes.filter(o => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
       
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
-      return respCodes.length === 0 || respCodes.includes(itemResp);
+      const matchResp = responsables.length === 0 || responsables.includes(itemResp);
+      if (!matchResp) return false;
+
+      const itemAlm = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      const matchAlm = almacenes.length === 0 || almacenes.includes(itemAlm);
+      if (!matchAlm) return false;
+
+      const itemSector = String(o.SECTOR || o.Sector || o.SECTORDESC || '').trim();
+      const matchSector = sectores.length === 0 || sectores.some(s => itemSector.includes(s));
+      if (!matchSector) return false;
+
+      return true;
     });
   }, [ordenes, appliedRestrictionsSummary]);
 
@@ -171,18 +189,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsContent value="resumen" className="space-y-6">
           <div className="bg-red-50/50 p-6 rounded-2xl border border-red-100 text-center space-y-2">
             <h3 className="text-sm font-black text-red-800 uppercase tracking-widest">Estado de Carga - Planta 1000</h3>
-            <p className="text-xs text-red-600 font-medium max-w-md mx-auto">Visualización consolidada de órdenes proyectadas para el horizonte de laminado en Quito.</p>
+            <p className="text-xs text-red-600 font-medium max-w-md mx-auto">Visualización consolidada de órdenes filtradas por Responsable, Almacén y Sector.</p>
             <div className="pt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
                 <p className="text-[9px] font-bold text-gray-400 uppercase">Grupos Activos</p>
                 <p className="text-xl font-black text-gray-800">{grupos.length}</p>
               </div>
               <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
-                <p className="text-[9px] font-bold text-gray-400 uppercase">Órdenes Quito</p>
+                <p className="text-[9px] font-bold text-gray-400 uppercase">Órdenes Filtradas</p>
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
               </div>
               <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
-                <p className="text-[9px] font-bold text-gray-400 uppercase">Parámetros</p>
+                <p className="text-[9px] font-bold text-gray-400 uppercase">Restricciones</p>
                 <p className="text-xl font-black text-gray-800">{restriccionesArray.length}</p>
               </div>
               <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
