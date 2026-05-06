@@ -110,34 +110,23 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
-    const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
-    
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-
-    const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', tipo: '—' };
-    
-    const techPatternMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
-    if (techPatternMatch) {
-      dimensions.dens = techPatternMatch[1]; 
-      dimensions.tipo = techPatternMatch[2].toUpperCase(); 
-    } else {
-      const densMatch = desc.match(/D-?(\d+)/i);
-      if (densMatch) dimensions.dens = densMatch[1];
-      const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
-      if (tipoMatch) dimensions.tipo = tipoMatch[1].toUpperCase();
-    }
-
-    const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
-    if (dimMatch) {
-      dimensions.ancho = dimMatch[1];
-      dimensions.largo = dimMatch[2];
-      if (dimMatch[3]) dimensions.esp = dimMatch[3];
-    }
-    
-    return { code, desc, ...dimensions };
+    return { code, desc };
   };
+
+  // Mapa de tiempos para búsqueda rápida
+  const tiemposMap = useMemo(() => {
+    const map = new Map<string, number>();
+    tiemposEnsamblado.forEach(t => {
+      const info = extractMaterialInfo(t);
+      if (info.code) {
+        map.set(info.code, Number(t.Tiempo_Min || t.Tiempo || 0));
+      }
+    });
+    return map;
+  }, [tiemposEnsamblado]);
 
   const ordenesFiltradas = useMemo(() => {
     const respCodes = appliedRestrictionsSummary.responsables;
@@ -250,20 +239,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans">
-                <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
                     <th className="px-3 py-4 border-r border-gray-100">Orden</th>
                     <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
                     <th className="px-3 py-4 border-r border-gray-100">Material</th>
                     <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
-                    <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">Categoría</th>
-                    <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/20 text-amber-900 font-black">Tipo</th>
-                    <th className="px-2 py-4 border-r border-gray-100">Dens.</th>
-                    <th className="px-2 py-4 border-r border-gray-100">Ancho</th>
-                    <th className="px-2 py-4 border-r border-gray-100">Largo</th>
-                    <th className="px-2 py-4 border-r border-gray-100">Esp.</th>
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                    <th className="px-3 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/20 font-black">T. Corte (H)</th>
+                    <th className="px-3 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/20 font-black">T. estándar (H)</th>
                     <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
                     <th className="px-3 py-4 font-black">Almacén</th>
                   </tr>
@@ -272,22 +255,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {ordenesFiltradas.map((o, i) => {
                     const info = extractMaterialInfo(o);
                     const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                    const corteHours = (qty * 5) / 3600; 
+                    
+                    // Buscar tiempo estándar en el mapa
+                    const stdMin = tiemposMap.get(info.code) || 0;
+                    const totalHours = (qty * stdMin) / 60;
                     
                     return (
                       <tr key={i} className="hover:bg-red-50/20 transition-colors">
                         <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                         <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                         <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                        <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-                        <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase font-bold">{String(o.CATEGORIA || '—')}</td>
-                        <td className="px-3 py-2 font-black text-amber-700 border-r border-gray-100 bg-amber-50/5 uppercase">{info.tipo}</td>
-                        <td className="px-2 py-2 font-mono border-r border-gray-50">{info.dens}</td>
-                        <td className="px-2 py-2 font-mono border-r border-gray-50">{info.ancho}</td>
-                        <td className="px-2 py-2 font-mono border-r border-gray-50">{info.largo}</td>
-                        <td className="px-2 py-2 font-mono border-r border-gray-50">{info.esp}</td>
+                        <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
                         <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                        <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-50 bg-teal-50/5">{corteHours.toFixed(2)}</td>
+                        <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-50 bg-teal-50/5">
+                          {totalHours > 0 ? totalHours.toFixed(2) : '—'}
+                        </td>
                         <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
                         <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                       </tr>
