@@ -225,30 +225,41 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
   }, [uniqueDates, hasSetDefaultDate, displayMode]);
 
+  // Base filtrada para Muebles (Centro 1000, Resp 019/006)
+  const baseFilteredOrders = useMemo(() => {
+    return orders.filter(order => 
+      (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
+      order.CENTRO === '1000'
+    );
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
-    return orders
-      .filter(order => 
-        (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
-        order.CENTRO === '1000'
-      )
-      .filter(order => {
+    return baseFilteredOrders.filter(order => {
         if (selectedDates.length === 0) return true;
         return selectedDates.includes(order.FECHA);
       });
-  }, [orders, selectedDates]);
+  }, [baseFilteredOrders, selectedDates]);
   
   const totalCantidadPendiente = useMemo(() => {
     return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [filteredOrders]);
   
   const totalCantidadPendienteGeneral = useMemo(() => {
-    return orders
-      .filter(order => 
-        (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
-        order.CENTRO === '1000'
-      )
-      .reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
-  }, [orders]);
+    return baseFilteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
+  }, [baseFilteredOrders]);
+
+  // Cálculos para PENDIENTES TOTALES (Independiente de la fecha)
+  const totalCantProgramadaGeneral = useMemo(() => {
+    return baseFilteredOrders.reduce((sum, order) => sum + (Number(order.CANTPROGRAMADA) || 0), 0);
+  }, [baseFilteredOrders]);
+
+  const totalTiempoRequeridoGeneral = useMemo(() => {
+    return baseFilteredOrders.reduce((sum, order) => {
+      const materialCode = normalizeMaterialCode(order.MATERIAL);
+      const tiempoMin = tiemposMap.get(materialCode) || 0;
+      return sum + ((Number(order.CANTPROGRAMADA) || 0) * tiempoMin);
+    }, 0);
+  }, [baseFilteredOrders, tiemposMap]);
 
   const planSummaryByDate = useMemo(() => {
     if (displayMode !== 'plan' || selectedDates.length === 0) return [];
@@ -338,76 +349,106 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   return (
     <div className="space-y-4">
       {!hideControls && (
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-start space-x-2">
-            <div className="w-56">
-              <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
-              <MultiSelect
-                options={uniqueDates.map(d => ({ value: d, label: d }))}
-                selected={selectedDates}
-                onChange={handleDateChange}
-                placeholder="Todas las fechas"
-              />
+        <div className="flex flex-col space-y-6 mb-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start space-x-2">
+              <div className="w-56">
+                <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
+                <MultiSelect
+                  options={uniqueDates.map(d => ({ value: d, label: d }))}
+                  selected={selectedDates}
+                  onChange={handleDateChange}
+                  placeholder="Todas las fechas"
+                />
+              </div>
+              
+              {displayMode === 'full' && (
+                <>
+                  <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm mt-6">
+                    <Package className="w-6 h-6 text-indigo-600" />
+                    <div>
+                      <p className="text-xs text-indigo-800 font-semibold uppercase">CANT. PENDIENTE</p>
+                      <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
+                    <Package className="w-6 h-6 text-teal-600" />
+                    <div>
+                      <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL</p>
+                      <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-            
-            {displayMode === 'full' && (
-              <>
-                <div className="flex items-center space-x-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm mt-6">
-                  <Package className="w-6 h-6 text-indigo-600" />
-                  <div>
-                    <p className="text-xs text-indigo-800 font-semibold uppercase">CANT. PENDIENTE</p>
-                    <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
-                  <Package className="w-6 h-6 text-teal-600" />
-                  <div>
-                    <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL</p>
-                    <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
-                  </div>
-                </div>
-              </>
-            )}
+          </div>
 
-            {displayMode === 'plan' && selectedDates.length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm mt-6 w-full max-w-4xl">
-                    <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
-                    <div className="space-y-0 max-h-64 overflow-y-auto border rounded-md">
-                        {planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => {
-                            const tiempoRequeridoH = tiempoTotal / 60;
-                            const capacidadOcupada = (tiempoRequeridoH / TIEMPO_DISPONIBLE_DIARIO) * 100;
-                            
-                            return (
-                            <div key={date} className="grid grid-cols-5 gap-0 items-center text-sm p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
-                                <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
-                                    <p className="font-bold text-gray-900">{date}</p>
-                                </div>
-                                <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA</p>
-                                    <p className="font-bold text-gray-900">{cantProgramada.toLocaleString()}</p>
-                                </div>
-                                <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO (h)</p>
-                                    <p className="font-bold text-indigo-700">{tiempoRequeridoH.toFixed(2)}</p>
-                                </div>
-                                <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO DISPONIBLE (h)</p>
-                                    <p className="font-bold text-emerald-700">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
-                                </div>
-                                <div className="text-center px-2 h-full flex flex-col justify-center">
-                                    <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD</p>
-                                    <p className={cn("font-bold", capacidadOcupada > 100 ? "text-red-600" : "text-blue-600")}>
-                                      {capacidadOcupada.toFixed(2)}%
-                                    </p>
-                                </div>
+          {displayMode === 'plan' && (
+            <div className="flex flex-col md:flex-row gap-4">
+              {/* Recuadro CAPACIDAD POR FECHA */}
+              <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
+                <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
+                <div className="space-y-0 max-h-64 overflow-y-auto border rounded-md">
+                    {selectedDates.length > 0 ? (
+                      planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => {
+                        const tiempoRequeridoH = tiempoTotal / 60;
+                        const capacidadOcupada = (tiempoRequeridoH / TIEMPO_DISPONIBLE_DIARIO) * 100;
+                        
+                        return (
+                        <div key={date} className="grid grid-cols-5 gap-0 items-center text-sm p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
+                            <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
+                                <p className="font-bold text-gray-900">{date}</p>
                             </div>
-                            );
-                        })}
+                            <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA</p>
+                                <p className="font-bold text-gray-900">{cantProgramada.toLocaleString()}</p>
+                            </div>
+                            <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO (h)</p>
+                                <p className="font-bold text-indigo-700">{tiempoRequeridoH.toFixed(2)}</p>
+                            </div>
+                            <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO DISPONIBLE (h)</p>
+                                <p className="font-bold text-emerald-700">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
+                            </div>
+                            <div className="text-center px-2 h-full flex flex-col justify-center">
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD</p>
+                                <p className={cn("font-bold", capacidadOcupada > 100 ? "text-red-600" : "text-blue-600")}>
+                                  {capacidadOcupada.toFixed(2)}%
+                                </p>
+                            </div>
+                        </div>
+                        );
+                      })
+                    ) : (
+                      <p className="p-4 text-center text-gray-500 text-xs italic">Selecciona una fecha para ver el resumen diario.</p>
+                    )}
+                </div>
+              </div>
+
+              {/* Recuadro PENDIENTES TOTALES */}
+              <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm h-full">
+                <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
+                <div className="grid grid-cols-3 gap-0 items-center text-sm border rounded-md bg-white min-h-[80px]">
+                    <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
+                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
+                        <p className="font-bold text-gray-900">{totalCantProgramadaGeneral.toLocaleString()}</p>
+                    </div>
+                    <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
+                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO TOTAL (h)</p>
+                        <p className="font-bold text-indigo-700">{(totalTiempoRequeridoGeneral / 60).toFixed(2)}</p>
+                    </div>
+                    <div className="text-center p-3 h-full flex flex-col justify-center">
+                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD TOTAL</p>
+                        <p className="font-bold text-blue-600">
+                          {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO).toFixed(2)}%
+                        </p>
                     </div>
                 </div>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
