@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { ClipboardList, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface MaterialExplosionItem {
@@ -30,20 +30,27 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async (page: number, limit: number) => {
     setIsLoading(true);
+    setError(null);
     try {
-      logger.log(`[MaestroMateriales] Cargando página ${page}...`);
+      logger.log(`[MaestroMateriales] Consultando API - Página ${page}...`);
       const response = await serviciosService.getMaestroMaterialesExplosion(page, limit);
       
       if (response && response.data) {
         setData(response.data);
         setTotalRecords(response.totalRegistros || 0);
         inspector.captureVariable('maestroMaterialesPage', response.data.length);
+      } else {
+        setData([]);
+        setTotalRecords(0);
       }
-    } catch (error) {
-      addNotification('error', `Error al cargar maestro de materiales: ${(error as Error).message}`);
+    } catch (err) {
+      const msg = (err as Error).message;
+      setError(msg);
+      addNotification('error', `Error al cargar maestro de materiales: ${msg}`);
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +80,7 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
           <select 
             value={rowsPerPage} 
             onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-            className="text-[10px] font-bold border rounded-md px-2 py-1 bg-white uppercase"
+            className="text-[10px] font-bold border rounded-md px-2 py-1 bg-white uppercase focus:ring-2 focus:ring-indigo-500 outline-none"
           >
             {[20, 50, 100].map(n => <option key={n} value={n}>{n} filas</option>)}
           </select>
@@ -100,26 +107,41 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={10} className="py-20 text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto" />
-                    <p className="mt-2 text-xs font-bold text-gray-400 uppercase tracking-widest">Consultando base de datos...</p>
+                  <td colSpan={10} className="py-24 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+                      <p className="text-xs font-black text-gray-400 uppercase tracking-widest animate-pulse">Consultando base de datos...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={10} className="py-24 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3 px-10">
+                      <AlertTriangle className="w-10 h-10 text-red-500" />
+                      <p className="text-sm font-bold text-red-600 uppercase">Error de Conexión</p>
+                      <p className="text-xs text-gray-500">{error}</p>
+                      <Button variant="outline" size="sm" onClick={() => fetchData(currentPage, rowsPerPage)} className="mt-2 rounded-xl">
+                        Reintentar Carga
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : data.length === 0 ? (
-                <tr><td colSpan={10} className="py-20 text-center text-gray-400 italic">No se encontraron registros</td></tr>
+                <tr><td colSpan={10} className="py-24 text-center text-gray-400 italic">No se encontraron registros para mostrar</td></tr>
               ) : (
                 data.map((item, idx) => (
                   <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-3 py-3 border-r border-dashed font-bold">{item.NIVEL}</td>
                     <td className="px-3 py-3 border-r border-dashed font-mono text-gray-400">{item.CENTRO || '—'}</td>
-                    <td className="px-3 py-3 border-r border-dashed font-mono font-bold text-gray-700">{item.FERT_PRINCIPAL.slice(-8)}</td>
+                    <td className="px-3 py-3 border-r border-dashed font-mono font-bold text-gray-700">{String(item.FERT_PRINCIPAL || '').slice(-8)}</td>
                     <td className="px-3 py-3 border-r border-dashed max-w-[200px] truncate uppercase font-medium text-left">{item.DESCRIPCION_FERT}</td>
-                    <td className="px-3 py-3 border-r border-dashed font-mono text-gray-400">{item.MATERIAL_PADRE.slice(-8)}</td>
+                    <td className="px-3 py-3 border-r border-dashed font-mono text-gray-400">{String(item.MATERIAL_PADRE || '').slice(-8)}</td>
                     <td className="px-3 py-3 border-r border-dashed max-w-[200px] truncate uppercase text-gray-400 text-left">{item.DESCRIPCION_PADRE}</td>
-                    <td className="px-3 py-3 border-r border-dashed font-mono font-bold text-indigo-600">{item.COMPONENTE.slice(-8)}</td>
+                    <td className="px-3 py-3 border-r border-dashed font-mono font-bold text-indigo-600">{String(item.COMPONENTE || '').slice(-8)}</td>
                     <td className="px-3 py-3 border-r border-dashed max-w-[250px] truncate uppercase font-bold text-gray-700 text-left">{item.DESCRIPCION_COMPONENTE}</td>
-                    <td className="px-3 py-3 border-r border-dashed text-right font-mono font-bold text-indigo-700">{item.CANTIDAD_UNITARIA.toFixed(3)}</td>
-                    <td className="px-3 py-3 text-right font-mono font-bold text-slate-800">{item.CANTIDAD_ACUMULADA.toFixed(3)}</td>
+                    <td className="px-3 py-3 border-r border-dashed text-right font-mono font-bold text-indigo-700">{Number(item.CANTIDAD_UNITARIA || 0).toFixed(3)}</td>
+                    <td className="px-3 py-3 text-right font-mono font-bold text-slate-800">{Number(item.CANTIDAD_ACUMULADA || 0).toFixed(3)}</td>
                   </tr>
                 ))
               )}
@@ -128,17 +150,17 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
         </div>
       </div>
 
-      {!isLoading && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <Button variant="outline" size="icon" onClick={() => handlePageChange(1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl border-gray-200"><ChevronsLeft className="h-4 w-4" /></Button>
-          <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl border-gray-200"><ChevronLeft className="h-4 w-4" /></Button>
+      {!isLoading && !error && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2 pb-6">
+          <Button variant="outline" size="icon" onClick={() => handlePageChange(1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50 hover:border-indigo-200"><ChevronsLeft className="h-4 w-4" /></Button>
+          <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50 hover:border-indigo-200"><ChevronLeft className="h-4 w-4" /></Button>
           <div className="flex items-center gap-1 mx-4">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Página</span>
             <span className="text-xs font-black text-indigo-600">{currentPage}</span>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">de {totalPages}</span>
           </div>
-          <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl border-gray-200"><ChevronRight className="h-4 w-4" /></Button>
-          <Button variant="outline" size="icon" onClick={() => handlePageChange(totalPages)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl border-gray-200"><ChevronsRight className="h-4 w-4" /></Button>
+          <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50 hover:border-indigo-200"><ChevronRight className="h-4 w-4" /></Button>
+          <Button variant="outline" size="icon" onClick={() => handlePageChange(totalPages)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50 hover:border-indigo-200"><ChevronsRight className="h-4 w-4" /></Button>
         </div>
       )}
     </div>
