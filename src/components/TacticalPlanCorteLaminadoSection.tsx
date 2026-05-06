@@ -116,7 +116,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
-  // Mapa de tiempos para búsqueda rápida
   const tiemposMap = useMemo(() => {
     const map = new Map<string, number>();
     tiemposEnsamblado.forEach(t => {
@@ -246,7 +245,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-gray-100">Material</th>
                     <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                    <th className="px-3 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/20 font-black">T. estándar (H)</th>
+                    <th className="px-3 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/20 font-black">T. estandar (H)</th>
                     <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
                     <th className="px-3 py-4 font-black">Almacén</th>
                   </tr>
@@ -255,8 +254,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {ordenesFiltradas.map((o, i) => {
                     const info = extractMaterialInfo(o);
                     const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                    
-                    // Buscar tiempo estándar en el mapa
                     const stdMin = tiemposMap.get(info.code) || 0;
                     const totalHours = (qty * stdMin) / 60;
                     
@@ -282,23 +279,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-4">
-          <div className="flex flex-wrap gap-2 px-1">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 p-2 rounded-xl">
-              <Filter className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filtros Activos:</span>
-            </div>
-            {appliedRestrictionsSummary.responsables.length > 0 && (
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-bold text-[9px] py-1 px-3 rounded-lg uppercase">
-                Responsables: {appliedRestrictionsSummary.responsables.join(', ')}
-              </Badge>
-            )}
-            {appliedRestrictionsSummary.almacenes.length > 0 && (
-              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 font-bold text-[9px] py-1 px-3 rounded-lg uppercase">
-                Almacenes: {appliedRestrictionsSummary.almacenes.join(', ')}
-              </Badge>
-            )}
-          </div>
-
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[500px]">
               <table className="w-full border-collapse text-center">
@@ -308,7 +288,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100">Puesto Trabajo / Línea</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Estándar (Min)</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Almacén</th>
                     <th className="px-4 py-4">Stock Actual / Seguridad</th>
                   </tr>
                 </thead>
@@ -324,7 +303,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <div className="text-[8px] font-mono opacity-60">{t.PuestoTrabajo}</div>
                         </td>
                         <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
-                        <td className="px-4 py-3 border-r border-gray-50 font-medium text-gray-400 uppercase">{t.Almacen || t.ALMACEN || '—'}</td>
                         <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
                       </tr>
                     );
