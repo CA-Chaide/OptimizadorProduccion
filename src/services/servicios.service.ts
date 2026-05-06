@@ -93,8 +93,8 @@ export const serviciosService = {
       headers: getHeaders(),
     });
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fetch Centros");
+      const errorBody = await response.json().catch(() => ({ message: "Failed to fetch Centros" }));
+      throw new Error(errorBody.message);
     }
     return response.json();
   },
@@ -105,8 +105,8 @@ export const serviciosService = {
       headers: getHeaders(),
     });
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fetch Meses");
+      const errorBody = await response.json().catch(() => ({ message: "Failed to fetch Meses" }));
+      throw new Error(errorBody.message);
     }
     return response.json();
   },
@@ -117,8 +117,8 @@ export const serviciosService = {
       headers: getHeaders(),
     });
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fetch Years");
+      const errorBody = await response.json().catch(() => ({ message: "Failed to fetch Years" }));
+      throw new Error(errorBody.message);
     }
     return response.json();
   },
@@ -304,11 +304,11 @@ export const serviciosService = {
         body: JSON.stringify({ 
           page: page, 
           rowsPerPage: rowsPerPage,
-          search: search // Término de búsqueda para filtrar FERT_PRINCIPAL
+          search: search 
         }),
       });
       if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
         throw new Error(errorBody.message || "Error al consultar el Maestro de Materiales.");
       }
       return response.json();
