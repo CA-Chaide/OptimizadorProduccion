@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList } from 'lucide-react';
+import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { grupoService } from '@/services/grupo.service';
@@ -12,6 +12,7 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
+import { TacticalNeedsSection } from './TacticalNeedsSection';
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -66,11 +67,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const fetchTiemposEnsamblado = async () => {
     try {
-      // Se solicita la data completa (paginada a 5000 para cubrir el catálogo)
       const res = await serviciosService.getTiemposEnsamblado(1, 5000);
       const data = res.data?.data || res.data || [];
       if (Array.isArray(data)) {
-        // Filtrar solo por centro 1000 como base, sin restricciones adicionales de grupo
         const filtered = data.filter((t: any) => String(t.Centro || t.centro || '').trim() === '1000');
         setTiemposEnsamblado(filtered);
         inspector.captureVariable('tiemposCompletosLaminado1000', filtered.length);
@@ -151,9 +150,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-7 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
+            { v: 'necesidades', l: 'Necesidades', i: Layers }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Restricciones', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
@@ -189,6 +189,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="necesidades">
+          <TacticalNeedsSection ordenes={ordenesFiltradas} tiempos={tiemposEnsamblado} />
         </TabsContent>
 
         <TabsContent value="grupos">
