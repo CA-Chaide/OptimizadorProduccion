@@ -34,10 +34,11 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const [error, setError] = useState<string | null>(null);
   
+  // Código solicitado como predeterminado
   const [searchTerm, setSearchTerm] = useState('30001338');
   const [activeSearch, setActiveSearch] = useState('30001338');
 
-  // Función para rellenar con ceros a la izquierda (total 18 dígitos)
+  // Función para rellenar con ceros a la izquierda (total 18 dígitos para SAP/DB)
   const padMaterialCode = (code: string): string => {
     if (!code) return '';
     const trimmed = code.trim();
@@ -50,15 +51,15 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
     setError(null);
     try {
       const paddedSearch = padMaterialCode(search);
-      logger.log(`[MaestroMateriales] Consultando Explosión BOM para material: ${paddedSearch}...`);
+      logger.log(`[MaestroMateriales] Consultando Explosión BOM para material: ${paddedSearch} (Pág: ${page})...`);
       
       const response = await serviciosService.getMaestroMaterialesExplosion(page, limit, paddedSearch);
       
       // La API devuelve { data: [...], totalRegistros: 1043976 }
       if (response && response.data) {
-        const actualData = Array.isArray(response.data) ? response.data : [];
+        const actualData = Array.isArray(response.data) ? response.data : (response.data.data || []);
         setData(actualData);
-        setTotalRecords(response.totalRegistros || 0);
+        setTotalRecords(response.totalRegistros || response.data.totalRegistros || 0);
         
         inspector.captureVariable('maestroMaterialesCount', actualData.length);
         inspector.captureVariable('totalRegistrosDB', response.totalRegistros);
@@ -69,7 +70,7 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
     } catch (err) {
       const msg = (err as Error).message;
       setError(msg);
-      addNotification('error', `Error de carga: ${msg}`);
+      addNotification('error', `Error de carga en Maestro de Materiales: ${msg}`);
     } finally {
       setIsLoading(false);
     }
@@ -105,12 +106,13 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
 
   return (
     <div className="space-y-4 text-left">
+      {/* Header y Buscador */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600"><ClipboardList className="w-5 h-5" /></div>
           <div>
             <h3 className="text-lg font-bold text-gray-800 uppercase tracking-tight">Maestro Materiales (Explosión BOM)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Consulta de Estructura Técnica</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Paginación Servidor habilitada (+1M registros)</p>
           </div>
         </div>
         
@@ -118,10 +120,10 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
           <form onSubmit={handleSearch} className="relative flex items-center">
             <Search className="absolute left-3 w-4 h-4 text-gray-400" />
             <Input 
-              placeholder="Cod. FERT (ej: 30001338)" 
+              placeholder="Buscar Cod. FERT (ej: 30001338)" 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-10 h-9 w-64 rounded-xl border-gray-200 focus:ring-indigo-500 text-xs font-bold uppercase shadow-sm"
+              className="pl-9 pr-10 h-9 w-72 rounded-xl border-gray-200 focus:ring-indigo-500 text-xs font-bold uppercase shadow-sm"
             />
             {searchTerm && (
               <button 
@@ -150,13 +152,13 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
           <DatabaseZap className="w-12 h-12 text-indigo-200 mx-auto" />
           <div className="max-w-sm mx-auto">
             <h3 className="text-sm font-bold text-gray-600 uppercase tracking-tight">Consultar Explosión de Materiales</h3>
-            <p className="text-xs text-gray-400 mt-1 mb-6">Ingrese un código para ver su estructura técnica de componentes.</p>
+            <p className="text-xs text-gray-400 mt-1 mb-6">Ingrese un código para ver su estructura técnica de componentes (BOM).</p>
             <div className="flex justify-center">
               <Button 
                 onClick={() => { setSearchTerm('30001338'); setActiveSearch('30001338'); setHasStarted(true); }}
                 className="rounded-xl px-8 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 font-black uppercase text-[10px] tracking-widest h-10"
               >
-                Cargar "30001338"
+                Cargar Material Predeterminado
               </Button>
             </div>
           </div>
@@ -212,7 +214,7 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
                   </tr>
                 ) : (
                   data.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-indigo-50/20 transition-all group">
+                    <tr key={`${idx}-${item.COMPONENTE}`} className="hover:bg-indigo-50/20 transition-all group">
                       <td className="px-2 py-3 border-r border-dashed font-black text-gray-800 bg-gray-50/30">
                         <div className="flex items-center justify-center gap-1">
                           {item.NIVEL > 1 && <div className="w-2 h-[1px] bg-indigo-200" />}
@@ -268,8 +270,8 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => handlePageChange(1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50"><ChevronsLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50"><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => handlePageChange(1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50 transition-all"><ChevronsLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50 transition-all"><ChevronLeft className="h-4 w-4" /></Button>
             
             <div className="flex items-center gap-2 mx-4 px-4 py-1 bg-white border border-gray-100 rounded-xl shadow-sm">
               <span className="text-[9px] font-black text-gray-400 uppercase">Pág</span>
@@ -277,8 +279,8 @@ export const MaestroMaterialesExplosionSection: React.FC = () => {
               <span className="text-[9px] font-black text-gray-400 uppercase">/ {totalPages}</span>
             </div>
 
-            <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50"><ChevronRight className="h-4 w-4" /></Button>
-            <Button variant="outline" size="icon" onClick={() => handlePageChange(totalPages)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50"><ChevronsRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50 transition-all"><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => handlePageChange(totalPages)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl border-gray-200 hover:bg-indigo-50 transition-all"><ChevronsRight className="h-4 w-4" /></Button>
           </div>
         </div>
       )}
