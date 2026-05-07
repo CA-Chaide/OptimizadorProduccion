@@ -187,6 +187,16 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
     });
   };
 
+  const formatOperators = (minutes: number, totalDayHours: number) => {
+    if (totalDayHours === 0 || minutes === 0) return "0.0";
+    const hoursRequired = minutes / 60;
+    const ops = hoursRequired / totalDayHours;
+    return ops.toLocaleString(undefined, { 
+      minimumFractionDigits: 1, 
+      maximumFractionDigits: 1 
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -215,8 +225,10 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
 
         {availableCenters.map(centerId => {
           const { hTrabajo, hExtras } = getHoursRestrictionsForCenter(centerId);
+          const totalHorasDia = hTrabajo + hExtras;
+
           return (
-          <TabsContent key={centerId} value={centerId} className="mt-0 space-y-4">
+          <TabsContent key={centerId} value={centerId} className="mt-0 space-y-8">
             
             {/* Cabecera: Filtro Fecha + Matriz de Restricciones */}
             <div className="flex flex-col md:flex-row gap-8 items-start">
@@ -256,7 +268,7 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
                     </tr>
                     <tr className="bg-[#cceeff] font-bold">
                       <td className="px-3 py-2 text-gray-700 border-r border-black">TOTAL HORAS</td>
-                      <td className="px-3 py-2 text-right font-mono text-sm">{hTrabajo + hExtras}</td>
+                      <td className="px-3 py-2 text-right font-mono text-sm">{totalHorasDia}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -270,76 +282,103 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
                 <p className="text-xs text-gray-400 mt-1">Por favor carga las órdenes en la pestaña anterior.</p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-[#cceeff]">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">
-                          <div className="flex items-center gap-1">
-                            Máquina
-                            <ChevronDown className="w-3 h-3" />
-                          </div>
-                        </th>
-                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">Suma de TT Armado</th>
-                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">Suma de TT Cerrado L1</th>
-                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">Suma de TT Cerrado1 L2</th>
-                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">Suma de TT Cerrado2 L2</th>
-                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider">Suma de TT Cerrado L3</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
-                      {matrixData.length > 0 ? (
-                        <>
-                          {matrixData.map((row, idx) => (
-                            <tr key={`${centerId}-${row.maquina}-${idx}`} className="hover:bg-blue-50/30 transition-colors">
-                              <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-900 border-r border-gray-50">{row.maquina}</td>
-                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-gray-50">
-                                {formatHours(row.sumTT_Armado)}
-                              </td>
-                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-gray-50">
-                                {formatHours(row.sumTT_CerradoL1)}
-                              </td>
-                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-gray-50">
-                                {formatHours(row.sumTT_Cerrado1L2)}
-                              </td>
-                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-gray-50">
-                                {formatHours(row.sumTT_Cerrado2L2)}
-                              </td>
-                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600">
-                                {formatHours(row.sumTT_CerradoL3)}
-                              </td>
-                            </tr>
-                          ))}
-                          {/* Fila de Total General */}
-                          <tr className="bg-[#cceeff]/40 font-bold border-t-2 border-[#99ccff]">
-                            <td className="px-4 py-2 text-xs text-gray-700 uppercase border-r border-[#99ccff]">Total general</td>
-                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-[#99ccff]">
-                              {formatHours(totalGeneral.sumTT_Armado, 2)}
-                            </td>
-                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-[#99ccff]">
-                              {formatHours(totalGeneral.sumTT_CerradoL1, 2)}
-                            </td>
-                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-[#99ccff]">
-                              {formatHours(totalGeneral.sumTT_Cerrado1L2, 2)}
-                            </td>
-                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-[#99ccff]">
-                              {formatHours(totalGeneral.sumTT_Cerrado2L2, 2)}
-                            </td>
-                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900">
-                              {formatHours(totalGeneral.sumTT_CerradoL3, 2)}
-                            </td>
-                          </tr>
-                        </>
-                      ) : (
-                        <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">
-                            No hay información disponible para la fecha seleccionada.
-                          </td>
+              <div className="space-y-8">
+                {/* 1. Matriz de Carga Horaria */}
+                <div className="bg-white rounded-lg shadow-sm border border-black overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border-collapse border-black">
+                      <thead className="bg-[#cceeff]">
+                        <tr className="border-b border-black">
+                          <th className="px-4 py-2 text-left text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">
+                            <div className="flex items-center gap-1">
+                              Máquina
+                              <ChevronDown className="w-3 h-3" />
+                            </div>
+                          </th>
+                          <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Armado (h)</th>
+                          <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Cerrado L1 (h)</th>
+                          <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Cerrado1 L2 (h)</th>
+                          <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Cerrado2 L2 (h)</th>
+                          <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider">Cerrado L3 (h)</th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white">
+                        {matrixData.length > 0 ? (
+                          <>
+                            {matrixData.map((row, idx) => (
+                              <tr key={`ch-${centerId}-${row.maquina}-${idx}`} className="hover:bg-blue-50/30 border-b border-gray-200">
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-900 border-r border-black">{row.maquina}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatHours(row.sumTT_Armado)}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatHours(row.sumTT_CerradoL1)}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatHours(row.sumTT_Cerrado1L2)}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatHours(row.sumTT_Cerrado2L2)}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600">{formatHours(row.sumTT_CerradoL3)}</td>
+                              </tr>
+                            ))}
+                            <tr className="bg-[#cceeff]/40 font-bold border-t border-black">
+                              <td className="px-4 py-2 text-xs text-gray-700 uppercase border-r border-black">Total general</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-black">{formatHours(totalGeneral.sumTT_Armado, 2)}</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-black">{formatHours(totalGeneral.sumTT_CerradoL1, 2)}</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-black">{formatHours(totalGeneral.sumTT_Cerrado1L2, 2)}</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-black">{formatHours(totalGeneral.sumTT_Cerrado2L2, 2)}</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900">{formatHours(totalGeneral.sumTT_CerradoL3, 2)}</td>
+                            </tr>
+                          </>
+                        ) : (
+                          <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">No hay información de carga para hoy.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 2. Matriz de Operadores Requeridos */}
+                <div className="bg-white rounded-lg shadow-sm border border-black overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border-collapse border-black">
+                      <thead className="bg-[#cceeff]">
+                        <tr className="border-b border-black">
+                          <th colSpan={6} className="px-4 py-3 text-left text-sm font-bold text-gray-800 uppercase tracking-wide">
+                            Total operadores por puesto de Trabajo
+                          </th>
+                        </tr>
+                        <tr className="border-b border-black">
+                          <th className="px-4 py-2 text-left text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Máquina</th>
+                          <th className="px-4 py-2 text-center text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Armado</th>
+                          <th className="px-4 py-2 text-center text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Cerrado L1</th>
+                          <th className="px-4 py-2 text-center text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Cerrado1 L2</th>
+                          <th className="px-4 py-2 text-center text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-black">Cerrado2 L2</th>
+                          <th className="px-4 py-2 text-center text-[11px] font-bold text-gray-700 uppercase tracking-wider">Cerrado L3</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white">
+                        {matrixData.length > 0 ? (
+                          <>
+                            {matrixData.map((row, idx) => (
+                              <tr key={`op-${centerId}-${row.maquina}-${idx}`} className="hover:bg-blue-50/30 border-b border-gray-200">
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-900 border-r border-black">{row.maquina}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatOperators(row.sumTT_Armado, totalHorasDia)}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatOperators(row.sumTT_CerradoL1, totalHorasDia)}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatOperators(row.sumTT_Cerrado1L2, totalHorasDia)}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatOperators(row.sumTT_Cerrado2L2, totalHorasDia)}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600">{formatOperators(row.sumTT_CerradoL3, totalHorasDia)}</td>
+                              </tr>
+                            ))}
+                            <tr className="bg-[#cceeff]/40 font-bold border-t border-black">
+                              <td className="px-4 py-2 text-xs text-gray-700 uppercase border-r border-black">Total operadores</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-black">{formatOperators(totalGeneral.sumTT_Armado, totalHorasDia)}</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-black">{formatOperators(totalGeneral.sumTT_CerradoL1, totalHorasDia)}</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-black">{formatOperators(totalGeneral.sumTT_Cerrado1L2, totalHorasDia)}</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-black">{formatOperators(totalGeneral.sumTT_Cerrado2L2, totalHorasDia)}</td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-900">{formatOperators(totalGeneral.sumTT_CerradoL3, totalHorasDia)}</td>
+                            </tr>
+                          </>
+                        ) : (
+                          <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">No hay información disponible.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
