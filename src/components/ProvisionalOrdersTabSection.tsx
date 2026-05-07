@@ -206,8 +206,44 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Pagination Controls */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Top Scrollbar */}
+      <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
+          <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div ref={tableScrollRef} onScroll={handleTableScroll} className="overflow-x-auto">
+          <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-100">
+              <tr>
+                {COLUMNS_TO_DISPLAY.map((col, index) => (
+                  <th
+                    key={col}
+                    className={`px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider ${index < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}
+                  >
+                    {col.replace(/_/g, ' ')}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {displayedOrders.map((order, index) => (
+                <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50">
+                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => (
+                       <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
+                         {String((order as any)[col] ?? '-')}
+                       </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pagination Controls - Moved to the bottom */}
+      <div className="flex items-center justify-between mt-4">
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-600">
             Mostrando {startIndex + 1} a {Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} órdenes.
@@ -245,42 +281,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           >
             Siguiente →
           </button>
-        </div>
-      </div>
-
-      {/* Top Scrollbar */}
-      <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
-          <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div ref={tableScrollRef} onScroll={handleTableScroll} className="overflow-x-auto">
-          <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-100">
-              <tr>
-                {COLUMNS_TO_DISPLAY.map((col, index) => (
-                  <th
-                    key={col}
-                    className={`px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider ${index < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}
-                  >
-                    {col.replace(/_/g, ' ')}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {displayedOrders.map((order, index) => (
-                <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50">
-                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => (
-                       <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
-                         {String((order as any)[col] ?? '-')}
-                       </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
