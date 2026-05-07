@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
@@ -93,7 +92,11 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   }, [addNotification, inspector, pagination.pageSize]);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => order.Almacen === '1011' || order.Almacen === '1015');
+    const validCodes = ['026', '033', '042', '037', '036', '044'];
+    return orders.filter(order => {
+      const respCode = String(order.RESPCONTROLPROD || '').trim();
+      return validCodes.includes(respCode);
+    });
   }, [orders]);
   
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
