@@ -1,7 +1,8 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, ChevronsLeft, ChevronsRight, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 
 // --- CONSTANTES TÉCNICAS ---
 const MACHINE_RADIO_CM = 350;    
@@ -64,6 +66,7 @@ const ScheduleControlPanel = ({
     const t2 = getParam(restrictions, `${m.id}_T2`, m.defaultT2 ?? 8);
     const p = getParam(restrictions, `${m.id}_PARO`, paroParam.value);
     
+    // Capacidad Bruta = Turno 1 + Turno 2 - Paros
     const baseHours = t1.value + t2.value - (p.value * 2);
     const maxPotentialHours = baseHours + maxExtrasParam.value; 
     
@@ -81,6 +84,7 @@ const ScheduleControlPanel = ({
   const totalBaseHours = processedResources.reduce((acc, m) => acc + m.baseHours, 0);
   const totalMaxHours = processedResources.reduce((acc, m) => acc + m.maxPotentialHours, 0);
   
+  // Capacidad Neta = Horas Brutas * Rendimiento
   const netCapacityBase = totalBaseHours * (rendParam.value / 100);
   const netCapacityMax = totalMaxHours * (rendParam.value / 100);
   
@@ -88,18 +92,18 @@ const ScheduleControlPanel = ({
   const capacitySaldo = netCapacityBase - plannedHours;
   
   let status: 'NORMAL' | 'WARNING' | 'CRITICAL' = 'NORMAL';
-  let statusMessage = "Capacidad Normal";
+  let statusMessage = "CAPACIDAD NORMAL";
   let recommendation = "El plan es factible dentro de la jornada normal.";
   
   if (plannedHours > netCapacityMax) {
     status = 'CRITICAL';
     statusMessage = "SOBRECARGA CRÍTICA";
-    recommendation = `La demanda excede la capacidad máxima (${netCapacityMax.toFixed(1)}h). Se requiere reprogramar.`;
+    recommendation = `La demanda excede la capacidad máxima (${netCapacityMax.toFixed(1)}h). Se requiere reprogramar órdenes.`;
   } else if (plannedHours > netCapacityBase) {
     status = 'WARNING';
     statusMessage = "EXTRAS REQUERIDAS";
     const extrasNeeded = (plannedHours / (rendParam.value / 100)) - totalBaseHours;
-    recommendation = `Se requiere programar aproximadamente ${extrasNeeded.toFixed(1)}h de extras.`;
+    recommendation = `Se requiere programar aproximadamente ${extrasNeeded.toFixed(1)}h de extras en el turno.`;
   }
 
   return (
@@ -115,8 +119,8 @@ const ScheduleControlPanel = ({
           </span>
         </div>
         <Badge className={cn(
-          "font-black text-[10px]",
-          status === 'NORMAL' ? "bg-green-500" : status === 'WARNING' ? "bg-amber-500" : "bg-red-500"
+          "font-black text-[10px] px-4 py-1 rounded-full shadow-inner",
+          status === 'NORMAL' ? "bg-green-500 text-white" : status === 'WARNING' ? "bg-amber-500 text-white" : "bg-red-500 text-white"
         )}>
           {statusMessage}
         </Badge>
@@ -130,26 +134,26 @@ const ScheduleControlPanel = ({
                 <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Recurso Operativo</th>
                 <th className="px-4 py-4">Turno 1 (H)</th>
                 <th className="px-4 py-4">Turno 2 (H)</th>
-                <th className="px-4 py-4 text-gray-400">Paros (H)</th>
-                <th className="px-4 py-4 text-blue-600">Límite Extras (H)</th>
-                <th className="px-4 py-4 font-black bg-slate-50">Cap. Bruta</th>
+                <th className="px-4 py-4 text-gray-400">Paros Programados (H)</th>
+                <th className="px-4 py-4 text-blue-600">Límite Horas Extras (H)</th>
+                <th className="px-4 py-4 font-black bg-slate-50 text-slate-900">Capacidad Bruta</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {processedResources.map(m => (
                 <tr key={m.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-4 py-3 text-left font-bold text-gray-700 sticky left-0 bg-white border-r border-gray-50">{m.name}</td>
-                  <td className="px-4 py-3 font-mono">
+                  <td className="px-4 py-3 font-mono text-gray-600">
                     <div className="flex items-center justify-center gap-1">
                       {m.t1.value.toFixed(1)} {m.t1.isOverridden && <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />}
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono">
+                  <td className="px-4 py-3 font-mono text-gray-600">
                     <div className="flex items-center justify-center gap-1">
                       {m.t2.value.toFixed(1)} {m.t2.isOverridden && <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />}
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-gray-400 italic">-{m.p.value.toFixed(2)}</td>
+                  <td className="px-4 py-3 font-mono text-red-400 italic">-{m.p.value.toFixed(2)}</td>
                   <td className="px-4 py-3 font-mono text-blue-600 font-bold">+{m.maxExtras.value.toFixed(1)}</td>
                   <td className="px-4 py-3 font-mono font-black text-slate-800 bg-slate-50/50">{m.baseHours.toFixed(2)}</td>
                 </tr>
@@ -160,7 +164,7 @@ const ScheduleControlPanel = ({
 
         <div className="grid grid-cols-1 md:grid-cols-5 border-t border-gray-200">
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-gray-50/30">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Rendimiento Planta</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Rendimiento Estimado</span>
               <div className="flex items-center gap-2">
                 <span className="text-2xl font-black text-slate-800 font-mono">{rendParam.value}%</span>
                 {rendParam.isOverridden && <ShieldCheck className="w-4 h-4 text-blue-500" />}
@@ -168,17 +172,17 @@ const ScheduleControlPanel = ({
            </div>
            
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-blue-50/20">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Capacidad Neta (Disp.)</span>
+              <span className="text-[10px] font-black text-blue-400 uppercase tracking-tighter mb-1">Capacidad Neta (H)</span>
               <span className="text-2xl font-black text-indigo-600 font-mono">{netCapacityBase.toFixed(1)}h</span>
            </div>
 
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-amber-50/10">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Capacidad Ocupada (Órdenes)</span>
+              <span className="text-[10px] font-black text-amber-400 uppercase tracking-tighter mb-1">Horas Requeridas (Plan)</span>
               <span className="text-2xl font-black text-amber-600 font-mono">{plannedHours.toFixed(1)}h</span>
            </div>
 
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Saldo Disponible</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Saldo Operativo</span>
               <span className={cn(
                 "text-2xl font-black font-mono",
                 capacitySaldo < 0 ? "text-red-600" : "text-green-600"
@@ -193,10 +197,21 @@ const ScheduleControlPanel = ({
            )}>
               <div className="flex items-center gap-2 mb-1">
                 {status === 'NORMAL' ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
-                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">Uso: {utilization.toFixed(1)}%</span>
+                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">UTILIZACIÓN: {utilization.toFixed(1)}%</span>
               </div>
               <p className="text-[10px] font-bold text-gray-800 leading-tight">{recommendation}</p>
            </div>
+        </div>
+        
+        {/* Barra de progreso visual de carga */}
+        <div className="px-6 pb-4 pt-2 bg-white">
+          <Progress 
+            value={Math.min(utilization, 100)} 
+            className={cn(
+              "h-1.5",
+              status === 'NORMAL' ? "[&>div]:bg-green-500" : status === 'WARNING' ? "[&>div]:bg-amber-500" : "[&>div]:bg-red-500"
+            )} 
+          />
         </div>
       </div>
     </div>
@@ -789,7 +804,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                 <td className="px-4 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td>
                                 <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                                <td className="px-4 py-3 border-r border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
+                                <td className="px-4 py-3 border-r border-dashed border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
                                 <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
                                 <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
                               </tr>
