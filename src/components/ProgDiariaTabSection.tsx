@@ -96,6 +96,20 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
     return restriction.valor_restriccion.split(/[,&]/).map(r => r.trim()).filter(Boolean);
   };
 
+  // Obtener restricciones de Horas para la matriz superior
+  const getHoursRestrictionsForCenter = (centerId: string) => {
+    const group = groups.find(g => String(g.centro).trim() === centerId && g.nombre_grupo.toLowerCase().includes('ensamblado'));
+    if (!group) return { hTrabajo: 0, hExtras: 0 };
+
+    const hTrabajoRes = restrictions.find(r => r.codigo_grupo === group.codigo_grupo && r.nombre_restriccion === 'HORAS_TRABAJO');
+    const hExtrasRes = restrictions.find(r => r.codigo_grupo === group.codigo_grupo && r.nombre_restriccion === 'MAX_EXTRAS_HORAS');
+
+    return {
+      hTrabajo: Number(hTrabajoRes?.valor_restriccion || 0),
+      hExtras: Number(hExtrasRes?.valor_restriccion || 0)
+    };
+  };
+
   // Lógica de agregación para la matriz
   const matrixData = useMemo(() => {
     if (!selectedCenter || ordenes.length === 0) return [];
@@ -199,25 +213,54 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
           ))}
         </TabsList>
 
-        {availableCenters.map(centerId => (
+        {availableCenters.map(centerId => {
+          const { hTrabajo, hExtras } = getHoursRestrictionsForCenter(centerId);
+          return (
           <TabsContent key={centerId} value={centerId} className="mt-0 space-y-4">
-            {/* Filtro de Fecha - Estilo Screenshot */}
-            <div className="flex items-center gap-4">
-               <div className="flex items-center bg-[#cceeff] border border-[#99ccff] rounded px-2 py-1 min-w-[250px]">
-                 <span className="text-xs font-semibold text-gray-700 mr-2">Fecha</span>
-                 <select 
-                    value={selectedDates[centerId] || ""} 
-                    onChange={(e) => handleDateChange(centerId, e.target.value)}
-                    className="bg-transparent text-xs font-medium text-gray-900 outline-none flex-1 cursor-pointer"
-                 >
-                    {availableDatesByCenter[centerId]?.map(date => (
-                      <option key={date} value={date}>{date}</option>
-                    ))}
-                    {(!availableDatesByCenter[centerId] || availableDatesByCenter[centerId].length === 0) && (
-                      <option value="">No hay fechas disponibles</option>
-                    )}
-                 </select>
-               </div>
+            
+            {/* Cabecera: Filtro Fecha + Matriz de Restricciones */}
+            <div className="flex flex-col md:flex-row gap-8 items-start">
+              {/* Filtro de Fecha */}
+              <div className="flex items-center bg-[#cceeff] border border-[#99ccff] rounded px-2 py-1 min-w-[250px]">
+                <span className="text-xs font-semibold text-gray-700 mr-2">Fecha</span>
+                <select 
+                  value={selectedDates[centerId] || ""} 
+                  onChange={(e) => handleDateChange(centerId, e.target.value)}
+                  className="bg-transparent text-xs font-medium text-gray-900 outline-none flex-1 cursor-pointer"
+                >
+                  {availableDatesByCenter[centerId]?.map(date => (
+                    <option key={date} value={date}>{date}</option>
+                  ))}
+                  {(!availableDatesByCenter[centerId] || availableDatesByCenter[centerId].length === 0) && (
+                    <option value="">No hay fechas disponibles</option>
+                  )}
+                </select>
+              </div>
+
+              {/* Matriz de Restricciones (Estilo imagen) */}
+              <div className="border border-black bg-white min-w-[220px]">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-[#cceeff] border-b border-black">
+                      <th colSpan={2} className="py-2 text-center font-bold text-gray-700 uppercase tracking-wider">Restricción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-black">
+                      <td className="px-3 py-2 font-bold text-gray-700 border-r border-black">HORAS_TRABAJO</td>
+                      <td className="px-3 py-2 text-right font-mono font-medium">{hTrabajo}</td>
+                    </tr>
+                    <tr className="border-b border-black">
+                      <td className="px-3 py-2 font-bold text-gray-700 border-r border-black">MAX_EXTRAS_HORAS</td>
+                      <td className="px-3 py-2 text-right font-mono font-medium">{hExtras}</td>
+                    </tr>
+                    <tr className="bg-[#cceeff] font-bold">
+                      <td className="px-3 py-2 text-gray-700 border-r border-black">TOTAL HORAS</td>
+                      <td className="px-3 py-2 text-right font-mono text-sm">{hTrabajo + hExtras}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {ordenes.length === 0 ? (
@@ -301,7 +344,7 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
               </div>
             )}
           </TabsContent>
-        ))}
+        );})}
       </Tabs>
     </div>
   );
