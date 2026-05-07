@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -174,6 +175,8 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
 
   // Totales generales (ignora la fila combinada para no duplicar sumas)
   const totalGeneral = useMemo(() => {
+    // Se excluye explícitamente la fila combinada para no duplicar el total de personal y carga
+    // Al realizar el total de operadores no incluyas el valor de la fila "HR-ARM01"&"HR-ARM03"
     const baseRows = matrixData.filter(r => r.maquina !== "HR-ARM01&HR-ARM03");
     
     return baseRows.reduce((acc, row) => ({
