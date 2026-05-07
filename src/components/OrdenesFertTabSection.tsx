@@ -43,6 +43,11 @@ interface OrdenFert {
   T_CERRADO1_L2?: number;
   T_CERRADO2_L2?: number;
   T_CERRADO_L3?: number;
+  ttArmado?: number;
+  ttCerradoL1?: number;
+  ttCerrado1L2?: number;
+  ttCerrado2L2?: number;
+  ttCerradoL3?: number;
   [key: string]: any;
 }
 
@@ -177,17 +182,28 @@ export const OrdenesFertTabSection: React.FC = () => {
       const enrichedOrders = centerOrders.map(order => {
         const materialKey = `${centerId}|${normalizeMaterialCode(order.MATERIAL)}`;
         const stations = tiemposLookup.get(materialKey) || {};
-        
-        // Lógica de validación por sufijo de Categoría (L1, L2, L3)
         const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
+        const pend = Number(order.CANTPENDIENTE || 0);
+
+        // Unit Times
+        const tArmado = stations['ARMADO'] || 0;
+        const tCerradoL1 = catSuffix === 'L1' ? (stations['CERRADO L1'] || 0) : 0;
+        const tCerrado1L2 = catSuffix === 'L2' ? (stations['CERRADO1 L2'] || 0) : 0;
+        const tCerrado2L2 = catSuffix === 'L2' ? (stations['CERRADO2 L2'] || 0) : 0;
+        const tCerradoL3 = catSuffix === 'L3' ? (stations['CERRADO L3'] || 0) : 0;
 
         return {
           ...order,
-          T_ARMADO: stations['ARMADO'] || 0,
-          T_CERRADO_L1: catSuffix === 'L1' ? (stations['CERRADO L1'] || 0) : 0,
-          T_CERRADO1_L2: catSuffix === 'L2' ? (stations['CERRADO1 L2'] || 0) : 0,
-          T_CERRADO2_L2: catSuffix === 'L2' ? (stations['CERRADO2 L2'] || 0) : 0,
-          T_CERRADO_L3: catSuffix === 'L3' ? (stations['CERRADO L3'] || 0) : 0,
+          T_ARMADO: tArmado,
+          T_CERRADO_L1: tCerradoL1,
+          T_CERRADO1_L2: tCerrado1L2,
+          T_CERRADO2_L2: tCerrado2L2,
+          T_CERRADO_L3: tCerradoL3,
+          ttArmado: tArmado * pend,
+          ttCerradoL1: tCerradoL1 * pend,
+          ttCerrado1L2: tCerrado1L2 * pend,
+          ttCerrado2L2: tCerrado2L2 * pend,
+          ttCerradoL3: tCerradoL3 * pend,
         };
       });
 
@@ -242,7 +258,8 @@ export const OrdenesFertTabSection: React.FC = () => {
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const displayedOrders = currentViewOrders.slice(startIndex, startIndex + rowsPerPage);
+  const endIndex = startIndex + rowsPerPage;
+  const displayedOrders = currentViewOrders.slice(startIndex, endIndex);
 
   const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
@@ -372,70 +389,61 @@ export const OrdenesFertTabSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => {
-                      const pend = Number(order.CANTPENDIENTE || 0);
-                      const ttArmado = (order.T_ARMADO || 0) * pend;
-                      const ttCerradoL1 = (order.T_CERRADO_L1 || 0) * pend;
-                      const ttCerrado1L2 = (order.T_CERRADO1_L2 || 0) * pend;
-                      const ttCerrado2L2 = (order.T_CERRADO2_L2 || 0) * pend;
-                      const ttCerradoL3 = (order.T_CERRADO_L3 || 0) * pend;
-
-                      return (
-                        <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-3 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{order.CENTRO}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500 font-mono">{order.MAQUINA || '-'}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-mono font-bold text-indigo-600">{order.ORDEN}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500">{order.CATEGORIA}</td>
-                          <td className="px-3 py-4 text-xs text-gray-600 max-w-xs truncate font-medium" title={order.NOMBRE}>{order.NOMBRE}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                            {order.T_ARMADO ? order.T_ARMADO.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                            {order.T_CERRADO_L1 ? order.T_CERRADO_L1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                            {order.T_CERRADO1_L2 ? order.T_CERRADO1_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                            {order.T_CERRADO2_L2 ? order.T_CERRADO2_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                            {order.T_CERRADO_L3 ? order.T_CERRADO_L3.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-gray-900">{order.CANTPROGRAMADA}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-red-600 bg-red-50/30">{order.CANTRECHAZO}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-amber-600 bg-amber-50/20">{pend}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                            {ttArmado > 0 ? ttArmado.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                            {ttCerradoL1 > 0 ? ttCerradoL1.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                            {ttCerrado1L2 > 0 ? ttCerrado1L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                            {ttCerrado2L2 > 0 ? ttCerrado2L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10 border-r-2 border-emerald-100">
-                            {ttCerradoL3 > 0 ? ttCerradoL3.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-center">
-                            <Badge variant="outline" className="text-[10px] font-mono border-gray-100 bg-gray-50 text-gray-400">{order.RESPCTRLPROD}</Badge>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-center">
-                            <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100 text-[10px] font-bold uppercase">
-                              {order.SECTORDESC || 'SIN SECTOR'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-center text-[10px] font-mono">{order.PRIORIDAD}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-600">{order.FECHA}</td>
-                        </tr>
-                      );
-                    }) : (
+                    {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => (
+                      <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{order.CENTRO}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500 font-mono">{order.MAQUINA || '-'}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-mono font-bold text-indigo-600">{order.ORDEN}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-gray-500">{order.CATEGORIA}</td>
+                        <td className="px-3 py-4 text-xs text-gray-600 max-w-xs truncate font-medium" title={order.NOMBRE}>{order.NOMBRE}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                          {order.T_ARMADO ? order.T_ARMADO.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                          {order.T_CERRADO_L1 ? order.T_CERRADO_L1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                          {order.T_CERRADO1_L2 ? order.T_CERRADO1_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                          {order.T_CERRADO2_L2 ? order.T_CERRADO2_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                          {order.T_CERRADO_L3 ? order.T_CERRADO_L3.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-gray-900">{order.CANTPROGRAMADA}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-green-600">{order.CANTENTREGADA}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-blue-600 bg-blue-50/30">{order.CANTNOTIFICADA}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-red-600 bg-red-50/30">{order.CANTRECHAZO}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-amber-600 bg-amber-50/20">{order.CANTPENDIENTE}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
+                          {order.ttArmado ? order.ttArmado.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
+                          {order.ttCerradoL1 ? order.ttCerradoL1.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
+                          {order.ttCerrado1L2 ? order.ttCerrado1L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
+                          {order.ttCerrado2L2 ? order.ttCerrado2L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/10 border-r-2 border-emerald-100">
+                          {order.ttCerradoL3 ? order.ttCerradoL3.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-center">
+                          <Badge variant="outline" className="text-[10px] font-mono border-gray-100 bg-gray-50 text-gray-400">{order.RESPCTRLPROD}</Badge>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-center">
+                          <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100 text-[10px] font-bold uppercase">
+                            {order.SECTORDESC || 'SIN SECTOR'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-[10px] font-mono">{order.PRIORIDAD}</td>
+                        <td className="px-3 py-4 whitespace-nowrap text-[10px] text-center text-gray-600">{order.FECHA}</td>
+                      </tr>
+                    )) : (
                       <tr>
                         <td colSpan={25} className="px-6 py-12 text-center text-gray-400 italic">
                           <div className="flex flex-col items-center justify-center gap-2">
