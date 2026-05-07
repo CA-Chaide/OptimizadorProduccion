@@ -57,18 +57,24 @@ const ScheduleControlPanel = ({
   const isQuito = centroId === '1000';
   
   // Parámetros técnicos obtenidos de las restricciones del grupo
-  const rendParam = getParam(restrictions, isQuito ? 'RENDIMIENTO_PROCESO' : 'RENDIMIENTO_PROCESO_GYE', isQuito ? 70 : 65);
-  // Se actualiza la jornada predeterminada a 12 horas según requerimiento de Corte y Laminado
+  // Quito: 90%, Guayaquil: 75%
+  const rendParam = getParam(restrictions, isQuito ? 'RENDIMIENTO_PROCESO' : 'RENDIMIENTO_PROCESO_GYE', isQuito ? 90 : 75);
+  
+  // Jornada predeterminada: 12 horas (Turno 1)
   const shiftHoursParam = getParam(restrictions, 'HORAS_TRABAJO', 12); 
+  // Turno noche predeterminado: 10 horas (Turno 2)
+  const nightShiftParam = getParam(restrictions, 'HORAS_TRABAJO_NOCHE', 10);
+  
   const maxExtrasParam = getParam(restrictions, 'MAX_EXTRAS_HORAS', 2);
   const paroParam = getParam(restrictions, 'PARO_PROGRAMADO', 0.68); 
 
   const processedResources = resources.map(m => {
     const t1 = getParam(restrictions, `${m.id}_T1`, m.defaultT1 ?? shiftHoursParam.value);
-    const t2 = getParam(restrictions, `${m.id}_T2`, m.defaultT2 ?? 0); // Por defecto T2 suele ser 0 o menor si no se especifica
+    const t2 = getParam(restrictions, `${m.id}_T2`, m.defaultT2 ?? nightShiftParam.value); 
     const p = getParam(restrictions, `${m.id}_PARO`, paroParam.value);
     
     // Capacidad Bruta = Turno 1 + Turno 2 - Paros
+    // Si hay turno 2, los paros suelen duplicarse (uno por entrada de turno)
     const baseHours = t1.value + t2.value - (p.value * (t2.value > 0 ? 2 : 1));
     const maxPotentialHours = baseHours + maxExtrasParam.value; 
     
@@ -134,8 +140,8 @@ const ScheduleControlPanel = ({
             <thead>
               <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
                 <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Recurso Operativo</th>
-                <th className="px-4 py-4">Jornada Normal (H)</th>
-                <th className="px-4 py-4">Turno 2 / Adicional (H)</th>
+                <th className="px-4 py-4">Turno Día (12H)</th>
+                <th className="px-4 py-4 text-indigo-600">Turno Noche (10H)</th>
                 <th className="px-4 py-4 text-gray-400">Paros Programados (H)</th>
                 <th className="px-4 py-4 text-blue-600">Límite Horas Extras (H)</th>
                 <th className="px-4 py-4 font-black bg-slate-50 text-slate-900">Capacidad Bruta</th>
@@ -150,7 +156,7 @@ const ScheduleControlPanel = ({
                       {m.t1.value.toFixed(1)} {m.t1.isOverridden && <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />}
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-gray-600">
+                  <td className="px-4 py-3 font-mono text-indigo-700 font-medium">
                     <div className="flex items-center justify-center gap-1">
                       {m.t2.value.toFixed(1)} {m.t2.isOverridden && <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />}
                     </div>
