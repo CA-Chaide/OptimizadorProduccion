@@ -93,10 +93,16 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
   const filteredOrders = useMemo(() => {
     const validCodes = ['026', '033', '042', '037', '036', '044'];
-    return orders.filter(order => {
-      const respCode = String(order.RESPCONTROLPROD || '').trim();
-      return validCodes.includes(respCode);
-    });
+    return orders
+      .filter(order => {
+        const respCode = String(order.RESPCONTROLPROD || '').trim();
+        return validCodes.includes(respCode);
+      })
+      .sort((a, b) => {
+        const dateA = a.FECHAINICIO ? new Date(a.FECHAINICIO).getTime() : 0;
+        const dateB = b.FECHAINICIO ? new Date(b.FECHAINICIO).getTime() : 0;
+        return dateA - dateB;
+      });
   }, [orders]);
   
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
