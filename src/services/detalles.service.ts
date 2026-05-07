@@ -74,4 +74,36 @@ export const detallesService = {
     }
     return response.json();
   },
+
+
+  /////////////////////////////////////////////////////////////
+
+  async getPlanPorCodigoPlaYFamilia(codigo: number, nombreFamilia: string, semanas: string | string[],  page: number, rowsPerPage: number): Promise<BodyListResponse<Detalles>> {
+    // Convertir array de semanas a string separado por "&"
+    const semanasFormato = Array.isArray(semanas) ? semanas.join('&') : semanas;
+    
+    const response = await fetch(`${API_URL}/PlanPorCodigoPlanFamilia`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ Codigo: codigo, nombreFamilia: nombreFamilia, semana: semanasFormato, page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorBody.message || 'Error al obtener el plan por código y familia');
+    }
+    return response.json();
+  },
+
+  async getAllPlanDetalles(page: number, rowsPerPage: number): Promise<BodyListResponse<Detalles>> {
+    const response = await fetch(`${API_URL}?page=${page}&rowsPerPage=${rowsPerPage}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorBody.message || 'Error al obtener todos los detalles del plan');
+    }
+    return response.json();
+  },
+
 };

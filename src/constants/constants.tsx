@@ -53,6 +53,7 @@ export enum ActiveView {
   CONFIGURACIONES_CALENDARIO_AREA = 'CONFIGURACIONES_CALENDARIO_AREA',
   CONFIGURACIONES_GRUPO_OPERADORES = 'CONFIGURACIONES_GRUPO_OPERADORES',
   PLAN_SEMANAL = 'PLAN_SEMANAL',
+  PLANES_MEDIANO_PLAZO = 'PLANES_MEDIANO_PLAZO',
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -112,6 +113,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.DATA_IMPORT_V2, label: 'Importar Ventas 2', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV2' },
   { id: ActiveView.DATA_IMPORT_V3, label: 'Importar Ventas 3', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV3' },
   { id: ActiveView.DATA_IMPORT_V4, label: 'Importar Ventas 4', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV4' },
+  { id: ActiveView.PLANES_MEDIANO_PLAZO, label: 'Planes a Mediano Plazo', icon: <CalendarClock className="w-5 h-5" />, href: '/dashboard/opciones/planes-mediano-plazo' },
   { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon />, href: '/dashboard/opciones/gestion-ausentismos' },
   { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon />, href: '/dashboard/opciones/calificacion-tecnica' },
   { id: ActiveView.MAINTENANCE, label: 'Gestion de Mantenimiento Programado', icon: <MaintenanceIcon />, href: '/dashboard/opciones/mantenimiento' },
@@ -149,6 +151,7 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.WORK_SHIFT_PLANNING,
   ActiveView.DICTIONARY,
   ActiveView.PLAN_SEMANAL,
+  ActiveView.PLANES_MEDIANO_PLAZO,
 ];
 
 // Items que van dentro de la sección "Parámetros" (contraíble)
