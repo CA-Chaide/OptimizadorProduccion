@@ -152,12 +152,31 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
       }
     });
 
-    return Array.from(aggregated.values()).sort((a, b) => a.maquina.localeCompare(b.maquina));
+    const individualRows = Array.from(aggregated.values()).sort((a, b) => a.maquina.localeCompare(b.maquina));
+
+    // Incluir fila combinada de HR-ARM01 y HR-ARM03 si existen (según requerimiento)
+    const m1 = aggregated.get("HR-ARM01");
+    const m3 = aggregated.get("HR-ARM03");
+
+    if (m1 || m3) {
+      individualRows.push({
+        maquina: "HR-ARM01&HR-ARM03",
+        sumTT_Armado: (m1?.sumTT_Armado || 0) + (m3?.sumTT_Armado || 0),
+        sumTT_CerradoL1: (m1?.sumTT_CerradoL1 || 0) + (m3?.sumTT_CerradoL1 || 0),
+        sumTT_Cerrado1L2: (m1?.sumTT_Cerrado1L2 || 0) + (m3?.sumTT_Cerrado1L2 || 0),
+        sumTT_Cerrado2L2: (m1?.sumTT_Cerrado2L2 || 0) + (m3?.sumTT_Cerrado2L2 || 0),
+        sumTT_CerradoL3: (m1?.sumTT_CerradoL3 || 0) + (m3?.sumTT_CerradoL3 || 0),
+      });
+    }
+
+    return individualRows;
   }, [selectedCenter, selectedDates, ordenes, groups, restrictions]);
 
-  // Totales generales
+  // Totales generales (ignora la fila combinada para no duplicar sumas)
   const totalGeneral = useMemo(() => {
-    return matrixData.reduce((acc, row) => ({
+    const baseRows = matrixData.filter(r => r.maquina !== "HR-ARM01&HR-ARM03");
+    
+    return baseRows.reduce((acc, row) => ({
       maquina: 'Total general',
       sumTT_Armado: acc.sumTT_Armado + row.sumTT_Armado,
       sumTT_CerradoL1: acc.sumTT_CerradoL1 + row.sumTT_CerradoL1,
@@ -306,7 +325,7 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
                         {matrixData.length > 0 ? (
                           <>
                             {matrixData.map((row, idx) => (
-                              <tr key={`ch-${centerId}-${row.maquina}-${idx}`} className="hover:bg-blue-50/30 border-b border-gray-200">
+                              <tr key={`ch-${centerId}-${row.maquina}-${idx}`} className={`hover:bg-blue-50/30 border-b border-gray-200 ${row.maquina === "HR-ARM01&HR-ARM03" ? "bg-indigo-50/40" : ""}`}>
                                 <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-900 border-r border-black">{row.maquina}</td>
                                 <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatHours(row.sumTT_Armado)}</td>
                                 <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatHours(row.sumTT_CerradoL1)}</td>
@@ -355,7 +374,7 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
                         {matrixData.length > 0 ? (
                           <>
                             {matrixData.map((row, idx) => (
-                              <tr key={`op-${centerId}-${row.maquina}-${idx}`} className="hover:bg-blue-50/30 border-b border-gray-200">
+                              <tr key={`op-${centerId}-${row.maquina}-${idx}`} className={`hover:bg-blue-50/30 border-b border-gray-200 ${row.maquina === "HR-ARM01&HR-ARM03" ? "bg-indigo-50/40" : ""}`}>
                                 <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-900 border-r border-black">{row.maquina}</td>
                                 <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatOperators(row.sumTT_Armado, totalHorasDia)}</td>
                                 <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-black">{formatOperators(row.sumTT_CerradoL1, totalHorasDia)}</td>
