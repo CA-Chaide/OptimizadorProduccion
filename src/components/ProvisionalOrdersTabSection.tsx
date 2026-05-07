@@ -230,11 +230,23 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             <tbody className="divide-y divide-gray-200">
               {displayedOrders.map((order, index) => (
                 <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-gray-50">
-                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => (
-                       <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
-                         {String((order as any)[col] ?? '-')}
-                       </td>
-                  ))}
+                  {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
+                    let displayValue = String((order as any)[col] ?? '-');
+                    
+                    // Transform 'MATERIAL' column to integer string (remove leading zeros)
+                    if (col === 'MATERIAL' && displayValue !== '-') {
+                      const num = parseInt(displayValue, 10);
+                      if (!isNaN(num)) {
+                        displayValue = num.toString();
+                      }
+                    }
+
+                    return (
+                      <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
+                        {displayValue}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
