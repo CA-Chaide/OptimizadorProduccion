@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { dataStore } from '@/services/DataStore';
-import { CalendarRange, Home, AlertCircle, Loader2 } from 'lucide-react';
+import { CalendarRange, Home, AlertCircle, Loader2, ChevronDown } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Grupo, Restriccion } from '@/types/interfaces';
 
@@ -26,6 +26,7 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
   
   const [ordenes, setOrdenes] = useState<any[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("");
+  const [selectedDates, setSelectedDates] = useState<Record<string, string>>({});
 
   // Suscribirse a cambios en el DataStore para obtener órdenes Fert
   useEffect(() => {
@@ -55,6 +56,32 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
     }
   }, [availableCenters, selectedCenter]);
 
+  // Obtener fechas únicas por centro
+  const availableDatesByCenter = useMemo(() => {
+    const datesMap: Record<string, string[]> = {};
+    availableCenters.forEach(centerId => {
+      const dates = [...new Set(ordenes
+        .filter(o => String(o.CENTRO || '').trim() === centerId)
+        .map(o => o.FECHA)
+      )].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+      datesMap[centerId] = dates;
+    });
+    return datesMap;
+  }, [ordenes, availableCenters]);
+
+  // Inicializar fecha seleccionada por centro
+  useEffect(() => {
+    const newSelectedDates = { ...selectedDates };
+    let changed = false;
+    availableCenters.forEach(centerId => {
+      if (!newSelectedDates[centerId] && availableDatesByCenter[centerId]?.length > 0) {
+        newSelectedDates[centerId] = availableDatesByCenter[centerId][0];
+        changed = true;
+      }
+    });
+    if (changed) setSelectedDates(newSelectedDates);
+  }, [availableDatesByCenter, availableCenters, selectedDates]);
+
   // Obtener rutas de la restricción HOJA_DE_RUTA
   const getRoutesForCenter = (centerId: string) => {
     const group = groups.find(g => String(g.centro).trim() === centerId);
@@ -73,8 +100,15 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
   const matrixData = useMemo(() => {
     if (!selectedCenter || ordenes.length === 0) return [];
     
+    const currentDate = selectedDates[selectedCenter];
+    if (!currentDate) return [];
+
     const routes = getRoutesForCenter(selectedCenter);
-    const centerOrders = ordenes.filter(o => String(o.CENTRO || '').trim() === selectedCenter);
+    // Filtrar por CENTRO y FECHA
+    const centerOrders = ordenes.filter(o => 
+      String(o.CENTRO || '').trim() === selectedCenter && 
+      o.FECHA === currentDate
+    );
     
     // Agrupar por Máquina
     const aggregated = new Map<string, RowAggregation>();
@@ -105,7 +139,39 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
     });
 
     return Array.from(aggregated.values()).sort((a, b) => a.maquina.localeCompare(b.maquina));
-  }, [selectedCenter, ordenes, groups, restrictions]);
+  }, [selectedCenter, selectedDates, ordenes, groups, restrictions]);
+
+  // Totales generales
+  const totalGeneral = useMemo(() => {
+    return matrixData.reduce((acc, row) => ({
+      maquina: 'Total general',
+      sumTT_Armado: acc.sumTT_Armado + row.sumTT_Armado,
+      sumTT_CerradoL1: acc.sumTT_CerradoL1 + row.sumTT_CerradoL1,
+      sumTT_Cerrado1L2: acc.sumTT_Cerrado1L2 + row.sumTT_Cerrado1L2,
+      sumTT_Cerrado2L2: acc.sumTT_Cerrado2L2 + row.sumTT_Cerrado2L2,
+      sumTT_CerradoL3: acc.sumTT_CerradoL3 + row.sumTT_CerradoL3,
+    }), {
+      maquina: 'Total general',
+      sumTT_Armado: 0,
+      sumTT_CerradoL1: 0,
+      sumTT_Cerrado1L2: 0,
+      sumTT_Cerrado2L2: 0,
+      sumTT_CerradoL3: 0
+    });
+  }, [matrixData]);
+
+  const handleDateChange = (centerId: string, date: string) => {
+    setSelectedDates(prev => ({ ...prev, [centerId]: date }));
+  };
+
+  const formatHours = (minutes: number, decimals: number = 0) => {
+    const hours = minutes / 60;
+    if (hours === 0) return "0";
+    return hours.toLocaleString(undefined, { 
+      minimumFractionDigits: decimals, 
+      maximumFractionDigits: 2 
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -134,7 +200,26 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
         </TabsList>
 
         {availableCenters.map(centerId => (
-          <TabsContent key={centerId} value={centerId} className="mt-0">
+          <TabsContent key={centerId} value={centerId} className="mt-0 space-y-4">
+            {/* Filtro de Fecha - Estilo Screenshot */}
+            <div className="flex items-center gap-4">
+               <div className="flex items-center bg-[#cceeff] border border-[#99ccff] rounded px-2 py-1 min-w-[250px]">
+                 <span className="text-xs font-semibold text-gray-700 mr-2">Fecha</span>
+                 <select 
+                    value={selectedDates[centerId] || ""} 
+                    onChange={(e) => handleDateChange(centerId, e.target.value)}
+                    className="bg-transparent text-xs font-medium text-gray-900 outline-none flex-1 cursor-pointer"
+                 >
+                    {availableDatesByCenter[centerId]?.map(date => (
+                      <option key={date} value={date}>{date}</option>
+                    ))}
+                    {(!availableDatesByCenter[centerId] || availableDatesByCenter[centerId].length === 0) && (
+                      <option value="">No hay fechas disponibles</option>
+                    )}
+                 </select>
+               </div>
+            </div>
+
             {ordenes.length === 0 ? (
               <div className="bg-white rounded-lg shadow-sm border border-dashed border-gray-300 py-24 flex flex-col items-center justify-center text-center">
                 <Loader2 className="w-10 h-10 text-indigo-300 animate-spin mb-4" />
@@ -145,64 +230,72 @@ export const ProgDiariaTabSection: React.FC<ProgDiariaTabSectionProps> = ({ grou
               <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-[#f0f9ff]">
+                    <thead className="bg-[#cceeff]">
                       <tr>
-                        <th className="px-6 py-3 text-left text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-blue-100">Máquina</th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-blue-100">Suma de TT Armado</th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-blue-100">Suma de TT Cerrado L1</th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-blue-100">Suma de TT Cerrado1 L2</th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-blue-100">Suma de TT Cerrado2 L2</th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider">Suma de TT Cerrado L3</th>
+                        <th className="px-4 py-2 text-left text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">
+                          <div className="flex items-center gap-1">
+                            Máquina
+                            <ChevronDown className="w-3 h-3" />
+                          </div>
+                        </th>
+                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">Suma de TT Armado</th>
+                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">Suma de TT Cerrado L1</th>
+                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">Suma de TT Cerrado1 L2</th>
+                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider border-r border-[#99ccff]">Suma de TT Cerrado2 L2</th>
+                        <th className="px-4 py-2 text-right text-[11px] font-bold text-gray-700 uppercase tracking-wider">Suma de TT Cerrado L3</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">
-                      {matrixData.length > 0 ? matrixData.map((row, idx) => (
-                        <tr key={`${centerId}-${row.maquina}-${idx}`} className="hover:bg-blue-50/30 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-900 border-r border-gray-50">{row.maquina}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm font-mono font-medium text-right text-gray-600 border-r border-gray-50">
-                            {(row.sumTT_Armado / 60).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm font-mono font-medium text-right text-gray-600 border-r border-gray-50">
-                            {(row.sumTT_CerradoL1 / 60).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm font-mono font-medium text-right text-gray-600 border-r border-gray-50">
-                            {(row.sumTT_Cerrado1L2 / 60).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm font-mono font-medium text-right text-gray-600 border-r border-gray-50">
-                            {(row.sumTT_Cerrado2L2 / 60).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm font-mono font-medium text-right text-gray-600">
-                            {(row.sumTT_CerradoL3 / 60).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      )) : (
+                      {matrixData.length > 0 ? (
+                        <>
+                          {matrixData.map((row, idx) => (
+                            <tr key={`${centerId}-${row.maquina}-${idx}`} className="hover:bg-blue-50/30 transition-colors">
+                              <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-900 border-r border-gray-50">{row.maquina}</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-gray-50">
+                                {formatHours(row.sumTT_Armado)}
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-gray-50">
+                                {formatHours(row.sumTT_CerradoL1)}
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-gray-50">
+                                {formatHours(row.sumTT_Cerrado1L2)}
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600 border-r border-gray-50">
+                                {formatHours(row.sumTT_Cerrado2L2)}
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-xs font-mono text-right text-gray-600">
+                                {formatHours(row.sumTT_CerradoL3)}
+                              </td>
+                            </tr>
+                          ))}
+                          {/* Fila de Total General */}
+                          <tr className="bg-[#cceeff]/40 font-bold border-t-2 border-[#99ccff]">
+                            <td className="px-4 py-2 text-xs text-gray-700 uppercase border-r border-[#99ccff]">Total general</td>
+                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-[#99ccff]">
+                              {formatHours(totalGeneral.sumTT_Armado, 2)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-[#99ccff]">
+                              {formatHours(totalGeneral.sumTT_CerradoL1, 2)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-[#99ccff]">
+                              {formatHours(totalGeneral.sumTT_Cerrado1L2, 2)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900 border-r border-[#99ccff]">
+                              {formatHours(totalGeneral.sumTT_Cerrado2L2, 2)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-900">
+                              {formatHours(totalGeneral.sumTT_CerradoL3, 2)}
+                            </td>
+                          </tr>
+                        </>
+                      ) : (
                         <tr>
                           <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">
-                            No hay rutas configuradas para este centro.
+                            No hay información disponible para la fecha seleccionada.
                           </td>
                         </tr>
                       )}
                     </tbody>
-                    <tfoot className="bg-gray-50 font-bold border-t-2 border-blue-100">
-                      <tr>
-                        <td className="px-6 py-3 text-xs text-gray-700 uppercase">Totales Planta {centerId}</td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-indigo-700 border-r border-gray-100">
-                          {(matrixData.reduce((s, r) => s + r.sumTT_Armado, 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-indigo-700 border-r border-gray-100">
-                          {(matrixData.reduce((s, r) => s + r.sumTT_CerradoL1, 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-indigo-700 border-r border-gray-100">
-                          {(matrixData.reduce((s, r) => s + r.sumTT_Cerrado1L2, 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-indigo-700 border-r border-gray-100">
-                          {(matrixData.reduce((s, r) => s + r.sumTT_Cerrado2L2, 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-indigo-700">
-                          {(matrixData.reduce((s, r) => s + r.sumTT_CerradoL3, 0) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
               </div>
