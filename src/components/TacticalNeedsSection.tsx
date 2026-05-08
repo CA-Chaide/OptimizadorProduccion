@@ -24,6 +24,7 @@ interface ParentInfo {
 interface GroupedNeed {
   codigoComponente: string;
   nombreComponente: string;
+  unidad: string;
   totalUnidades: number;
   items: ParentInfo[];
 }
@@ -73,11 +74,12 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
             explosionData.forEach((comp: any) => {
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
+              const unitRaw = String(comp.UNIDAD || comp.UNIDAD_COMPONENTE || 'U').trim();
               
               if (!compCode) return;
 
-              // FILTRO REQUERIDO: Solo "LAMINA CILINDRICA"
-              if (!descRaw.includes('LAMINA CILINDRICA')) return;
+              // FILTRO ACTUALIZADO: LAMINA CILINDRICA o BLOQUE FORMULADO
+              if (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO')) return;
 
               const unitaryQty = Number(comp.CANTIDAD_UNITARIA || 0);
               const totalNeeded = orderQty * unitaryQty;
@@ -95,6 +97,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
                 consolidatedMap.set(compCode, {
                   codigoComponente: compCode,
                   nombreComponente: descRaw,
+                  unidad: unitRaw,
                   totalUnidades: totalNeeded,
                   items: [{
                     nombrePadre: orderName,
@@ -115,7 +118,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
 
       const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalUnidades - a.totalUnidades);
       setGroupedNeeds(results);
-      logger.log(`[TacticalNeeds] Explosión finalizada. ${results.length} láminas identificadas.`);
+      logger.log(`[TacticalNeeds] Explosión finalizada. ${results.length} ítems identificados.`);
 
     } catch (err) {
       console.error(err);
@@ -141,7 +144,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
           </div>
           <div>
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Cálculo de Necesidades por Componente</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión BOM / Filtro: LAMINA CILINDRICA</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión BOM / Filtro: LÁMINA CILÍNDRICA - BLOQUE FORMULADO</p>
           </div>
         </div>
         
@@ -179,8 +182,9 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
           <table className="w-full border-collapse text-[10px] font-sans">
             <thead className="bg-[#9db65b] text-white uppercase font-black tracking-tighter">
               <tr>
-                <th className="px-5 py-4 text-left w-[35%] border-r border-white/10">Nombre Componente</th>
-                <th className="px-5 py-4 w-[15%] border-r border-white/10">Componente</th>
+                <th className="px-5 py-4 text-left w-[30%] border-r border-white/10">Nombre Componente</th>
+                <th className="px-5 py-4 w-[12%] border-r border-white/10">Componente</th>
+                <th className="px-4 py-4 w-[8%] border-r border-white/10 text-center">UM</th>
                 <th className="px-5 py-4 text-left w-[25%] border-r border-white/10">Nombre (Padre)</th>
                 <th className="px-5 py-4 w-[10%] border-r border-white/10">Material (Padre)</th>
                 <th className="px-5 py-4 text-left">Puesto Trabajo</th>
@@ -203,9 +207,12 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
                     <td className="px-5 py-3 font-black text-center text-[#6d7f3f] bg-[#e9edc9]/10">
                       {group.codigoComponente}
                     </td>
+                    <td className="px-4 py-3 font-black text-center text-slate-400">
+                      {group.unidad}
+                    </td>
                     <td colSpan={3} className="px-5 py-3 text-right">
                       <Badge className="bg-[#9db65b] text-white border-none font-black text-[9px] px-3">
-                        Total: {group.totalUnidades.toLocaleString(undefined, { maximumFractionDigits: 0 })} Unid.
+                        Total: {group.totalUnidades.toLocaleString(undefined, { maximumFractionDigits: 1 })} {group.unidad}
                       </Badge>
                     </td>
                   </tr>
@@ -215,6 +222,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
                     <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <td className="px-5 py-2 border-r border-gray-50"></td>
                       <td className="px-5 py-2 text-center text-gray-300 font-mono border-r border-gray-50">{group.codigoComponente}</td>
+                      <td className="px-4 py-2 text-center text-gray-300 font-mono border-r border-gray-50">{group.unidad}</td>
                       <td className="px-5 py-2 text-left uppercase text-gray-500 font-bold border-r border-gray-50">{item.nombrePadre}</td>
                       <td className="px-5 py-2 text-center font-black text-indigo-400 border-r border-gray-50 tracking-tighter">{item.materialPadre}</td>
                       <td className="px-5 py-2 text-left font-black text-slate-400 uppercase italic">
@@ -227,7 +235,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
 
               {!isProcessing && groupedNeeds.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-24 text-center bg-gray-50/30">
+                  <td colSpan={6} className="py-24 text-center bg-gray-50/30">
                     <div className="flex flex-col items-center gap-3 opacity-20">
                       <Layers className="w-12 h-12 text-slate-300" />
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos de explosión sincronizados</p>

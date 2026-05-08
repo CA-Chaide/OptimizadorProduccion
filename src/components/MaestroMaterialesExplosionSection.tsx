@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
@@ -18,6 +18,7 @@ interface MaestroMaterialesExplosionSectionProps {
 interface ComponentRequirement {
   codigo: string;
   descripcion: string;
+  unidad: string;
   cantidadTotal: number;
   unidadesOriginales: number;
   conteoOrdenes: number;
@@ -69,11 +70,12 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
             explosionData.forEach((comp: any) => {
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
+              const unitRaw = String(comp.UNIDAD || comp.UNIDAD_COMPONENTE || 'U').trim();
               
               if (!compCode) return;
 
-              // FILTRO SOLICITADO: Solo "LAMINA CILINDRICA"
-              if (!descRaw.includes('LAMINA CILINDRICA')) return;
+              // FILTRO ACTUALIZADO: LAMINA CILINDRICA o BLOQUE FORMULADO
+              if (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO')) return;
 
               const unitaryQty = Number(comp.CANTIDAD_UNITARIA || 0);
               const totalNeeded = orderQty * unitaryQty;
@@ -86,6 +88,7 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
                 consolidatedMap.set(compCode, {
                   codigo: compCode,
                   descripcion: descRaw,
+                  unidad: unitRaw,
                   cantidadTotal: totalNeeded,
                   unidadesOriginales: unitaryQty,
                   conteoOrdenes: 1
@@ -104,9 +107,9 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
       setRequirements(results);
       
       const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-      logger.log(`[ExplosionBOM] Consolidación completada en ${duration}s. ${results.length} láminas cilíndricas identificadas.`);
-      inspector.captureVariable('consolidatedLaminaRequirements', results.length);
-      addNotification('success', `Explosión completada. Se identificaron ${results.length} tipos de láminas cilíndricas.`);
+      logger.log(`[ExplosionBOM] Consolidación completada en ${duration}s. ${results.length} ítems identificados.`);
+      inspector.captureVariable('consolidatedExplosionRequirements', results.length);
+      addNotification('success', `Explosión completada. Se identificaron ${results.length} tipos de láminas/bloques.`);
 
     } catch (err) {
       const msg = (err as Error).message;
@@ -129,7 +132,7 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
             <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Maestro de Materiales (Explosión BOM)</h3>
             <div className="flex items-center gap-2 mt-1">
               <Badge className="bg-slate-100 text-slate-600 font-bold border-slate-200 text-[9px] uppercase tracking-wider">
-                Filtro: LAMINA CILINDRICA
+                Filtros: LÁMINA CILÍNDRICA / BLOQUE FORMULADO
               </Badge>
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
                 {ordenes.length} órdenes procesadas
@@ -174,8 +177,8 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
              <Search className="w-6 h-6 text-indigo-400 absolute bottom-0 right-0 animate-bounce" />
           </div>
           <div className="max-w-sm mx-auto">
-            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Análisis de Láminas Cilindricas</h3>
-            <p className="text-xs text-gray-400 mt-2 mb-6">Inicie la explosión para identificar los requerimientos de láminas cilíndricas en el plan actual.</p>
+            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Análisis de Láminas y Bloques</h3>
+            <p className="text-xs text-gray-400 mt-2 mb-6">Inicie la explosión para identificar los requerimientos de láminas cilíndricas y bloques formulados en el plan actual.</p>
           </div>
         </div>
       ) : (
@@ -186,8 +189,9 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
                 <tr className="uppercase font-black tracking-tighter">
                   <th className="px-6 py-5 text-left border-r border-white/5 w-32">Componente</th>
                   <th className="px-6 py-5 text-left border-r border-white/5">Descripción del Material (Componente)</th>
-                  <th className="px-6 py-5 border-r border-white/5 w-24">Órdenes</th>
-                  <th className="px-8 py-5 text-right bg-indigo-600 w-48">Necesidad Total (U)</th>
+                  <th className="px-4 py-5 border-r border-white/5 w-20">UM</th>
+                  <th className="px-4 py-5 border-r border-white/5 w-24">Órdenes</th>
+                  <th className="px-8 py-5 text-right bg-indigo-600 w-48">Necesidad Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -201,7 +205,10 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
                     <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left font-black text-gray-700 uppercase tracking-tight">
                       {item.descripcion}
                     </td>
-                    <td className="px-6 py-4 border-r border-dashed border-gray-100">
+                    <td className="px-4 py-4 border-r border-dashed border-gray-100">
+                      <span className="font-black text-slate-400">{item.unidad}</span>
+                    </td>
+                    <td className="px-4 py-4 border-r border-dashed border-gray-100">
                       <div className="flex flex-col items-center">
                         <span className="font-black text-gray-900">{item.conteoOrdenes}</span>
                         <span className="text-[7px] font-bold text-gray-400 uppercase tracking-tighter">Hits BOM</span>
@@ -215,10 +222,10 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
               </tbody>
               <tfoot className="bg-slate-900 sticky bottom-0 z-20">
                 <tr className="font-black text-white uppercase text-[11px]">
-                  <td colSpan={2} className="px-6 py-5 text-right border-r border-white/5">
+                  <td colSpan={3} className="px-6 py-5 text-right border-r border-white/5">
                     <div className="flex items-center justify-end gap-2">
                       <FileText className="w-4 h-4 text-indigo-400" />
-                      Resumen Consolidado de Láminas:
+                      Resumen Consolidado:
                     </div>
                   </td>
                   <td className="px-6 py-5 text-center border-r border-white/5 font-mono">
