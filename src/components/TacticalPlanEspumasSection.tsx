@@ -42,7 +42,6 @@ const getParam = (restrictions: Restriccion[], key: string, defaultValue: number
 /**
  * PANEL DE CONTROL ESPECÍFICO PARA CENTRO 1000 (QUITO)
  * Visualización en Matriz Técnica con Recursos como Columnas
- * Aplica restricciones dinámicas y elimina horas extras
  */
 const ScheduleControlPanelC1000 = ({ 
   plannedHours, 
@@ -78,7 +77,7 @@ const ScheduleControlPanelC1000 = ({
 
   const totalEffectiveHours = processedResources.reduce((acc, m) => acc + m.effectiveTime, 0);
   const netCapacity = totalEffectiveHours * (rendParam.value / 100);
-  const utilization = netCapacity > 0 ? (plannedHours / netCapacity) * 100 : 0;
+  const utilizacion = netCapacity > 0 ? (plannedHours / netCapacity) * 100 : 0;
   const saldo = netCapacity - plannedHours;
 
   return (
@@ -87,23 +86,23 @@ const ScheduleControlPanelC1000 = ({
         <div className="flex items-center gap-3">
           <Clock className="w-5 h-5 text-blue-400" />
           <span className="text-xs font-black tracking-widest uppercase">
-            Control de Capacidad Dinámico - Planta 1000 (Quito)
+            Control de Capacidad - Planta 1000 (Quito)
           </span>
         </div>
         <Badge className={cn(
           "font-black text-[10px] px-4 py-1 rounded-full shadow-inner",
-          utilization <= 100 ? "bg-green-500 text-white" : "bg-red-500 text-white"
+          utilizacion <= 100 ? "bg-green-500 text-white" : "bg-red-500 text-white"
         )}>
-          {utilization <= 100 ? "CAPACIDAD NORMAL" : "SOBRECARGA DETECTADA"}
+          {utilizacion <= 100 ? "CAPACIDAD NORMAL" : "SOBRECARGA DETECTADA"}
         </Badge>
       </div>
 
-      <div className="bg-white border-x border-b border-gray-200 rounded-b-2xl shadow-2xl overflow-hidden">
+      <div className="bg-white border-x border-b border-gray-200 rounded-b-2xl shadow-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-center border-collapse text-[11px]">
             <thead>
               <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
-                <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Parámetros de Tiempo</th>
+                <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Parámetros</th>
                 {processedResources.map(m => (
                   <th key={m.id} className="px-4 py-4 text-indigo-900 border-l border-gray-100">{m.name}</th>
                 ))}
@@ -111,21 +110,21 @@ const ScheduleControlPanelC1000 = ({
             </thead>
             <tbody className="divide-y divide-gray-50">
               <tr className="hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-3 text-left font-bold text-gray-600 sticky left-0 bg-white border-r border-gray-50">Turno 1 (Día)</td>
+                <td className="px-4 py-3 text-left font-bold text-gray-600 sticky left-0 bg-white border-r border-gray-50">Turno Día (H)</td>
                 {processedResources.map(m => (
-                  <td key={m.id} className="px-4 py-3 font-mono text-gray-500">{m.t1.toFixed(2)}</td>
+                  <td key={m.id} className="px-4 py-3 font-mono">{m.t1.toFixed(1)}</td>
                 ))}
               </tr>
               <tr className="hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-3 text-left font-bold text-gray-600 sticky left-0 bg-white border-r border-gray-50">Turno 2 (Noche)</td>
+                <td className="px-4 py-3 text-left font-bold text-gray-600 sticky left-0 bg-white border-r border-gray-50">Turno Noche (H)</td>
                 {processedResources.map(m => (
-                  <td key={m.id} className="px-4 py-3 font-mono text-gray-500">{m.t2.toFixed(2)}</td>
+                  <td key={m.id} className="px-4 py-3 font-mono">{m.t2.toFixed(1)}</td>
                 ))}
               </tr>
               <tr className="hover:bg-gray-50/50 transition-colors bg-red-50/30">
-                <td className="px-4 py-3 text-left font-bold text-red-700 sticky left-0 bg-red-50/50 border-r border-red-100">Deducciones (Comida/Pausas)</td>
+                <td className="px-4 py-3 text-left font-bold text-red-700 sticky left-0 bg-red-50/50 border-r border-red-100">Deducciones (H)</td>
                 {processedResources.map(m => (
-                  <td key={m.id} className="px-4 py-3 font-mono text-red-400">-{ (m.p1 + m.p2).toFixed(2) }</td>
+                  <td key={m.id} className="px-4 py-3 font-mono text-red-500">-{ (m.p1 + m.p2).toFixed(2) }</td>
                 ))}
               </tr>
               <tr className="bg-slate-50 font-black">
@@ -159,12 +158,12 @@ const ScheduleControlPanelC1000 = ({
               </span>
            </div>
 
-           <div className={cn("p-4 flex flex-col items-center justify-center px-6", utilization <= 100 ? "bg-green-50/50" : "bg-red-50/50")}>
+           <div className={cn("p-4 flex flex-col items-center justify-center px-6", utilizacion <= 100 ? "bg-green-50/50" : "bg-red-50/50")}>
               <div className="flex items-center gap-2 mb-1">
-                <Activity className={cn("w-4 h-4", utilization <= 100 ? "text-green-600" : "text-red-600")} />
-                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">UTILIZACIÓN: {utilization.toFixed(1)}%</span>
+                <Activity className={cn("w-4 h-4", utilizacion <= 100 ? "text-green-600" : "text-red-600")} />
+                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">UTILIZACIÓN: {utilizacion.toFixed(1)}%</span>
               </div>
-              <Progress value={Math.min(utilization, 100)} className={cn("h-1.5 w-full", utilization > 100 ? "[&>div]:bg-red-500" : "[&>div]:bg-primary")} />
+              <Progress value={Math.min(utilizacion, 100)} className={cn("h-1.5 w-full", utilizacion > 100 ? "[&>div]:bg-red-500" : "[&>div]:bg-primary")} />
            </div>
         </div>
       </div>
@@ -174,7 +173,6 @@ const ScheduleControlPanelC1000 = ({
 
 /**
  * PANEL DE CONTROL ORIGINAL PARA CENTRO 2000 (GUAYAQUIL)
- * Mantiene la visualización de lista original para consistencia
  */
 const ScheduleControlPanelC2000 = ({ 
   plannedHours, 
@@ -200,7 +198,7 @@ const ScheduleControlPanelC2000 = ({
 
   const totalBaseHours = processedResources.reduce((acc, m) => acc + m.baseHours, 0);
   const netCapacity = totalBaseHours * (rendParam.value / 100);
-  const utilization = netCapacity > 0 ? (plannedHours / netCapacity) * 100 : 0;
+  const utilizacion = netCapacity > 0 ? (plannedHours / netCapacity) * 100 : 0;
   const saldo = netCapacity - plannedHours;
 
   return (
@@ -212,8 +210,8 @@ const ScheduleControlPanelC2000 = ({
             Evaluación de Capacidad - Planta 2000 (Guayaquil)
           </span>
         </div>
-        <Badge className={cn("font-black text-[10px] px-4 py-1 rounded-full", utilization <= 100 ? "bg-green-500" : "bg-red-500")}>
-          {utilization <= 100 ? "NORMAL" : "SOBRECARGA"}
+        <Badge className={cn("font-black text-[10px] px-4 py-1 rounded-full", utilizacion <= 100 ? "bg-green-500" : "bg-red-500")}>
+          {utilizacion <= 100 ? "NORMAL" : "SOBRECARGA"}
         </Badge>
       </div>
 
@@ -253,9 +251,9 @@ const ScheduleControlPanelC2000 = ({
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Saldo: {saldo.toFixed(1)}h</span>
            </div>
-           <div className="p-4 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black uppercase text-gray-500">UTILIZACIÓN: {utilization.toFixed(1)}%</span>
-              <Progress value={Math.min(utilization, 100)} className="h-1.5 w-full mt-1" />
+           <div className="p-4 flex flex-col items-center justify-center px-6">
+              <span className="text-[10px] font-black uppercase text-gray-500">UTILIZACIÓN: {utilizacion.toFixed(1)}%</span>
+              <Progress value={Math.min(utilizacion, 100)} className={cn("h-1.5 w-full mt-1", utilizacion > 100 ? "[&>div]:bg-red-500" : "[&>div]:bg-primary")} />
            </div>
         </div>
       </div>
