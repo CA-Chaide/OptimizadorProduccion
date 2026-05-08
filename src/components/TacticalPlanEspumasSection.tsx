@@ -1,9 +1,8 @@
-
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, ChevronsLeft, ChevronsRight, Activity } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, Activity } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
@@ -41,96 +40,61 @@ const getParam = (restrictions: Restriccion[], key: string, defaultValue: number
 };
 
 /**
- * COMPONENTE: Plan de Control de Horarios y Evaluación de Capacidad
+ * PANEL DE CONTROL ESPECÍFICO PARA CENTRO 1000 (QUITO)
+ * Visualización en Matriz Técnica con Recursos como Columnas
  */
-const ScheduleControlPanel = ({ 
+const ScheduleControlPanelC1000 = ({ 
   plannedHours, 
-  restrictions, 
-  centroId, 
-  resources 
+  restrictions 
 }: { 
   plannedHours: number, 
-  restrictions: Restriccion[], 
-  centroId: string,
-  resources: { id: string, name: string, defaultT1?: number, defaultT2?: number }[]
+  restrictions: Restriccion[] 
 }) => {
-  const isQuito = centroId === '1000';
-  
-  // Parámetros técnicos obtenidos de las restricciones del grupo
-  // Quito: 90%, Guayaquil: 75%
-  const rendParam = getParam(restrictions, isQuito ? 'RENDIMIENTO_PROCESO' : 'RENDIMIENTO_PROCESO_GYE', isQuito ? 90 : 75);
-  
-  // Jornada predeterminada: 12 horas (Turno 1)
-  const shiftHoursParam = getParam(restrictions, 'HORAS_TRABAJO', 12); 
-  // Turno noche predeterminado: 10 horas (Turno 2)
-  const nightShiftParam = getParam(restrictions, 'HORAS_TRABAJO_NOCHE', 10);
-  
-  const maxExtrasParam = getParam(restrictions, 'MAX_EXTRAS_HORAS', 2);
-  const paroParam = getParam(restrictions, 'PARO_PROGRAMADO', 0.68); 
+  // Consumo de Restricciones Dinámicas
+  const t1Param = getParam(restrictions, 'HORAS_TRABAJO_DÍA', 12);
+  const t2Param = getParam(restrictions, 'HORAS_TRABAJO_Noche', 10);
+  const comidaParam = getParam(restrictions, 'MINUTOS_COMIDAS', 45);
+  const pausasParam = getParam(restrictions, 'Pausas Activas', 15);
+  const rendParam = getParam(restrictions, 'RENDIMIENTO_PROCESO', 90);
+
+  // Deducción calculada en horas (Comida + Pausas)
+  const deductionHours = (comidaParam.value + pausasParam.value) / 60;
+
+  const resources = [
+    { id: 'FECKEN', name: 'Fecken' },
+    { id: 'MAQUINA_3', name: 'Máquina 3' },
+    { id: 'MAQUINA_1', name: 'Máquina 1', specialT1: 4 }, // Máquina 1 tiene 4h operativos en T1
+    { id: 'CNC', name: 'CNC' }
+  ];
 
   const processedResources = resources.map(m => {
-    const t1 = getParam(restrictions, `${m.id}_T1`, m.defaultT1 ?? shiftHoursParam.value);
-    const t2 = getParam(restrictions, `${m.id}_T2`, m.defaultT2 ?? nightShiftParam.value); 
-    const p = getParam(restrictions, `${m.id}_PARO`, paroParam.value);
-    
-    // Capacidad Bruta = Turno 1 + Turno 2 - Paros
-    // Si hay turno 2, los paros suelen duplicarse (uno por entrada de turno)
-    const baseHours = t1.value + t2.value - (p.value * (t2.value > 0 ? 2 : 1));
-    const maxPotentialHours = baseHours + maxExtrasParam.value; 
-    
-    return { 
-      ...m, 
-      t1, 
-      t2, 
-      p, 
-      maxExtras: maxExtrasParam,
-      baseHours,
-      maxPotentialHours
-    };
+    const t1 = m.specialT1 ?? t1Param.value;
+    const t2 = t2Param.value;
+    const p1 = deductionHours;
+    const p2 = t2 > 0 ? deductionHours : 0;
+    const effectiveTime = (t1 + t2) - (p1 + p2);
+    return { ...m, t1, t2, p1, p2, effectiveTime };
   });
 
-  const totalBaseHours = processedResources.reduce((acc, m) => acc + m.baseHours, 0);
-  const totalMaxHours = processedResources.reduce((acc, m) => acc + m.maxPotentialHours, 0);
-  
-  // Capacidad Neta = Horas Brutas * Rendimiento
-  const netCapacityBase = totalBaseHours * (rendParam.value / 100);
-  const netCapacityMax = totalMaxHours * (rendParam.value / 100);
-  
-  const utilization = netCapacityBase > 0 ? (plannedHours / netCapacityBase) * 100 : 0;
-  const capacitySaldo = netCapacityBase - plannedHours;
-  
-  let status: 'NORMAL' | 'WARNING' | 'CRITICAL' = 'NORMAL';
-  let statusMessage = "CAPACIDAD NORMAL";
-  let recommendation = "El plan es factible dentro de la jornada normal.";
-  
-  if (plannedHours > netCapacityMax) {
-    status = 'CRITICAL';
-    statusMessage = "SOBRECARGA CRÍTICA";
-    recommendation = `La demanda excede la capacidad máxima (${netCapacityMax.toFixed(1)}h). Se requiere reprogramar órdenes.`;
-  } else if (plannedHours > netCapacityBase) {
-    status = 'WARNING';
-    statusMessage = "EXTRAS REQUERIDAS";
-    const extrasNeeded = (plannedHours / (rendParam.value / 100)) - totalBaseHours;
-    recommendation = `Se requiere programar aproximadamente ${extrasNeeded.toFixed(1)}h de extras en el turno.`;
-  }
+  const totalEffectiveHours = processedResources.reduce((acc, m) => acc + m.effectiveTime, 0);
+  const netCapacity = totalEffectiveHours * (rendParam.value / 100);
+  const utilization = netCapacity > 0 ? (plannedHours / netCapacity) * 100 : 0;
+  const saldo = netCapacity - plannedHours;
 
   return (
     <div className="mb-10 text-left font-sans animate-in fade-in slide-in-from-top-4 duration-700">
-      <div className={cn(
-        "text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6",
-        isQuito ? "bg-slate-900 border-b-2 border-blue-500" : "bg-indigo-950 border-b-2 border-indigo-400"
-      )}>
+      <div className="bg-slate-900 text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6 border-b-2 border-blue-500">
         <div className="flex items-center gap-3">
           <Clock className="w-5 h-5 text-blue-400" />
           <span className="text-xs font-black tracking-widest uppercase">
-            Control de Horarios y Evaluación de Capacidad - Planta {centroId}
+            Control de Capacidad Dinámico - Planta 1000 (Quito)
           </span>
         </div>
         <Badge className={cn(
           "font-black text-[10px] px-4 py-1 rounded-full shadow-inner",
-          status === 'NORMAL' ? "bg-green-500 text-white" : status === 'WARNING' ? "bg-amber-500 text-white" : "bg-red-500 text-white"
+          utilization <= 100 ? "bg-green-500 text-white" : "bg-red-500 text-white"
         )}>
-          {statusMessage}
+          {utilization <= 100 ? "CAPACIDAD NORMAL" : "SOBRECARGA DETECTADA"}
         </Badge>
       </div>
 
@@ -139,40 +103,44 @@ const ScheduleControlPanel = ({
           <table className="w-full text-center border-collapse text-[11px]">
             <thead>
               <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
-                <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Recurso Operativo</th>
-                <th className="px-4 py-4">Turno Día (12H)</th>
-                <th className="px-4 py-4 text-indigo-600">Turno Noche (10H)</th>
-                <th className="px-4 py-4 text-gray-400">Paros Programados (H)</th>
-                <th className="px-4 py-4 text-blue-600">Límite Horas Extras (H)</th>
-                <th className="px-4 py-4 font-black bg-slate-50 text-slate-900">Capacidad Bruta</th>
+                <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Parámetros de Tiempo</th>
+                {processedResources.map(m => (
+                  <th key={m.id} className="px-4 py-4 text-indigo-900 border-l border-gray-100">{m.name}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {processedResources.map(m => (
-                <tr key={m.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3 text-left font-bold text-gray-700 sticky left-0 bg-white border-r border-gray-50">{m.name}</td>
-                  <td className="px-4 py-3 font-mono text-gray-600">
-                    <div className="flex items-center justify-center gap-1">
-                      {m.t1.value.toFixed(1)} {m.t1.isOverridden && <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-indigo-700 font-medium">
-                    <div className="flex items-center justify-center gap-1">
-                      {m.t2.value.toFixed(1)} {m.t2.isOverridden && <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-red-400 italic">-{m.p.value.toFixed(2)}</td>
-                  <td className="px-4 py-3 font-mono text-blue-600 font-bold">+{m.maxExtras.value.toFixed(1)}</td>
-                  <td className="px-4 py-3 font-mono font-black text-slate-800 bg-slate-50/50">{m.baseHours.toFixed(2)}</td>
-                </tr>
-              ))}
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="px-4 py-3 text-left font-bold text-gray-600 sticky left-0 bg-white border-r border-gray-50">Turno 1 (Día)</td>
+                {processedResources.map(m => (
+                  <td key={m.id} className="px-4 py-3 font-mono text-gray-500">{m.t1.toFixed(2)}</td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="px-4 py-3 text-left font-bold text-gray-600 sticky left-0 bg-white border-r border-gray-50">Turno 2 (Noche)</td>
+                {processedResources.map(m => (
+                  <td key={m.id} className="px-4 py-3 font-mono text-gray-500">{m.t2.toFixed(2)}</td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors bg-red-50/30">
+                <td className="px-4 py-3 text-left font-bold text-red-700 sticky left-0 bg-red-50/50 border-r border-red-100">Deducciones (Comida/Pausas)</td>
+                {processedResources.map(m => (
+                  <td key={m.id} className="px-4 py-3 font-mono text-red-400">-{ (m.p1 + m.p2).toFixed(2) }</td>
+                ))}
+              </tr>
+              <tr className="bg-slate-50 font-black">
+                <td className="px-4 py-3 text-left text-slate-900 sticky left-0 bg-slate-50 border-r border-gray-200">Tiempo Bruto Efectivo (H)</td>
+                {processedResources.map(m => (
+                  <td key={m.id} className="px-4 py-3 font-mono text-slate-800">{m.effectiveTime.toFixed(2)}</td>
+                ))}
+              </tr>
             </tbody>
           </table>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 border-t border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-gray-200">
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-gray-50/30">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Rendimiento Estimado</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Rendimiento Proceso</span>
               <div className="flex items-center gap-2">
                 <span className="text-2xl font-black text-slate-800 font-mono">{rendParam.value}%</span>
                 {rendParam.isOverridden && <ShieldCheck className="w-4 h-4 text-blue-500" />}
@@ -180,46 +148,115 @@ const ScheduleControlPanel = ({
            </div>
            
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-blue-50/20">
-              <span className="text-[10px] font-black text-blue-400 uppercase tracking-tighter mb-1">Capacidad Neta (H)</span>
-              <span className="text-2xl font-black text-indigo-600 font-mono">{netCapacityBase.toFixed(1)}h</span>
-           </div>
-
-           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-amber-50/10">
-              <span className="text-[10px] font-black text-amber-400 uppercase tracking-tighter mb-1">Horas Requeridas (Plan)</span>
-              <span className="text-2xl font-black text-amber-600 font-mono">{plannedHours.toFixed(1)}h</span>
+              <span className="text-[10px] font-black text-blue-400 uppercase tracking-tighter mb-1">Capacidad Neta Planta (H)</span>
+              <span className="text-2xl font-black text-indigo-600 font-mono">{netCapacity.toFixed(1)}h</span>
            </div>
 
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Saldo Operativo</span>
-              <span className={cn(
-                "text-2xl font-black font-mono",
-                capacitySaldo < 0 ? "text-red-600" : "text-green-600"
-              )}>
-                {capacitySaldo.toFixed(1)}h
+              <span className={cn("text-2xl font-black font-mono", saldo < 0 ? "text-red-600" : "text-green-600")}>
+                {saldo.toFixed(1)}h
               </span>
            </div>
 
-           <div className={cn(
-             "p-4 flex flex-col items-start justify-center px-6",
-             status === 'NORMAL' ? "bg-green-50/50" : status === 'WARNING' ? "bg-amber-50/50" : "bg-red-50/50"
-           )}>
+           <div className={cn("p-4 flex flex-col items-center justify-center px-6", utilization <= 100 ? "bg-green-50/50" : "bg-red-50/50")}>
               <div className="flex items-center gap-2 mb-1">
-                {status === 'NORMAL' ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
+                <Activity className={cn("w-4 h-4", utilization <= 100 ? "text-green-600" : "text-red-600")} />
                 <span className="text-[10px] font-black uppercase tracking-tighter text-gray-500">UTILIZACIÓN: {utilization.toFixed(1)}%</span>
               </div>
-              <p className="text-[10px] font-bold text-gray-800 leading-tight">{recommendation}</p>
+              <Progress value={Math.min(utilization, 100)} className={cn("h-1.5 w-full", utilization > 100 ? "[&>div]:bg-red-500" : "[&>div]:bg-primary")} />
            </div>
         </div>
-        
-        {/* Barra de progreso visual de carga */}
-        <div className="px-6 pb-4 pt-2 bg-white">
-          <Progress 
-            value={Math.min(utilization, 100)} 
-            className={cn(
-              "h-1.5",
-              status === 'NORMAL' ? "[&>div]:bg-green-500" : status === 'WARNING' ? "[&>div]:bg-amber-500" : "[&>div]:bg-red-500"
-            )} 
-          />
+      </div>
+    </div>
+  );
+};
+
+/**
+ * PANEL DE CONTROL ORIGINAL PARA CENTRO 2000 (GUAYAQUIL)
+ * Mantiene la visualización de lista original
+ */
+const ScheduleControlPanelC2000 = ({ 
+  plannedHours, 
+  restrictions, 
+  resources 
+}: { 
+  plannedHours: number, 
+  restrictions: Restriccion[], 
+  resources: { id: string, name: string, defaultT1?: number, defaultT2?: number }[]
+}) => {
+  const rendParam = getParam(restrictions, 'RENDIMIENTO_PROCESO_GYE', 75);
+  const shiftHoursParam = getParam(restrictions, 'HORAS_TRABAJO', 12); 
+  const nightShiftParam = getParam(restrictions, 'HORAS_TRABAJO_NOCHE', 10);
+  const paroParam = getParam(restrictions, 'PARO_PROGRAMADO', 0.68); 
+
+  const processedResources = resources.map(m => {
+    const t1 = getParam(restrictions, `${m.id}_T1`, m.defaultT1 ?? shiftHoursParam.value);
+    const t2 = getParam(restrictions, `${m.id}_T2`, m.defaultT2 ?? nightShiftParam.value); 
+    const p = getParam(restrictions, `${m.id}_PARO`, paroParam.value);
+    const baseHours = t1.value + t2.value - (p.value * (t2.value > 0 ? 2 : 1));
+    return { ...m, t1, t2, p, baseHours };
+  });
+
+  const totalBaseHours = processedResources.reduce((acc, m) => acc + m.baseHours, 0);
+  const netCapacity = totalBaseHours * (rendParam.value / 100);
+  const utilization = netCapacity > 0 ? (plannedHours / netCapacity) * 100 : 0;
+  const saldo = netCapacity - plannedHours;
+
+  return (
+    <div className="mb-10 text-left font-sans">
+      <div className="bg-indigo-950 text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6 border-b-2 border-indigo-400">
+        <div className="flex items-center gap-3">
+          <Clock className="w-5 h-5 text-indigo-400" />
+          <span className="text-xs font-black tracking-widest uppercase">
+            Evaluación de Capacidad - Planta 2000 (Guayaquil)
+          </span>
+        </div>
+        <Badge className={cn("font-black text-[10px] px-4 py-1 rounded-full", utilization <= 100 ? "bg-green-500" : "bg-red-500")}>
+          {utilization <= 100 ? "NORMAL" : "SOBRECARGA"}
+        </Badge>
+      </div>
+
+      <div className="bg-white border-x border-b border-gray-200 rounded-b-2xl shadow-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-center border-collapse text-[11px]">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
+                <th className="px-4 py-4 text-left w-48">Recurso Operativo</th>
+                <th className="px-4 py-4">Turno Día</th>
+                <th className="px-4 py-4">Turno Noche</th>
+                <th className="px-4 py-4 text-red-400">Paros (H)</th>
+                <th className="px-4 py-4 font-black bg-slate-50">Capacidad Bruta</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {processedResources.map(m => (
+                <tr key={m.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-4 py-3 text-left font-bold text-gray-700">{m.name}</td>
+                  <td className="px-4 py-3 font-mono">{m.t1.value.toFixed(1)}</td>
+                  <td className="px-4 py-3 font-mono">{m.t2.value.toFixed(1)}</td>
+                  <td className="px-4 py-3 font-mono text-red-400">-{m.p.value.toFixed(2)}</td>
+                  <td className="px-4 py-3 font-mono font-black text-slate-800 bg-slate-50/50">{m.baseHours.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-gray-200">
+           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Rendimiento: {rendParam.value}%</span>
+           </div>
+           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-blue-50/20">
+              <span className="text-[10px] font-black text-blue-400 uppercase tracking-tighter">Capacidad Neta: {netCapacity.toFixed(1)}h</span>
+           </div>
+           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Saldo: {saldo.toFixed(1)}h</span>
+           </div>
+           <div className="p-4 flex flex-col items-center justify-center">
+              <span className="text-[10px] font-black uppercase text-gray-500">UTILIZACIÓN: {utilization.toFixed(1)}%</span>
+              <Progress value={Math.min(utilization, 100)} className="h-1.5 w-full mt-1" />
+           </div>
         </div>
       </div>
     </div>
@@ -346,7 +383,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     } else {
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
-      
       const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
       if (tipoMatch) dimensions.tipo = tipoMatch[1].toUpperCase();
     }
@@ -406,9 +442,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
   
-  const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
-  const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
-
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; tipo: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
     data.forEach(o => {
@@ -442,8 +475,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
   const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
-
-  if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -518,17 +549,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Popover>
           </div>
 
-          <ScheduleControlPanel 
-            centroId="1000" 
-            plannedHours={summaryTotals1000.timeLog} 
-            restrictions={restricciones}
-            resources={[
-              { id: 'FECKEN', name: 'Fecken' },
-              { id: 'MAQUINA_3', name: 'Máquina 3' },
-              { id: 'MAQUINA_1', name: 'Máquina 1', defaultT1: 4 },
-              { id: 'CNC', name: 'CNC' }
-            ]}
-          />
+          <ScheduleControlPanelC1000 plannedHours={summaryTotals1000.timeLog} restrictions={restricciones} />
 
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-green-700">
@@ -582,8 +603,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Card>
           </div>
 
-          <ScheduleControlPanel 
-            centroId="2000" 
+          <ScheduleControlPanelC2000 
             plannedHours={summaryTotals2000.timeLog} 
             restrictions={restricciones}
             resources={[
@@ -709,8 +729,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30 font-black">ALT. TOT.</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-black">NRO. SUBBLOQUE</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/10 font-bold">Batch. Carga Carrusel</th>
-                        {center.id === '1000' && <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-bold">Nro. Bloque Formulado</th>}
                         <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold">Nro. Cargas Subbloque</th>
                         <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">Tiempo Operativo</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
@@ -722,7 +740,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                         const hasCategory = String(o.CATEGORIA || '').trim() !== '' && String(o.CATEGORIA || '').trim() !== 'N/A';
-                        let alturaTotal = 0, nSubItem = 0, bloques20mItem = 0, tiempoLogistico = 0, totalCargas = 0, subbloquesPorCarga = 0;
+                        let alturaTotal = 0, nSubItem = 0, tiempoLogistico = 0, totalCargas = 0;
                         if (hasCategory) {
                           const e = parseFloat(info.esp) || 0;
                           const d = parseFloat(info.dens) || 0;
@@ -731,11 +749,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           alturaTotal = qty * e;
                           const usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
                           nSubItem = alturaTotal / usefulHeight;
-                          bloques20mItem = (w * nSubItem) / 2000;
                           const logic = calculateCargasLogic(nSubItem, w, l);
-                          subbloquesPorCarga = logic.subbloquesPorCarga;
                           totalCargas = logic.totalCargas;
-                          const physicalBlocks = Math.ceil(bloques20mItem);
+                          const itemBloques20m = (w * nSubItem) / 2000;
+                          const physicalBlocks = Math.ceil(itemBloques20m);
                           tiempoLogistico = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
                         }
                         return (
@@ -744,7 +761,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-2 font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase">{String(o.CATEGORIA || o.Categoria || '—')}</td>
+                            <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase text-[9px]">{String(o.CATEGORIA || o.Categoria || '—')}</td>
                             <td className="px-3 py-2 font-black text-amber-700 border-r border-gray-100 bg-amber-50/5 uppercase">{info.tipo}</td>
                             <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.dens : '—'}</td>
                             <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-gray-100 bg-blue-50/10">{hasCategory ? info.apertura : '—'}</td>
@@ -754,8 +771,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
                             <td className="px-2 py-2 font-mono font-bold text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{hasCategory ? alturaTotal.toFixed(1) : '—'}</td>
                             <td className="px-2 py-2 font-mono font-bold text-orange-700 border-r border-gray-100 bg-orange-50/10">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-blue-800 border-r border-gray-100 bg-blue-50/5">{hasCategory ? subbloquesPorCarga : '—'}</td>
-                            {center.id === '1000' && <td className="px-2 py-2 font-mono font-bold text-orange-900 border-r border-gray-100 bg-orange-50/10">{hasCategory ? bloques20mItem.toFixed(1) : '—'}</td>}
                             <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? Math.ceil(totalCargas) : '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold border-r border-gray-100 text-teal-600 bg-teal-50/10">{hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-100 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
@@ -770,8 +785,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="px-3 py-2 font-mono">{center.totals.units.toLocaleString()}</td>
                         <td className="px-2 py-2 font-mono text-indigo-200">{(center.totals.units * 15).toFixed(0)}</td>
                         <td className="px-2 py-2 font-mono text-orange-200">{center.totals.subbloques.toFixed(1)}</td>
-                        <td className="px-2 py-2"></td>
-                        {center.id === '1000' && <td className="px-2 py-2 font-mono text-orange-200">{center.totals.bloques20m.toFixed(1)}</td>}
                         <td className="px-2 py-2 font-mono text-purple-200">{Math.ceil(center.totals.cargas)}</td>
                         <td className="px-4 py-2 font-mono text-teal-300">{center.totals.timeLog.toFixed(2)}</td>
                         <td></td>
