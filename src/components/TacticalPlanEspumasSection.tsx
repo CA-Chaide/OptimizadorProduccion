@@ -21,6 +21,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
+import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
+import { TacticalNeedsSection } from './TacticalNeedsSection';
 
 // --- CONSTANTES TÉCNICAS ---
 const MACHINE_RADIO_CM = 350;    
@@ -32,7 +34,7 @@ const SECONDS_CART_SWAP = 60;
  * Helper para obtener valores de restricciones
  */
 const getParam = (restrictions: Restriccion[], key: string, defaultValue: number) => {
-  const r = restrictions.find(res => res.nombre_restriccion.toUpperCase() === key.toUpperCase());
+  const r = restrictions.find(res => res.nombre_restriccion.toUpperCase().replace(/\s+/g, '_') === key.toUpperCase().replace(/\s+/g, '_'));
   if (r) {
     return { value: parseFloat(r.valor_restriccion) || defaultValue, isOverridden: true };
   }
@@ -50,27 +52,28 @@ const ScheduleControlPanelC1000 = ({
   plannedHours: number, 
   restrictions: Restriccion[] 
 }) => {
+  // Extraer parámetros dinámicos del grupo
   const t1Param = getParam(restrictions, 'HORAS_TRABAJO_DÍA', 12);
   const t2Param = getParam(restrictions, 'HORAS_TRABAJO_Noche', 10);
   const comidaParam = getParam(restrictions, 'MINUTOS_COMIDAS', 45);
-  const pausasParam = getParam(restrictions, 'Pausas Activas', 15);
+  const pausasParam = getParam(restrictions, 'Pausas_Activas', 15);
   const rendParam = getParam(restrictions, 'RENDIMIENTO_PROCESO', 90);
 
-  // Deducción calculada en horas (Comida + Pausas)
-  const deductionHours = (comidaParam.value + pausasParam.value) / 60;
+  // Deducción calculada en horas (Comida + Pausas) por cada turno
+  const deductionHoursPerShift = (comidaParam.value + pausasParam.value) / 60;
 
   const resources = [
     { id: 'FECKEN', name: 'Fecken' },
     { id: 'MAQUINA_3', name: 'Máquina 3' },
-    { id: 'MAQUINA_1', name: 'Máquina 1', specialT1: 4 }, // Máquina 1 tiene 4h operativos en T1
+    { id: 'MAQUINA_1', name: 'Máquina 1', specialT1: 4 }, // Máquina 1 restringida a 4h en T1
     { id: 'CNC', name: 'CNC' }
   ];
 
   const processedResources = resources.map(m => {
     const t1 = m.specialT1 ?? t1Param.value;
     const t2 = t2Param.value;
-    const p1 = deductionHours;
-    const p2 = t2 > 0 ? deductionHours : 0;
+    const p1 = deductionHoursPerShift;
+    const p2 = t2 > 0 ? deductionHoursPerShift : 0;
     const effectiveTime = (t1 + t2) - (p1 + p2);
     return { ...m, t1, t2, p1, p2, effectiveTime };
   });
@@ -86,7 +89,7 @@ const ScheduleControlPanelC1000 = ({
         <div className="flex items-center gap-3">
           <Clock className="w-5 h-5 text-blue-400" />
           <span className="text-xs font-black tracking-widest uppercase">
-            Control de Capacidad - Planta 1000 (Quito)
+            Control de Capacidad - Planta 1000 (Corte y Laminado)
           </span>
         </div>
         <Badge className={cn(
@@ -102,7 +105,7 @@ const ScheduleControlPanelC1000 = ({
           <table className="w-full text-center border-collapse text-[11px]">
             <thead>
               <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
-                <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Parámetros</th>
+                <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Parámetros Operativos</th>
                 {processedResources.map(m => (
                   <th key={m.id} className="px-4 py-4 text-indigo-900 border-l border-gray-100">{m.name}</th>
                 ))}
@@ -137,8 +140,8 @@ const ScheduleControlPanelC1000 = ({
           </table>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-gray-200">
-           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center bg-gray-50/30">
+        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-gray-200 bg-gray-50/10">
+           <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Rendimiento Proceso</span>
               <div className="flex items-center gap-2">
                 <span className="text-2xl font-black text-slate-800 font-mono">{rendParam.value}%</span>
@@ -152,7 +155,7 @@ const ScheduleControlPanelC1000 = ({
            </div>
 
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Saldo Operativo</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Saldo de Horas</span>
               <span className={cn("text-2xl font-black font-mono", saldo < 0 ? "text-red-600" : "text-green-600")}>
                 {saldo.toFixed(1)}h
               </span>
@@ -207,11 +210,11 @@ const ScheduleControlPanelC2000 = ({
         <div className="flex items-center gap-3">
           <Clock className="w-5 h-5 text-indigo-400" />
           <span className="text-xs font-black tracking-widest uppercase">
-            Evaluación de Capacidad - Planta 2000 (Guayaquil)
+            Capacidad Operativa - Planta 2000 (Guayaquil)
           </span>
         </div>
         <Badge className={cn("font-black text-[10px] px-4 py-1 rounded-full", utilizacion <= 100 ? "bg-green-500" : "bg-red-500")}>
-          {utilizacion <= 100 ? "NORMAL" : "SOBRECARGA"}
+          {utilizacion <= 100 ? "CAPACIDAD NORMAL" : "SOBRECARGA"}
         </Badge>
       </div>
 
@@ -220,11 +223,11 @@ const ScheduleControlPanelC2000 = ({
           <table className="w-full text-center border-collapse text-[11px]">
             <thead>
               <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
-                <th className="px-4 py-4 text-left w-48">Recurso Operativo</th>
+                <th className="px-4 py-4 text-left w-48">Recurso</th>
                 <th className="px-4 py-4">Turno Día</th>
                 <th className="px-4 py-4">Turno Noche</th>
                 <th className="px-4 py-4 text-red-400">Paros (H)</th>
-                <th className="px-4 py-4 font-black bg-slate-50">Capacidad Bruta</th>
+                <th className="px-4 py-4 font-black bg-slate-50 border-l border-gray-100">Capacidad Bruta</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -234,7 +237,7 @@ const ScheduleControlPanelC2000 = ({
                   <td className="px-4 py-3 font-mono">{m.t1.value.toFixed(1)}</td>
                   <td className="px-4 py-3 font-mono">{m.t2.value.toFixed(1)}</td>
                   <td className="px-4 py-3 font-mono text-red-400">-{m.p.value.toFixed(2)}</td>
-                  <td className="px-4 py-3 font-mono font-black text-slate-800 bg-slate-50/50">{m.baseHours.toFixed(2)}</td>
+                  <td className="px-4 py-3 font-mono font-black text-slate-800 bg-slate-50/50 border-l border-gray-100">{m.baseHours.toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -249,7 +252,7 @@ const ScheduleControlPanelC2000 = ({
               <span className="text-[10px] font-black text-blue-400 uppercase tracking-tighter">Capacidad Neta: {netCapacity.toFixed(1)}h</span>
            </div>
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Saldo: {saldo.toFixed(1)}h</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Saldo Horas: {saldo.toFixed(1)}h</span>
            </div>
            <div className="p-4 flex flex-col items-center justify-center px-6">
               <span className="text-[10px] font-black uppercase text-gray-500">UTILIZACIÓN: {utilizacion.toFixed(1)}%</span>
