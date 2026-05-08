@@ -83,9 +83,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
-        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-        const data = res.data?.data || res.data || [];
-        if (Array.isArray(data)) allTiempos.push(...data);
+        try {
+          const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
+          const actualData = res.data?.data || res.data || [];
+          if (Array.isArray(actualData)) allTiempos.push(...actualData);
+        } catch (e) {
+          console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`);
+        }
       }
       setTiemposEnsamblado(allTiempos);
     } catch (error) {
@@ -149,15 +153,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
     
-    // Nueva lógica: Buscar patrón D + número + tipo dentro de la categoría
-    // Ej: CM-LAM-D15AMAF-206 -> D15 (densidad) y AMAF (tipo)
     const techPatternMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
     
     if (techPatternMatch) {
-      dimensions.dens = techPatternMatch[1]; // El número (15, 30, etc)
-      dimensions.tipo = techPatternMatch[2].toUpperCase(); // El tipo (AMAF, NR, etc)
+      dimensions.dens = techPatternMatch[1]; 
+      dimensions.tipo = techPatternMatch[2].toUpperCase(); 
     } else {
-      // Fallback a lógica anterior si no se encuentra en categoría
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
       const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
@@ -210,16 +211,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
   /**
-   * Lógica de Resumen Unificado con Restricción de 36 Bloques
+   * Lógica de Resumen Unificado con Separación por Apertura
    */
   const calculateUnifiedSummary = (data1000: any[], data2000: any[]) => {
     const groupsMap = new Map<string, { 
       fecha: string; 
       dens: string; 
       tipo: string; 
-      apertura: string; 
       bloques1000: number; 
       bloques2000: number; 
+      ap194_5: number;
+      ap206: number;
+      ap219: number;
       totalBloques: number;
       bloquesStock: number;
       bloquesCurado: number;
@@ -232,8 +235,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
         const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
         const info = extractMaterialInfo(o);
-        // Incluir 'tipo' en la llave para agrupar correctamente
-        const key = `${fecha}|${info.dens}|${info.tipo}|${info.apertura}`;
+        // Nueva agrupación: por fecha, densidad y tipo (separando aperturas por columnas)
+        const key = `${fecha}|${info.dens}|${info.tipo}`;
         
         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
         const ancho = parseFloat(info.ancho) || 0;
@@ -249,9 +252,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             fecha, 
             dens: info.dens, 
             tipo: info.tipo, 
-            apertura: info.apertura, 
             bloques1000: 0, 
             bloques2000: 0, 
+            ap194_5: 0,
+            ap206: 0,
+            ap219: 0,
             totalBloques: 0,
             bloquesStock: 0,
             bloquesCurado: 0,
@@ -263,11 +268,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const entry = groupsMap.get(key)!;
         if (centerId === '1000') entry.bloques1000 += itemBloques20m;
         else entry.bloques2000 += itemBloques20m;
+
+        // Distribución por apertura
+        if (info.apertura === '194.5') entry.ap194_5 += itemBloques20m;
+        else if (info.apertura === '206') entry.ap206 += itemBloques20m;
+        else if (info.apertura === '219') entry.ap219 += itemBloques20m;
         
-        // El total acumulado mantiene decimales para precisión (Requerimiento de usuario)
         entry.totalBloques = entry.bloques1000 + entry.bloques2000;
-        
-        // El plan de reposición aplica el redondeo superior para ser unidades enteras (Requerimiento de usuario)
         entry.planReposicion = Math.ceil(Math.max(0, entry.totalBloques - entry.bloquesStock + entry.bloquesProceso));
       });
     };
@@ -276,7 +283,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     processData(data2000, '2000');
 
     return Array.from(groupsMap.values()).sort((a, b) => 
-      a.fecha.localeCompare(b.fecha) || a.dens.localeCompare(b.dens) || a.tipo.localeCompare(b.tipo) || a.apertura.localeCompare(b.apertura)
+      a.fecha.localeCompare(b.fecha) || a.dens.localeCompare(b.dens) || a.tipo.localeCompare(b.tipo)
     );
   };
 
@@ -285,7 +292,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const dailyLoadSummary = useMemo(() => {
     const map = new Map<string, number>();
     unifiedSummaryData.forEach(row => {
-      // Usar planReposicion que ya es entero
       map.set(row.fecha, (map.get(row.fecha) || 0) + row.planReposicion);
     });
     return map;
@@ -295,6 +301,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return unifiedSummaryData.reduce((acc, row) => ({ 
       bloques1000: acc.bloques1000 + row.bloques1000,
       bloques2000: acc.bloques2000 + row.bloques2000,
+      ap194_5: acc.ap194_5 + row.ap194_5,
+      ap206: acc.ap206 + row.ap206,
+      ap219: acc.ap219 + row.ap219,
       totalBloques: acc.totalBloques + row.totalBloques,
       bloquesStock: acc.bloquesStock + row.bloquesStock,
       bloquesCurado: acc.bloquesCurado + row.bloquesCurado,
@@ -303,6 +312,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }), { 
       bloques1000: 0, 
       bloques2000: 0, 
+      ap194_5: 0,
+      ap206: 0,
+      ap219: 0,
       totalBloques: 0, 
       bloquesStock: 0, 
       bloquesCurado: 0, 
@@ -346,7 +358,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-primary" /></div>
               <div>
                 <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga Consolidado</p>
-                <h3 className="text-xs font-bold text-gray-700 uppercase">
+                <h3 className="text-sm font-black text-gray-700 uppercase">
                   {selectedDate === 'all' ? 'Plan Maestro Unificado (Quito & Guayaquil)' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
@@ -426,25 +438,30 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-primary">
-              <div className="w-2 h-2 rounded-full bg-primary" /> Resumen Maestro de Producción Unificado (Cerrado a Unidades de 20m)
+              <div className="w-2 h-2 rounded-full bg-primary" /> Resumen Maestro de Producción Unificado (Desglosado por Apertura)
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full border-collapse text-center font-sans">
                   <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
                     <tr>
-                      <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
-                      <th className="px-4 py-4 border-r border-gray-100">Descripción</th>
-                      <th className="px-4 py-4 border-r border-gray-100">Densidad</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Nro. Bloques (1000)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Nro. Bloques (2000)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado (U)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">BLOQUE STOCK</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">BLOQUE CURADO</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50 text-blue-900">BLOQUE PROCESO</th>
-                      <th className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">PLAN REPOSICIÓN</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100">Fecha</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100">Descripción</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100">Densidad</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
+                      <th colSpan={3} className="px-4 py-2 border-r border-gray-100 bg-blue-50/50 text-blue-800">Carga por Apertura (Blocks 20m)</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Nro. Bloques (1000)</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Nro. Bloques (2000)</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado (U)</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">BLOQUE STOCK</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">BLOQUE CURADO</th>
+                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 bg-blue-50 text-blue-900">BLOQUE PROCESO</th>
+                      <th rowSpan={2} className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">PLAN REPOSICIÓN</th>
+                    </tr>
+                    <tr className="bg-gray-50/50 text-[8px] border-b border-gray-100">
+                      <th className="px-2 py-2 border-r border-gray-100 text-blue-600 bg-blue-50/30">194.5</th>
+                      <th className="px-2 py-2 border-r border-gray-100 text-blue-600 bg-blue-50/30">206</th>
+                      <th className="px-2 py-2 border-r border-gray-100 text-blue-600 bg-blue-50/30">219</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-[10px]">
@@ -454,22 +471,27 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 font-black text-gray-400 border-r border-gray-50 uppercase text-[8px]">BLOQUE FORMULADO</td>
                         <td className="px-4 py-3 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
                         <td className="px-4 py-3 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
-                        <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
+                        {/* Columnas de Apertura */}
+                        <td className="px-2 py-3 font-mono text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.ap194_5 > 0 ? row.ap194_5.toFixed(1) : '—'}</td>
+                        <td className="px-2 py-3 font-mono text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.ap206 > 0 ? row.ap206.toFixed(1) : '—'}</td>
+                        <td className="px-2 py-3 font-mono text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.ap219 > 0 ? row.ap219.toFixed(1) : '—'}</td>
+                        
                         <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{row.bloques1000.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{row.bloques2000.toFixed(1)}</td>
-                        {/* Esta columna Total Bloque Formulado ahora muestra decimales por requerimiento */}
                         <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">{row.bloquesStock.toFixed(0)}</td>
                         <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">{row.bloquesCurado.toFixed(0)}</td>
                         <td className="px-4 py-3 font-mono text-blue-400 border-r border-gray-50 bg-blue-50/20">{row.bloquesProceso.toFixed(0)}</td>
-                        {/* Esta columna PLAN REPOSICION se mantiene en enteros cerrados */}
                         <td className="px-4 py-3 font-mono font-black text-emerald-600 bg-emerald-50/30">{row.planReposicion.toFixed(0)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-gray-800 text-white font-bold text-[10px]">
                     <tr>
-                      <td colSpan={5} className="px-4 py-3 text-right uppercase">Totales Consolidados:</td>
+                      <td colSpan={4} className="px-4 py-3 text-right uppercase">Totales Consolidados:</td>
+                      <td className="px-2 py-3 font-mono text-blue-200">{summaryTotals.ap194_5.toFixed(1)}</td>
+                      <td className="px-2 py-3 font-mono text-blue-200">{summaryTotals.ap206.toFixed(1)}</td>
+                      <td className="px-2 py-3 font-mono text-blue-200">{summaryTotals.ap219.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-green-300">{summaryTotals.bloques1000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-indigo-300">{summaryTotals.bloques2000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-orange-300">{summaryTotals.totalBloques.toFixed(1)}</td>
