@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
 
-  const [activeTab, setActiveTab] = useState('resumen');
+  const [activeTab, setActiveTab] = useState('plan');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
@@ -172,8 +172,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const matchResp = responsables.length === 0 || responsables.includes(itemResp);
       if (!matchResp) return false;
 
-      const itemAlm = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      
       const matInfo = extractMaterialInfo(o);
       const infoTiempo = tiemposMap.get(matInfo.code);
       const puesto = (infoTiempo?.puesto || '').toLowerCase();
@@ -210,12 +208,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-7 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
-            { v: 'necesidades', l: 'Necesidades', i: Layers }, 
-            { v: 'grupos', l: 'Grupos', i: Users }, 
-            { v: 'restricciones', l: 'Restricciones', i: Lock }, 
+            { v: 'plan', l: 'Resumen & Necesidades', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Tiempos', i: Clock },
             { v: 'maestro', l: 'M. Materiales', i: ClipboardList }
@@ -226,7 +221,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="resumen" className="space-y-6">
+        <TabsContent value="plan" className="space-y-6 animate-in fade-in duration-300">
+          {/* Header con Filtro de Fecha */}
           <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
@@ -273,72 +269,38 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Popover>
           </div>
 
-          <div className="bg-red-50/50 p-6 rounded-2xl border border-red-100 text-center space-y-2">
-            <h3 className="text-sm font-black text-red-800 uppercase tracking-widest">Estado de Carga - Planta 1000</h3>
-            <p className="text-xs text-red-600 font-medium max-w-md mx-auto">Visualización consolidada de órdenes filtradas por Responsable, Almacén y Sector.</p>
-            <div className="pt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
-                <p className="text-[9px] font-bold text-gray-400 uppercase">Grupos Activos</p>
-                <p className="text-xl font-black text-gray-800">{grupos.length}</p>
-              </div>
-              <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
-                <p className="text-[9px] font-bold text-gray-400 uppercase">Órdenes Filtradas</p>
+          {/* Estadísticas de Carga */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Filtradas</p>
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
               </div>
-              <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
-                <p className="text-[9px] font-bold text-gray-400 uppercase">Restricciones</p>
-                <p className="text-xl font-black text-gray-800">{restriccionesArray.length}</p>
-              </div>
-              <div className="bg-white p-3 rounded-xl shadow-sm border border-red-100">
-                <p className="text-[9px] font-bold text-gray-400 uppercase">Capacidad Base</p>
-                <p className="text-xl font-black text-green-600">NORMAL</p>
+            </div>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Puestos Acolchado</p>
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-indigo-600" />
+                <p className="text-xl font-black text-gray-800">
+                  {[...new Set(ordenesFiltradas.map(o => tiemposMap.get(extractMaterialInfo(o).code)?.puesto))].filter(p => p && p !== '—').length}
+                </p>
               </div>
             </div>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Unidades</p>
+              <p className="text-xl font-black text-gray-800">
+                {ordenesFiltradas.reduce((acc, o) => acc + Number(o.CANTPROGRAMADA || o.CANTIDAD || 0), 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Capacidad Neta</p>
+              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-3">FACTIBLE</Badge>
+            </div>
           </div>
-        </TabsContent>
 
-        <TabsContent value="necesidades">
+          {/* Monitor de Cálculo e Información de Necesidades */}
           <TacticalNeedsSection ordenes={ordenesFiltradas} tiempos={tiemposEnsamblado} />
-        </TabsContent>
-
-        <TabsContent value="grupos">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
-            {grupos.map(g => (
-              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
-                <div className="absolute top-0 left-0 w-1 h-full bg-red-600" />
-                <Badge className="bg-red-50 text-red-700 mb-2 font-bold text-[9px] uppercase border-red-200">PLANTA {g.centro}</Badge>
-                <h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4>
-                <p className="text-[9px] font-mono text-gray-400 mt-2">ID GRUPO: {g.codigo_grupo}</p>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="restricciones">
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <table className="w-full border-collapse text-center">
-              <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">ID Grupo</th>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro</th>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
-                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-[11px]">
-                {restriccionesArray.map(r => (
-                  <tr key={r.codigo_restriccion} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4 font-mono text-gray-400 border-r border-dashed border-gray-200">{r.codigo_grupo}</td>
-                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
-                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
-                      <Badge variant="outline" className="font-mono text-red-700 border-red-200 bg-red-50/50">{r.valor_restriccion}</Badge>
-                    </td>
-                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
         </TabsContent>
 
         <TabsContent value="ordenes">
