@@ -35,6 +35,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
+  
+  // Estado para capturar el total de KG calculado en la explosión
+  const [totalKgCalculated, setTotalKgCalculated] = useState<number>(0);
 
   const fetchGrupos = async () => {
     try {
@@ -288,9 +291,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Unidades</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total KG (Explosión)</p>
               <p className="text-xl font-black text-gray-800">
-                {ordenesFiltradas.reduce((acc, o) => acc + Number(o.CANTPROGRAMADA || o.CANTIDAD || 0), 0).toLocaleString()}
+                {totalKgCalculated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
@@ -300,7 +303,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
 
           {/* Monitor de Cálculo e Información de Necesidades */}
-          <TacticalNeedsSection ordenes={ordenesFiltradas} tiempos={tiemposEnsamblado} />
+          <TacticalNeedsSection 
+            ordenes={ordenesFiltradas} 
+            tiempos={tiemposEnsamblado} 
+            onTotalKgChange={setTotalKgCalculated}
+          />
         </TabsContent>
 
         <TabsContent value="ordenes">
@@ -314,7 +321,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-gray-100">Material</th>
                     <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                    <th className="px-3 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/20 font-black">T. estandar (H)</th>
                     <th className="px-3 py-4 border-r border-gray-100 font-black">Puesto Trabajo</th>
                     <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
                     <th className="px-3 py-4 font-black">Almacén</th>
@@ -326,8 +332,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                     
                     const match = tiemposMap.get(info.code);
-                    const stdMin = match?.tiempo || 0;
-                    const totalHours = (qty * stdMin) / 60;
                     const puestoTrabajo = match?.puesto || '—';
                     
                     return (
@@ -337,9 +341,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
                         <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
                         <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                        <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-50 bg-teal-50/5">
-                          {totalHours > 0 ? totalHours.toFixed(2) : '—'}
-                        </td>
                         <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{puestoTrabajo}</td>
                         <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
                         <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
@@ -361,7 +362,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-gray-100">Material</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100">Puesto Trabajo / Línea</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Estándar (Min)</th>
                     <th className="px-4 py-4">Stock Actual / Seguridad</th>
                   </tr>
                 </thead>
@@ -376,7 +376,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <div className="text-[10px]">{t.Linea || t.PuestoTrabajoLinea}</div>
                           <div className="text-[8px] font-mono opacity-60">{t.PuestoTrabajo}</div>
                         </td>
-                        <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
                         <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
                       </tr>
                     );

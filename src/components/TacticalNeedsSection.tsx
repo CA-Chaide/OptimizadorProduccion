@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { RefreshCw, Layers, ClipboardList, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
@@ -12,6 +12,7 @@ import { logger } from '@/services/LogService';
 interface TacticalNeedsSectionProps {
   ordenes: any[];
   tiempos: any[];
+  onTotalKgChange?: (total: number) => void;
 }
 
 interface ParentInfo {
@@ -29,7 +30,7 @@ interface GroupedNeed {
   items: ParentInfo[];
 }
 
-export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ ordenes, tiempos }) => {
+export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ ordenes, tiempos, onTotalKgChange }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [groupedNeeds, setGroupedNeeds] = useState<GroupedNeed[]>([]);
@@ -113,6 +114,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
 
       const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalUnidades - a.totalUnidades);
       setGroupedNeeds(results);
+      
+      // Calcular y notificar el total de KG al padre
+      const totalKg = results.reduce((sum, n) => sum + n.totalUnidades, 0);
+      onTotalKgChange?.(totalKg);
+
     } catch (err) {
       console.error(err);
     } finally {
