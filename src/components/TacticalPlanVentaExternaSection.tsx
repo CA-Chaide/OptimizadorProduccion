@@ -170,18 +170,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return { code, desc, ...dimensions };
   };
 
-  const getTiemposMap = (tiempos: any[]) => {
-    const map = new Map<string, number>();
-    tiempos.forEach(t => {
-      const info = extractMaterialInfo(t);
-      if (info.code) {
-        const timeVal = Number(t.Tiempo_Min ?? t.Tiempo ?? 0);
-        map.set(info.code, timeVal);
-      }
-    });
-    return map;
-  };
-
   const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
@@ -235,8 +223,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
-  const calculateSummary = (data: any[], tMap: Map<string, number>, centroId: string) => {
-    const map = new Map<string, { centro: string; maquina: string; categoria: string; espesor: string; tipo: string; totalOrdenes: number; totalCantidad: number; totalTiempoPL: number; totalTiempoEmpaque: number }>();
+  const calculateSummary = (data: any[], centroId: string) => {
+    const map = new Map<string, { centro: string; maquina: string; categoria: string; espesor: string; tipo: string; totalOrdenes: number; totalCantidad: number; totalTiempoEmpaque: number }>();
     data.forEach(o => {
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || '').trim();
       if (!categoria || categoria === 'N/A') return;
@@ -248,18 +236,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const key = `${maquina}|${categoria}|${espesor}|${tipo}`;
       
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      const minutesStandard = tMap.get(info.code) || 0;
-      const hoursPL = (qty * minutesStandard) / 60;
-      // Nuevo cálculo: Unidades * Tiempo de Empaque (15s) convertido a horas
+      // Cálculo: Unidades * Tiempo de Empaque (15s) convertido a horas
       const empaqueHours = (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
 
       if (!map.has(key)) {
-        map.set(key, { centro: centroId, maquina, categoria, espesor, tipo, totalOrdenes: 0, totalCantidad: 0, totalTiempoPL: 0, totalTiempoEmpaque: 0 });
+        map.set(key, { centro: centroId, maquina, categoria, espesor, tipo, totalOrdenes: 0, totalCantidad: 0, totalTiempoEmpaque: 0 });
       }
       const entry = map.get(key)!;
       entry.totalOrdenes += 1;
       entry.totalCantidad += qty;
-      entry.totalTiempoPL += hoursPL;
       entry.totalTiempoEmpaque += empaqueHours;
     });
     return Array.from(map.values()).sort((a, b) => 
@@ -267,8 +252,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     );
   };
 
-  const summaryData1000 = useMemo(() => calculateSummary(fertC1000, getTiemposMap(tiemposC1000), '1000'), [fertC1000, tiemposC1000]);
-  const summaryData2000 = useMemo(() => calculateSummary(fertC2000, getTiemposMap(tiemposC2000), '2000'), [fertC2000, tiemposC2000]);
+  const summaryData1000 = useMemo(() => calculateSummary(fertC1000, '1000'), [fertC1000]);
+  const summaryData2000 = useMemo(() => calculateSummary(fertC2000, '2000'), [fertC2000]);
 
   // Totales globales para el dashboard superior
   const globalStats = useMemo(() => {
@@ -276,7 +261,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return {
       ordenes: all.reduce((sum, r) => sum + r.totalOrdenes, 0),
       unidades: all.reduce((sum, r) => sum + r.totalCantidad, 0),
-      horasPL: all.reduce((sum, r) => sum + r.totalTiempoPL, 0),
       horasEmpaque: all.reduce((sum, r) => sum + r.totalTiempoEmpaque, 0)
     };
   }, [summaryData1000, summaryData2000]);
@@ -367,7 +351,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
 
           {/* Estadísticas de Carga - Dashboard Superior */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="p-4 border-none shadow-sm bg-blue-50/30 flex items-center gap-4">
               <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-600"><TrendingUp className="w-5 h-5" /></div>
               <div>
@@ -382,17 +366,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <p className="text-xl font-black text-gray-800">{globalStats.unidades.toLocaleString()}</p>
               </div>
             </Card>
-            <Card className="p-4 border-none shadow-sm bg-indigo-50/30 flex items-center gap-4">
-              <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-600"><Activity className="w-5 h-5" /></div>
-              <div>
-                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Horas PL (Prod)</p>
-                <p className="text-xl font-black text-gray-800">{globalStats.horasPL.toFixed(1)}h</p>
-              </div>
-            </Card>
             <Card className="p-4 border-none shadow-sm bg-amber-50/30 flex items-center gap-4">
               <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-600"><Box className="w-5 h-5" /></div>
               <div>
-                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Horas Empaque</p>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Horas Totales Empaque</p>
                 <p className="text-xl font-black text-gray-800">{globalStats.horasEmpaque.toFixed(1)}h</p>
               </div>
             </Card>
@@ -420,13 +397,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Espesor</th>
                         <th className="px-4 py-4 border-r border-gray-100">Órdenes</th>
                         <th className="px-4 py-4 border-r border-gray-100 font-black">Unidades</th>
-                        <th className="px-6 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Tiempo PL (H)</th>
                         <th className="px-6 py-4 text-center text-amber-700 bg-amber-50/30">Tiempo PL Empaque (H)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={8} className="py-16 text-center text-gray-400 font-bold uppercase tracking-widest opacity-30">Sin operaciones programadas</td></tr>
+                        <tr><td colSpan={7} className="py-16 text-center text-gray-400 font-bold uppercase tracking-widest opacity-30">Sin operaciones programadas</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/80 transition-colors">
@@ -436,7 +412,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-4 py-3 font-black text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.espesor}</td>
                             <td className="px-4 py-3 font-mono border-r border-gray-50 text-gray-400">{row.totalOrdenes}</td>
                             <td className="px-4 py-3 font-mono font-black text-gray-900 border-r border-gray-50">{row.totalCantidad.toLocaleString()}</td>
-                            <td className="px-6 py-3 font-mono font-black text-indigo-600 border-r border-gray-50 bg-indigo-50/5">{row.totalTiempoPL.toFixed(2)}</td>
                             <td className="px-6 py-3 font-mono font-black text-amber-600 text-center bg-amber-50/5">{row.totalTiempoEmpaque.toFixed(2)}</td>
                           </tr>
                         ))
@@ -448,7 +423,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <td colSpan={4} className="px-6 py-3 text-right tracking-widest">Total {center.t}</td>
                           <td className="px-4 py-3 font-mono border-r border-white/5">{center.d.reduce((s, r) => s + r.totalOrdenes, 0)}</td>
                           <td className="px-4 py-3 font-mono border-r border-white/5 text-green-300">{center.d.reduce((s, r) => s + r.totalCantidad, 0).toLocaleString()}</td>
-                          <td className="px-6 py-3 font-mono border-r border-white/5 text-indigo-300">{center.d.reduce((s, r) => s + r.totalTiempoPL, 0).toFixed(1)}h</td>
                           <td className="px-6 py-3 font-mono text-amber-300">{center.d.reduce((s, r) => s + r.totalTiempoEmpaque, 0).toFixed(1)}h</td>
                         </tr>
                       </tfoot>
@@ -500,8 +474,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="space-y-8 animate-in fade-in duration-300">
           {[ 
-            { t: 'Quito 1000 - Órdenes Provisionales', d: provC1000, tMap: getTiemposMap(tiemposC1000), b: 'bg-green-600', c: 'text-green-700' }, 
-            { t: 'Guayaquil 2000 - Órdenes Provisionales', d: provC2000, tMap: getTiemposMap(tiemposC2000), b: 'bg-indigo-600', c: 'text-indigo-700' } 
+            { t: 'Quito 1000 - Órdenes Provisionales', d: provC1000, b: 'bg-green-600', c: 'text-green-700' }, 
+            { t: 'Guayaquil 2000 - Órdenes Provisionales', d: provC2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
@@ -522,8 +496,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
                         <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                        <th className="px-3 py-4 border-r border-gray-100 text-indigo-700">T. PL (H)</th>
-                        <th className="px-3 py-4 border-r border-gray-100 text-amber-700 bg-amber-50/20">T. Empaque (H)</th>
+                        <th className="px-3 py-4 border-r border-gray-100 text-amber-700 bg-amber-50/20 font-black">T. Empaque (H)</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-bold">Máquina</th>
                         <th className="px-3 py-4">ALM.</th>
                       </tr>
@@ -532,13 +505,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                        const minutesStandard = center.tMap.get(info.code) || 0;
-                        const hoursPL = (qty * minutesStandard) / 60;
                         const empaqueHours = (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
@@ -547,9 +518,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.ancho}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.largo}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.esp}</td>
-                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                            <td className="px-3 py-2 font-mono font-bold text-indigo-600 border-r border-gray-50">{hoursPL.toFixed(2)}</td>
-                            <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-50 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
+                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-100 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
                             <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
@@ -565,8 +535,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
         <TabsContent value="ordenesFert" className="space-y-8 animate-in fade-in duration-300">
           {[ 
-            { t: 'Quito 1000 - Órdenes FERT', d: fertC1000, tMap: getTiemposMap(tiemposC1000), b: 'bg-green-600', c: 'text-green-700' }, 
-            { t: 'Guayaquil 2000 - Órdenes FERT', d: fertC2000, tMap: getTiemposMap(tiemposC2000), b: 'bg-indigo-600', c: 'text-indigo-700' } 
+            { t: 'Quito 1000 - Órdenes FERT', d: fertC1000, b: 'bg-green-600', c: 'text-green-700' }, 
+            { t: 'Guayaquil 2000 - Órdenes FERT', d: fertC2000, b: 'bg-indigo-600', c: 'text-indigo-700' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
@@ -587,7 +557,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
                         <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                        <th className="px-3 py-4 border-r border-gray-100 text-indigo-700 font-black">T. PL (H)</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-amber-700 bg-amber-50/20 font-black">T. Empaque (H)</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-bold">Máquina</th>
                         <th className="px-3 py-4">ALM.</th>
@@ -597,8 +566,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                        const minutesStandard = center.tMap.get(info.code) || 0;
-                        const hoursPL = (qty * minutesStandard) / 60;
                         const empaqueHours = (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
                         
                         return (
@@ -612,8 +579,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.ancho}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.largo}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.esp}</td>
-                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                            <td className="px-3 py-2 font-mono font-bold text-indigo-600 border-r border-gray-50">{hoursPL.toFixed(2)}</td>
+                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
                             <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-50 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
                             <td className="px-3 py-2 font-medium text-gray-400">{o.ALMACEN || '—'}</td>
@@ -638,7 +604,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
                   <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}
                 </h3>
-                <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
                   <div className="overflow-x-auto max-h-[400px]">
                     <table className="w-full border-collapse text-center">
                       <thead className="bg-gray-100 sticky top-0 text-[10px] font-bold uppercase text-gray-500">
