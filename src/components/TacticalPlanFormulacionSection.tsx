@@ -47,7 +47,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const res = await grupoService.getAll();
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
-        // Excluir específicamente el grupo 'formulación' que no está activo
         return (name.includes('espuma') || name.includes('corte y laminado')) && !name.includes('formulación');
       });
       setGrupos(filtered);
@@ -211,18 +210,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
   /**
-   * Lógica de Resumen Unificado con Separación por Apertura
+   * Lógica de Resumen Unificado con Agrupación por Apertura
    */
   const calculateUnifiedSummary = (data1000: any[], data2000: any[]) => {
     const groupsMap = new Map<string, { 
       fecha: string; 
       dens: string; 
       tipo: string; 
+      apertura: string;
       bloques1000: number; 
       bloques2000: number; 
-      ap194_5: number;
-      ap206: number;
-      ap219: number;
       totalBloques: number;
       bloquesStock: number;
       bloquesCurado: number;
@@ -235,8 +232,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
         const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
         const info = extractMaterialInfo(o);
-        // Nueva agrupación: por fecha, densidad y tipo (separando aperturas por columnas)
-        const key = `${fecha}|${info.dens}|${info.tipo}`;
+        const key = `${fecha}|${info.dens}|${info.tipo}|${info.apertura}`;
         
         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
         const ancho = parseFloat(info.ancho) || 0;
@@ -252,11 +248,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             fecha, 
             dens: info.dens, 
             tipo: info.tipo, 
+            apertura: info.apertura,
             bloques1000: 0, 
             bloques2000: 0, 
-            ap194_5: 0,
-            ap206: 0,
-            ap219: 0,
             totalBloques: 0,
             bloquesStock: 0,
             bloquesCurado: 0,
@@ -268,11 +262,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const entry = groupsMap.get(key)!;
         if (centerId === '1000') entry.bloques1000 += itemBloques20m;
         else entry.bloques2000 += itemBloques20m;
-
-        // Distribución por apertura
-        if (info.apertura === '194.5') entry.ap194_5 += itemBloques20m;
-        else if (info.apertura === '206') entry.ap206 += itemBloques20m;
-        else if (info.apertura === '219') entry.ap219 += itemBloques20m;
         
         entry.totalBloques = entry.bloques1000 + entry.bloques2000;
         entry.planReposicion = Math.ceil(Math.max(0, entry.totalBloques - entry.bloquesStock + entry.bloquesProceso));
@@ -283,7 +272,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     processData(data2000, '2000');
 
     return Array.from(groupsMap.values()).sort((a, b) => 
-      a.fecha.localeCompare(b.fecha) || a.dens.localeCompare(b.dens) || a.tipo.localeCompare(b.tipo)
+      a.fecha.localeCompare(b.fecha) || a.dens.localeCompare(b.dens) || a.tipo.localeCompare(b.tipo) || a.apertura.localeCompare(b.apertura)
     );
   };
 
@@ -298,29 +287,33 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [unifiedSummaryData]);
 
   const summaryTotals = useMemo(() => {
-    return unifiedSummaryData.reduce((acc, row) => ({ 
-      bloques1000: acc.bloques1000 + row.bloques1000,
-      bloques2000: acc.bloques2000 + row.bloques2000,
-      ap194_5: acc.ap194_5 + row.ap194_5,
-      ap206: acc.ap206 + row.ap206,
-      ap219: acc.ap219 + row.ap219,
-      totalBloques: acc.totalBloques + row.totalBloques,
-      bloquesStock: acc.bloquesStock + row.bloquesStock,
-      bloquesCurado: acc.bloquesCurado + row.bloquesCurado,
-      bloquesProceso: acc.bloquesProceso + row.bloquesProceso,
-      planReposicion: acc.planReposicion + row.planReposicion
-    }), { 
+    const base = { 
       bloques1000: 0, 
       bloques2000: 0, 
-      ap194_5: 0,
-      ap206: 0,
-      ap219: 0,
       totalBloques: 0, 
       bloquesStock: 0, 
       bloquesCurado: 0, 
       bloquesProceso: 0,
-      planReposicion: 0
-    });
+      planReposicion: 0,
+      byAperture: {} as Record<string, number>
+    };
+
+    return unifiedSummaryData.reduce((acc, row) => {
+      const ap = row.apertura || 'N/A';
+      if (!acc.byAperture[ap]) acc.byAperture[ap] = 0;
+      acc.byAperture[ap] += row.planReposicion;
+
+      return { 
+        ...acc,
+        bloques1000: acc.bloques1000 + row.bloques1000,
+        bloques2000: acc.bloques2000 + row.bloques2000,
+        totalBloques: acc.totalBloques + row.totalBloques,
+        bloquesStock: acc.bloquesStock + row.bloquesStock,
+        bloquesCurado: acc.bloquesCurado + row.bloquesCurado,
+        bloquesProceso: acc.bloquesProceso + row.bloquesProceso,
+        planReposicion: acc.planReposicion + row.planReposicion
+      };
+    }, base);
   }, [unifiedSummaryData]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
@@ -438,30 +431,25 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-primary">
-              <div className="w-2 h-2 rounded-full bg-primary" /> Resumen Maestro de Producción Unificado (Desglosado por Apertura)
+              <div className="w-2 h-2 rounded-full bg-primary" /> Resumen Maestro de Producción Unificado
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full border-collapse text-center font-sans">
                   <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
                     <tr>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100">Fecha</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100">Descripción</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100">Densidad</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
-                      <th colSpan={3} className="px-4 py-2 border-r border-gray-100 bg-blue-50/50 text-blue-800">Carga por Apertura (Blocks 20m)</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Nro. Bloques (1000)</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Nro. Bloques (2000)</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado (U)</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">BLOQUE STOCK</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">BLOQUE CURADO</th>
-                      <th rowSpan={2} className="px-4 py-4 border-r border-gray-100 bg-blue-50 text-blue-900">BLOQUE PROCESO</th>
-                      <th rowSpan={2} className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">PLAN REPOSICIÓN</th>
-                    </tr>
-                    <tr className="bg-gray-50/50 text-[8px] border-b border-gray-100">
-                      <th className="px-2 py-2 border-r border-gray-100 text-blue-600 bg-blue-50/30">194.5</th>
-                      <th className="px-2 py-2 border-r border-gray-100 text-blue-600 bg-blue-50/30">206</th>
-                      <th className="px-2 py-2 border-r border-gray-100 text-blue-600 bg-blue-50/30">219</th>
+                      <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
+                      <th className="px-4 py-4 border-r border-gray-100">Descripción</th>
+                      <th className="px-4 py-4 border-r border-gray-100">Densidad</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Nro. Bloques (1000)</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Nro. Bloques (2000)</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado (U)</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">BLOQUE STOCK</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">BLOQUE CURADO</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50 text-blue-900">BLOQUE PROCESO</th>
+                      <th className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">PLAN REPOSICIÓN</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-[10px]">
@@ -471,11 +459,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 font-black text-gray-400 border-r border-gray-50 uppercase text-[8px]">BLOQUE FORMULADO</td>
                         <td className="px-4 py-3 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
                         <td className="px-4 py-3 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
-                        {/* Columnas de Apertura */}
-                        <td className="px-2 py-3 font-mono text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.ap194_5 > 0 ? row.ap194_5.toFixed(1) : '—'}</td>
-                        <td className="px-2 py-3 font-mono text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.ap206 > 0 ? row.ap206.toFixed(1) : '—'}</td>
-                        <td className="px-2 py-3 font-mono text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.ap219 > 0 ? row.ap219.toFixed(1) : '—'}</td>
-                        
+                        <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{row.bloques1000.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{row.bloques2000.toFixed(1)}</td>
                         <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
@@ -487,11 +471,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     ))}
                   </tbody>
                   <tfoot className="bg-gray-800 text-white font-bold text-[10px]">
-                    <tr>
-                      <td colSpan={4} className="px-4 py-3 text-right uppercase">Totales Consolidados:</td>
-                      <td className="px-2 py-3 font-mono text-blue-200">{summaryTotals.ap194_5.toFixed(1)}</td>
-                      <td className="px-2 py-3 font-mono text-blue-200">{summaryTotals.ap206.toFixed(1)}</td>
-                      <td className="px-2 py-3 font-mono text-blue-200">{summaryTotals.ap219.toFixed(1)}</td>
+                    {/* Subtotales por Apertura */}
+                    {Object.entries(summaryTotals.byAperture).sort().map(([ap, total]) => (
+                      <tr key={`subtotal-ap-${ap}`} className="bg-indigo-900/40 border-b border-indigo-800/50">
+                        <td colSpan={11} className="px-4 py-2 text-right uppercase text-indigo-200 tracking-widest text-[9px]">Subtotal Apertura {ap}:</td>
+                        <td className="px-4 py-2 font-mono text-indigo-200">{total.toFixed(0)}</td>
+                      </tr>
+                    ))}
+                    {/* Total Consolidado */}
+                    <tr className="bg-slate-900">
+                      <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-widest">Total Maestro Consolidado:</td>
                       <td className="px-4 py-3 font-mono text-green-300">{summaryTotals.bloques1000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-indigo-300">{summaryTotals.bloques2000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-orange-300">{summaryTotals.totalBloques.toFixed(1)}</td>
@@ -563,7 +552,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
                         <th className="px-3 py-4 border-r border-gray-100">Material</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
-                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">Categoría</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900 font-black">Categoría</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/20 text-amber-900 font-black">Tipo</th>
                         <th className="px-2 py-4 border-r border-gray-100 font-black">Densidad</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/20">APERT.</th>
@@ -626,20 +615,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                           <th className="px-4 py-4 border-r border-gray-100">Material</th>
                           <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                           <th className="px-4 py-4 border-r border-gray-100">Línea</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Estándar (Min)</th>
-                          <th className="px-4 py-4">Stock / Seguridad</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-teal-600 font-black">Estándar (Min)</th>
+                          <th className="px-4 py-4">Inventario / Seguridad</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50 text-[11px]">
+                      <tbody className="divide-y divide-gray-50 text-[10px]">
                         {center.d.length === 0 ? (
-                          <tr><td colSpan={5} className="py-8 text-center text-gray-400 italic">No hay tiempos cargados para este centro</td></tr>
+                          <tr><td colSpan={5} className="py-12 text-center text-gray-400 italic">No hay tiempos técnicos registrados para este centro</td></tr>
                         ) : (
                           center.d.map((t, i) => {
                             const info = extractMaterialInfo(t);
                             return (
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                 <td className="px-4 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td>
-                                <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
+                                <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
                                 <td className="px-4 py-3 border-r border-dashed border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
                                 <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
                                 <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
