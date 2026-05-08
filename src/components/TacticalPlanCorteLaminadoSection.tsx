@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers } from 'lucide-react';
+import { Scissors, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -13,6 +14,14 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 import { TacticalNeedsSection } from './TacticalNeedsSection';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
+import { es } from 'date-fns/locale';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from '@/lib/utils';
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -24,6 +33,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string>('all');
+  const [viewDate, setViewDate] = useState(new Date());
 
   const fetchGrupos = async () => {
     try {
@@ -103,7 +114,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
-  // Mapa de Tiempos usando Código de 8 dígitos como ID
   const tiemposMap = useMemo(() => {
     const map = new Map<string, { tiempo: number; puesto: string }>();
     tiemposEnsamblado.forEach(t => {
@@ -118,7 +128,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return map;
   }, [tiemposEnsamblado]);
 
-  // Consolidación de Restricciones del Grupo
   const appliedRestrictionsSummary = useMemo(() => {
     const resps = restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map(r => r.valor_restriccion);
     const alms = restriccionesArray.filter(r => r.nombre_restriccion === 'ALMACEN').map(r => r.valor_restriccion);
@@ -131,7 +140,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     };
   }, [restriccionesArray]);
 
-  // Filtrado de Órdenes aplicando TODAS las restricciones del grupo + criterios específicos del usuario
+  const datesWithOrders = useMemo(() => {
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null' && d !== 'undefined') {
+        const normalized = d.includes('T') ? d.split('T')[0] : d;
+        dates.add(normalized);
+      }
+    });
+    return dates;
+  }, [ordenes]);
+
+  const calendarDays = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
+
   const ordenesFiltradas = useMemo(() => {
     const { responsables, almacenes, sectores } = appliedRestrictionsSummary;
 
@@ -144,29 +173,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       if (!matchResp) return false;
 
       const itemAlm = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      // Criterio Usuario: Almacén 1008
-      const isAlm1008 = itemAlm === '1008';
       
-      // Buscar el puesto de trabajo asociado al material de la orden
       const matInfo = extractMaterialInfo(o);
       const infoTiempo = tiemposMap.get(matInfo.code);
       const puesto = (infoTiempo?.puesto || '').toLowerCase();
-      // Criterio Usuario: Puesto Trabajo contiene "acolcha"
-      const isAcolcha = puesto.includes('acolcha');
-
-      // El usuario solicita explícitamente: (Puesto Trabajo contiene "acolcha" O Almacén 1008)
-      const matchesUserFilter = isAcolcha || isAlm1008;
       
-      if (!matchesUserFilter) return false;
+      const isAcolcha = puesto.includes('acolcha');
+      if (!isAcolcha) return false;
 
-      // Filtro de Sector según configuración del grupo
       const itemSector = String(o.SECTOR || o.Sector || o.SECTORDESC || '').trim();
       const matchSector = sectores.length === 0 || sectores.some(s => itemSector.includes(s));
       if (!matchSector) return false;
 
+      if (selectedDate !== 'all') {
+        const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
+        const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
+        if (itemDate !== selectedDate) return false;
+      }
+
       return true;
     });
-  }, [ordenes, appliedRestrictionsSummary, tiemposMap]);
+  }, [ordenes, appliedRestrictionsSummary, tiemposMap, selectedDate]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -200,6 +227,52 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6">
+          <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
+            <div className="flex items-center gap-4 text-left">
+              <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
+              <div>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
+                <h3 className="text-xs font-bold text-gray-700 uppercase">
+                  {selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                </h3>
+              </div>
+            </div>
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-10 px-6 rounded-2xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-xs uppercase transition-all shadow-sm">
+                  <Filter className="w-4 h-4" /> Fecha
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
+                <div className="bg-white p-4 font-sans">
+                  <div className="flex items-center justify-between mb-4 text-left">
+                    <h3 className="text-xs font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                    <div className="flex gap-1 bg-gray-50 rounded-xl p-1">
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-7 gap-y-1 text-center mb-3">
+                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[9px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
+                    {calendarDays.map((day, idx) => {
+                      if (!day) return <div key={`cal-pad-${idx}`} className="p-1" />;
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const isSelected = selectedDate === dateStr;
+                      return (
+                        <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-red-600 text-white shadow-md" : "hover:bg-gray-100")}>
+                          <span className={cn("text-xs font-bold", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                          {datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1.5 w-1 h-1 bg-red-600/40 rounded-full" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-8 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
           <div className="bg-red-50/50 p-6 rounded-2xl border border-red-100 text-center space-y-2">
             <h3 className="text-sm font-black text-red-800 uppercase tracking-widest">Estado de Carga - Planta 1000</h3>
             <p className="text-xs text-red-600 font-medium max-w-md mx-auto">Visualización consolidada de órdenes filtradas por Responsable, Almacén y Sector.</p>
@@ -290,7 +363,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     const info = extractMaterialInfo(o);
                     const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                     
-                    // Buscar coincidencia en el mapa de tiempos por ID de material
                     const match = tiemposMap.get(info.code);
                     const stdMin = match?.tiempo || 0;
                     const totalHours = (qty * stdMin) / 60;
