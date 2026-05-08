@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { RefreshCw, Layers, ClipboardList, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle } from 'lucide-react';
+import { RefreshCw, Layers, ClipboardList, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from '@/components/ui/badge';
@@ -35,13 +35,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
   const [groupedNeeds, setGroupedNeeds] = useState<GroupedNeed[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Helper para extraer código base de 8 dígitos
   const extractCode = (matStr: string): string => {
     const match = String(matStr).trim().match(/^(\d+)/);
     return match ? match[1].slice(-8) : String(matStr).slice(-8);
   };
 
-  // Rutina de procesamiento real (Explosión BOM)
   const processExplosion = async () => {
     if (!ordenes || ordenes.length === 0) return;
 
@@ -61,7 +59,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
         const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
         const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '');
 
-        // Obtener puesto de trabajo del catálogo de tiempos para el padre
         const infoTiempo = tiempos.find(t => extractCode(t.CodMaterial || '') === fertCode);
         const puestoPadre = infoTiempo?.PuestoTrabajo || '—';
 
@@ -74,11 +71,9 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
             explosionData.forEach((comp: any) => {
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-              const unitRaw = String(comp.UNIDAD || comp.UNIDAD_COMPONENTE || 'U').trim();
+              const unitRaw = String(comp.UNIDAD || comp.UNIDAD_COMPONENTE || 'KG').trim();
               
               if (!compCode) return;
-
-              // FILTRO ACTUALIZADO: LAMINA CILINDRICA o BLOQUE FORMULADO
               if (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO')) return;
 
               const unitaryQty = Number(comp.CANTIDAD_UNITARIA || 0);
@@ -118,8 +113,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
 
       const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalUnidades - a.totalUnidades);
       setGroupedNeeds(results);
-      logger.log(`[TacticalNeeds] Explosión finalizada. ${results.length} ítems identificados.`);
-
     } catch (err) {
       console.error(err);
     } finally {
@@ -134,53 +127,19 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
     setExpandedGroups(next);
   };
 
-  return (
-    <div className="space-y-4 text-left">
-      {/* Header y Control */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-[#9db65b]/10 rounded-2xl text-[#6d7f3f]">
-            <Layers className="w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Cálculo de Necesidades por Componente</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión BOM / Filtro: LÁMINA CILÍNDRICA - BLOQUE FORMULADO</p>
-          </div>
-        </div>
-        
-        <Button 
-          onClick={processExplosion}
-          disabled={isProcessing || ordenes.length === 0}
-          className="bg-[#9db65b] hover:bg-[#8aa14d] text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-[#9db65b]/20"
-        >
-          {isProcessing ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          ) : (
-            <PlayCircle className="w-4 h-4 mr-2" />
-          )}
-          {isProcessing ? 'Calculando Necesidades...' : 'Sincronizar Necesidades Real'}
-        </Button>
-      </div>
+  const laminasNeeds = useMemo(() => groupedNeeds.filter(n => n.nombreComponente.includes('LAMINA CILINDRICA')), [groupedNeeds]);
+  const bloquesNeeds = useMemo(() => groupedNeeds.filter(n => n.nombreComponente.includes('BLOQUE FORMULADO')), [groupedNeeds]);
 
-      {/* Barra de Progreso */}
-      {isProcessing && (
-        <div className="space-y-3 bg-[#f8f9f1] p-4 rounded-2xl border border-[#9db65b]/20 animate-in fade-in slide-in-from-top-2">
-          <div className="flex justify-between items-center text-[10px] font-black text-[#6d7f3f] uppercase tracking-widest">
-            <span className="flex items-center gap-2">
-              <Activity className="w-3 h-3" />
-              Procesando Explosión Masiva
-            </span>
-            <span>{progress.current} / {progress.total} órdenes</span>
-          </div>
-          <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-[#e9edc9] [&>div]:bg-[#9db65b]" />
-        </div>
-      )}
-
-      {/* Tabla de Resultados */}
+  const renderTable = (items: GroupedNeed[], title: string, icon: any, colorClass: string, bgColor: string, badgeColor: string) => (
+    <div className="space-y-3">
+      <h3 className={cn("text-[11px] font-black uppercase flex items-center gap-2 px-2 tracking-widest", colorClass)}>
+        {React.createElement(icon, { className: "w-4 h-4" })}
+        {title} ({items.length})
+      </h3>
       <div className="border rounded-2xl overflow-hidden bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[10px] font-sans">
-            <thead className="bg-[#9db65b] text-white uppercase font-black tracking-tighter">
+            <thead className={cn("text-white uppercase font-black tracking-tighter", bgColor)}>
               <tr>
                 <th className="px-5 py-4 text-left w-[30%] border-r border-white/10">Nombre Componente</th>
                 <th className="px-5 py-4 w-[12%] border-r border-white/10">Componente</th>
@@ -191,9 +150,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
               </tr>
             </thead>
             <tbody>
-              {groupedNeeds.map((group) => (
+              {items.map((group) => (
                 <React.Fragment key={group.codigoComponente}>
-                  {/* Fila de Grupo (Child Component) */}
                   <tr 
                     className="bg-[#e9edc9]/30 border-b border-[#9db65b]/10 cursor-pointer hover:bg-[#e9edc9]/50 transition-colors group"
                     onClick={() => toggleGroup(group.codigoComponente)}
@@ -211,13 +169,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
                       {group.unidad}
                     </td>
                     <td colSpan={3} className="px-5 py-3 text-right">
-                      <Badge className="bg-[#9db65b] text-white border-none font-black text-[9px] px-3">
-                        Total: {group.totalUnidades.toLocaleString(undefined, { maximumFractionDigits: 1 })} {group.unidad}
+                      <Badge className={cn("text-white border-none font-black text-[9px] px-3", badgeColor)}>
+                        Total: {group.totalUnidades.toLocaleString(undefined, { maximumFractionDigits: 2 })} {group.unidad}
                       </Badge>
                     </td>
                   </tr>
-
-                  {/* Filas de Detalle (Parents) */}
                   {expandedGroups.has(group.codigoComponente) && group.items.map((item, idx) => (
                     <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <td className="px-5 py-2 border-r border-gray-50"></td>
@@ -232,21 +188,69 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
                   ))}
                 </React.Fragment>
               ))}
-
-              {!isProcessing && groupedNeeds.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-24 text-center bg-gray-50/30">
-                    <div className="flex flex-col items-center gap-3 opacity-20">
-                      <Layers className="w-12 h-12 text-slate-300" />
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos de explosión sincronizados</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 text-left">
+      {/* Header y Control */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-[#9db65b]/10 rounded-2xl text-[#6d7f3f]">
+            <Layers className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Sincronización Táctica de Materia Prima</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Unificación de Láminas y Bloques (Consolidado en KG)</p>
+          </div>
+        </div>
+        
+        <Button 
+          onClick={processExplosion}
+          disabled={isProcessing || ordenes.length === 0}
+          className="bg-[#9db65b] hover:bg-[#8aa14d] text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-[#9db65b]/20"
+        >
+          {isProcessing ? (
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+          ) : (
+            <PlayCircle className="w-4 h-4 mr-2" />
+          )}
+          {isProcessing ? 'Procesando BOM...' : 'Sincronizar Necesidades'}
+        </Button>
+      </div>
+
+      {/* Barra de Progreso */}
+      {isProcessing && (
+        <div className="space-y-3 bg-[#f8f9f1] p-4 rounded-2xl border border-[#9db65b]/20 animate-in fade-in slide-in-from-top-2">
+          <div className="flex justify-between items-center text-[10px] font-black text-[#6d7f3f] uppercase tracking-widest">
+            <span className="flex items-center gap-2">
+              <Activity className="w-3 h-3" />
+              Calculando Explosión Masiva
+            </span>
+            <span>{progress.current} / {progress.total} órdenes</span>
+          </div>
+          <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-[#e9edc9] [&>div]:bg-[#9db65b]" />
+        </div>
+      )}
+
+      {/* Secciones de Resultados */}
+      {!isProcessing && groupedNeeds.length > 0 ? (
+        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          {laminasNeeds.length > 0 && renderTable(laminasNeeds, "A) Necesidades Lámina Cilíndrica", Scissors, "text-green-700", "bg-[#9db65b]", "bg-[#9db65b]")}
+          {bloquesNeeds.length > 0 && renderTable(bloquesNeeds, "B) Bloque Formulado", Box, "text-indigo-700", "bg-indigo-600", "bg-indigo-600")}
+        </div>
+      ) : !isProcessing && (
+        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 space-y-6">
+          <div className="flex flex-col items-center gap-3 opacity-20">
+            <Layers className="w-12 h-12 text-slate-300" />
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos de explosión sincronizados</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, DatabaseZap, PlayCircle, AlertCircle, FileText, Search, Activity } from 'lucide-react';
+import { ClipboardList, Loader2, DatabaseZap, PlayCircle, AlertCircle, FileText, Search, Activity, Scissors, Box } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
@@ -50,11 +50,8 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
     setProgress({ current: 0, total: ordenes.length });
 
     const consolidatedMap = new Map<string, ComponentRequirement>();
-    const startTime = Date.now();
 
     try {
-      logger.log(`[ExplosionBOM] Iniciando procesamiento de ${ordenes.length} órdenes...`);
-
       for (let i = 0; i < ordenes.length; i++) {
         const order = ordenes[i];
         const fertCode = extractCode(order.MATERIAL || order.CodMaterial || '');
@@ -70,11 +67,9 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
             explosionData.forEach((comp: any) => {
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-              const unitRaw = String(comp.UNIDAD || comp.UNIDAD_COMPONENTE || 'U').trim();
+              const unitRaw = String(comp.UNIDAD || comp.UNIDAD_COMPONENTE || 'KG').trim();
               
               if (!compCode) return;
-
-              // FILTRO ACTUALIZADO: LAMINA CILINDRICA o BLOQUE FORMULADO
               if (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO')) return;
 
               const unitaryQty = Number(comp.CANTIDAD_UNITARIA || 0);
@@ -97,154 +92,106 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
             });
           }
         } catch (err) {
-          console.warn(`Error procesando material ${fertCode}:`, err);
+          console.warn(`Error en material ${fertCode}:`, err);
         }
-
         setProgress(prev => ({ ...prev, current: i + 1 }));
       }
-
-      const results = Array.from(consolidatedMap.values()).sort((a, b) => b.cantidadTotal - a.cantidadTotal);
-      setRequirements(results);
-      
-      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-      logger.log(`[ExplosionBOM] Consolidación completada en ${duration}s. ${results.length} ítems identificados.`);
-      inspector.captureVariable('consolidatedExplosionRequirements', results.length);
-      addNotification('success', `Explosión completada. Se identificaron ${results.length} tipos de láminas/bloques.`);
-
+      setRequirements(Array.from(consolidatedMap.values()).sort((a, b) => b.cantidadTotal - a.cantidadTotal));
     } catch (err) {
-      const msg = (err as Error).message;
-      setError(msg);
-      addNotification('error', `Error en la explosión masiva: ${msg}`);
+      setError((err as Error).message);
     } finally {
       setIsProcessing(false);
     }
   };
 
+  const laminas = useMemo(() => requirements.filter(r => r.descripcion.includes('LAMINA CILINDRICA')), [requirements]);
+  const bloques = useMemo(() => requirements.filter(r => r.descripcion.includes('BLOQUE FORMULADO')), [requirements]);
+
+  const renderTable = (items: ComponentRequirement[], title: string, icon: any, headerClass: string) => (
+    <div className="space-y-3">
+      <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+        {React.createElement(icon, { className: "w-3 h-3" })}
+        {title}
+      </h4>
+      <div className="border-2 border-gray-50 rounded-2xl overflow-hidden bg-white shadow-xl">
+        <div className="overflow-x-auto max-h-[400px] relative">
+          <table className="w-full border-collapse text-[10px] font-sans">
+            <thead className={cn("text-white sticky top-0 z-20", headerClass)}>
+              <tr className="uppercase font-black tracking-tighter">
+                <th className="px-6 py-5 text-left border-r border-white/5 w-32">Componente</th>
+                <th className="px-6 py-5 text-left border-r border-white/5">Descripción del Material</th>
+                <th className="px-4 py-5 border-r border-white/5 w-20">UM</th>
+                <th className="px-4 py-5 border-r border-white/5 w-24">Hits</th>
+                <th className="px-8 py-5 text-right bg-black/10 w-48">Necesidad (KG)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {items.map((item, idx) => (
+                <tr key={idx} className="hover:bg-gray-50 transition-all group">
+                  <td className="px-6 py-4 border-r border-dashed border-gray-100">
+                    <Badge variant="outline" className="font-mono font-black text-slate-600 text-[10px] border-slate-200 bg-slate-50">
+                      {item.codigo}
+                    </Badge>
+                  </td>
+                  <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left font-black text-gray-700 uppercase tracking-tight">
+                    {item.descripcion}
+                  </td>
+                  <td className="px-4 py-4 border-r border-dashed border-gray-100">
+                    <span className="font-black text-slate-400">{item.unidad}</span>
+                  </td>
+                  <td className="px-4 py-4 border-r border-dashed border-gray-100">
+                    <span className="font-black text-gray-900">{item.conteoOrdenes}</span>
+                  </td>
+                  <td className="px-8 py-4 text-right font-mono font-black text-slate-700 bg-slate-50/10">
+                    {item.cantidadTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6 text-left p-6 bg-white rounded-2xl border border-gray-100 shadow-sm">
-      {/* Header Informativo */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-6">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
             <ClipboardList className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Maestro de Materiales (Explosión BOM)</h3>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge className="bg-slate-100 text-slate-600 font-bold border-slate-200 text-[9px] uppercase tracking-wider">
-                Filtros: LÁMINA CILÍNDRICA / BLOQUE FORMULADO
-              </Badge>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                {ordenes.length} órdenes procesadas
-              </p>
-            </div>
+            <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Maestro de Componentes Críticos (Explosión)</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Segmentado: Láminas y Bloques | Consolidado en KG</p>
           </div>
         </div>
 
-        <Button 
-          onClick={processExplosion}
-          disabled={isProcessing || ordenes.length === 0}
-          className="rounded-xl px-8 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 font-black uppercase text-[10px] tracking-widest h-11"
-        >
-          {isProcessing ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          ) : (
-            <PlayCircle className="w-4 h-4 mr-2" />
-          )}
-          {isProcessing ? 'Calculando Explosión...' : 'Ejecutar Explosión BOM'}
+        <Button onClick={processExplosion} disabled={isProcessing || ordenes.length === 0} className="rounded-xl px-8 bg-indigo-600 font-black uppercase text-[10px] tracking-widest h-11">
+          {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+          Explosión BOM
         </Button>
       </div>
 
-      {/* Monitor de Progreso */}
       {isProcessing && (
-        <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-500 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+        <div className="space-y-3 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span className="flex items-center gap-2">
-              <Activity className="w-3 h-3" />
-              Sincronizando Componentes Técnicos
-            </span>
+            <span className="flex items-center gap-2"><Activity className="w-3 h-3" />Sincronizando BOM</span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />
         </div>
       )}
 
-      {/* Estados de la Tabla */}
-      {!isProcessing && requirements.length === 0 ? (
-        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 space-y-6">
-          <div className="relative inline-block">
-             <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-             <Search className="w-6 h-6 text-indigo-400 absolute bottom-0 right-0 animate-bounce" />
-          </div>
-          <div className="max-w-sm mx-auto">
-            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Análisis de Láminas y Bloques</h3>
-            <p className="text-xs text-gray-400 mt-2 mb-6">Inicie la explosión para identificar los requerimientos de láminas cilíndricas y bloques formulados en el plan actual.</p>
-          </div>
+      {!isProcessing && requirements.length > 0 ? (
+        <div className="space-y-10">
+          {laminas.length > 0 && renderTable(laminas, "Segmento A: Láminas Cilíndricas", Scissors, "bg-slate-800")}
+          {bloques.length > 0 && renderTable(bloques, "Segmento B: Bloques Formulados", Box, "bg-indigo-900")}
         </div>
-      ) : (
-        <div className={cn("border-2 border-gray-50 rounded-2xl overflow-hidden bg-white shadow-xl", isProcessing && "opacity-50 pointer-events-none")}>
-          <div className="overflow-x-auto max-h-[600px] relative">
-            <table className="w-full border-collapse text-[10px] font-sans">
-              <thead className="bg-slate-900 text-white sticky top-0 z-20">
-                <tr className="uppercase font-black tracking-tighter">
-                  <th className="px-6 py-5 text-left border-r border-white/5 w-32">Componente</th>
-                  <th className="px-6 py-5 text-left border-r border-white/5">Descripción del Material (Componente)</th>
-                  <th className="px-4 py-5 border-r border-white/5 w-20">UM</th>
-                  <th className="px-4 py-5 border-r border-white/5 w-24">Órdenes</th>
-                  <th className="px-8 py-5 text-right bg-indigo-600 w-48">Necesidad Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {requirements.map((item, idx) => (
-                  <tr key={`${idx}-${item.codigo}`} className="hover:bg-indigo-50/30 transition-all group">
-                    <td className="px-6 py-4 border-r border-dashed border-gray-100">
-                      <Badge variant="outline" className="font-mono font-black text-indigo-600 text-[10px] border-indigo-100 bg-indigo-50 group-hover:bg-indigo-100 transition-colors">
-                        {item.codigo}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left font-black text-gray-700 uppercase tracking-tight">
-                      {item.descripcion}
-                    </td>
-                    <td className="px-4 py-4 border-r border-dashed border-gray-100">
-                      <span className="font-black text-slate-400">{item.unidad}</span>
-                    </td>
-                    <td className="px-4 py-4 border-r border-dashed border-gray-100">
-                      <div className="flex flex-col items-center">
-                        <span className="font-black text-gray-900">{item.conteoOrdenes}</span>
-                        <span className="text-[7px] font-bold text-gray-400 uppercase tracking-tighter">Hits BOM</span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-4 text-right font-mono font-black text-indigo-700 bg-indigo-50/10 text-xs">
-                      {item.cantidadTotal.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-slate-900 sticky bottom-0 z-20">
-                <tr className="font-black text-white uppercase text-[11px]">
-                  <td colSpan={3} className="px-6 py-5 text-right border-r border-white/5">
-                    <div className="flex items-center justify-end gap-2">
-                      <FileText className="w-4 h-4 text-indigo-400" />
-                      Resumen Consolidado:
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-center border-r border-white/5 font-mono">
-                    {requirements.length} <span className="text-[8px] block opacity-50">SKUS</span>
-                  </td>
-                  <td className="px-8 py-5 text-right text-white bg-indigo-600 font-mono text-xs">
-                    {requirements.reduce((acc, i) => acc + i.cantidadTotal, 0).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500" />
-          <p className="text-xs font-bold text-red-700 uppercase tracking-tight">Fallo en la rutina de explosión: {error}</p>
+      ) : !isProcessing && (
+        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+          <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión técnica</p>
         </div>
       )}
     </div>
