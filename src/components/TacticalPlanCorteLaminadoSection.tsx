@@ -372,7 +372,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50">{info.code}</td>
                         <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
-                        <td className="px-4 py-3 border-r border-gray-50 font-bold text-gray-400 uppercase">
+                        <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">
                           <div className="text-[10px]">{t.Linea || t.PuestoTrabajoLinea}</div>
                           <div className="text-[8px] font-mono opacity-60">{t.PuestoTrabajo}</div>
                         </td>

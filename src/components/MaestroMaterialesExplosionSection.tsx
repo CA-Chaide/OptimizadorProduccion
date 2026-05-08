@@ -67,7 +67,7 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
             explosionData.forEach((comp: any) => {
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-              const unitRaw = String(comp.UNIDAD || comp.UNIDAD_COMPONENTE || 'KG').trim();
+              const unitRaw = "KG"; // Forzado a KG
               
               if (!compCode) return;
               if (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO')) return;
@@ -176,7 +176,10 @@ export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplos
       {isProcessing && (
         <div className="space-y-3 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span className="flex items-center gap-2"><Activity className="w-3 h-3" />Sincronizando BOM</span>
+            <span className="flex items-center gap-2">
+              <Activity className="w-3 h-3" />
+              Sincronizando BOM
+            </span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { RefreshCw, Layers, ClipboardList, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box } from 'lucide-react';
+import { RefreshCw, Layers, ClipboardList, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from '@/components/ui/badge';
@@ -71,7 +71,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
             explosionData.forEach((comp: any) => {
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-              const unitRaw = String(comp.UNIDAD || comp.UNIDAD_COMPONENTE || 'KG').trim();
+              const unitRaw = "KG"; // Forzado a KG por requerimiento
               
               if (!compCode) return;
               if (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO')) return;
@@ -153,16 +153,16 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
               {items.map((group) => (
                 <React.Fragment key={group.codigoComponente}>
                   <tr 
-                    className="bg-[#e9edc9]/30 border-b border-[#9db65b]/10 cursor-pointer hover:bg-[#e9edc9]/50 transition-colors group"
+                    className="bg-gray-50/50 border-b border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors group"
                     onClick={() => toggleGroup(group.codigoComponente)}
                   >
-                    <td className="px-5 py-3 font-black text-[#4a542a] flex items-center gap-3">
-                      <div className="p-1 bg-white rounded-md shadow-sm">
-                        {expandedGroups.has(group.codigoComponente) ? <ChevronDown className="w-3 h-3 text-[#9db65b]" /> : <ChevronRight className="w-3 h-3 text-[#9db65b]" />}
+                    <td className="px-5 py-3 font-black text-gray-700 flex items-center gap-3">
+                      <div className="p-1 bg-white rounded-md shadow-sm border border-gray-100">
+                        {expandedGroups.has(group.codigoComponente) ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
                       </div>
                       {group.nombreComponente}
                     </td>
-                    <td className="px-5 py-3 font-black text-center text-[#6d7f3f] bg-[#e9edc9]/10">
+                    <td className="px-5 py-3 font-black text-center text-gray-500 bg-gray-50/10">
                       {group.codigoComponente}
                     </td>
                     <td className="px-4 py-3 font-black text-center text-slate-400">
@@ -200,7 +200,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
       {/* Header y Control */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-[#9db65b]/10 rounded-2xl text-[#6d7f3f]">
+          <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
             <Layers className="w-6 h-6" />
           </div>
           <div>
@@ -212,7 +212,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
         <Button 
           onClick={processExplosion}
           disabled={isProcessing || ordenes.length === 0}
-          className="bg-[#9db65b] hover:bg-[#8aa14d] text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-[#9db65b]/20"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20"
         >
           {isProcessing ? (
             <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -225,15 +225,15 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
 
       {/* Barra de Progreso */}
       {isProcessing && (
-        <div className="space-y-3 bg-[#f8f9f1] p-4 rounded-2xl border border-[#9db65b]/20 animate-in fade-in slide-in-from-top-2">
-          <div className="flex justify-between items-center text-[10px] font-black text-[#6d7f3f] uppercase tracking-widest">
+        <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100 animate-in fade-in slide-in-from-top-2">
+          <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
             <span className="flex items-center gap-2">
               <Activity className="w-3 h-3" />
               Calculando Explosión Masiva
             </span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
-          <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-[#e9edc9] [&>div]:bg-[#9db65b]" />
+          <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100 [&>div]:bg-indigo-600" />
         </div>
       )}
 
