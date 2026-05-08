@@ -1,62 +1,128 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { RefreshCw, Layers, Package, Search, ChevronRight, ChevronDown } from 'lucide-react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { RefreshCw, Layers, ClipboardList, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from "@/components/ui/progress";
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { serviciosService } from '@/services/servicios.service';
+import { logger } from '@/services/LogService';
 
 interface TacticalNeedsSectionProps {
   ordenes: any[];
   tiempos: any[];
 }
 
+interface ParentInfo {
+  nombrePadre: string;
+  materialPadre: string;
+  puestoTrabajo: string;
+  cantidad: number;
+}
+
+interface GroupedNeed {
+  codigoComponente: string;
+  nombreComponente: string;
+  totalUnidades: number;
+  items: ParentInfo[];
+}
+
 export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ ordenes, tiempos }) => {
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [groupedNeeds, setGroupedNeeds] = useState<GroupedNeed[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Simulación de cruce de datos para el esquema de visualización
-  // En una implementación real, esto consultaría un endpoint de explosión por lote de órdenes
-  const groupedNeeds = useMemo(() => {
-    const map = new Map<string, { 
-      nombreComponente: string; 
-      codigoComponente: string; 
-      items: { material: string; nombre: string; puestoTrabajo: string; cantidad: number }[] 
-    }>();
+  // Helper para extraer código base de 8 dígitos
+  const extractCode = (matStr: string): string => {
+    const match = String(matStr).trim().match(/^(\d+)/);
+    return match ? match[1].slice(-8) : String(matStr).slice(-8);
+  };
 
-    ordenes.forEach(o => {
-      const matStr = String(o.MATERIAL || o.Material || '').trim();
-      const code = matStr.match(/^\d+/)?.[0]?.slice(-8) || matStr.slice(-8);
-      const nombre = String(o.NOMBRE || o.NombreMaterial || '').trim();
-      
-      // Buscamos el puesto de trabajo en el catálogo de tiempos
-      const infoTiempo = tiempos.find(t => String(t.CodMaterial || '').includes(code));
-      const puesto = infoTiempo?.PuestoTrabajo || '—';
+  // Rutina de procesamiento real (Explosión BOM)
+  const processExplosion = async () => {
+    if (!ordenes || ordenes.length === 0) return;
 
-      // Para el ejemplo, simulamos que el componente es una lámina derivada del nombre
-      // En producción, esto vendría de la tabla MaestroMaterialesExplosion
-      const compNombre = nombre.includes('RESTONIC') ? 'LAMINA CILINDRICA D 12 SL 214X0.4' : 
-                         nombre.includes('ZAFIRO') ? 'LAMINA CILINDRICA D 15 AM 200X140X0.8' : 
-                         'LAMINA PROCESO LAMINADO ESTANDAR';
-      
-      const compCode = compNombre.includes('D 12') ? '30004183' : '30007712';
+    setIsProcessing(true);
+    setGroupedNeeds([]);
+    setProgress({ current: 0, total: ordenes.length });
 
-      if (!map.has(compCode)) {
-        map.set(compCode, { nombreComponente: compNombre, codigoComponente: compCode, items: [] });
+    const consolidatedMap = new Map<string, GroupedNeed>();
+
+    try {
+      logger.log(`[TacticalNeeds] Iniciando explosión para ${ordenes.length} órdenes...`);
+
+      for (let i = 0; i < ordenes.length; i++) {
+        const order = ordenes[i];
+        const fertCode = extractCode(order.MATERIAL || order.CodMaterial || '');
+        const centro = String(order.CENTRO || order.Centro || '1000').trim();
+        const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+        const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '');
+
+        // Obtener puesto de trabajo del catálogo de tiempos para el padre
+        const infoTiempo = tiempos.find(t => extractCode(t.CodMaterial || '') === fertCode);
+        const puestoPadre = infoTiempo?.PuestoTrabajo || '—';
+
+        try {
+          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fertCode, 1, 1000);
+          
+          if (response && response.data) {
+            const explosionData = Array.isArray(response.data) ? response.data : (response.data.data || []);
+            
+            explosionData.forEach((comp: any) => {
+              const compCode = String(comp.COMPONENTE || '').slice(-8);
+              const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
+              
+              if (!compCode) return;
+
+              // FILTRO REQUERIDO: Solo "LAMINA CILINDRICA"
+              if (!descRaw.includes('LAMINA CILINDRICA')) return;
+
+              const unitaryQty = Number(comp.CANTIDAD_UNITARIA || 0);
+              const totalNeeded = orderQty * unitaryQty;
+
+              if (consolidatedMap.has(compCode)) {
+                const existing = consolidatedMap.get(compCode)!;
+                existing.totalUnidades += totalNeeded;
+                existing.items.push({
+                  nombrePadre: orderName,
+                  materialPadre: fertCode,
+                  puestoTrabajo: puestoPadre,
+                  cantidad: totalNeeded
+                });
+              } else {
+                consolidatedMap.set(compCode, {
+                  codigoComponente: compCode,
+                  nombreComponente: descRaw,
+                  totalUnidades: totalNeeded,
+                  items: [{
+                    nombrePadre: orderName,
+                    materialPadre: fertCode,
+                    puestoTrabajo: puestoPadre,
+                    cantidad: totalNeeded
+                  }]
+                });
+              }
+            });
+          }
+        } catch (err) {
+          console.warn(`Error en BOM para ${fertCode}:`, err);
+        }
+
+        setProgress(prev => ({ ...prev, current: i + 1 }));
       }
 
-      const entry = map.get(compCode)!;
-      entry.items.push({
-        material: code,
-        nombre: nombre,
-        puestoTrabajo: puesto,
-        cantidad: Number(o.CANTPROGRAMADA || o.CANTIDAD || 0)
-      });
-    });
+      const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalUnidades - a.totalUnidades);
+      setGroupedNeeds(results);
+      logger.log(`[TacticalNeeds] Explosión finalizada. ${results.length} láminas identificadas.`);
 
-    return Array.from(map.values());
-  }, [ordenes, tiempos]);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const toggleGroup = (id: string) => {
     const next = new Set(expandedGroups);
@@ -65,85 +131,107 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
     setExpandedGroups(next);
   };
 
-  const handleSync = () => {
-    setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      // Aquí se dispararía la carga real si existiera el endpoint de explosión por lote
-    }, 1500);
-  };
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-[#9db65b]/20 rounded-xl text-[#6d7f3f]"><Layers className="w-5 h-5" /></div>
+    <div className="space-y-4 text-left">
+      {/* Header y Control */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-[#9db65b]/10 rounded-2xl text-[#6d7f3f]">
+            <Layers className="w-6 h-6" />
+          </div>
           <div>
-            <h3 className="text-sm font-bold text-gray-800 uppercase">Cálculo de Necesidades por Componente</h3>
-            <p className="text-[10px] text-gray-500 font-medium">Explosión de órdenes activas para el Centro 1000</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Cálculo de Necesidades por Componente</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión BOM / Filtro: LAMINA CILINDRICA</p>
           </div>
         </div>
+        
         <Button 
-          onClick={handleSync} 
-          disabled={isSyncing}
-          className="bg-[#9db65b] hover:bg-[#8aa14d] text-white rounded-xl h-9 px-6 text-[10px] font-black uppercase tracking-widest transition-all shadow-md shadow-[#9db65b]/20"
+          onClick={processExplosion}
+          disabled={isProcessing || ordenes.length === 0}
+          className="bg-[#9db65b] hover:bg-[#8aa14d] text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-[#9db65b]/20"
         >
-          {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin mr-2" /> : <RefreshCw className="w-3 h-3 mr-2" />}
-          Sincronizar Necesidades
+          {isProcessing ? (
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+          ) : (
+            <PlayCircle className="w-4 h-4 mr-2" />
+          )}
+          {isProcessing ? 'Calculando Necesidades...' : 'Sincronizar Necesidades Real'}
         </Button>
       </div>
 
+      {/* Barra de Progreso */}
+      {isProcessing && (
+        <div className="space-y-3 bg-[#f8f9f1] p-4 rounded-2xl border border-[#9db65b]/20 animate-in fade-in slide-in-from-top-2">
+          <div className="flex justify-between items-center text-[10px] font-black text-[#6d7f3f] uppercase tracking-widest">
+            <span className="flex items-center gap-2">
+              <Activity className="w-3 h-3" />
+              Procesando Explosión Masiva
+            </span>
+            <span>{progress.current} / {progress.total} órdenes</span>
+          </div>
+          <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-[#e9edc9] [&>div]:bg-[#9db65b]" />
+        </div>
+      )}
+
+      {/* Tabla de Resultados */}
       <div className="border rounded-2xl overflow-hidden bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[10px] font-sans">
             <thead className="bg-[#9db65b] text-white uppercase font-black tracking-tighter">
               <tr>
-                <th className="px-4 py-3 text-left w-[35%]">Nombre Componente</th>
-                <th className="px-4 py-3">Componente</th>
-                <th className="px-4 py-3 text-left w-[30%]">Nombre (Padre)</th>
-                <th className="px-4 py-3">Material (Padre)</th>
-                <th className="px-4 py-3">Puesto Trabajo</th>
+                <th className="px-5 py-4 text-left w-[35%] border-r border-white/10">Nombre Componente</th>
+                <th className="px-5 py-4 w-[15%] border-r border-white/10">Componente</th>
+                <th className="px-5 py-4 text-left w-[25%] border-r border-white/10">Nombre (Padre)</th>
+                <th className="px-5 py-4 w-[10%] border-r border-white/10">Material (Padre)</th>
+                <th className="px-5 py-4 text-left">Puesto Trabajo</th>
               </tr>
             </thead>
             <tbody>
               {groupedNeeds.map((group) => (
                 <React.Fragment key={group.codigoComponente}>
-                  {/* Fila de Encabezado de Grupo */}
+                  {/* Fila de Grupo (Child Component) */}
                   <tr 
-                    className="bg-[#e9edc9]/40 border-b border-[#9db65b]/20 cursor-pointer hover:bg-[#e9edc9]/60 transition-colors"
+                    className="bg-[#e9edc9]/30 border-b border-[#9db65b]/10 cursor-pointer hover:bg-[#e9edc9]/50 transition-colors group"
                     onClick={() => toggleGroup(group.codigoComponente)}
                   >
-                    <td className="px-4 py-2 font-bold text-[#4a542a] flex items-center gap-2">
-                      {expandedGroups.has(group.codigoComponente) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    <td className="px-5 py-3 font-black text-[#4a542a] flex items-center gap-3">
+                      <div className="p-1 bg-white rounded-md shadow-sm">
+                        {expandedGroups.has(group.codigoComponente) ? <ChevronDown className="w-3 h-3 text-[#9db65b]" /> : <ChevronRight className="w-3 h-3 text-[#9db65b]" />}
+                      </div>
                       {group.nombreComponente}
                     </td>
-                    <td className="px-4 py-2 font-black text-center text-[#6d7f3f]">{group.codigoComponente}</td>
-                    <td colSpan={3}></td>
-                  </tr>
-
-                  {/* Filas de Detalle (Expandibles) */}
-                  {expandedGroups.has(group.codigoComponente) && group.items.map((item, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      <td className="px-4 py-2"></td>
-                      <td className="px-4 py-2 text-center text-gray-400 font-mono">{group.codigoComponente}</td>
-                      <td className="px-4 py-2 text-left uppercase text-gray-500 font-medium">{item.nombre}</td>
-                      <td className="px-4 py-2 text-center font-bold text-gray-400">{item.material}</td>
-                      <td className="px-4 py-2 text-center font-black text-slate-400">{item.puestoTrabajo}</td>
-                    </tr>
-                  ))}
-
-                  {/* Fila de Total del Grupo */}
-                  <tr className="bg-[#f8f9f1] border-b border-[#9db65b]/10 text-[#6d7f3f] font-black">
-                    <td colSpan={5} className="px-4 py-1.5 italic">
-                      Total {group.nombreComponente}: {group.items.reduce((acc, i) => acc + i.cantidad, 0).toLocaleString()} unidades
+                    <td className="px-5 py-3 font-black text-center text-[#6d7f3f] bg-[#e9edc9]/10">
+                      {group.codigoComponente}
+                    </td>
+                    <td colSpan={3} className="px-5 py-3 text-right">
+                      <Badge className="bg-[#9db65b] text-white border-none font-black text-[9px] px-3">
+                        Total: {group.totalUnidades.toLocaleString(undefined, { maximumFractionDigits: 0 })} Unid.
+                      </Badge>
                     </td>
                   </tr>
+
+                  {/* Filas de Detalle (Parents) */}
+                  {expandedGroups.has(group.codigoComponente) && group.items.map((item, idx) => (
+                    <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                      <td className="px-5 py-2 border-r border-gray-50"></td>
+                      <td className="px-5 py-2 text-center text-gray-300 font-mono border-r border-gray-50">{group.codigoComponente}</td>
+                      <td className="px-5 py-2 text-left uppercase text-gray-500 font-bold border-r border-gray-50">{item.nombrePadre}</td>
+                      <td className="px-5 py-2 text-center font-black text-indigo-400 border-r border-gray-50 tracking-tighter">{item.materialPadre}</td>
+                      <td className="px-5 py-2 text-left font-black text-slate-400 uppercase italic">
+                        {item.puestoTrabajo}
+                      </td>
+                    </tr>
+                  ))}
                 </React.Fragment>
               ))}
-              {groupedNeeds.length === 0 && (
+
+              {!isProcessing && groupedNeeds.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-20 text-center text-gray-400 uppercase font-black tracking-widest opacity-30">
-                    No hay datos sincronizados
+                  <td colSpan={5} className="py-24 text-center bg-gray-50/30">
+                    <div className="flex flex-col items-center gap-3 opacity-20">
+                      <Layers className="w-12 h-12 text-slate-300" />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos de explosión sincronizados</p>
+                    </div>
                   </td>
                 </tr>
               )}
