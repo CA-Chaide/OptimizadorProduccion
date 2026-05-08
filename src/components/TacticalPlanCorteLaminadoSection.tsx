@@ -131,7 +131,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     };
   }, [restriccionesArray]);
 
-  // Filtrado de Órdenes aplicando TODAS las restricciones del grupo
+  // Filtrado de Órdenes aplicando TODAS las restricciones del grupo + criterios específicos del usuario
   const ordenesFiltradas = useMemo(() => {
     const { responsables, almacenes, sectores } = appliedRestrictionsSummary;
 
@@ -144,16 +144,29 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       if (!matchResp) return false;
 
       const itemAlm = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchAlm = almacenes.length === 0 || almacenes.includes(itemAlm);
-      if (!matchAlm) return false;
+      // Criterio Usuario: Almacén 1008
+      const isAlm1008 = itemAlm === '1008';
+      
+      // Buscar el puesto de trabajo asociado al material de la orden
+      const matInfo = extractMaterialInfo(o);
+      const infoTiempo = tiemposMap.get(matInfo.code);
+      const puesto = (infoTiempo?.puesto || '').toLowerCase();
+      // Criterio Usuario: Puesto Trabajo contiene "acolcha"
+      const isAcolcha = puesto.includes('acolcha');
 
+      // El usuario solicita explícitamente: (Puesto Trabajo contiene "acolcha" O Almacén 1008)
+      const matchesUserFilter = isAcolcha || isAlm1008;
+      
+      if (!matchesUserFilter) return false;
+
+      // Filtro de Sector según configuración del grupo
       const itemSector = String(o.SECTOR || o.Sector || o.SECTORDESC || '').trim();
       const matchSector = sectores.length === 0 || sectores.some(s => itemSector.includes(s));
       if (!matchSector) return false;
 
       return true;
     });
-  }, [ordenes, appliedRestrictionsSummary]);
+  }, [ordenes, appliedRestrictionsSummary, tiemposMap]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -307,7 +320,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="tiempos" className="space-y-4">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[500px]">
+            <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
