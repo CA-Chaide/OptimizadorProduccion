@@ -42,6 +42,7 @@ const getParam = (restrictions: Restriccion[], key: string, defaultValue: number
 /**
  * PANEL DE CONTROL ESPECÍFICO PARA CENTRO 1000 (QUITO)
  * Visualización en Matriz Técnica con Recursos como Columnas
+ * Aplica restricciones dinámicas y elimina horas extras
  */
 const ScheduleControlPanelC1000 = ({ 
   plannedHours, 
@@ -50,7 +51,6 @@ const ScheduleControlPanelC1000 = ({
   plannedHours: number, 
   restrictions: Restriccion[] 
 }) => {
-  // Consumo de Restricciones Dinámicas
   const t1Param = getParam(restrictions, 'HORAS_TRABAJO_DÍA', 12);
   const t2Param = getParam(restrictions, 'HORAS_TRABAJO_Noche', 10);
   const comidaParam = getParam(restrictions, 'MINUTOS_COMIDAS', 45);
@@ -174,7 +174,7 @@ const ScheduleControlPanelC1000 = ({
 
 /**
  * PANEL DE CONTROL ORIGINAL PARA CENTRO 2000 (GUAYAQUIL)
- * Mantiene la visualización de lista original
+ * Mantiene la visualización de lista original para consistencia
  */
 const ScheduleControlPanelC2000 = ({ 
   plannedHours, 
@@ -442,6 +442,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
   
+  const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
+  const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
+
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; tipo: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
     data.forEach(o => {
@@ -576,7 +579,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     {summaryData1000.map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
-                        <td className="px-4 py-2 font-black text-gray-400 border-r border-gray-50 uppercase text-[9px]">BLOQUE FORMULADO</td>
+                        <td className="px-4 py-2 font-black text-gray-400 border-r border-gray-50 uppercase text-[8px]">BLOQUE FORMULADO</td>
                         <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
                         <td className="px-4 py-2 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
                         <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
@@ -637,7 +640,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     {summaryData2000.map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
-                        <td className="px-4 py-2 font-black text-gray-400 border-r border-gray-50 uppercase text-[9px]">BLOQUE FORMULADO</td>
+                        <td className="px-4 py-2 font-black text-gray-400 border-r border-gray-50 uppercase text-[8px]">BLOQUE FORMULADO</td>
                         <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
                         <td className="px-4 py-2 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
                         <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
