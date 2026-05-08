@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, DatabaseZap, PlayCircle, AlertCircle, FileText, Search } from 'lucide-react';
+import { ClipboardList, Loader2, DatabaseZap, PlayCircle, AlertCircle, FileText, Search, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
