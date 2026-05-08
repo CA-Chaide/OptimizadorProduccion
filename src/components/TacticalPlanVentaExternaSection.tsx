@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, Scissors, TrendingUp, BarChart3 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
@@ -266,6 +266,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const summaryData1000 = useMemo(() => calculateSummary(fertC1000, getTiemposMap(tiemposC1000), '1000'), [fertC1000, tiemposC1000]);
   const summaryData2000 = useMemo(() => calculateSummary(fertC2000, getTiemposMap(tiemposC2000), '2000'), [fertC2000, tiemposC2000]);
 
+  // Totales globales para el dashboard superior
+  const globalStats = useMemo(() => {
+    const all = [...summaryData1000, ...summaryData2000];
+    return {
+      ordenes: all.reduce((sum, r) => sum + r.totalOrdenes, 0),
+      unidades: all.reduce((sum, r) => sum + r.totalCantidad, 0),
+      horasPL: all.reduce((sum, r) => sum + r.totalTiempoPL, 0),
+      horasCorte: all.reduce((sum, r) => sum + r.totalTiempoCorte, 0)
+    };
+  }, [summaryData1000, summaryData2000]);
+
   if (!mounted) return null;
 
   if (isLoading) return (
@@ -303,13 +314,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
-          <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
+        <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
+          {/* Header con Filtro de Fecha */}
+          <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
-              <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-primary" /></div>
+              <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-5 h-5 text-primary" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga Venta Externa</p>
-                <h3 className="text-xs font-bold text-gray-700 uppercase">
+                <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Carga Operativa</p>
+                <h3 className="text-sm font-black text-gray-700 uppercase">
                   {selectedDate === 'all' ? 'PLAN MAESTRO CONSOLIDADO' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
@@ -350,47 +362,93 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             </Popover>
           </div>
 
+          {/* Estadísticas de Carga - Dashboard Superior */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="p-4 border-none shadow-sm bg-blue-50/30 flex items-center gap-4">
+              <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-600"><TrendingUp className="w-5 h-5" /></div>
+              <div>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Total Órdenes</p>
+                <p className="text-xl font-black text-gray-800">{globalStats.ordenes}</p>
+              </div>
+            </Card>
+            <Card className="p-4 border-none shadow-sm bg-green-50/30 flex items-center gap-4">
+              <div className="p-3 bg-green-500/10 rounded-2xl text-green-600"><Package className="w-5 h-5" /></div>
+              <div>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Total Unidades</p>
+                <p className="text-xl font-black text-gray-800">{globalStats.unidades.toLocaleString()}</p>
+              </div>
+            </Card>
+            <Card className="p-4 border-none shadow-sm bg-indigo-50/30 flex items-center gap-4">
+              <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-600"><Activity className="w-5 h-5" /></div>
+              <div>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Horas PL (Prod)</p>
+                <p className="text-xl font-black text-gray-800">{globalStats.horasPL.toFixed(1)}h</p>
+              </div>
+            </Card>
+            <Card className="p-4 border-none shadow-sm bg-teal-50/30 flex items-center gap-4">
+              <div className="p-3 bg-teal-500/10 rounded-2xl text-teal-600"><Scissors className="w-5 h-5" /></div>
+              <div>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Horas Corte</p>
+                <p className="text-xl font-black text-gray-800">{globalStats.horasCorte.toFixed(1)}h</p>
+              </div>
+            </Card>
+          </div>
+
           {[ 
             { t: 'Planta 1000 - Quito', d: summaryData1000, c: 'text-green-700', b: 'bg-green-600' }, 
             { t: 'Planta 2000 - Guayaquil', d: summaryData2000, c: 'text-indigo-700', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
-                <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}
-              </h3>
-              <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-                <div className="overflow-x-auto max-h-[400px]">
+              <div className="flex items-center justify-between px-1">
+                <h3 className={cn("text-[11px] font-black uppercase flex items-center gap-2 tracking-widest", center.c)}>
+                  <div className={cn("w-2.5 h-2.5 rounded-full", center.b)} /> {center.t}
+                </h3>
+                <Badge variant="outline" className="text-[9px] font-bold border-gray-200 text-gray-400">{center.d.length} Categorías identificadas</Badge>
+              </div>
+              <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+                <div className="overflow-x-auto max-h-[500px]">
                   <table className="w-full border-collapse text-center font-sans">
-                    <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                    <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-gray-400 border-b border-gray-100">
                       <tr>
-                        <th className="px-6 py-4 border-r border-gray-100">Máquina / Recurso</th>
-                        <th className="px-6 py-4 border-r border-gray-100">Categoría Técnica</th>
-                        <th className="px-6 py-4 border-r border-gray-100 text-primary">Tipo</th>
-                        <th className="px-6 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Espesor</th>
-                        <th className="px-6 py-4 border-r border-gray-100">Total Órdenes</th>
-                        <th className="px-6 py-4 border-r border-gray-100 font-black">Total Unidades</th>
-                        <th className="px-6 py-4 border-r border-gray-100 text-indigo-700 font-bold bg-indigo-50/20">Tiempo PL (H)</th>
-                        <th className="px-6 py-4 text-center text-teal-700 bg-teal-50/20 font-black">T. Pl Corte (H)</th>
+                        <th className="px-6 py-4 border-r border-gray-100 text-left">Máquina / Recurso</th>
+                        <th className="px-6 py-4 border-r border-gray-100 text-left">Categoría Técnica</th>
+                        <th className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
+                        <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Espesor</th>
+                        <th className="px-4 py-4 border-r border-gray-100">Órdenes</th>
+                        <th className="px-4 py-4 border-r border-gray-100 font-black">Unidades</th>
+                        <th className="px-6 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Tiempo PL (H)</th>
+                        <th className="px-6 py-4 text-center text-teal-700 bg-teal-50/30">T. Pl Corte (H)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-[10px]">
+                    <tbody className="divide-y divide-gray-50 text-[11px]">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={8} className="py-12 text-center text-gray-400 italic">No hay operaciones programadas para esta fecha</td></tr>
+                        <tr><td colSpan={8} className="py-16 text-center text-gray-400 font-bold uppercase tracking-widest opacity-30">Sin operaciones programadas</td></tr>
                       ) : (
                         center.d.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/80 transition-colors">
-                            <td className="px-6 py-3 font-bold text-gray-700 border-r border-gray-50 uppercase">{row.maquina}</td>
-                            <td className="px-6 py-3 font-medium text-gray-500 border-r border-gray-50 uppercase">{row.categoria}</td>
-                            <td className="px-6 py-3 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
-                            <td className="px-6 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.espesor}</td>
-                            <td className="px-6 py-3 font-mono border-r border-gray-50">{row.totalOrdenes}</td>
-                            <td className="px-6 py-3 font-mono font-bold text-gray-900 border-r border-gray-50">{row.totalCantidad.toLocaleString()}</td>
-                            <td className="px-6 py-3 font-mono font-bold text-indigo-600 border-r border-gray-50 bg-indigo-50/5">{row.totalTiempoPL.toFixed(2)}</td>
+                            <td className="px-6 py-3 font-black text-gray-700 border-r border-gray-50 uppercase text-left">{row.maquina}</td>
+                            <td className="px-6 py-3 font-bold text-gray-400 border-r border-gray-50 uppercase text-left">{row.categoria}</td>
+                            <td className="px-4 py-3 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
+                            <td className="px-4 py-3 font-black text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.espesor}</td>
+                            <td className="px-4 py-3 font-mono border-r border-gray-50 text-gray-400">{row.totalOrdenes}</td>
+                            <td className="px-4 py-3 font-mono font-black text-gray-900 border-r border-gray-50">{row.totalCantidad.toLocaleString()}</td>
+                            <td className="px-6 py-3 font-mono font-black text-indigo-600 border-r border-gray-50 bg-indigo-50/5">{row.totalTiempoPL.toFixed(2)}</td>
                             <td className="px-6 py-3 font-mono font-black text-teal-600 text-center bg-teal-50/5">{row.totalTiempoCorte.toFixed(2)}</td>
                           </tr>
                         ))
                       )}
                     </tbody>
+                    {center.d.length > 0 && (
+                      <tfoot className="bg-gray-800 text-white font-black text-[10px] uppercase border-t-2 border-gray-900">
+                        <tr>
+                          <td colSpan={4} className="px-6 py-3 text-right tracking-widest">Total {center.t}</td>
+                          <td className="px-4 py-3 font-mono border-r border-white/5">{center.d.reduce((s, r) => s + r.totalOrdenes, 0)}</td>
+                          <td className="px-4 py-3 font-mono border-r border-white/5 text-green-300">{center.d.reduce((s, r) => s + r.totalCantidad, 0).toLocaleString()}</td>
+                          <td className="px-6 py-3 font-mono border-r border-white/5 text-indigo-300">{center.d.reduce((s, r) => s + r.totalTiempoPL, 0).toFixed(1)}h</td>
+                          <td className="px-6 py-3 font-mono text-teal-300">{center.d.reduce((s, r) => s + r.totalTiempoCorte, 0).toFixed(1)}h</td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </Card>
@@ -398,7 +456,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="grupos">
+        <TabsContent value="grupos" className="animate-in fade-in duration-300">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
             {grupos.map(g => (
               <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
@@ -411,12 +469,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="restricciones">
+        <TabsContent value="restricciones" className="animate-in fade-in duration-300">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <table className="w-full border-collapse text-center">
               <thead className="bg-gray-100/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro de Filtro</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200 text-left">Parámetro de Filtro</th>
                   <th className="px-6 py-5 border-r border-dashed border-gray-200">Valores Permitidos</th>
                   <th className="px-6 py-5 text-left">Efecto en Planificación</th>
                 </tr>
@@ -424,7 +482,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               <tbody className="divide-y divide-gray-100 text-[11px]">
                 {restricciones.map(r => (
                   <tr key={r.codigo_restriccion} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase text-left">{r.nombre_restriccion}</td>
                     <td className="px-6 py-4 border-r border-dashed border-gray-200">
                       <Badge variant="outline" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50/50">{r.valor_restriccion}</Badge>
                     </td>
@@ -436,7 +494,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-8">
+        <TabsContent value="ordenes" className="space-y-8 animate-in fade-in duration-300">
           {[ 
             { t: 'Quito 1000 - Órdenes Provisionales', d: provC1000, tMap: getTiemposMap(tiemposC1000), b: 'bg-green-600', c: 'text-green-700' }, 
             { t: 'Guayaquil 2000 - Órdenes Provisionales', d: provC2000, tMap: getTiemposMap(tiemposC2000), b: 'bg-indigo-600', c: 'text-indigo-700' } 
@@ -480,7 +538,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-2 text-blue-800 border-r border-gray-50 bg-blue-50/5 uppercase font-bold">{String(o.CATEGORIA || '—')}</td>
+                            <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase font-bold">{String(o.CATEGORIA || '—')}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.dens}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.ancho}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.largo}</td>
@@ -501,7 +559,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="ordenesFert" className="space-y-8">
+        <TabsContent value="ordenesFert" className="space-y-8 animate-in fade-in duration-300">
           {[ 
             { t: 'Quito 1000 - Órdenes FERT', d: fertC1000, tMap: getTiemposMap(tiemposC1000), b: 'bg-green-600', c: 'text-green-700' }, 
             { t: 'Guayaquil 2000 - Órdenes FERT', d: fertC2000, tMap: getTiemposMap(tiemposC2000), b: 'bg-indigo-600', c: 'text-indigo-700' } 
@@ -531,7 +589,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4">ALM.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                    <tbody className="divide-y divide-gray-50 text-[10px]">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
@@ -545,7 +603,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-2 text-blue-800 border-r border-gray-50 bg-blue-50/5 uppercase font-black">{String(o.CATEGORIA || '—')}</td>
+                            <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase font-black">{String(o.CATEGORIA || '—')}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.dens}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.ancho}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.largo}</td>
@@ -576,15 +634,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                 <h3 className={cn("text-xs font-bold uppercase flex items-center gap-2 px-1", center.c)}>
                   <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t}
                 </h3>
-                <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+                <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                   <div className="overflow-x-auto max-h-[400px]">
                     <table className="w-full border-collapse text-center">
-                      <thead className="bg-gray-100 sticky top-0 text-[10px] font-bold uppercase text-gray-500">
+                      <thead className="bg-gray-100 sticky top-0 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                         <tr>
                           <th className="px-4 py-4 border-r border-gray-100">Material</th>
                           <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                           <th className="px-4 py-4 border-r border-gray-100">Línea Técnica</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Estándar (Min)</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-teal-600 font-black">Estándar (Min)</th>
                           <th className="px-4 py-4">Inventario / Seguridad</th>
                         </tr>
                       </thead>
