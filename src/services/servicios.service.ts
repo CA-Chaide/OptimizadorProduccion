@@ -296,14 +296,33 @@ export const serviciosService = {
     }
   },
 
-  async getMaestroMaterialesExplosion(centro: string, fert: string, page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+  async getMaestroMaterialesExplosion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     try {
-      const response = await fetch(API_URL + "/MaestroMaterialesExplosionPaginado", {
+      const response = await fetch(API_URL + "/TiempoAprovisionamientoMateriasPrimas", {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ 
-          Centro: centro,
-          Fert: fert,
+          page: page, 
+          rowsPerPage: rowsPerPage,
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
+        throw new Error(errorBody.message || "Error al consultar el Maestro de Materiales.");
+      }
+      return response.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+
+  async getTiemposCuradoBloqueFormulado( page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    try {
+      const response = await fetch(API_URL + "/tiemposCuradoBloqueFormulado", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ 
           page: page, 
           rowsPerPage: rowsPerPage,
         }),

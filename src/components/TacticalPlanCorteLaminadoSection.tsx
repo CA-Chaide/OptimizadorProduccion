@@ -36,7 +36,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
   
-  // Estado para capturar el total de KG calculado en la explosión
   const [totalKgCalculated, setTotalKgCalculated] = useState<number>(0);
 
   const fetchGrupos = async () => {
@@ -175,12 +174,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const matchResp = responsables.length === 0 || responsables.includes(itemResp);
       if (!matchResp) return false;
 
-      const matInfo = extractMaterialInfo(o);
-      const infoTiempo = tiemposMap.get(matInfo.code);
-      const puesto = (infoTiempo?.puesto || '').toLowerCase();
-      
-      const isAcolcha = puesto.includes('acolcha');
-      if (!isAcolcha) return false;
+      // FILTRO POR MÁQUINA: Debe contener "HR-ACH"
+      const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '').toUpperCase();
+      const matchMaquina = maquina.includes('HR-ACH');
+      if (!matchMaquina) return false;
 
       const itemSector = String(o.SECTOR || o.Sector || o.SECTORDESC || '').trim();
       const matchSector = sectores.length === 0 || sectores.some(s => itemSector.includes(s));
@@ -194,7 +191,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
       return true;
     });
-  }, [ordenes, appliedRestrictionsSummary, tiemposMap, selectedDate]);
+  }, [ordenes, appliedRestrictionsSummary, selectedDate]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -225,7 +222,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="plan" className="space-y-6 animate-in fade-in duration-300">
-          {/* Header con Filtro de Fecha */}
           <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
@@ -272,7 +268,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Popover>
           </div>
 
-          {/* Estadísticas de Carga */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Filtradas</p>
@@ -282,11 +277,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Puestos Acolchado</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Máquinas Activas</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">
-                  {[...new Set(ordenesFiltradas.map(o => tiemposMap.get(extractMaterialInfo(o).code)?.puesto))].filter(p => p && p !== '—').length}
+                  {[...new Set(ordenesFiltradas.map(o => o.MAQUINA || o.Maquina || o.RECURSO))].filter(m => m && m !== '—').length}
                 </p>
               </div>
             </div>
@@ -302,7 +297,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          {/* Monitor de Cálculo e Información de Necesidades */}
           <TacticalNeedsSection 
             ordenes={ordenesFiltradas} 
             tiempos={tiemposEnsamblado} 
@@ -342,7 +336,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
                         <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
                         <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{puestoTrabajo}</td>
-                        <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
+                        <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
                         <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                       </tr>
                     );
