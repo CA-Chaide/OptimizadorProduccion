@@ -13,6 +13,7 @@ interface TacticalNeedsSectionProps {
   ordenes: any[];
   tiempos: any[];
   onTotalKgChange?: (total: number) => void;
+  onMaterialsCalculated?: (codes: string[]) => void;
 }
 
 interface ParentInfo {
@@ -30,7 +31,12 @@ interface GroupedNeed {
   items: ParentInfo[];
 }
 
-export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ ordenes, tiempos, onTotalKgChange }) => {
+export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ 
+  ordenes, 
+  tiempos, 
+  onTotalKgChange,
+  onMaterialsCalculated
+}) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [groupedNeeds, setGroupedNeeds] = useState<GroupedNeed[]>([]);
@@ -60,8 +66,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
         const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
         const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '');
 
-        const infoTiempo = tiempos.find(t => extractCode(t.CodMaterial || '') === fertCode);
-        const puestoPadre = infoTiempo?.PuestoTrabajo || '—';
+        const infoTiempo = tiempos.find(t => extractCode(t.CodMaterial || t.codigo_material || '') === fertCode);
+        const puestoPadre = infoTiempo?.PuestoTrabajo || infoTiempo?.puesto_trabajo || '—';
 
         try {
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, fertCode, 1, 1000);
@@ -115,6 +121,10 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
       const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalUnidades - a.totalUnidades);
       setGroupedNeeds(results);
       
+      // Notificar materiales calculados para linking
+      const allMaterialCodes = results.map(r => r.codigoComponente);
+      onMaterialsCalculated?.(allMaterialCodes);
+
       // Calcular y notificar el total de KG al padre
       const totalKg = results.reduce((sum, n) => sum + n.totalUnidades, 0);
       onTotalKgChange?.(totalKg);

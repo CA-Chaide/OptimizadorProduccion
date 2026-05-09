@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
+  const [materialesEnPlan, setMaterialesEnPlan] = useState<string[]>([]);
   
   const [totalKgCalculated, setTotalKgCalculated] = useState<number>(0);
 
@@ -108,36 +109,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, []);
 
   const extractMaterialInfo = (item: any) => {
-    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
-    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
+    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || item.codigo_material || '').trim();
+    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || item.material || '').trim();
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
     return { code, desc };
   };
 
-  const tiemposMap = useMemo(() => {
-    const map = new Map<string, { tiempo: number; puesto: string }>();
-    tiemposEnsamblado.forEach(t => {
-      const info = extractMaterialInfo(t);
-      if (info.code) {
-        map.set(info.code, { 
-          tiempo: Number(t.Tiempo_Min || t.Tiempo || 0),
-          puesto: String(t.PuestoTrabajo || t.Puesto || '—')
-        });
-      }
-    });
-    return map;
-  }, [tiemposEnsamblado]);
-
   const appliedRestrictionsSummary = useMemo(() => {
     const resps = restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map(r => r.valor_restriccion);
-    const alms = restriccionesArray.filter(r => r.nombre_restriccion === 'ALMACEN').map(r => r.valor_restriccion);
     const sectors = restriccionesArray.filter(r => r.nombre_restriccion === 'SECTOR').map(r => r.valor_restriccion);
 
     return {
       responsables: [...new Set(resps.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean),
-      almacenes: [...new Set(alms.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean),
       sectores: [...new Set(sectors.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean)
     };
   }, [restriccionesArray]);
@@ -164,7 +149,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [viewDate]);
 
   const ordenesFiltradas = useMemo(() => {
-    const { responsables, almacenes, sectores } = appliedRestrictionsSummary;
+    const { responsables, sectores } = appliedRestrictionsSummary;
 
     return ordenes.filter(o => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
@@ -202,7 +187,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Control de Carga Operativa - Centro 1000 (Quito)</p>
+            <p className="text-xs text-gray-500 font-medium">Plan Maestro Interactiva - Centro 1000 (Quito)</p>
           </div>
         </div>
       </div>
@@ -210,10 +195,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'plan', l: 'Resumen & Necesidades', i: LayoutDashboard }, 
-            { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'tiempos', l: 'Tiempos', i: Clock },
-            { v: 'maestro', l: 'M. Materiales', i: ClipboardList }
+            { v: 'plan', l: 'Plan Maestro & Necesidades', i: LayoutDashboard }, 
+            { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
+            { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock },
+            { v: 'maestro', l: 'Maestro Materiales', i: ClipboardList }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -222,11 +207,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="plan" className="space-y-6 animate-in fade-in duration-300">
+          {/* Header de Filtros */}
           <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte Operativo</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
                   {selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
@@ -236,7 +222,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-10 px-6 rounded-2xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-xs uppercase transition-all shadow-sm">
-                  <Filter className="w-4 h-4" /> Fecha
+                  <Filter className="w-4 h-4" /> Filtro Fecha
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
@@ -268,7 +254,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Popover>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Estadísticas */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Filtradas</p>
               <div className="flex items-center gap-2">
@@ -277,30 +264,26 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Máquinas Activas</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total KG (Explosión)</p>
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-indigo-600" />
+                <Layers className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">
-                  {[...new Set(ordenesFiltradas.map(o => o.MAQUINA || o.Maquina || o.RECURSO))].filter(m => m && m !== '—').length}
+                  {totalKgCalculated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total KG (Explosión)</p>
-              <p className="text-xl font-black text-gray-800">
-                {totalKgCalculated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Capacidad Neta</p>
-              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-3">FACTIBLE</Badge>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado Capacidad</p>
+              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-4 py-1">OPERATIVO</Badge>
             </div>
           </div>
 
+          {/* Monitor de Cálculo (TacticalNeedsSection) */}
           <TacticalNeedsSection 
             ordenes={ordenesFiltradas} 
             tiempos={tiemposEnsamblado} 
             onTotalKgChange={setTotalKgCalculated}
+            onMaterialsCalculated={setMaterialesEnPlan}
           />
         </TabsContent>
 
@@ -315,32 +298,30 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-gray-100">Material</th>
                     <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                    <th className="px-3 py-4 border-r border-gray-100 font-black">Puesto Trabajo</th>
                     <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
                     <th className="px-3 py-4 font-black">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
-                  {ordenesFiltradas.map((o, i) => {
-                    const info = extractMaterialInfo(o);
-                    const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                    
-                    const match = tiemposMap.get(info.code);
-                    const puestoTrabajo = match?.puesto || '—';
-                    
-                    return (
-                      <tr key={i} className="hover:bg-red-50/20 transition-colors">
-                        <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                        <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                        <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
-                        <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                        <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{puestoTrabajo}</td>
-                        <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
-                        <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
-                      </tr>
-                    );
-                  })}
+                  {ordenesFiltradas.length === 0 ? (
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay órdenes para la máquina HR-ACH en este periodo</td></tr>
+                  ) : (
+                    ordenesFiltradas.map((o, i) => {
+                      const info = extractMaterialInfo(o);
+                      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                      return (
+                        <tr key={i} className="hover:bg-red-50/20 transition-colors">
+                          <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                          <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                          <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
+                          <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
+                          <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
+                          <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
+                          <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -356,19 +337,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-gray-100">Material</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                     <th className="px-4 py-4 border-r border-gray-100">Puesto Trabajo / Línea</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-red-600">Tiempo Estándar (Min)</th>
                     <th className="px-4 py-4">Stock Actual / Seguridad</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px]">
                   {tiemposEnsamblado.map((t, i) => {
                     const info = extractMaterialInfo(t);
+                    const isInPlan = materialesEnPlan.includes(info.code);
                     return (
-                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50">{info.code}</td>
+                      <tr key={i} className={cn("transition-colors", isInPlan ? "bg-blue-50/50 hover:bg-blue-100" : "hover:bg-gray-50/50")}>
+                        <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50 flex items-center justify-center gap-2">
+                          {info.code}
+                          {isInPlan && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
+                        </td>
                         <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
                         <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">
                           <div className="text-[10px]">{t.Linea || t.PuestoTrabajoLinea}</div>
                           <div className="text-[8px] font-mono opacity-60">{t.PuestoTrabajo}</div>
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold text-red-500 border-r border-gray-50">
+                          {(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}
                         </td>
                         <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
                       </tr>
