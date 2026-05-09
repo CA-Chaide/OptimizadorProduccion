@@ -302,8 +302,8 @@ export const serviciosService = {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ 
-          centro,
-          material,
+          centro: String(centro),
+          material: String(material),
           page: page, 
           rowsPerPage: rowsPerPage,
         }),
