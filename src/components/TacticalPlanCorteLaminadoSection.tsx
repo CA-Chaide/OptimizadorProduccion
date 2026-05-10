@@ -112,6 +112,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
+  // Mapa optimizado para lookup por CodMaterial
   const tiemposMap = useMemo(() => {
     const map = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
@@ -205,7 +206,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Maestro Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Consolidación de Necesidades y Órdenes (Almacén 1006/1008)</p>
+            <p className="text-xs text-gray-500 font-medium">Consolidación de Lista de Materiales (Almacén 1006/1008)</p>
           </div>
         </div>
       </div>
@@ -213,7 +214,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'plan', l: 'Plan Maestro & Necesidades', i: LayoutDashboard }, 
+            { v: 'plan', l: 'Lista de Materiales Explotada', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
@@ -228,7 +229,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Periodo Seleccionado</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Filtro de Plan Maestro</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
                   {selectedDate === 'all' ? 'Vista Consolidada del Mes' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
@@ -289,6 +290,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
+          {/* Componente que gestiona la lista de materiales explotada y consolidada */}
           <TacticalNeedsSection 
             ordenes={ordenesFiltradas} 
             tiempos={tiemposEnsamblado} 
