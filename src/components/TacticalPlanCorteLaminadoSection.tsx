@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -77,7 +78,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const fetchTiemposEnsamblado = async () => {
     try {
-      const res = await serviciosService.getTiemposEnsamblado(1, 10000);
+      // Cargamos un volumen mayor para asegurar el lookup de línea maestra
+      const res = await serviciosService.getTiemposEnsamblado(1, 15000);
       const data = res.data?.data || res.data || [];
       if (Array.isArray(data)) {
         const filtered = data.filter((t: any) => String(t.Centro || t.centro || '').trim() === '1000');
@@ -116,7 +118,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const map = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
       const { code } = extractMaterialInfo(t);
-      map.set(code, t);
+      if (code) map.set(code, t);
     });
     return map;
   }, [tiemposEnsamblado]);
@@ -142,7 +144,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // CATEGORÍAS DEFINIDAS SEGÚN REQUERIMIENTO
   const CATEGORIES = [
     "LAMINA CILINDRICA",
     "BANDA INT",
@@ -154,7 +155,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const ordenesFiltradas = useMemo(() => {
     return ordenes.filter(o => {
-      // Filtro de Centro y Almacén (1006 o 1008)
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
@@ -162,13 +162,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const matchesAlmacen = itemAlmacen === '1006' || itemAlmacen === '1008';
       if (!matchesAlmacen) return false;
 
-      // Filtro de Descriptores Críticos: Solo incluimos si la descripción contiene alguna categoría permitida
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
       const matchesCategory = CATEGORIES.some(cat => descUpper.includes(cat));
       if (!matchesCategory) return false;
       
-      // Filtro de Fecha si aplica
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
