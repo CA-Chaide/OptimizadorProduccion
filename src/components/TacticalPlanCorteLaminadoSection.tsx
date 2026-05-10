@@ -13,7 +13,6 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { TacticalNeedsSection } from './TacticalNeedsSection';
-import { MaestroMaterialExplosionSection } from './MaestroMaterialesExplosionSection';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -139,10 +138,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
-      // CRITERIO SOLICITADO: Almacén 1008 y Máquina que contenga "HR-ACH"
+      // CRITERIO: Almacén 1006 o 1008
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      const matchesAlmacen = itemAlmacen === '1006' || itemAlmacen === '1008';
       
-      // Evaluar múltiples campos para encontrar la máquina
+      // CRITERIO: Máquina que contenga "HR-ACH"
       const machineFields = [
         o.MAQUINA, 
         o.Maquina, 
@@ -153,8 +153,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         o.CENTRO_TRABAJO
       ];
       const itemMaquinaText = machineFields.filter(Boolean).join(' ').toLowerCase();
-
-      const matchesAlmacen = itemAlmacen === '1008';
       const matchesMaquina = itemMaquinaText.includes('hr-ach');
 
       if (!matchesAlmacen || !matchesMaquina) return false;
@@ -169,6 +167,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
+  // Helper para mostrar la máquina en la tabla
+  const getMachineDisplay = (o: any) => {
+    const fields = [o.MAQUINA, o.Maquina, o.RECURSO, o.TEXTO_RECURSO];
+    return fields.filter(Boolean).join(' ') || '—';
+  };
+
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
   return (
@@ -178,7 +182,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Criterio: Almacén 1008 | Máquina: HR-ACH | Planta 1000</p>
+            <p className="text-xs text-gray-500 font-medium">Criterio: Almacén 1006/1008 | Máquina: HR-ACH | Planta 1000</p>
           </div>
         </div>
       </div>
@@ -245,7 +249,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Identificadas</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes (1006/1008 + HR-ACH)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
@@ -291,7 +295,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
                   {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay órdenes para mostrar con el criterio (1008 + HR-ACH)</td></tr>
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay órdenes para mostrar con el criterio (1006/1008 + HR-ACH)</td></tr>
                   ) : (
                     ordenesFiltradas.map((o, i) => {
                       const info = extractMaterialInfo(o);
@@ -303,7 +307,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
                           <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
                           <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                          <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
+                          <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 uppercase">{getMachineDisplay(o)}</td>
                           <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
@@ -347,7 +351,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || '—'}</td>
                           <td className="px-4 py-3 border-r border-gray-100 font-bold text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
                           <td className="px-4 py-3 font-mono font-bold text-red-500 border-r border-gray-50">
-                            {(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
+                            {Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
                           </td>
                           <td className="px-4 py-3 text-gray-400 font-mono border-r border-gray-50">{(t.StockActual || 0).toLocaleString()}</td>
                           <td className="px-4 py-3 text-gray-700 font-mono font-bold">{(t.StockSeguridad || 0).toLocaleString()}</td>
