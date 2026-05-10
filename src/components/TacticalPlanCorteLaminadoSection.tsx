@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -78,7 +77,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const fetchTiemposEnsamblado = async () => {
     try {
-      // Cargamos un volumen mayor para asegurar el lookup de línea maestra
       const res = await serviciosService.getTiemposEnsamblado(1, 15000);
       const data = res.data?.data || res.data || [];
       if (Array.isArray(data)) {
@@ -181,14 +179,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
-  const groupedOrders = useMemo(() => {
+  const groupedOrdersByDescriptor = useMemo(() => {
     const groups: Record<string, any[]> = {};
     CATEGORIES.forEach(cat => { groups[cat] = []; });
 
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
-      
       for (const cat of CATEGORIES) {
         if (descUpper.includes(cat)) {
           groups[cat].push(o);
@@ -196,7 +193,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         }
       }
     });
-
     return groups;
   }, [ordenesFiltradas]);
 
@@ -209,7 +205,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Maestro Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Control de Órdenes y Necesidades (Almacén 1006/1008)</p>
+            <p className="text-xs text-gray-500 font-medium">Consolidación de Necesidades y Órdenes (Almacén 1006/1008)</p>
           </div>
         </div>
       </div>
@@ -232,9 +228,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte Operativo</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Periodo Seleccionado</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
-                  {selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                  {selectedDate === 'all' ? 'Vista Consolidada del Mes' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
@@ -276,14 +272,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Críticas</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes a Procesar</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Carga Necesidades (KG)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Consumo Consolidado (KG)</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">
@@ -320,7 +316,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {ordenesFiltradas.length === 0 ? (
                     <tr><td colSpan={7} className="py-20 text-gray-400 italic font-bold uppercase tracking-widest">Sin carga operativa para el periodo</td></tr>
                   ) : (
-                    Object.entries(groupedOrders).map(([category, items]) => {
+                    Object.entries(groupedOrdersByDescriptor).map(([category, items]) => {
                       if (items.length === 0) return null;
                       return (
                         <React.Fragment key={category}>

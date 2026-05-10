@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { RefreshCw, Layers, ClipboardList, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors } from 'lucide-react';
+import { Layers, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from '@/components/ui/badge';
@@ -16,19 +16,20 @@ interface TacticalNeedsSectionProps {
   onMaterialsCalculated?: (codes: string[]) => void;
 }
 
-interface ParentInfo {
+interface ParentBreakdown {
+  orden: string;
   nombrePadre: string;
   materialPadre: string;
-  puestoTrabajo: string;
-  cantidad: number;
+  puestoPadre: string;
+  cantidadKG: number;
 }
 
 interface GroupedNeed {
   codigoComponente: string;
   nombreComponente: string;
   unidad: string;
-  totalUnidades: number;
-  items: ParentInfo[];
+  totalKG: number;
+  parents: ParentBreakdown[];
 }
 
 export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ 
@@ -52,12 +53,13 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
     setIsProcessing(true);
     setGroupedNeeds([]);
+    setExpandedGroups(new Set());
     setProgress({ current: 0, total: ordenes.length });
 
     const consolidatedMap = new Map<string, GroupedNeed>();
 
     try {
-      logger.log(`[TacticalNeeds] Iniciando explosión para ${ordenes.length} órdenes...`);
+      logger.log(`[TacticalNeeds] Iniciando explosión jerárquica para ${ordenes.length} órdenes...`);
 
       for (let i = 0; i < ordenes.length; i++) {
         const order = ordenes[i];
@@ -65,9 +67,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
         const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '');
+        const orderNum = order.ORDENPREVISIONAL || order.ORDEN || '—';
 
-        const infoTiempo = tiempos.find(t => extractCode(t.CodMaterial || t.codigo_material || '') === fertCode);
-        const puestoPadre = infoTiempo?.PuestoTrabajo || infoTiempo?.puesto_trabajo || '—';
+        // Buscar información técnica del padre (puesto de trabajo)
+        const infoMaestra = tiempos.find(t => extractCode(t.CodMaterial || t.codigo_material || '') === fertCode);
+        const puestoPadre = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
 
         try {
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, fertCode, 1, 1000);
@@ -78,55 +82,55 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             explosionData.forEach((comp: any) => {
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-              const unitRaw = "KG"; // Forzado a KG por requerimiento
               
-              if (!compCode) return;
-              if (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO')) return;
+              // Filtrar solo categorías requeridas
+              if (!compCode || (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO'))) return;
 
-              const unitaryQty = Number(comp.CANTIDAD_UNITARIA || 0);
-              const totalNeeded = orderQty * unitaryQty;
+              const factorConsumo = Number(comp.CANTIDAD_UNITARIA || 0);
+              const cantidadKG = orderQty * factorConsumo;
 
               if (consolidatedMap.has(compCode)) {
                 const existing = consolidatedMap.get(compCode)!;
-                existing.totalUnidades += totalNeeded;
-                existing.items.push({
+                existing.totalKG += cantidadKG;
+                existing.parents.push({
+                  orden: orderNum,
                   nombrePadre: orderName,
                   materialPadre: fertCode,
-                  puestoTrabajo: puestoPadre,
-                  cantidad: totalNeeded
+                  puestoPadre: puestoPadre,
+                  cantidadKG: cantidadKG
                 });
               } else {
                 consolidatedMap.set(compCode, {
                   codigoComponente: compCode,
                   nombreComponente: descRaw,
-                  unidad: unitRaw,
-                  totalUnidades: totalNeeded,
-                  items: [{
+                  unidad: "KG",
+                  totalKG: cantidadKG,
+                  parents: [{
+                    orden: orderNum,
                     nombrePadre: orderName,
                     materialPadre: fertCode,
-                    puestoTrabajo: puestoPadre,
-                    cantidad: totalNeeded
+                    puestoPadre: puestoPadre,
+                    cantidadKG: cantidadKG
                   }]
                 });
               }
             });
           }
         } catch (err) {
-          console.warn(`Error en BOM para ${fertCode}:`, err);
+          console.warn(`Error en BOM para padre ${fertCode}:`, err);
         }
 
         setProgress(prev => ({ ...prev, current: i + 1 }));
       }
 
-      const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalUnidades - a.totalUnidades);
+      const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalKG - a.totalKG);
       setGroupedNeeds(results);
       
-      // Notificar materiales calculados para linking
-      const allMaterialCodes = results.map(r => r.codigoComponente);
-      onMaterialsCalculated?.(allMaterialCodes);
+      // Notificar materiales para resaltado en Tiempos
+      onMaterialsCalculated?.(results.map(r => r.codigoComponente));
 
-      // Calcular y notificar el total de KG al padre
-      const totalKg = results.reduce((sum, n) => sum + n.totalUnidades, 0);
+      // Calcular total acumulado
+      const totalKg = results.reduce((sum, n) => sum + n.totalKG, 0);
       onTotalKgChange?.(totalKg);
 
     } catch (err) {
@@ -143,65 +147,87 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
     setExpandedGroups(next);
   };
 
-  const laminasNeeds = useMemo(() => groupedNeeds.filter(n => n.nombreComponente.includes('LAMINA CILINDRICA')), [groupedNeeds]);
-  const bloquesNeeds = useMemo(() => groupedNeeds.filter(n => n.nombreComponente.includes('BLOQUE FORMULADO')), [groupedNeeds]);
+  const laminasGroups = useMemo(() => groupedNeeds.filter(n => n.nombreComponente.includes('LAMINA CILINDRICA')), [groupedNeeds]);
+  const bloquesGroups = useMemo(() => groupedNeeds.filter(n => n.nombreComponente.includes('BLOQUE FORMULADO')), [groupedNeeds]);
 
-  const renderTable = (items: GroupedNeed[], title: string, icon: any, colorClass: string, bgColor: string, badgeColor: string) => (
+  const renderLevelTable = (items: GroupedNeed[], title: string, icon: any, colorClass: string, headerColor: string) => (
     <div className="space-y-3">
-      <h3 className={cn("text-[11px] font-black uppercase flex items-center gap-2 px-2 tracking-widest", colorClass)}>
-        {React.createElement(icon, { className: "w-4 h-4" })}
-        {title} ({items.length})
-      </h3>
-      <div className="border rounded-2xl overflow-hidden bg-white shadow-sm">
+      <div className="flex items-center justify-between px-2">
+        <h3 className={cn("text-[11px] font-black uppercase flex items-center gap-2 tracking-widest", colorClass)}>
+          {React.createElement(icon, { className: "w-4 h-4" })}
+          {title} ({items.length} Tipos)
+        </h3>
+      </div>
+      
+      <div className="border rounded-2xl overflow-hidden bg-white shadow-md">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[10px] font-sans">
-            <thead className={cn("text-white uppercase font-black tracking-tighter", bgColor)}>
+            <thead className={cn("text-white uppercase font-black tracking-tighter", headerColor)}>
               <tr>
-                <th className="px-5 py-4 text-left w-[30%] border-r border-white/10">Nombre Componente</th>
-                <th className="px-5 py-4 w-[12%] border-r border-white/10">Componente</th>
-                <th className="px-4 py-4 w-[8%] border-r border-white/10 text-center">UM</th>
-                <th className="px-5 py-4 text-left w-[25%] border-r border-white/10">Nombre (Padre)</th>
-                <th className="px-5 py-4 w-[10%] border-r border-white/10">Material (Padre)</th>
-                <th className="px-5 py-4 text-left">Puesto Trabajo</th>
+                <th className="px-5 py-4 text-left w-[35%] border-r border-white/10">Componente Consolidado (Nivel 1)</th>
+                <th className="px-5 py-4 w-[15%] border-r border-white/10 text-center">Código</th>
+                <th className="px-5 py-4 w-[10%] border-r border-white/10 text-center">UM</th>
+                <th className="px-5 py-4 text-right bg-black/10">Necesidad Total (KG)</th>
               </tr>
             </thead>
             <tbody>
               {items.map((group) => (
                 <React.Fragment key={group.codigoComponente}>
+                  {/* NIVEL 1: COMPONENTE CONSOLIDADO */}
                   <tr 
-                    className="bg-gray-50/50 border-b border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors group"
+                    className="bg-gray-50/80 border-b border-gray-100 cursor-pointer hover:bg-indigo-50/30 transition-colors"
                     onClick={() => toggleGroup(group.codigoComponente)}
                   >
-                    <td className="px-5 py-3 font-black text-gray-700 flex items-center gap-3">
-                      <div className="p-1 bg-white rounded-md shadow-sm border border-gray-100">
-                        {expandedGroups.has(group.codigoComponente) ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                    <td className="px-5 py-3 font-black text-slate-700 flex items-center gap-3">
+                      <div className="p-1 bg-white rounded-md shadow-sm border border-gray-200">
+                        {expandedGroups.has(group.codigoComponente) ? <ChevronDown className="w-3 h-3 text-indigo-600" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
                       </div>
                       {group.nombreComponente}
                     </td>
-                    <td className="px-5 py-3 font-black text-center text-gray-500 bg-gray-50/10">
+                    <td className="px-5 py-3 font-mono font-black text-center text-slate-500 bg-slate-50/20">
                       {group.codigoComponente}
                     </td>
-                    <td className="px-4 py-3 font-black text-center text-slate-400">
+                    <td className="px-5 py-3 font-black text-center text-slate-400">
                       {group.unidad}
                     </td>
-                    <td colSpan={3} className="px-5 py-3 text-right">
-                      <Badge className={cn("text-white border-none font-black text-[9px] px-3", badgeColor)}>
-                        Total: {group.totalUnidades.toLocaleString(undefined, { maximumFractionDigits: 2 })} {group.unidad}
+                    <td className="px-8 py-3 text-right">
+                      <Badge className={cn("border-none font-black text-[10px] px-4 py-1 shadow-sm", headerColor)}>
+                        {group.totalKG.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KG
                       </Badge>
                     </td>
                   </tr>
-                  {expandedGroups.has(group.codigoComponente) && group.items.map((item, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      <td className="px-5 py-2 border-r border-gray-50"></td>
-                      <td className="px-5 py-2 text-center text-gray-300 font-mono border-r border-gray-50">{group.codigoComponente}</td>
-                      <td className="px-4 py-2 text-center text-gray-300 font-mono border-r border-gray-50">{group.unidad}</td>
-                      <td className="px-5 py-2 text-left uppercase text-gray-500 font-bold border-r border-gray-50">{item.nombrePadre}</td>
-                      <td className="px-5 py-2 text-center font-black text-indigo-400 border-r border-gray-50 tracking-tighter">{item.materialPadre}</td>
-                      <td className="px-5 py-2 text-left font-black text-slate-400 uppercase italic">
-                        {item.puestoTrabajo}
-                      </td>
-                    </tr>
-                  ))}
+
+                  {/* NIVEL 2: DESGLOSE DE ÓRDENES PADRE */}
+                  {expandedGroups.has(group.codigoComponente) && (
+                    <>
+                      <tr className="bg-slate-50">
+                        <td colSpan={4} className="px-10 py-1 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-gray-100">
+                          Desglose por Órdenes de Origen (Vínculo Táctico)
+                        </td>
+                      </tr>
+                      {group.parents.map((parent, pIdx) => (
+                        <tr key={`${group.codigoComponente}-p-${pIdx}`} className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors">
+                          <td className="px-12 py-2 text-left">
+                            <div className="flex flex-col">
+                              <span className="font-black text-slate-600 uppercase leading-none mb-1">{parent.nombrePadre}</span>
+                              <span className="text-[9px] font-bold text-slate-400 flex items-center gap-2 italic">
+                                <Clock className="w-2.5 h-2.5" /> Puesto: {parent.puestoPadre}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-2 text-center">
+                            <span className="font-mono font-black text-indigo-400 tracking-tighter">{parent.materialPadre}</span>
+                          </td>
+                          <td className="px-5 py-2 text-center text-slate-300 font-bold">
+                            Ord: {parent.orden}
+                          </td>
+                          <td className="px-8 py-2 text-right font-mono font-bold text-slate-500">
+                            {parent.cantidadKG.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
                 </React.Fragment>
               ))}
             </tbody>
@@ -213,15 +239,15 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
   return (
     <div className="space-y-6 text-left">
-      {/* Header y Control */}
+      {/* Header de Sincronización */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
-            <Layers className="w-6 h-6" />
+            <Scale className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Sincronización Táctica de Materia Prima</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Unificación de Láminas y Bloques (Consolidado en KG)</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Explosión Técnica de Necesidades</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Niveles: Componente Consolidado (1) → Órdenes de Origen (2)</p>
           </div>
         </div>
         
@@ -235,17 +261,17 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           ) : (
             <PlayCircle className="w-4 h-4 mr-2" />
           )}
-          {isProcessing ? 'Procesando BOM...' : 'Sincronizar Necesidades'}
+          {isProcessing ? 'Calculando BOM...' : 'Sincronizar Plan Maestro'}
         </Button>
       </div>
 
-      {/* Barra de Progreso */}
+      {/* Progreso */}
       {isProcessing && (
         <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100 animate-in fade-in slide-in-from-top-2">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
             <span className="flex items-center gap-2">
               <Activity className="w-3 h-3" />
-              Calculando Explosión Masiva
+              Procesando niveles de consumo técnico
             </span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
@@ -253,17 +279,17 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         </div>
       )}
 
-      {/* Secciones de Resultados */}
+      {/* Resultados Jerárquicos */}
       {!isProcessing && groupedNeeds.length > 0 ? (
-        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
-          {laminasNeeds.length > 0 && renderTable(laminasNeeds, "A) Necesidades Lámina Cilíndrica", Scissors, "text-green-700", "bg-[#9db65b]", "bg-[#9db65b]")}
-          {bloquesNeeds.length > 0 && renderTable(bloquesNeeds, "B) Bloque Formulado", Box, "text-indigo-700", "bg-indigo-600", "bg-indigo-600")}
+        <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          {laminasGroups.length > 0 && renderLevelTable(laminasGroups, "A) Nivel: Lámina Cilíndrica", Scissors, "text-green-700", "bg-[#9db65b]")}
+          {bloquesGroups.length > 0 && renderLevelTable(bloquesGroups, "B) Nivel: Bloque Formulado", Box, "text-indigo-700", "bg-indigo-600")}
         </div>
       ) : !isProcessing && (
-        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 space-y-6">
+        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 space-y-4">
           <div className="flex flex-col items-center gap-3 opacity-20">
-            <Layers className="w-12 h-12 text-slate-300" />
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos de explosión sincronizados</p>
+            <Scale className="w-12 h-12 text-slate-300" />
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos de necesidades consolidados</p>
           </div>
         </div>
       )}
