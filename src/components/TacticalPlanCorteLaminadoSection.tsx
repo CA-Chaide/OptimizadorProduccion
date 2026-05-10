@@ -112,7 +112,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
-  // Mapa para búsqueda rápida por CodMaterial para el enlace de datos (Línea Maestra)
   const tiemposMap = useMemo(() => {
     const map = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
@@ -143,16 +142,33 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
+  // CATEGORÍAS DEFINIDAS SEGÚN REQUERIMIENTO
+  const CATEGORIES = [
+    "LAMINA CILINDRICA",
+    "BANDA INT",
+    "BANDA BASE",
+    "BANDA CHN",
+    "ACOLCHADO",
+    "TAPA SF BABY"
+  ];
+
   const ordenesFiltradas = useMemo(() => {
     return ordenes.filter(o => {
+      // Filtro de Centro y Almacén (1006 o 1008)
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const matchesAlmacen = itemAlmacen === '1006' || itemAlmacen === '1008';
-      
       if (!matchesAlmacen) return false;
+
+      // Filtro de Descriptores Críticos: Solo incluimos si la descripción contiene alguna categoría permitida
+      const { desc } = extractMaterialInfo(o);
+      const descUpper = desc.toUpperCase();
+      const matchesCategory = CATEGORIES.some(cat => descUpper.includes(cat));
+      if (!matchesCategory) return false;
       
+      // Filtro de Fecha si aplica
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -167,42 +183,19 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
-  // AGRUPACIÓN ESTRUCTURAL POR DESCRIPTORES SOLICITADOS
   const groupedOrders = useMemo(() => {
-    const categories = [
-      "LAMINA CILINDRICA",
-      "BANDA INT",
-      "BANDA BASE",
-      "BANDA CHN",
-      "ACOLCHADO",
-      "TAPA SF BABY"
-    ];
-
-    const groups: Record<string, any[]> = {
-      "LAMINA CILINDRICA": [],
-      "BANDA INT": [],
-      "BANDA BASE": [],
-      "BANDA CHN": [],
-      "ACOLCHADO": [],
-      "TAPA SF BABY": [],
-      "OTROS": []
-    };
+    const groups: Record<string, any[]> = {};
+    CATEGORIES.forEach(cat => { groups[cat] = []; });
 
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
-      let matched = false;
       
-      for (const cat of categories) {
+      for (const cat of CATEGORIES) {
         if (descUpper.includes(cat)) {
           groups[cat].push(o);
-          matched = true;
           break;
         }
-      }
-      
-      if (!matched) {
-        groups["OTROS"].push(o);
       }
     });
 
@@ -217,8 +210,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
-            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión Operativa Planta 1000 (Almacén 1006/1008)</p>
+            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Maestro Corte Laminado</h2>
+            <p className="text-xs text-gray-500 font-medium">Control de Órdenes y Necesidades (Almacén 1006/1008)</p>
           </div>
         </div>
       </div>
@@ -228,7 +221,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           {[ 
             { v: 'plan', l: 'Plan Maestro & Necesidades', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
-            { v: 'tiempos', l: 'Catálogo Tiempos Ensamblado', i: Clock }
+            { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -283,26 +276,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Popover>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes (1006/1008)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Críticas</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Carga (KG)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Carga Necesidades (KG)</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">
                   {totalKgCalculated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
-            </div>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Sincronización</p>
-              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-4 py-1 uppercase">Sincronizado</Badge>
             </div>
           </div>
 
@@ -340,7 +329,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <tr className="bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest text-left">
                             <td colSpan={7} className="px-6 py-2.5 flex items-center gap-3">
                               <Layers className="w-4 h-4 text-red-400" />
-                              Estructura: {category} ({items.length} Órdenes)
+                              Categoría: {category} ({items.length} Órdenes)
                             </td>
                           </tr>
                           {items.map((o, i) => {
