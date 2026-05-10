@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2 } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { TacticalNeedsSection } from './TacticalNeedsSection';
-import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
+import { MaestroMaterialExplosionSection } from './MaestroMaterialesExplosionSection';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -141,10 +141,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
       // CRITERIO SOLICITADO: Almacén 1008 y Máquina que contenga "HR-ACH"
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const itemMaquina = String(o.MAQUINA || o.Maquina || o.maquina || o.RECURSO || '').toLowerCase();
+      
+      // Evaluar múltiples campos para encontrar la máquina
+      const machineFields = [
+        o.MAQUINA, 
+        o.Maquina, 
+        o.maquina, 
+        o.RECURSO, 
+        o.recurso, 
+        o.TEXTO_RECURSO, 
+        o.CENTRO_TRABAJO
+      ];
+      const itemMaquinaText = machineFields.filter(Boolean).join(' ').toLowerCase();
 
       const matchesAlmacen = itemAlmacen === '1008';
-      const matchesMaquina = itemMaquina.includes('hr-ach');
+      const matchesMaquina = itemMaquinaText.includes('hr-ach');
 
       if (!matchesAlmacen || !matchesMaquina) return false;
       
@@ -167,18 +178,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Filtro: Almacén 1008 | Máquina: HR-ACH | Centro 1000</p>
+            <p className="text-xs text-gray-500 font-medium">Criterio: Almacén 1008 | Máquina: HR-ACH | Planta 1000</p>
           </div>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'plan', l: 'Plan Maestro & Necesidades', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
-            { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock },
-            { v: 'maestro', l: 'Maestro Materiales', i: ClipboardList }
+            { v: 'tiempos', l: 'Catálogo Tiempos Ensamblado', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -235,24 +245,24 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Filtradas (1008 + HR-ACH)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Identificadas</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total KG (Explosión)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Carga (KG)</p>
               <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-indigo-600" />
+                <Activity className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">
                   {totalKgCalculated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Carga</p>
-              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-4 py-1">LISTO</Badge>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Sincronización</p>
+              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-4 py-1 uppercase">Sincronizado</Badge>
             </div>
           </div>
 
@@ -313,44 +323,41 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <tr>
                     <th className="px-4 py-4 border-r border-gray-100">Material</th>
                     <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Puesto Trabajo / Línea</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-red-600">Tiempo Estándar (Min)</th>
-                    <th className="px-4 py-4">Stock Actual / Seguridad</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Puesto Trabajo</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Línea</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-red-600 font-black">Tiempo Estándar (Min)</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Stock Actual</th>
+                    <th className="px-4 py-4 font-black">Seguridad</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px]">
-                  {tiemposEnsamblado.map((t, i) => {
-                    const info = extractMaterialInfo(t);
-                    const isInPlan = materialesEnPlan.includes(info.code);
-                    return (
-                      <tr key={i} className={cn("transition-colors", isInPlan ? "bg-blue-50/50 hover:bg-blue-100" : "hover:bg-gray-50/50")}>
-                        <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50 flex items-center justify-center gap-2">
-                          {info.code}
-                          {isInPlan && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
-                        </td>
-                        <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">
-                          <div className="text-[10px]">{t.Linea || t.PuestoTrabajoLinea}</div>
-                          <div className="text-[8px] font-mono opacity-60">{t.PuestoTrabajo}</div>
-                        </td>
-                        <td className="px-4 py-3 font-mono font-bold text-red-500 border-r border-gray-50">
-                          {(t.Tiempo_Min || t.Tiempo || 0).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
-                      </tr>
-                    );
-                  })}
+                  {tiemposEnsamblado.length === 0 ? (
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay registros en el catálogo de tiempos</td></tr>
+                  ) : (
+                    tiemposEnsamblado.map((t, i) => {
+                      const info = extractMaterialInfo(t);
+                      const isInPlan = materialesEnPlan.includes(info.code);
+                      return (
+                        <tr key={i} className={cn("transition-colors", isInPlan ? "bg-blue-50/50 hover:bg-blue-100" : "hover:bg-gray-50/50")}>
+                          <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50 flex items-center justify-center gap-2">
+                            {info.code}
+                            {isInPlan && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
+                          </td>
+                          <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || '—'}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 font-bold text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
+                          <td className="px-4 py-3 font-mono font-bold text-red-500 border-r border-gray-50">
+                            {(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-400 font-mono border-r border-gray-50">{(t.StockActual || 0).toLocaleString()}</td>
+                          <td className="px-4 py-3 text-gray-700 font-mono font-bold">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="maestro" className="animate-in fade-in duration-300">
-          <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
-            <CardContent className="p-0">
-              <MaestroMaterialesExplosionSection ordenes={ordenesFiltradas} />
-            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
