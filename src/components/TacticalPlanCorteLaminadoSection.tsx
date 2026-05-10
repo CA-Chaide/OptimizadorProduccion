@@ -280,7 +280,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-gray-100">Material</th>
                     <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                    <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700">Puesto Maestro</th>
+                    <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700">Línea Maestra</th>
                     <th className="px-3 py-4 border-r border-gray-100">Máquina</th>
                     <th className="px-3 py-4">Almacén</th>
                   </tr>
@@ -293,9 +293,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       const info = extractMaterialInfo(o);
                       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                       
-                      // Búsqueda de puesto en el catálogo maestro
+                      // Búsqueda de LÍNEA en el catálogo maestro usando el CodMaterial como ID
                       const maestroData = tiemposMap.get(info.code);
-                      const puestoMaestro = maestroData?.PuestoTrabajo || maestroData?.puesto_trabajo || '—';
+                      const lineaMaestra = maestroData?.Linea || maestroData?.linea || '—';
 
                       return (
                         <tr key={i} className="hover:bg-red-50/20 transition-colors">
@@ -304,7 +304,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
                           <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
                           <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                          <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 bg-indigo-50/10 uppercase italic">{puestoMaestro}</td>
+                          <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
                           <td className="px-3 py-2 font-medium text-gray-500 border-r border-gray-50 uppercase">{String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}</td>
                           <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
