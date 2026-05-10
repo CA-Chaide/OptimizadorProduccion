@@ -112,7 +112,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
-  // Mapa para búsqueda rápida por CodMaterial para el enlace de datos
+  // Mapa para búsqueda rápida por CodMaterial para el enlace de datos (Línea Maestra)
   const tiemposMap = useMemo(() => {
     const map = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
@@ -144,7 +144,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [viewDate]);
 
   const ordenesFiltradas = useMemo(() => {
-    const filtered = ordenes.filter(o => {
+    return ordenes.filter(o => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
@@ -160,16 +160,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
 
       return true;
-    });
-
-    return filtered.sort((a, b) => {
+    }).sort((a, b) => {
       const almA = String(a.ALMACEN || a.Almacen || '').trim();
       const almB = String(b.ALMACEN || b.Almacen || '').trim();
       return almA.localeCompare(almB);
     });
   }, [ordenes, selectedDate]);
 
-  // AGRUPACIÓN ESTRUCTURAL POR DESCRIPTORES
+  // AGRUPACIÓN ESTRUCTURAL POR DESCRIPTORES SOLICITADOS
   const groupedOrders = useMemo(() => {
     const categories = [
       "LAMINA CILINDRICA",
