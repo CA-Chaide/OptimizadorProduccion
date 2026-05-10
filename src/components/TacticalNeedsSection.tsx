@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { RefreshCw, Layers, ClipboardList, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";

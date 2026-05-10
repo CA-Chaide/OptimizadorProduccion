@@ -117,16 +117,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
-  const appliedRestrictionsSummary = useMemo(() => {
-    const resps = restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map(r => r.valor_restriccion);
-    const sectors = restriccionesArray.filter(r => r.nombre_restriccion === 'SECTOR').map(r => r.valor_restriccion);
-
-    return {
-      responsables: [...new Set(resps.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean),
-      sectores: [...new Set(sectors.flatMap(v => v.split(/[,&]/).map(s => s.trim())))].filter(Boolean)
-    };
-  }, [restriccionesArray]);
-
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -149,25 +139,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [viewDate]);
 
   const ordenesFiltradas = useMemo(() => {
-    const { responsables, sectores } = appliedRestrictionsSummary;
-
     return ordenes.filter(o => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
       
-      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
-      const matchResp = responsables.length === 0 || responsables.includes(itemResp);
-      if (!matchResp) return false;
-
-      // FILTRO POR MÁQUINA: Debe contener "HR-ACH"
-      const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '').toUpperCase();
-      const matchMaquina = maquina.includes('HR-ACH');
-      if (!matchMaquina) return false;
-
-      const itemSector = String(o.SECTOR || o.Sector || o.SECTORDESC || '').trim();
-      const matchSector = sectores.length === 0 || sectores.some(s => itemSector.includes(s));
-      if (!matchSector) return false;
-
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -176,7 +151,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
       return true;
     });
-  }, [ordenes, appliedRestrictionsSummary, selectedDate]);
+  }, [ordenes, selectedDate]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -207,7 +182,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="plan" className="space-y-6 animate-in fade-in duration-300">
-          {/* Header de Filtros */}
           <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
@@ -254,10 +228,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Popover>
           </div>
 
-          {/* Estadísticas */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Filtradas</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Provisionales</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
@@ -273,12 +246,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado Capacidad</p>
-              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-4 py-1">OPERATIVO</Badge>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Carga</p>
+              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-4 py-1">CALCULADO</Badge>
             </div>
           </div>
 
-          {/* Monitor de Cálculo (TacticalNeedsSection) */}
           <TacticalNeedsSection 
             ordenes={ordenesFiltradas} 
             tiempos={tiemposEnsamblado} 
@@ -304,7 +276,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
                   {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay órdenes para la máquina HR-ACH en este periodo</td></tr>
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay órdenes para mostrar</td></tr>
                   ) : (
                     ordenesFiltradas.map((o, i) => {
                       const info = extractMaterialInfo(o);
