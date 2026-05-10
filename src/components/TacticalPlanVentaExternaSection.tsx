@@ -520,7 +520,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.esp}</td>
                             <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
                             <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-100 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
-                            <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
+                            <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-100 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
                             <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
                         );
@@ -570,7 +570,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDEN || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDEN || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
@@ -580,7 +580,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.largo}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-50">{info.esp}</td>
                             <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
-                            <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-50 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-100 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
                             <td className="px-3 py-2 font-medium text-gray-400">{o.ALMACEN || '—'}</td>
                           </tr>
@@ -626,7 +626,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                 <td className="px-4 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td>
                                 <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
-                                <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
+                                <td className="px-4 py-3 border-r border-dashed border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
                                 <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
                                 <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
                               </tr>
