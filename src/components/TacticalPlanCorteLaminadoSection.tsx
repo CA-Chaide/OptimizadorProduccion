@@ -144,7 +144,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [viewDate]);
 
   const ordenesFiltradas = useMemo(() => {
-    return ordenes.filter(o => {
+    const filtered = ordenes.filter(o => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
@@ -161,6 +161,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
 
       return true;
+    });
+
+    // Ordenar por Almacén (ascendente: 1006 -> 1008)
+    return filtered.sort((a, b) => {
+      const almA = String(a.ALMACEN || a.Almacen || '').trim();
+      const almB = String(b.ALMACEN || b.Almacen || '').trim();
+      return almA.localeCompare(almB);
     });
   }, [ordenes, selectedDate]);
 
@@ -240,7 +247,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes (Almacén 1006/1008)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes (1006/1008)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
@@ -282,7 +289,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                     <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700">Línea Maestra</th>
                     <th className="px-3 py-4 border-r border-gray-100">Máquina</th>
-                    <th className="px-3 py-4">Almacén</th>
+                    <th className="px-3 py-4 font-black">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
@@ -306,7 +313,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
                           <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
                           <td className="px-3 py-2 font-medium text-gray-500 border-r border-gray-50 uppercase">{String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}</td>
-                          <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-3 py-2 font-bold text-gray-800">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
                     })
