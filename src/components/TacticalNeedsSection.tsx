@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Layers, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors } from 'lucide-react';
+import { Layers, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from '@/components/ui/badge';
@@ -73,8 +73,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const infoMaestra = tiempos.find(t => extractCode(t.CodMaterial || t.codigo_material || '') === fertCode);
         const puestoPadre = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
 
+        // Padding a 18 dígitos según regla de negocio
+        const fullCode = fertCode.padStart(18, '0');
+
         try {
-          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fertCode, 1, 1000);
+          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCode, 1, 1000);
           
           if (response && response.data) {
             const explosionData = Array.isArray(response.data) ? response.data : (response.data.data || []);
@@ -83,8 +86,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
               
-              // Filtrar solo categorías requeridas
-              if (!compCode || (!descRaw.includes('LAMINA CILINDRICA') && !descRaw.includes('BLOQUE FORMULADO'))) return;
+              // Filtrar solo categorías requeridas para laminado/formulación
+              if (!compCode) return;
+              const isLamina = descRaw.includes('LAMINA CILINDRICA');
+              const isBloque = descRaw.includes('BLOQUE FORMULADO');
+              if (!isLamina && !isBloque) return;
 
               const factorConsumo = Number(comp.CANTIDAD_UNITARIA || 0);
               const cantidadKG = orderQty * factorConsumo;
@@ -135,6 +141,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
     } catch (err) {
       console.error(err);
+      logger.error(`Error en proceso de explosión: ${(err as Error).message}`);
     } finally {
       setIsProcessing(false);
     }

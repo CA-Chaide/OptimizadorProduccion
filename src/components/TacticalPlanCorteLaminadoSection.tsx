@@ -299,7 +299,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="ordenes">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[700px]">
+            <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans">
                 <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
