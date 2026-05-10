@@ -112,6 +112,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
+  // Mapa para búsqueda rápida por CodMaterial para el enlace de datos
+  const tiemposMap = useMemo(() => {
+    const map = new Map<string, any>();
+    tiemposEnsamblado.forEach(t => {
+      const { code } = extractMaterialInfo(t);
+      map.set(code, t);
+    });
+    return map;
+  }, [tiemposEnsamblado]);
+
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -138,24 +148,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
-      // CRITERIO: Almacén 1006 o 1008
+      // CRITERIO: Almacén 1006 o 1008 (Laminado)
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const matchesAlmacen = itemAlmacen === '1006' || itemAlmacen === '1008';
       
-      // CRITERIO: Máquina que contenga "HR-ACH"
-      const machineFields = [
-        o.MAQUINA, 
-        o.Maquina, 
-        o.maquina, 
-        o.RECURSO, 
-        o.recurso, 
-        o.TEXTO_RECURSO, 
-        o.CENTRO_TRABAJO
-      ];
-      const itemMaquinaText = machineFields.filter(Boolean).join(' ').toLowerCase();
-      const matchesMaquina = itemMaquinaText.includes('hr-ach');
-
-      if (!matchesAlmacen || !matchesMaquina) return false;
+      if (!matchesAlmacen) return false;
       
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
@@ -167,12 +164,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
-  // Helper para mostrar la máquina en la tabla
-  const getMachineDisplay = (o: any) => {
-    const fields = [o.MAQUINA, o.Maquina, o.RECURSO, o.TEXTO_RECURSO];
-    return fields.filter(Boolean).join(' ') || '—';
-  };
-
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
   return (
@@ -182,7 +173,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Criterio: Almacén 1006/1008 | Máquina: HR-ACH | Planta 1000</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión Operativa Planta 1000 (Almacén 1006/1008)</p>
           </div>
         </div>
       </div>
@@ -249,7 +240,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes (1006/1008 + HR-ACH)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes (Almacén 1006/1008)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
@@ -289,25 +280,32 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-gray-100">Material</th>
                     <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                    <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
-                    <th className="px-3 py-4 font-black">Almacén</th>
+                    <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700">Puesto Maestro</th>
+                    <th className="px-3 py-4 border-r border-gray-100">Máquina</th>
+                    <th className="px-3 py-4">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
                   {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay órdenes para mostrar con el criterio (1006/1008 + HR-ACH)</td></tr>
+                    <tr><td colSpan={8} className="py-20 text-gray-400 italic">No hay órdenes para mostrar para los almacenes 1006/1008</td></tr>
                   ) : (
                     ordenesFiltradas.map((o, i) => {
                       const info = extractMaterialInfo(o);
                       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                      
+                      // Búsqueda de puesto en el catálogo maestro
+                      const maestroData = tiemposMap.get(info.code);
+                      const puestoMaestro = maestroData?.PuestoTrabajo || maestroData?.puesto_trabajo || '—';
+
                       return (
                         <tr key={i} className="hover:bg-red-50/20 transition-colors">
                           <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                           <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                           <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
+                          <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
                           <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                          <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 uppercase">{getMachineDisplay(o)}</td>
+                          <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 bg-indigo-50/10 uppercase italic">{puestoMaestro}</td>
+                          <td className="px-3 py-2 font-medium text-gray-500 border-r border-gray-50 uppercase">{String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}</td>
                           <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
