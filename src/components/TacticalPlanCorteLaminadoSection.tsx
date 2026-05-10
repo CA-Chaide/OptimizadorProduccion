@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2 } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2, Layers } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { TacticalNeedsSection } from './TacticalNeedsSection';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -20,7 +21,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { cn } from '@/lib/utils';
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -43,7 +43,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
         const center = String(g.centro || '').trim();
-        return name.includes('corte y laminado') && center === '1000';
+        return (name.includes('corte y laminado') || name.includes('laminado')) && center === '1000';
       });
       setGrupos(filtered);
       return filtered;
@@ -148,7 +148,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
-      // CRITERIO: Almacén 1006 o 1008 (Laminado)
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       const matchesAlmacen = itemAlmacen === '1006' || itemAlmacen === '1008';
       
@@ -163,13 +162,54 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return true;
     });
 
-    // Ordenar por Almacén (ascendente: 1006 -> 1008)
     return filtered.sort((a, b) => {
       const almA = String(a.ALMACEN || a.Almacen || '').trim();
       const almB = String(b.ALMACEN || b.Almacen || '').trim();
       return almA.localeCompare(almB);
     });
   }, [ordenes, selectedDate]);
+
+  // AGRUPACIÓN ESTRUCTURAL POR DESCRIPTORES
+  const groupedOrders = useMemo(() => {
+    const categories = [
+      "LAMINA CILINDRICA",
+      "BANDA INT",
+      "BANDA BASE",
+      "BANDA CHN",
+      "ACOLCHADO",
+      "TAPA SF BABY"
+    ];
+
+    const groups: Record<string, any[]> = {
+      "LAMINA CILINDRICA": [],
+      "BANDA INT": [],
+      "BANDA BASE": [],
+      "BANDA CHN": [],
+      "ACOLCHADO": [],
+      "TAPA SF BABY": [],
+      "OTROS": []
+    };
+
+    ordenesFiltradas.forEach(o => {
+      const { desc } = extractMaterialInfo(o);
+      const descUpper = desc.toUpperCase();
+      let matched = false;
+      
+      for (const cat of categories) {
+        if (descUpper.includes(cat)) {
+          groups[cat].push(o);
+          matched = true;
+          break;
+        }
+      }
+      
+      if (!matched) {
+        groups["OTROS"].push(o);
+      }
+    });
+
+    return groups;
+  }, [ordenesFiltradas]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -278,7 +318,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="ordenes">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px]">
+            <div className="overflow-x-auto max-h-[700px]">
               <table className="w-full border-collapse text-center font-sans">
                 <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
@@ -288,33 +328,42 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                     <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700">Línea Maestra</th>
-                    <th className="px-3 py-4 border-r border-gray-100">Máquina</th>
                     <th className="px-3 py-4 font-black">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
                   {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={8} className="py-20 text-gray-400 italic">No hay órdenes para mostrar para los almacenes 1006/1008</td></tr>
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic font-bold uppercase tracking-widest">Sin carga operativa para el periodo</td></tr>
                   ) : (
-                    ordenesFiltradas.map((o, i) => {
-                      const info = extractMaterialInfo(o);
-                      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                      
-                      // Búsqueda de LÍNEA en el catálogo maestro usando el CodMaterial como ID
-                      const maestroData = tiemposMap.get(info.code);
-                      const lineaMaestra = maestroData?.Linea || maestroData?.linea || '—';
-
+                    Object.entries(groupedOrders).map(([category, items]) => {
+                      if (items.length === 0) return null;
                       return (
-                        <tr key={i} className="hover:bg-red-50/20 transition-colors">
-                          <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                          <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                          <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-                          <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                          <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
-                          <td className="px-3 py-2 font-medium text-gray-500 border-r border-gray-50 uppercase">{String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}</td>
-                          <td className="px-3 py-2 font-bold text-gray-800">{o.Almacen || o.ALMACEN || '—'}</td>
-                        </tr>
+                        <React.Fragment key={category}>
+                          <tr className="bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest text-left">
+                            <td colSpan={7} className="px-6 py-2.5 flex items-center gap-3">
+                              <Layers className="w-4 h-4 text-red-400" />
+                              Estructura: {category} ({items.length} Órdenes)
+                            </td>
+                          </tr>
+                          {items.map((o, i) => {
+                            const info = extractMaterialInfo(o);
+                            const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                            const maestroData = tiemposMap.get(info.code);
+                            const lineaMaestra = maestroData?.Linea || maestroData?.linea || '—';
+
+                            return (
+                              <tr key={`${category}-${i}`} className="hover:bg-red-50/20 transition-colors">
+                                <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                                <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
+                                <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
+                                <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
+                                <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
+                                <td className="px-3 py-2 font-bold text-gray-800">{o.Almacen || o.ALMACEN || '—'}</td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -326,7 +375,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="tiempos" className="space-y-4">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px]">
+            <div className="overflow-x-auto max-h-[700px]">
               <table className="w-full border-collapse text-center">
                 <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
                   <tr>
@@ -341,7 +390,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px]">
                   {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay registros en el catálogo de tiempos</td></tr>
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic font-bold uppercase tracking-widest">Sin registros técnicos cargados</td></tr>
                   ) : (
                     tiemposEnsamblado.map((t, i) => {
                       const info = extractMaterialInfo(t);
@@ -353,7 +402,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             {isInPlan && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
                           </td>
                           <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || '—'}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
                           <td className="px-4 py-3 border-r border-gray-100 font-bold text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
                           <td className="px-4 py-3 font-mono font-bold text-red-500 border-r border-gray-50">
                             {Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
