@@ -138,6 +138,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return ordenes.filter(o => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
+
+      // CRITERIO SOLICITADO: Almacén 1008 y Máquina que contenga "HR-ACH"
+      const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      const itemMaquina = String(o.MAQUINA || o.Maquina || o.maquina || o.RECURSO || '').toLowerCase();
+
+      const matchesAlmacen = itemAlmacen === '1008';
+      const matchesMaquina = itemMaquina.includes('hr-ach');
+
+      if (!matchesAlmacen || !matchesMaquina) return false;
       
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
@@ -158,7 +167,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Plan Maestro Interactiva - Centro 1000 (Quito)</p>
+            <p className="text-xs text-gray-500 font-medium">Filtro: Almacén 1008 | Máquina: HR-ACH | Centro 1000</p>
           </div>
         </div>
       </div>
@@ -226,7 +235,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Filtradas</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Filtradas (1008 + HR-ACH)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
@@ -272,7 +281,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
                   {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay órdenes para mostrar</td></tr>
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">No hay órdenes para mostrar con el criterio (1008 + HR-ACH)</td></tr>
                   ) : (
                     ordenesFiltradas.map((o, i) => {
                       const info = extractMaterialInfo(o);
