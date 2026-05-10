@@ -12,8 +12,8 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
-import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 import { TacticalNeedsSection } from './TacticalNeedsSection';
+import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -36,7 +36,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
   const [materialesEnPlan, setMaterialesEnPlan] = useState<string[]>([]);
-  
   const [totalKgCalculated, setTotalKgCalculated] = useState<number>(0);
 
   const fetchGrupos = async () => {
@@ -48,7 +47,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         return name.includes('corte y laminado') && center === '1000';
       });
       setGrupos(filtered);
-      inspector.captureVariable('gruposLaminado1000', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando grupos:', error);
@@ -61,7 +59,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const res = await restriccionService.getAll();
       const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
       setRestriccionesArray(filtered);
-      inspector.captureVariable('restriccionesLaminado1000', filtered);
       return filtered;
     } catch (error) {
       console.error('Error cargando restricciones:', error);
@@ -86,7 +83,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       if (Array.isArray(data)) {
         const filtered = data.filter((t: any) => String(t.Centro || t.centro || '').trim() === '1000');
         setTiemposEnsamblado(filtered);
-        inspector.captureVariable('tiemposCompletosLaminado1000', filtered.length);
       }
     } catch (error) {
       console.error('Error cargando tiempos:', error);
@@ -230,7 +226,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Provisionales</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes Filtradas</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
@@ -247,7 +243,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Carga</p>
-              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-4 py-1">CALCULADO</Badge>
+              <Badge className="bg-green-100 text-green-700 border-none font-black text-[10px] px-4 py-1">LISTO</Badge>
             </div>
           </div>
 
