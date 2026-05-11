@@ -142,7 +142,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  const CATEGORIES = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
+  // CATEGORÍAS PARA ESTRUCTURA VISUAL (NO FILTRO EXCLUYENTE)
+  const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
 
   const ordenesFiltradas = useMemo(() => {
     return ordenes.filter(o => {
@@ -151,11 +152,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return false;
-
-      const { desc } = extractMaterialInfo(o);
-      const descUpper = desc.toUpperCase();
-      const matchesCategory = CATEGORIES.some(cat => descUpper.includes(cat));
-      if (!matchesCategory) return false;
       
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
@@ -164,6 +160,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
       return true;
     }).sort((a, b) => {
+      // ORDENACIÓN POR ALMACÉN
       const almA = String(a.ALMACEN || a.Almacen || '').trim();
       const almB = String(b.ALMACEN || b.Almacen || '').trim();
       return almA.localeCompare(almB);
@@ -172,16 +169,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const groupedOrdersByDescriptor = useMemo(() => {
     const groups: Record<string, any[]> = {};
-    CATEGORIES.forEach(cat => { groups[cat] = []; });
+    DESCRIPTORS.forEach(desc => { groups[desc] = []; });
+    groups["OTROS MATERIALES"] = [];
+
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
-      for (const cat of CATEGORIES) {
-        if (descUpper.includes(cat)) {
-          groups[cat].push(o);
+      let matched = false;
+      for (const keyword of DESCRIPTORS) {
+        if (descUpper.includes(keyword)) {
+          groups[keyword].push(o);
+          matched = true;
           break;
         }
       }
+      if (!matched) groups["OTROS MATERIALES"].push(o);
     });
     return groups;
   }, [ordenesFiltradas]);
@@ -262,7 +264,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (# Órdenes)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa Total (# Órdenes)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
