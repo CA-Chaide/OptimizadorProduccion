@@ -261,29 +261,46 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }, 0);
   }, [baseFilteredOrders, tiemposMap]);
 
-  // Cálculos para ESTATUS ACTUAL ORDENES
+  // Cálculos para ESTATUS ACTUAL ORDENES (Con Horas Totales)
   const statusSummary = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().split('T')[0];
     
     let retrasadas = 0;
+    let retrasadasTimeMin = 0;
     let enProceso = 0;
+    let enProcesoTimeMin = 0;
     let porPlanificar = 0;
+    let porPlanificarTimeMin = 0;
 
     baseFilteredOrders.forEach(order => {
       const cant = Number(order.CANTPROGRAMADA) || 0;
+      const materialCode = normalizeMaterialCode(order.MATERIAL);
+      const tiempoMin = tiemposMap.get(materialCode) || 0;
+      const orderTotalTimeMin = cant * tiempoMin;
+
       if (order.FECHA < todayStr) {
         retrasadas += cant;
+        retrasadasTimeMin += orderTotalTimeMin;
       } else if (order.FECHA === todayStr) {
         enProceso += cant;
+        enProcesoTimeMin += orderTotalTimeMin;
       } else {
         porPlanificar += cant;
+        porPlanificarTimeMin += orderTotalTimeMin;
       }
     });
 
-    return { retrasadas, enProceso, porPlanificar };
-  }, [baseFilteredOrders]);
+    return { 
+      retrasadas, 
+      retrasadasTimeH: retrasadasTimeMin / 60,
+      enProceso, 
+      enProcesoTimeH: enProcesoTimeMin / 60,
+      porPlanificar,
+      porPlanificarTimeH: porPlanificarTimeMin / 60
+    };
+  }, [baseFilteredOrders, tiemposMap]);
 
   const planSummaryByDate = useMemo(() => {
     if (displayMode !== 'plan' || selectedDates.length === 0) return [];
@@ -480,15 +497,24 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                 <div className="grid grid-cols-3 gap-0 items-center text-sm border rounded-md bg-white min-h-[80px]">
                     <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
                         <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">RETRASADAS</p>
-                        <p className="font-bold text-red-600">{statusSummary.retrasadas.toLocaleString()}</p>
+                        <div className="flex items-center justify-center gap-2">
+                          <p className="font-bold text-red-600">{statusSummary.retrasadas.toLocaleString()}</p>
+                          <span className="text-[11px] text-red-400 font-mono">/ {statusSummary.retrasadasTimeH.toFixed(1)}h</span>
+                        </div>
                     </div>
                     <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
                         <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">EN PROCESO</p>
-                        <p className="font-bold text-blue-600">{statusSummary.enProceso.toLocaleString()}</p>
+                        <div className="flex items-center justify-center gap-2">
+                          <p className="font-bold text-blue-600">{statusSummary.enProceso.toLocaleString()}</p>
+                          <span className="text-[11px] text-blue-400 font-mono">/ {statusSummary.enProcesoTimeH.toFixed(1)}h</span>
+                        </div>
                     </div>
                     <div className="text-center p-3 h-full flex flex-col justify-center">
                         <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">POR PLANIFICAR</p>
-                        <p className="font-bold text-teal-600">{statusSummary.porPlanificar.toLocaleString()}</p>
+                        <div className="flex items-center justify-center gap-2">
+                          <p className="font-bold text-teal-600">{statusSummary.porPlanificar.toLocaleString()}</p>
+                          <span className="text-[11px] text-teal-400 font-mono">/ {statusSummary.porPlanificarTimeH.toFixed(1)}h</span>
+                        </div>
                     </div>
                 </div>
               </div>
