@@ -142,7 +142,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // CATEGORÍAS PARA ESTRUCTURA VISUAL
   const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
 
   const ordenesFiltradas = useMemo(() => {
@@ -173,11 +172,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
+      let matched = false;
       for (const keyword of DESCRIPTORS) {
         if (descUpper.includes(keyword)) {
           groups[keyword].push(o);
+          matched = true;
           break;
         }
+      }
+      if (!matched) {
+        if (!groups["OTROS MATERIALES"]) groups["OTROS MATERIALES"] = [];
+        groups["OTROS MATERIALES"].push(o);
       }
     });
     return groups;
@@ -279,7 +284,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           
           <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 text-center flex flex-col items-center gap-3">
             <Layers className="w-8 h-8 text-blue-600 opacity-40" />
-            <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Utilice la pestaña "BOOM de Materiales" para visualizar el desglose jerárquico de necesidades técnicas.</p>
+            <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Utilice la pestaña "BOOM de Materiales" para visualizar el desglose jerárquico completo y sin truncamientos.</p>
           </div>
         </TabsContent>
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Layers, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors, Clock } from 'lucide-react';
+import { Layers, ChevronRight, ChevronDown, Loader2, Activity, PlayCircle, Scale, Box, Scissors, Clock, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from '@/components/ui/badge';
@@ -59,7 +59,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
     const consolidatedMap = new Map<string, GroupedNeed>();
 
     try {
-      logger.log(`[TacticalNeeds] Iniciando explosión jerárquica para ${ordenes.length} órdenes...`);
+      logger.log(`[TacticalNeeds] Iniciando explosión técnica completa (sin truncamientos) para ${ordenes.length} órdenes...`);
 
       for (let i = 0; i < ordenes.length; i++) {
         const order = ordenes[i];
@@ -69,11 +69,9 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '');
         const orderNum = order.ORDENPREVISIONAL || order.ORDEN || '—';
 
-        // Buscar información técnica del padre (puesto de trabajo) para la trazabilidad
         const infoMaestra = tiempos.find(t => extractCode(t.CodMaterial || t.codigo_material || '') === fertCode);
         const puestoPadre = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
 
-        // Aplicar regla de 18 dígitos para consulta a la API
         const fullCode = fertCode.padStart(18, '0');
 
         try {
@@ -87,9 +85,9 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
               
               if (!compCode) return;
-              const isLamina = descRaw.includes('LAMINA CILINDRICA');
-              const isBloque = descRaw.includes('BLOQUE FORMULADO');
-              if (!isLamina && !isBloque) return;
+              
+              // VERIFICACIÓN: SE HAN ELIMINADO LOS FILTROS DE TRUNCAMIENTO
+              // Ahora se consideran todos los componentes de la orden provisional
 
               const factorConsumo = Number(comp.CANTIDAD_UNITARIA || 0);
               const cantidadKG = orderQty * factorConsumo;
@@ -147,8 +145,10 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
     setExpandedGroups(next);
   };
 
+  // Clasificación para visualización (sin excluir datos)
   const laminasGroups = useMemo(() => groupedNeeds.filter(n => n.nombreComponente.includes('LAMINA CILINDRICA')), [groupedNeeds]);
   const bloquesGroups = useMemo(() => groupedNeeds.filter(n => n.nombreComponente.includes('BLOQUE FORMULADO')), [groupedNeeds]);
+  const otrosGroups = useMemo(() => groupedNeeds.filter(n => !n.nombreComponente.includes('LAMINA CILINDRICA') && !n.nombreComponente.includes('BLOQUE FORMULADO')), [groupedNeeds]);
 
   const renderLevelTable = (items: GroupedNeed[], title: string, icon: any, colorClass: string, headerColor: string) => (
     <div className="space-y-3">
@@ -199,7 +199,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                     <>
                       <tr className="bg-slate-50">
                         <td colSpan={4} className="px-10 py-1 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-gray-100 text-left">
-                          Desglose por Órdenes Provisionales de Origen
+                          Trazabilidad: Origen de la Demanda
                         </td>
                       </tr>
                       {group.parents.map((parent, pIdx) => (
@@ -242,14 +242,19 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             <Scale className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Explosión de Lista de Materiales (BOM)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Consolidado Técnico: {ordenes.length} Órdenes Programadas</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Materiales Explotado</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Visión Completa: {ordenes.length} Órdenes procesadas (Sin filtros de truncamiento)</p>
           </div>
         </div>
         <Button onClick={processExplosion} disabled={isProcessing || ordenes.length === 0} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20">
           {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
           {isProcessing ? 'Explotando BOM...' : 'Sincronizar Plan Maestro'}
         </Button>
+      </div>
+
+      <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+        <Info className="w-4 h-4 text-blue-600" />
+        <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">Verificación de Integridad: No existen filtros truncando la visualización. Se muestran todos los componentes detectados.</p>
       </div>
 
       {isProcessing && (
@@ -264,8 +269,9 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
       {!isProcessing && groupedNeeds.length > 0 ? (
         <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-500">
-          {laminasGroups.length > 0 && renderLevelTable(laminasGroups, "A) Nivel Crítico: Lámina Cilíndrica", Scissors, "text-green-700", "bg-[#9db65b]")}
-          {bloquesGroups.length > 0 && renderLevelTable(bloquesGroups, "B) Nivel Crítico: Bloque Formulado", Box, "text-indigo-700", "bg-indigo-600")}
+          {laminasGroups.length > 0 && renderLevelTable(laminasGroups, "A) Insumos: Láminas Cilíndricas", Scissors, "text-green-700", "bg-[#9db65b]")}
+          {bloquesGroups.length > 0 && renderLevelTable(bloquesGroups, "B) Insumos: Bloques Formulados", Box, "text-indigo-700", "bg-indigo-600")}
+          {otrosGroups.length > 0 && renderLevelTable(otrosGroups, "C) Otros Componentes Detectados", Layers, "text-slate-700", "bg-slate-800")}
         </div>
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
