@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, DatabaseZap, PlayCircle, Info } from 'lucide-react';
+import { ClipboardList, Loader2, DatabaseZap, PlayCircle, Info, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
@@ -89,7 +89,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
           COMPONENTE: rootCode,
           DESCRIPCION_COMPONENTE: rootDesc,
           FERT_PRINCIPAL: rootCode,
-          DESCRIPCION_FERT: rootDesc,
+          DESCRIPCION_FERT: '---',
           MATERIAL_PADRE: '---',
           UNID: 'KG',
           CANTIDAD_EXPLOTADA: orderQty
@@ -148,7 +148,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
           </div>
           <div>
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Jerárquica Completa | Transparencia de Insumos</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Jerarquía Cruda (Niveles 1-5) | Explosión Jerárquica Completa</p>
           </div>
         </div>
         <Button 
@@ -215,14 +215,14 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
           <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sincronice el plan maestro para visualizar la estructura técnica (Niveles 1-5)</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sincronice el plan maestro para visualizar la estructura técnica completa (Niveles 1-5)</p>
         </div>
       )}
 
       <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota: Se muestra el 100% de la jerarquía técnica sin filtros. El Nivel 1 representa el material raíz de la orden provisional, los niveles 2-5 son componentes del BOOM.
+          Nota: Se muestra el 100% de la jerarquía técnica sin filtros ni agrupaciones. El Nivel 1 representa el material raíz de la orden provisional; los niveles 2-5 son componentes de la receta de SAP.
         </p>
       </div>
     </div>
