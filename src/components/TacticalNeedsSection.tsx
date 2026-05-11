@@ -18,10 +18,12 @@ interface TacticalNeedsSectionProps {
 
 interface ParentBreakdown {
   orden: string;
-  nombrePadre: string;
-  materialPadre: string;
-  puestoPadre: string;
+  nombrePadre: string; // Descripción del FERT Principal
+  materialPadre: string; // Código del Material Padre inmediato
+  materialFert: string; // Código del FERT Principal
+  puestoDestino: string; // Puesto de trabajo del FERT
   cantidadKG: number;
+  nivel: number;
 }
 
 interface GroupedNeed {
@@ -29,7 +31,7 @@ interface GroupedNeed {
   nombreComponente: string;
   unidad: string;
   totalKG: number;
-  parents: ParentBreakdown[];
+  origins: ParentBreakdown[];
 }
 
 export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ 
@@ -69,17 +71,16 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const fertCode = extractCode(order.MATERIAL || order.CodMaterial || '');
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
-        const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '').toUpperCase();
         const orderNum = order.ORDENPREVISIONAL || order.ORDEN || '—';
 
-        // Lookup del puesto de trabajo del padre en el maestro para trazabilidad Nivel 2
+        // Lookup del puesto de trabajo del FERT principal en el catálogo maestro
         const infoMaestra = tiempos.find(t => {
           const tCode = extractCode(t.CodMaterial || t.codigo_material || '');
           return tCode === fertCode;
         });
-        const puestoPadre = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
+        const puestoDestino = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
 
-        // Padding 18 dígitos para SAP (Crítico para materiales como 30024848)
+        // Padding 18 dígitos para SAP
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
@@ -88,37 +89,41 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           if (response && response.data) {
             const explosionData = Array.isArray(response.data) ? response.data : (response.data.data || []);
             
-            explosionData.forEach((comp: any) => {
-              const compCode = String(comp.COMPONENTE || '').slice(-8);
-              const descRaw = String(comp.DESCRIPCION_COMPONENTE || comp.NOMBRE_COMPONENTE || '').toUpperCase();
+            explosionData.forEach((row: any) => {
+              const compCode = String(row.COMPONENTE || '').slice(-8);
+              const descComp = String(row.DESCRIPCION_COMPONENTE || '').toUpperCase();
               
               if (!compCode) return;
               
-              const factorConsumo = Number(comp.CANTIDAD_UNITARIA || 0);
+              const factorConsumo = Number(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
               const cantidadKG = orderQty * factorConsumo;
 
               if (consolidatedMap.has(compCode)) {
                 const existing = consolidatedMap.get(compCode)!;
                 existing.totalKG += cantidadKG;
-                existing.parents.push({
+                existing.origins.push({
                   orden: orderNum,
-                  nombrePadre: orderName,
-                  materialPadre: fertCode,
-                  puestoPadre: puestoPadre,
-                  cantidadKG: cantidadKG
+                  nombrePadre: String(row.DESCRIPCION_FERT || '').toUpperCase(),
+                  materialPadre: String(row.MATERIAL_PADRE || '').slice(-8),
+                  materialFert: String(row.FERT_PRINCIPAL || '').slice(-8),
+                  puestoDestino: puestoDestino,
+                  cantidadKG: cantidadKG,
+                  nivel: Number(row.NIVEL)
                 });
               } else {
                 consolidatedMap.set(compCode, {
                   codigoComponente: compCode,
-                  nombreComponente: descRaw,
+                  nombreComponente: descComp,
                   unidad: "KG",
                   totalKG: cantidadKG,
-                  parents: [{
+                  origins: [{
                     orden: orderNum,
-                    nombrePadre: orderName,
-                    materialPadre: fertCode,
-                    puestoPadre: puestoPadre,
-                    cantidadKG: cantidadKG
+                    nombrePadre: String(row.DESCRIPCION_FERT || '').toUpperCase(),
+                    materialPadre: String(row.MATERIAL_PADRE || '').slice(-8),
+                    materialFert: String(row.FERT_PRINCIPAL || '').slice(-8),
+                    puestoDestino: puestoDestino,
+                    cantidadKG: cantidadKG,
+                    nivel: Number(row.NIVEL)
                   }]
                 });
               }
@@ -137,7 +142,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       if (onMaterialsCalculated) onMaterialsCalculated(results.map(r => r.codigoComponente));
       if (onTotalKgChange) onTotalKgChange(results.reduce((sum, n) => sum + n.totalKG, 0));
 
-      logger.success(`[BOOM] Explosión completada. ${results.length} componentes únicos identificados.`);
+      logger.success(`[BOOM] Explosión técnica completada.`);
 
     } catch (err) {
       logger.error('[BOOM] Error crítico en explosión', err);
@@ -161,8 +166,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             <Database className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Materiales Explotado</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Visión Jerárquica Pura | Sin Filtros de Truncamiento</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Materiales (Estructura SAP)</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Multinivel | Trazabilidad por Material Padre y FERT</p>
           </div>
         </div>
         <Button 
@@ -171,14 +176,14 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
         >
           {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-          Sincronizar Estructura Técnica
+          Sincronizar Plan Maestro
         </Button>
       </div>
 
       {isProcessing && (
         <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span>Analizando Jerarquías y Recetas SAP...</span>
+            <span>Consultando Jerarquías y Niveles SAP...</span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />
@@ -214,27 +219,30 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                         {group.nombreComponente}
                       </td>
                       <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{group.codigoComponente}</td>
-                      <td colSpan={3} className="px-5 py-3 text-left font-bold text-gray-300 italic uppercase">Resumen de necesidad consolidada</td>
+                      <td colSpan={3} className="px-5 py-3 text-left font-bold text-gray-300 italic uppercase">Resumen de necesidad consolidada por material</td>
                       <td className="px-5 py-3 text-center font-black text-slate-400 border-l border-gray-100">{group.unidad}</td>
                       <td className="px-5 py-3 text-right font-black text-indigo-700 bg-indigo-100/50">
-                        {group.totalKG.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {group.totalKG.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                       </td>
                     </tr>
 
-                    {expandedGroups.has(group.codigoComponente) && group.parents.map((parent, pIdx) => (
-                      <tr key={`${group.codigoComponente}-${pIdx}`} className="bg-white hover:bg-blue-50/20 transition-all border-l-4 border-indigo-500">
+                    {expandedGroups.has(group.codigoComponente) && group.origins.map((origin, oIdx) => (
+                      <tr key={`${group.codigoComponente}-${oIdx}`} className="bg-white hover:bg-blue-50/20 transition-all border-l-4 border-indigo-500">
                         <td className="px-5 py-2"></td>
                         <td className="px-5 py-2 font-mono text-[9px] text-slate-300 border-r border-dashed border-gray-100">{group.codigoComponente}</td>
-                        <td className="px-5 py-2 text-left font-black text-slate-600 uppercase tracking-tight border-r border-dashed border-gray-100">{parent.nombrePadre}</td>
-                        <td className="px-5 py-2 text-left font-mono font-black text-slate-400 border-r border-dashed border-gray-100">{parent.materialPadre}</td>
+                        <td className="px-5 py-2 text-left font-black text-slate-600 uppercase tracking-tight border-r border-dashed border-gray-100">
+                          {origin.nombrePadre}
+                          <span className="ml-2 text-[8px] text-indigo-400 font-bold">(FERT: {origin.materialFert})</span>
+                        </td>
+                        <td className="px-5 py-2 text-left font-mono font-black text-slate-400 border-r border-dashed border-gray-100">{origin.materialPadre}</td>
                         <td className="px-5 py-2 text-left border-r border-dashed border-gray-100">
                           <Badge variant="outline" className="text-[9px] font-black uppercase text-indigo-600 border-indigo-100 bg-indigo-50">
-                            {parent.puestoPadre}
+                            {origin.puestoDestino}
                           </Badge>
                         </td>
                         <td className="px-5 py-2 text-center text-slate-300">{group.unidad}</td>
                         <td className="px-5 py-2 text-right font-mono font-bold text-slate-500 italic">
-                          {parent.cantidadKG.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {origin.cantidadKG.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
                       </tr>
                     ))}
@@ -248,7 +256,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
           <Layers className="w-16 h-16 text-slate-200" />
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Presione Sincronizar para visualizar la jerarquía técnica de materiales como el 30024848.
+            Presione Sincronizar para visualizar el BOOM jerárquico de materiales (P. Ej. 30024848).
           </p>
         </div>
       )}
@@ -256,7 +264,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Estructura Jerárquica: Nivel 1 (NOMBRECOMPONENTE / COMPONENTE) es el insumo consolidado. Nivel 2 (NOMBRE PADRE / PUESTOTRABAJO) es el origen de la demanda.
+          Estructura Jerárquica: Nivel 1 es el Insumo Consolidado. Nivel 2 desglosa el Material Padre inmediato y el Producto Final (FERT) de origen.
         </p>
       </div>
     </div>
