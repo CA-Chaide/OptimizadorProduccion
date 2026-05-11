@@ -29,11 +29,32 @@ interface RawBOMRow {
 }
 
 /**
- * Utility to ensure numeric values are valid and avoid NaN in React components
+ * Asegura que los valores numéricos sean válidos
  */
 const safeNum = (val: any): number => {
   const n = Number(val);
   return isNaN(n) ? 0 : n;
+};
+
+/**
+ * Limpia y separa código de descripción para materiales raíz
+ */
+const extractMaterialInfo = (item: any) => {
+  const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
+  const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
+  
+  // Extraer los últimos 8 dígitos como código base
+  const match = matStr.match(/^(\d+)/);
+  const code = match ? match[0].slice(-8) : matStr.slice(-8);
+  
+  // Si nameStr está vacío, intentar limpiar matStr
+  let desc = nameStr;
+  if (!desc) {
+    desc = matStr.replace(/^0+/, '').replace(/^\d+\s*/, '').trim();
+  }
+  if (!desc || desc === code) desc = 'PRODUCTO TERMINADO';
+  
+  return { code, desc: desc.toUpperCase() };
 };
 
 export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ 
@@ -46,14 +67,9 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const extractCode = (matStr: string): string => {
-    const match = String(matStr).trim().match(/^(\d+)/);
-    return match ? match[1].slice(-8) : String(matStr).slice(-8);
-  };
-
   const processExplosion = async () => {
     if (!ordenes || ordenes.length === 0) {
-      logger.warn('[BOOM] No hay órdenes disponibles para la explosión.');
+      logger.warn('[BOOM] No hay órdenes disponibles para procesar.');
       return;
     }
 
@@ -65,31 +81,30 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
     const allExplodedRows: RawBOMRow[] = [];
 
     try {
-      logger.log(`[BOOM] Iniciando extracción jerárquica multinivel para ${ordenes.length} órdenes...`);
+      logger.log(`[BOOM] Iniciando explosión técnica de ${ordenes.length} materiales...`);
 
       for (let i = 0; i < ordenes.length; i++) {
         const order = ordenes[i];
-        const fertCodeRaw = order.MATERIAL || order.CodMaterial || '';
-        const fertCode = extractCode(fertCodeRaw);
+        const { code: rootCode, desc: rootDesc } = extractMaterialInfo(order);
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
 
-        // Nivel 1: El material de la orden (Raíz de la jerarquía)
+        // AGREGAR NIVEL 1 (EL PADRE DE LA ORDEN)
         allExplodedRows.push({
           NIVEL: 1,
           CENTRO: centro,
-          FERT_PRINCIPAL: fertCode,
-          DESCRIPCION_FERT: String(order.MATERIAL || order.NOMBRE || 'PRODUCTO TERMINADO').toUpperCase(),
+          FERT_PRINCIPAL: rootCode,
+          DESCRIPCION_FERT: rootDesc,
           MATERIAL_PADRE: '---',
-          COMPONENTE: fertCode,
-          DESCRIPCION_COMPONENTE: String(order.MATERIAL || order.NOMBRE || 'PRODUCTO TERMINADO').toUpperCase(),
+          COMPONENTE: rootCode,
+          DESCRIPCION_COMPONENTE: rootDesc,
           CANTIDAD_UNITARIA: 1,
           CANTIDAD_ACUMULADA: 1,
           CANTIDAD_EXPLOTADA: orderQty
         });
 
-        // Padding 18 dígitos para SAP
-        const fullCodeForApi = fertCode.padStart(18, '0');
+        // Padding 18 dígitos para consulta SAP
+        const fullCodeForApi = rootCode.padStart(18, '0');
 
         try {
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 1000);
@@ -98,26 +113,28 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             const data = Array.isArray(response.data) ? response.data : (response.data.data || []);
             
             data.forEach((row: any) => {
-              // Usar CANTIDAD_ACUMULADA para calcular el peso total según la jerarquía (Niveles 2+)
-              const qtyFactor = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
-              const cantExplotada = orderQty * qtyFactor;
+              const level = safeNum(row.NIVEL);
+              if (level < 1) return; // Ignorar niveles 0 o inválidos
+
+              const factor = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
+              const cantExplotada = orderQty * factor;
 
               allExplodedRows.push({
-                NIVEL: safeNum(row.NIVEL),
-                CENTRO: String(row.CENTRO || ''),
-                FERT_PRINCIPAL: String(row.FERT_PRINCIPAL || '').slice(-8),
-                DESCRIPCION_FERT: String(row.DESCRIPCION_FERT || '').toUpperCase(),
-                MATERIAL_PADRE: String(row.MATERIAL_PADRE || '').slice(-8),
-                COMPONENTE: String(row.COMPONENTE || '').slice(-8),
-                DESCRIPCION_COMPONENTE: String(row.DESCRIPCION_COMPONENTE || '').toUpperCase(),
+                NIVEL: level,
+                CENTRO: String(row.CENTRO || centro),
+                FERT_PRINCIPAL: String(row.FERT_PRINCIPAL || rootCode).replace(/^0+/, '').slice(-8),
+                DESCRIPCION_FERT: String(row.DESCRIPCION_FERT || rootDesc).toUpperCase(),
+                MATERIAL_PADRE: String(row.MATERIAL_PADRE || '').replace(/^0+/, '').slice(-8) || '---',
+                COMPONENTE: String(row.COMPONENTE || '').replace(/^0+/, '').slice(-8),
+                DESCRIPCION_COMPONENTE: String(row.DESCRIPCION_COMPONENTE || 'SIN DESCRIPCIÓN').toUpperCase(),
                 CANTIDAD_UNITARIA: safeNum(row.CANTIDAD_UNITARIA),
-                CANTIDAD_ACUMULADA: qtyFactor,
+                CANTIDAD_ACUMULADA: factor,
                 CANTIDAD_EXPLOTADA: cantExplotada
               });
             });
           }
         } catch (err) {
-          logger.error(`[BOOM] Error en material ${fertCode}`, err);
+          logger.error(`[BOOM] Error al explotar material ${rootCode}: ${(err as Error).message}`);
         }
         setProgress(prev => ({ ...prev, current: i + 1 }));
       }
@@ -129,14 +146,13 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       }
       
       if (onTotalKgChange) {
-        // El total en KG solo considera componentes explotados (Nivel > 1)
+        // Masa crítica: solo niveles componentes (Nivel > 1)
         const total = allExplodedRows.reduce((sum, n) => sum + (n.NIVEL > 1 ? n.CANTIDAD_EXPLOTADA : 0), 0);
         onTotalKgChange(isNaN(total) ? 0 : total);
       }
 
-      logger.success(`[BOOM] Extracción completada. ${allExplodedRows.length} registros en jerarquía total.`);
+      logger.success(`[BOOM] Explosión terminada. ${allExplodedRows.length} registros generados.`);
     } catch (err) {
-      logger.error('[BOOM] Error crítico en proceso de explosión', err);
       setError((err as Error).message);
     } finally {
       setIsProcessing(false);
@@ -152,7 +168,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           </div>
           <div>
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales Explotada (BOOM)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Estructura Jerárquica Multinivel | Visualización Transparente</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Estructura Jerárquica Real | Visualización Transparente</p>
           </div>
         </div>
         <Button 
@@ -170,7 +186,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
             <span className="flex items-center gap-2">
               <Activity className="w-3 h-3" />
-              Sincronizando Jerarquía SAP...
+              Sincronizando con SAP...
             </span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
@@ -198,7 +214,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                   <tr key={idx} className={cn("hover:bg-gray-50 transition-all group", row.NIVEL === 1 ? "bg-slate-50" : "")}>
                     <td className={cn(
                       "px-5 py-3 border-r border-gray-100 font-black text-center",
-                      row.NIVEL === 1 ? "text-indigo-600 bg-indigo-50/30" : "text-slate-400 bg-slate-50/50"
+                      row.NIVEL === 1 ? "text-indigo-600" : "text-slate-400"
                     )}>
                       {String(row.NIVEL)}
                     </td>
@@ -218,15 +234,15 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         </div>
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
-          <Layers className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Genere la explosión para visualizar la jerarquía completa (1-5)</p>
+          <Database className="w-16 h-16 text-indigo-100 mx-auto" />
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión para visualizar la jerarquía completa (1-5)</p>
         </div>
       )}
 
       <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota Técnica: Esta vista muestra la estructura jerárquica multinivel tal como se define en SAP. El Nivel 1 representa el material de la orden y los niveles 2-5 sus componentes respectivos. No existen filtros ocultos.
+          Nota: Los datos se presentan según la estructura jerárquica de SAP. El Nivel 1 es el producto terminado, los niveles 2-5 son componentes sucesivos.
         </p>
       </div>
     </div>
