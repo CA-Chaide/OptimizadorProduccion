@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2, Layers } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2, Layers, Binary } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -142,7 +142,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // CATEGORÍAS PARA ESTRUCTURA VISUAL (NO FILTRO EXCLUYENTE)
+  // CATEGORÍAS PARA ESTRUCTURA VISUAL
   const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
 
   const ordenesFiltradas = useMemo(() => {
@@ -160,7 +160,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
       return true;
     }).sort((a, b) => {
-      // ORDENACIÓN POR ALMACÉN
       const almA = String(a.ALMACEN || a.Almacen || '').trim();
       const almB = String(b.ALMACEN || b.Almacen || '').trim();
       return almA.localeCompare(almB);
@@ -170,20 +169,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const groupedOrdersByDescriptor = useMemo(() => {
     const groups: Record<string, any[]> = {};
     DESCRIPTORS.forEach(desc => { groups[desc] = []; });
-    groups["OTROS MATERIALES"] = [];
 
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
-      let matched = false;
       for (const keyword of DESCRIPTORS) {
         if (descUpper.includes(keyword)) {
           groups[keyword].push(o);
-          matched = true;
           break;
         }
       }
-      if (!matched) groups["OTROS MATERIALES"].push(o);
     });
     return groups;
   }, [ordenesFiltradas]);
@@ -197,15 +192,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Maestro Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Lista de Materiales Explotada (BOM)</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión de Necesidades y BOOM de Materiales</p>
           </div>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'plan', l: 'Plan Maestro & Necesidades', i: LayoutDashboard }, 
+            { v: 'plan', l: 'Plan Maestro', i: LayoutDashboard }, 
+            { v: 'bom', l: 'BOOM de Materiales', i: Binary },
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
@@ -220,9 +216,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Planificación de Despacho</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
-                  {selectedDate === 'all' ? 'Vista Consolidada del Mes' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                  {selectedDate === 'all' ? 'Vista Mensual Consolidada' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
@@ -264,7 +260,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa Total (# Órdenes)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (# Órdenes)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
@@ -280,8 +276,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
           </div>
+          
+          <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 text-center flex flex-col items-center gap-3">
+            <Layers className="w-8 h-8 text-blue-600 opacity-40" />
+            <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Utilice la pestaña "BOOM de Materiales" para visualizar el desglose jerárquico de necesidades técnicas.</p>
+          </div>
+        </TabsContent>
 
-          <TacticalNeedsSection 
+        <TabsContent value="bom" className="animate-in fade-in duration-300">
+           <TacticalNeedsSection 
             ordenes={ordenesFiltradas} 
             tiempos={tiemposEnsamblado} 
             onTotalKgChange={setTotalKgCalculated}
