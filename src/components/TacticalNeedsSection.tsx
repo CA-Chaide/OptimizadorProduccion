@@ -65,7 +65,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
     const allExplodedRows: RawBOMRow[] = [];
 
     try {
-      logger.log(`[BOOM] Iniciando extracción de datos técnicos para ${ordenes.length} órdenes...`);
+      logger.log(`[BOOM] Iniciando extracción jerárquica multinivel para ${ordenes.length} órdenes...`);
 
       for (let i = 0; i < ordenes.length; i++) {
         const order = ordenes[i];
@@ -73,6 +73,20 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const fertCode = extractCode(fertCodeRaw);
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+
+        // Nivel 1: El material de la orden (Raíz de la jerarquía)
+        allExplodedRows.push({
+          NIVEL: 1,
+          CENTRO: centro,
+          FERT_PRINCIPAL: fertCode,
+          DESCRIPCION_FERT: String(order.MATERIAL || order.NOMBRE || 'PRODUCTO TERMINADO').toUpperCase(),
+          MATERIAL_PADRE: '---',
+          COMPONENTE: fertCode,
+          DESCRIPCION_COMPONENTE: String(order.MATERIAL || order.NOMBRE || 'PRODUCTO TERMINADO').toUpperCase(),
+          CANTIDAD_UNITARIA: 1,
+          CANTIDAD_ACUMULADA: 1,
+          CANTIDAD_EXPLOTADA: orderQty
+        });
 
         // Padding 18 dígitos para SAP
         const fullCodeForApi = fertCode.padStart(18, '0');
@@ -84,7 +98,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             const data = Array.isArray(response.data) ? response.data : (response.data.data || []);
             
             data.forEach((row: any) => {
-              // Usar CANTIDAD_ACUMULADA para calcular el peso total según la jerarquía
+              // Usar CANTIDAD_ACUMULADA para calcular el peso total según la jerarquía (Niveles 2+)
               const qtyFactor = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
               const cantExplotada = orderQty * qtyFactor;
 
@@ -115,11 +129,12 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       }
       
       if (onTotalKgChange) {
-        const total = allExplodedRows.reduce((sum, n) => sum + n.CANTIDAD_EXPLOTADA, 0);
+        // El total en KG solo considera componentes explotados (Nivel > 1)
+        const total = allExplodedRows.reduce((sum, n) => sum + (n.NIVEL > 1 ? n.CANTIDAD_EXPLOTADA : 0), 0);
         onTotalKgChange(isNaN(total) ? 0 : total);
       }
 
-      logger.success(`[BOOM] Extracción completada. ${allExplodedRows.length} filas técnicas recuperadas.`);
+      logger.success(`[BOOM] Extracción completada. ${allExplodedRows.length} registros en jerarquía total.`);
     } catch (err) {
       logger.error('[BOOM] Error crítico en proceso de explosión', err);
       setError((err as Error).message);
@@ -137,7 +152,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           </div>
           <div>
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales Explotada (BOOM)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Vista Técnica Jerárquica | Sin filtros de truncamiento</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Estructura Jerárquica Multinivel | Visualización Transparente</p>
           </div>
         </div>
         <Button 
@@ -153,7 +168,10 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       {isProcessing && (
         <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span>Sincronizando con SAP...</span>
+            <span className="flex items-center gap-2">
+              <Activity className="w-3 h-3" />
+              Sincronizando Jerarquía SAP...
+            </span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />
@@ -166,7 +184,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             <table className="w-full border-collapse text-[10px] font-sans">
               <thead className="bg-[#0f172a] text-white uppercase font-black tracking-tighter sticky top-0 z-20">
                 <tr>
-                  <th className="px-5 py-4 text-center border-r border-white/5 w-12">NV</th>
+                  <th className="px-5 py-4 text-center border-r border-white/5 w-16">NV</th>
                   <th className="px-5 py-4 text-left border-r border-white/5">NOMBRECOMPONENTE</th>
                   <th className="px-5 py-4 text-left border-r border-white/5">COMPONENTE</th>
                   <th className="px-5 py-4 text-left border-r border-white/5">NOMBRE (Padre)</th>
@@ -177,8 +195,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {bomRows.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 transition-all group">
-                    <td className="px-5 py-3 border-r border-gray-100 font-black text-slate-400 bg-slate-50/50">
+                  <tr key={idx} className={cn("hover:bg-gray-50 transition-all group", row.NIVEL === 1 ? "bg-slate-50" : "")}>
+                    <td className={cn(
+                      "px-5 py-3 border-r border-gray-100 font-black text-center",
+                      row.NIVEL === 1 ? "text-indigo-600 bg-indigo-50/30" : "text-slate-400 bg-slate-50/50"
+                    )}>
                       {String(row.NIVEL)}
                     </td>
                     <td className="px-5 py-3 font-black text-slate-800 uppercase text-left">{row.DESCRIPCION_COMPONENTE}</td>
@@ -197,17 +218,15 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         </div>
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
-          <Layers className="w-16 h-16 text-slate-200" />
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Presione "Explosionar Lista" para visualizar la estructura de materiales según SAP.
-          </p>
+          <Layers className="w-16 h-16 text-indigo-100 mx-auto" />
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Genere la explosión para visualizar la jerarquía completa (1-5)</p>
         </div>
       )}
 
       <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota Técnica: Esta vista muestra la explosión cruda de componentes pertenecientes a las órdenes provisionales listadas. No existen filtros ocultos truncando la información.
+          Nota Técnica: Esta vista muestra la estructura jerárquica multinivel tal como se define en SAP. El Nivel 1 representa el material de la orden y los niveles 2-5 sus componentes respectivos. No existen filtros ocultos.
         </p>
       </div>
     </div>
