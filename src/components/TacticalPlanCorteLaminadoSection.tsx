@@ -286,7 +286,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsContent value="bom" className="animate-in fade-in duration-300">
            <TacticalNeedsSection 
             ordenes={ordenesFiltradas} 
-            tiempos={tiemposEnsamblado} 
             onTotalKgChange={setTotalKgCalculated}
             onMaterialsCalculated={setMaterialesEnPlan}
           />

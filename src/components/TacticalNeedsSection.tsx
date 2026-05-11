@@ -11,7 +11,6 @@ import { logger } from '@/services/LogService';
 
 interface TacticalNeedsSectionProps {
   ordenes: any[];
-  tiempos: any[];
   onTotalKgChange?: (total: number) => void;
   onMaterialsCalculated?: (codes: string[]) => void;
 }
@@ -26,13 +25,11 @@ interface RawBOMRow {
   DESCRIPCION_COMPONENTE: string;
   CANTIDAD_UNITARIA: number;
   CANTIDAD_ACUMULADA: number;
-  CANTIDAD_EXPLOTADA: number; // Campo calculado
-  PUESTOTRABAJO: string;      // Campo vinculado
+  CANTIDAD_EXPLOTADA: number; // Campo calculado: Cant. Acumulada * Cant. Orden
 }
 
 export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ 
   ordenes, 
-  tiempos, 
   onTotalKgChange,
   onMaterialsCalculated
 }) => {
@@ -58,7 +55,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
     const allRows: RawBOMRow[] = [];
 
     try {
-      logger.log(`[BOOM] Iniciando extracción de datos crudos para ${ordenes.length} órdenes...`);
+      logger.log(`[BOOM] Iniciando extracción de datos técnicos para ${ordenes.length} órdenes...`);
 
       for (let i = 0; i < ordenes.length; i++) {
         const order = ordenes[i];
@@ -66,13 +63,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const fertCode = extractCode(fertCodeRaw);
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
-
-        // Lookup del puesto de trabajo del FERT principal en el catálogo maestro
-        const infoMaestra = tiempos.find(t => {
-          const tCode = extractCode(t.CodMaterial || t.codigo_material || '');
-          return tCode === fertCode;
-        });
-        const puestoDestino = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
 
         // Padding 18 dígitos para SAP
         const fullCodeForApi = fertCode.padStart(18, '0');
@@ -97,8 +87,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                 DESCRIPCION_COMPONENTE: String(row.DESCRIPCION_COMPONENTE).toUpperCase(),
                 CANTIDAD_UNITARIA: Number(row.CANTIDAD_UNITARIA),
                 CANTIDAD_ACUMULADA: qtyAcum,
-                CANTIDAD_EXPLOTADA: cantExplotada,
-                PUESTOTRABAJO: puestoDestino
+                CANTIDAD_EXPLOTADA: cantExplotada
               });
             });
           }
@@ -114,7 +103,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       if (onMaterialsCalculated) onMaterialsCalculated([...new Set(allRows.map(r => r.COMPONENTE))]);
       if (onTotalKgChange) onTotalKgChange(allRows.reduce((sum, n) => sum + n.CANTIDAD_EXPLOTADA, 0));
 
-      logger.success(`[BOOM] Extracción completada. ${allRows.length} filas recuperadas.`);
+      logger.success(`[BOOM] Extracción completada. ${allRows.length} filas técnicas recuperadas.`);
 
     } catch (err) {
       logger.error('[BOOM] Error crítico en proceso de explosión', err);
@@ -131,8 +120,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             <Database className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales Explotada (Vista Real)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Sin filtros ni agrupaciones | Estructura Técnica Directa SAP</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales Explotada (BOOM)</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Vista Técnica Cruda | Sin filtros ni agrupaciones adicionales</p>
           </div>
         </div>
         <Button 
@@ -148,7 +137,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       {isProcessing && (
         <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span>Recuperando Estructuras SAP...</span>
+            <span>Consultando Jerarquías SAP...</span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />
@@ -166,9 +155,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                   <th className="px-5 py-4 text-left border-r border-white/5">COMPONENTE</th>
                   <th className="px-5 py-4 text-left border-r border-white/5">NOMBRE (Padre)</th>
                   <th className="px-5 py-4 text-left border-r border-white/5">MATERIAL padre</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">PUESTOTRABAJO</th>
-                  <th className="px-5 py-4 text-center border-r border-white/5">UNID</th>
-                  <th className="px-5 py-4 text-right bg-black/20">CANTORDEN</th>
+                  <th className="px-5 py-4 text-center border-r border-white/5 w-20">UNID</th>
+                  <th className="px-5 py-4 text-right bg-black/20 w-32">CANTORDEN</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -179,12 +167,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                     <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.COMPONENTE}</td>
                     <td className="px-5 py-3 text-left font-black text-gray-500 uppercase tracking-tight border-r border-gray-100">{row.DESCRIPCION_FERT}</td>
                     <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.MATERIAL_PADRE}</td>
-                    <td className="px-5 py-3 text-left border-r border-gray-100">
-                      <Badge variant="outline" className="text-[9px] font-black uppercase text-indigo-600 border-indigo-100 bg-indigo-50">
-                        {row.PUESTOTRABAJO}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-3 text-center font-black text-slate-400 border-r border-gray-100">KG</td>
+                    <td className="px-5 py-3 text-center font-black text-slate-400 border-r border-gray-100 uppercase tracking-widest">KG</td>
                     <td className="px-5 py-3 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
                       {row.CANTIDAD_EXPLOTADA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </td>
@@ -198,7 +181,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
           <Layers className="w-16 h-16 text-slate-200" />
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Presione "Explosionar Lista" para visualizar la data técnica sin filtros.
+            Presione "Explosionar Lista" para visualizar la estructura de materiales sin filtros.
           </p>
         </div>
       )}
@@ -206,7 +189,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Vista Cruda: Esta tabla representa fielmente la salida de SAP para los componentes de nivel 2, 3 y 4. No se aplica ninguna agrupación para facilitar la auditoría de materiales.
+          Información Técnica: Los datos mostrados corresponden a la explosión directa de niveles 2, 3 y 4 de SAP. No se aplican agrupaciones para garantizar la integridad de la auditoría.
         </p>
       </div>
     </div>
