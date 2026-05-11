@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2, Layers, Binary } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2, Binary } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,6 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { TacticalNeedsSection } from './TacticalNeedsSection';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -21,6 +20,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { TacticalNeedsSection } from './TacticalNeedsSection';
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -155,7 +155,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const { desc, code } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
       
-      // Permitir material 30024848 explícitamente o por descriptor
+      // Permitir materiales clave o material específico solicitado
       const isRelevant = DESCRIPTORS.some(keyword => descUpper.includes(keyword)) || code === '30024848';
       if (!isRelevant) return false;
 
