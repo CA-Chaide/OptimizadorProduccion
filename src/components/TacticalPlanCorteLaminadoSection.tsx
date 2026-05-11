@@ -37,7 +37,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [materialesEnPlan, setMaterialesEnPlan] = useState<string[]>([]);
   const [totalKgCalculated, setTotalKgCalculated] = useState<number>(0);
 
-  // Descriptores técnicos permitidos para visualización y proceso
+  // Descriptores técnicos permitidos para visualización y proceso (FILTRO EXCLUYENTE)
   const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
 
   const fetchGrupos = async () => {
@@ -80,6 +80,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const fetchTiemposEnsamblado = async () => {
     try {
+      // Cargar con límite amplio para asegurar la vinculación de líneas
       const res = await serviciosService.getTiemposEnsamblado(1, 15000);
       const data = res.data?.data || res.data || [];
       if (Array.isArray(data)) {
@@ -115,6 +116,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
+  // Mapa de tiempos optimizado para lookup por ID de 8 dígitos
   const tiemposMap = useMemo(() => {
     const map = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
@@ -147,21 +149,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const ordenesFiltradas = useMemo(() => {
     return ordenes.filter(o => {
-      // 1. Filtro de Centro (Siempre 1000 para este módulo)
+      // 1. Filtro de Centro (Planta 1000)
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
-      // 2. Filtro de Almacenes Específicos
+      // 2. Filtro de Almacenes Operativos
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return false;
       
-      // 3. Filtro Estricto por Descriptores (NO MOSTRAR MATERIALES OTROS)
+      // 3. Filtro Estricto por Descriptores (Sin "OTROS")
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
       const isRelevant = DESCRIPTORS.some(keyword => descUpper.includes(keyword));
       if (!isRelevant) return false;
 
-      // 4. Filtro por Fecha (si aplica)
+      // 4. Filtro por Fecha
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -169,7 +171,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
       return true;
     }).sort((a, b) => {
-      // Ordenación por Almacén
       const almA = String(a.ALMACEN || a.Almacen || '').trim();
       const almB = String(b.ALMACEN || b.Almacen || '').trim();
       return almA.localeCompare(almB);
@@ -202,7 +203,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
-            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Maestro Corte Laminado</h2>
+            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
             <p className="text-xs text-gray-500 font-medium">Gestión de Necesidades y BOOM de Materiales</p>
           </div>
         </div>
@@ -278,7 +279,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Materia Prima Requerida (KG)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Masa Crítica Requerida (KG)</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">
@@ -290,7 +291,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           
           <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 text-center flex flex-col items-center gap-3">
             <Layers className="w-8 h-8 text-blue-600 opacity-40" />
-            <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Utilice la pestaña "BOOM de Materiales" para visualizar el desglose jerárquico completo de componentes críticos.</p>
+            <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Utilice la pestaña "BOOM de Materiales" para visualizar el desglose jerárquico completo de componentes técnicos.</p>
           </div>
         </TabsContent>
 
@@ -320,7 +321,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
                   {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">Sin carga operativa para el periodo</td></tr>
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic font-bold">Sin carga operativa relevante detectada</td></tr>
                   ) : (
                     Object.entries(groupedOrdersByDescriptor).map(([category, items]) => {
                       if (items.length === 0) return null;
