@@ -429,7 +429,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               <div className="flex flex-col md:flex-row gap-4">
                 {/* Recuadro CAPACIDAD POR FECHA */}
                 <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
+                  <h4 className="text-[11px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
                   <div className="space-y-0 max-h-64 overflow-y-auto border rounded-md">
                       {selectedDates.length > 0 ? (
                         planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => {
@@ -471,7 +471,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
                 {/* Recuadro PENDIENTES TOTALES */}
                 <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm h-full">
-                  <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
+                  <h4 className="text-[11px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
                           <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
@@ -493,7 +493,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
               {/* Recuadro ESTATUS ACTUAL ORDENES */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
+                <h4 className="text-[11px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
                 <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                     <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
                         <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">RETRASADAS</p>
@@ -532,7 +532,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                 {COLUMNS_TO_DISPLAY.map((col, index) => (
                   <th
                     key={col}
-                    className={`px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider ${index < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}
+                    className={cn(
+                      "px-3 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider",
+                      col === 'CANTPROGRAMADA' && "w-24",
+                      index < COLUMNS_TO_DISPLAY.length - 1 && "border-r border-dashed border-gray-300"
+                    )}
                   >
                     {col.replace(/_/g, ' ')}
                   </th>
@@ -557,7 +561,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                       {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
                           if (col === 'TIEMPO') {
                               return (
-                                 <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center font-mono font-semibold text-blue-700 ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
+                                 <td key={col} className={`px-2 py-4 whitespace-nowrap text-sm text-gray-600 text-center font-mono font-semibold text-blue-700 ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
                                    {tiempoCalculado}
                                  </td>
                               );
@@ -572,7 +576,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                             displayValue = normalizeMaterialCode(displayValue);
                           }
                           return (
-                           <td key={col} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
+                           <td key={col} className={cn(
+                             "px-2 py-4 whitespace-nowrap text-sm text-gray-600 text-center",
+                             col === 'CANTPROGRAMADA' && "w-24 font-bold",
+                             colIndex < COLUMNS_TO_DISPLAY.length - 1 && "border-r border-dashed border-gray-300"
+                           )}>
                              {displayValue}
                            </td>
                           );
