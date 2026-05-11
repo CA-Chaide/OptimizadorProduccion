@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -26,7 +25,7 @@ interface RawBOMRow {
   DESCRIPCION_COMPONENTE: string;
   CANTIDAD_UNITARIA: number;
   CANTIDAD_ACUMULADA: number;
-  CANTIDAD_EXPLOTADA: number; // Campo calculado: Cant. Acumulada * Cant. Orden
+  CANTIDAD_EXPLOTADA: number; 
 }
 
 /**
@@ -45,6 +44,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const extractCode = (matStr: string): string => {
     const match = String(matStr).trim().match(/^(\d+)/);
@@ -62,7 +62,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
     setBomRows([]);
     setProgress({ current: 0, total: ordenes.length });
 
-    const consolidatedRows: RawBOMRow[] = [];
+    const allExplodedRows: RawBOMRow[] = [];
 
     try {
       logger.log(`[BOOM] Iniciando extracción de datos técnicos para ${ordenes.length} órdenes...`);
@@ -84,10 +84,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             const data = Array.isArray(response.data) ? response.data : (response.data.data || []);
             
             data.forEach((row: any) => {
-              const qtyAcum = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
-              const cantExplotada = orderQty * qtyAcum;
+              // Usar CANTIDAD_ACUMULADA para calcular el peso total según la jerarquía
+              const qtyFactor = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
+              const cantExplotada = orderQty * qtyFactor;
 
-              consolidatedRows.push({
+              allExplodedRows.push({
                 NIVEL: safeNum(row.NIVEL),
                 CENTRO: String(row.CENTRO || ''),
                 FERT_PRINCIPAL: String(row.FERT_PRINCIPAL || '').slice(-8),
@@ -96,7 +97,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                 COMPONENTE: String(row.COMPONENTE || '').slice(-8),
                 DESCRIPCION_COMPONENTE: String(row.DESCRIPCION_COMPONENTE || '').toUpperCase(),
                 CANTIDAD_UNITARIA: safeNum(row.CANTIDAD_UNITARIA),
-                CANTIDAD_ACUMULADA: qtyAcum,
+                CANTIDAD_ACUMULADA: qtyFactor,
                 CANTIDAD_EXPLOTADA: cantExplotada
               });
             });
@@ -106,24 +107,26 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         }
         setProgress(prev => ({ ...prev, current: i + 1 }));
       }
-      setBomRows(consolidatedRows);
       
-      if (onMaterialsCalculated) onMaterialsCalculated([...new Set(consolidatedRows.map(r => r.COMPONENTE))]);
+      setBomRows(allExplodedRows);
+      
+      if (onMaterialsCalculated) {
+        onMaterialsCalculated([...new Set(allExplodedRows.map(r => r.COMPONENTE))]);
+      }
       
       if (onTotalKgChange) {
-        const total = consolidatedRows.reduce((sum, n) => sum + n.CANTIDAD_EXPLOTADA, 0);
+        const total = allExplodedRows.reduce((sum, n) => sum + n.CANTIDAD_EXPLOTADA, 0);
         onTotalKgChange(isNaN(total) ? 0 : total);
       }
 
-      logger.success(`[BOOM] Extracción completada. ${consolidatedRows.length} filas técnicas recuperadas.`);
+      logger.success(`[BOOM] Extracción completada. ${allExplodedRows.length} filas técnicas recuperadas.`);
     } catch (err) {
       logger.error('[BOOM] Error crítico en proceso de explosión', err);
+      setError((err as Error).message);
     } finally {
       setIsProcessing(false);
     }
   };
-
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="space-y-6 text-left">
@@ -134,7 +137,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           </div>
           <div>
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales Explotada (BOOM)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Vista Técnica Cruda | Sin filtros ni agrupaciones adicionales</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Vista Técnica Jerárquica | Sin filtros de truncamiento</p>
           </div>
         </div>
         <Button 
@@ -150,7 +153,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       {isProcessing && (
         <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span>Consultando Jerarquías SAP...</span>
+            <span>Sincronizando con SAP...</span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />
@@ -174,13 +177,13 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {bomRows.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 transition-all">
+                  <tr key={idx} className="hover:bg-gray-50 transition-all group">
                     <td className="px-5 py-3 border-r border-gray-100 font-black text-slate-400 bg-slate-50/50">
                       {String(row.NIVEL)}
                     </td>
                     <td className="px-5 py-3 font-black text-slate-800 uppercase text-left">{row.DESCRIPCION_COMPONENTE}</td>
                     <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.COMPONENTE}</td>
-                    <td className="px-5 py-3 text-left font-black text-gray-500 uppercase tracking-tight border-r border-gray-100">{row.DESCRIPCION_FERT}</td>
+                    <td className="px-5 py-3 text-left font-black text-gray-400 uppercase tracking-tight border-r border-gray-100">{row.DESCRIPCION_FERT}</td>
                     <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.MATERIAL_PADRE}</td>
                     <td className="px-5 py-3 text-center font-black text-slate-400 border-r border-gray-100 uppercase tracking-widest">KG</td>
                     <td className="px-5 py-3 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
@@ -196,15 +199,15 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
           <Layers className="w-16 h-16 text-slate-200" />
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Presione "Explosionar Lista" para visualizar la estructura de materiales sin filtros.
+            Presione "Explosionar Lista" para visualizar la estructura de materiales según SAP.
           </p>
         </div>
       )}
 
-      <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+      <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Información Técnica: Los datos mostrados corresponden a la explosión directa de niveles 2, 3 y 4 de SAP. No se aplican agrupaciones para garantizar la integridad de la auditoría.
+          Nota Técnica: Esta vista muestra la explosión cruda de componentes pertenecientes a las órdenes provisionales listadas. No existen filtros ocultos truncando la información.
         </p>
       </div>
     </div>
