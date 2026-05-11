@@ -483,11 +483,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                         <p className="font-bold text-red-600">{statusSummary.retrasadas.toLocaleString()}</p>
                     </div>
                     <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">ORDENES EN PROCESO</p>
+                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">EN PROCESO</p>
                         <p className="font-bold text-blue-600">{statusSummary.enProceso.toLocaleString()}</p>
                     </div>
                     <div className="text-center p-3 h-full flex flex-col justify-center">
-                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">ORDENES POR PLANIFICAR</p>
+                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">POR PLANIFICAR</p>
                         <p className="font-bold text-teal-600">{statusSummary.porPlanificar.toLocaleString()}</p>
                     </div>
                 </div>
