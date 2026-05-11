@@ -68,7 +68,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const order = ordenes[i];
         const fertCode = extractCode(order.MATERIAL || order.CodMaterial || '');
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
-        const orderQty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+        const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
         const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '');
         const orderNum = order.ORDENPREVISIONAL || order.ORDEN || '—';
 
@@ -125,7 +125,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             });
           }
         } catch (err) {
-          logger.error(`Error en BOM para material ${fertCode}:`, err);
+          logger.error(`Error en BOM para material ${fertCode}`, err);
         }
 
         setProgress(prev => ({ ...prev, current: i + 1 }));
@@ -138,7 +138,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       if (onTotalKgChange) onTotalKgChange(results.reduce((sum, n) => sum + n.totalKG, 0));
 
     } catch (err) {
-      logger.error(`Error crítico en explosión: ${(err as Error).message}`);
+      logger.error('Error crítico en explosión', err);
     } finally {
       setIsProcessing(false);
     }
