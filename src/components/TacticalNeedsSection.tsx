@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -28,6 +29,14 @@ interface RawBOMRow {
   CANTIDAD_EXPLOTADA: number; // Campo calculado: Cant. Acumulada * Cant. Orden
 }
 
+/**
+ * Utility to ensure numeric values are valid and avoid NaN in React components
+ */
+const safeNum = (val: any): number => {
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
+};
+
 export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ 
   ordenes, 
   onTotalKgChange,
@@ -49,10 +58,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
     }
 
     setIsProcessing(true);
+    setError(null);
     setBomRows([]);
     setProgress({ current: 0, total: ordenes.length });
 
-    const allRows: RawBOMRow[] = [];
+    const consolidatedRows: RawBOMRow[] = [];
 
     try {
       logger.log(`[BOOM] Iniciando extracción de datos técnicos para ${ordenes.length} órdenes...`);
@@ -62,7 +72,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const fertCodeRaw = order.MATERIAL || order.CodMaterial || '';
         const fertCode = extractCode(fertCodeRaw);
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
-        const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+        const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
 
         // Padding 18 dígitos para SAP
         const fullCodeForApi = fertCode.padStart(18, '0');
@@ -74,18 +84,18 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             const data = Array.isArray(response.data) ? response.data : (response.data.data || []);
             
             data.forEach((row: any) => {
-              const qtyAcum = Number(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
+              const qtyAcum = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
               const cantExplotada = orderQty * qtyAcum;
 
-              allRows.push({
-                NIVEL: Number(row.NIVEL),
-                CENTRO: String(row.CENTRO),
-                FERT_PRINCIPAL: String(row.FERT_PRINCIPAL).slice(-8),
-                DESCRIPCION_FERT: String(row.DESCRIPCION_FERT).toUpperCase(),
-                MATERIAL_PADRE: String(row.MATERIAL_PADRE).slice(-8),
-                COMPONENTE: String(row.COMPONENTE).slice(-8),
-                DESCRIPCION_COMPONENTE: String(row.DESCRIPCION_COMPONENTE).toUpperCase(),
-                CANTIDAD_UNITARIA: Number(row.CANTIDAD_UNITARIA),
+              consolidatedRows.push({
+                NIVEL: safeNum(row.NIVEL),
+                CENTRO: String(row.CENTRO || ''),
+                FERT_PRINCIPAL: String(row.FERT_PRINCIPAL || '').slice(-8),
+                DESCRIPCION_FERT: String(row.DESCRIPCION_FERT || '').toUpperCase(),
+                MATERIAL_PADRE: String(row.MATERIAL_PADRE || '').slice(-8),
+                COMPONENTE: String(row.COMPONENTE || '').slice(-8),
+                DESCRIPCION_COMPONENTE: String(row.DESCRIPCION_COMPONENTE || '').toUpperCase(),
+                CANTIDAD_UNITARIA: safeNum(row.CANTIDAD_UNITARIA),
                 CANTIDAD_ACUMULADA: qtyAcum,
                 CANTIDAD_EXPLOTADA: cantExplotada
               });
@@ -94,23 +104,26 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         } catch (err) {
           logger.error(`[BOOM] Error en material ${fertCode}`, err);
         }
-
         setProgress(prev => ({ ...prev, current: i + 1 }));
       }
-
-      setBomRows(allRows);
+      setBomRows(consolidatedRows);
       
-      if (onMaterialsCalculated) onMaterialsCalculated([...new Set(allRows.map(r => r.COMPONENTE))]);
-      if (onTotalKgChange) onTotalKgChange(allRows.reduce((sum, n) => sum + n.CANTIDAD_EXPLOTADA, 0));
+      if (onMaterialsCalculated) onMaterialsCalculated([...new Set(consolidatedRows.map(r => r.COMPONENTE))]);
+      
+      if (onTotalKgChange) {
+        const total = consolidatedRows.reduce((sum, n) => sum + n.CANTIDAD_EXPLOTADA, 0);
+        onTotalKgChange(isNaN(total) ? 0 : total);
+      }
 
-      logger.success(`[BOOM] Extracción completada. ${allRows.length} filas técnicas recuperadas.`);
-
+      logger.success(`[BOOM] Extracción completada. ${consolidatedRows.length} filas técnicas recuperadas.`);
     } catch (err) {
       logger.error('[BOOM] Error crítico en proceso de explosión', err);
     } finally {
       setIsProcessing(false);
     }
   };
+
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="space-y-6 text-left">
@@ -162,7 +175,9 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
               <tbody className="divide-y divide-gray-100">
                 {bomRows.map((row, idx) => (
                   <tr key={idx} className="hover:bg-gray-50 transition-all">
-                    <td className="px-5 py-3 border-r border-gray-100 font-black text-slate-400 bg-slate-50/50">{row.NIVEL}</td>
+                    <td className="px-5 py-3 border-r border-gray-100 font-black text-slate-400 bg-slate-50/50">
+                      {String(row.NIVEL)}
+                    </td>
                     <td className="px-5 py-3 font-black text-slate-800 uppercase text-left">{row.DESCRIPCION_COMPONENTE}</td>
                     <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.COMPONENTE}</td>
                     <td className="px-5 py-3 text-left font-black text-gray-500 uppercase tracking-tight border-r border-gray-100">{row.DESCRIPCION_FERT}</td>
