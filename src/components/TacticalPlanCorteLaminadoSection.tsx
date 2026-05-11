@@ -112,7 +112,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
-  // Mapa optimizado para lookup por CodMaterial
   const tiemposMap = useMemo(() => {
     const map = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
@@ -143,14 +142,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  const CATEGORIES = [
-    "LAMINA CILINDRICA",
-    "BANDA INT",
-    "BANDA BASE",
-    "BANDA CHN",
-    "ACOLCHADO",
-    "TAPA SF BABY"
-  ];
+  const CATEGORIES = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
 
   const ordenesFiltradas = useMemo(() => {
     return ordenes.filter(o => {
@@ -158,8 +150,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       if (itemCentro !== '1000') return false;
 
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchesAlmacen = itemAlmacen === '1006' || itemAlmacen === '1008';
-      if (!matchesAlmacen) return false;
+      if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return false;
 
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
@@ -171,7 +162,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
         if (itemDate !== selectedDate) return false;
       }
-
       return true;
     }).sort((a, b) => {
       const almA = String(a.ALMACEN || a.Almacen || '').trim();
@@ -183,7 +173,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const groupedOrdersByDescriptor = useMemo(() => {
     const groups: Record<string, any[]> = {};
     CATEGORIES.forEach(cat => { groups[cat] = []; });
-
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
@@ -206,7 +195,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Maestro Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Consolidación de Lista de Materiales (Almacén 1006/1008)</p>
+            <p className="text-xs text-gray-500 font-medium">Lista de Materiales Explotada (BOM)</p>
           </div>
         </div>
       </div>
@@ -214,7 +203,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'plan', l: 'Lista de Materiales Explotada', i: LayoutDashboard }, 
+            { v: 'plan', l: 'Plan Maestro & Necesidades', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
@@ -229,7 +218,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Filtro de Plan Maestro</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Planificación de Despacho</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
                   {selectedDate === 'all' ? 'Vista Consolidada del Mes' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
@@ -239,7 +228,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-10 px-6 rounded-2xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-xs uppercase transition-all shadow-sm">
-                  <Filter className="w-4 h-4" /> Filtro Fecha
+                  <Filter className="w-4 h-4" /> Fecha
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
@@ -273,14 +262,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes a Procesar</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (# Órdenes)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Consumo Consolidado (KG)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Materia Prima Requerida (KG)</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">
@@ -290,7 +279,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          {/* Componente que gestiona la lista de materiales explotada y consolidada */}
           <TacticalNeedsSection 
             ordenes={ordenesFiltradas} 
             tiempos={tiemposEnsamblado} 
@@ -316,7 +304,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[10px]">
                   {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic font-bold uppercase tracking-widest">Sin carga operativa para el periodo</td></tr>
+                    <tr><td colSpan={7} className="py-20 text-gray-400 italic">Sin carga operativa para el periodo</td></tr>
                   ) : (
                     Object.entries(groupedOrdersByDescriptor).map(([category, items]) => {
                       if (items.length === 0) return null;

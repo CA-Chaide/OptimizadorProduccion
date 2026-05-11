@@ -86,7 +86,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
               const compCode = String(comp.COMPONENTE || '').slice(-8);
               const descRaw = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
               
-              // Solo nos interesan láminas y bloques para el despacho de laminado
               if (!compCode) return;
               const isLamina = descRaw.includes('LAMINA CILINDRICA');
               const isBloque = descRaw.includes('BLOQUE FORMULADO');
@@ -131,16 +130,10 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
       const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalKG - a.totalKG);
       setGroupedNeeds(results);
-      
-      // Notificar materiales calculados para resaltado en la pestaña de Tiempos
       onMaterialsCalculated?.(results.map(r => r.codigoComponente));
-
-      // Calcular total acumulado de la carga
-      const totalKg = results.reduce((sum, n) => sum + n.totalKG, 0);
-      onTotalKgChange?.(totalKg);
+      onTotalKgChange?.(results.reduce((sum, n) => sum + n.totalKG, 0));
 
     } catch (err) {
-      console.error(err);
       logger.error(`Error en proceso de explosión: ${(err as Error).message}`);
     } finally {
       setIsProcessing(false);
@@ -180,7 +173,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             <tbody>
               {items.map((group) => (
                 <React.Fragment key={group.codigoComponente}>
-                  {/* NIVEL 1: COMPONENTE CONSOLIDADO */}
                   <tr 
                     className="bg-gray-50/80 border-b border-gray-100 cursor-pointer hover:bg-indigo-50/30 transition-colors"
                     onClick={() => toggleGroup(group.codigoComponente)}
@@ -203,8 +195,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                       </Badge>
                     </td>
                   </tr>
-
-                  {/* NIVEL 2: DESGLOSE DE ÓRDENES DE ORIGEN */}
                   {expandedGroups.has(group.codigoComponente) && (
                     <>
                       <tr className="bg-slate-50">
@@ -218,7 +208,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                             <div className="flex flex-col">
                               <span className="font-black text-slate-600 uppercase leading-none mb-1">{parent.nombrePadre}</span>
                               <span className="text-[9px] font-bold text-slate-400 flex items-center gap-2 italic">
-                                <Clock className="w-2.5 h-2.5" /> {parent.puestoPadre}
+                                <Clock className="w-2.5 h-2.5" /> Destino: {parent.puestoPadre}
                               </span>
                             </div>
                           </td>
@@ -246,7 +236,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
   return (
     <div className="space-y-6 text-left">
-      {/* Header de Sincronización */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
@@ -257,47 +246,31 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Consolidado Técnico: {ordenes.length} Órdenes Programadas</p>
           </div>
         </div>
-        
-        <Button 
-          onClick={processExplosion}
-          disabled={isProcessing || ordenes.length === 0}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20"
-        >
-          {isProcessing ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          ) : (
-            <PlayCircle className="w-4 h-4 mr-2" />
-          )}
+        <Button onClick={processExplosion} disabled={isProcessing || ordenes.length === 0} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20">
+          {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
           {isProcessing ? 'Explotando BOM...' : 'Sincronizar Plan Maestro'}
         </Button>
       </div>
 
-      {/* Barra de Progreso */}
       {isProcessing && (
-        <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100 animate-in fade-in slide-in-from-top-2">
+        <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span className="flex items-center gap-2">
-              <Activity className="w-3 h-3" />
-              Recuperando Niveles de Consumo Técnico
-            </span>
+            <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Recuperando Niveles de Consumo Técnico</span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100 [&>div]:bg-indigo-600" />
         </div>
       )}
 
-      {/* Resultados de la Lista de Materiales */}
       {!isProcessing && groupedNeeds.length > 0 ? (
         <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-500">
           {laminasGroups.length > 0 && renderLevelTable(laminasGroups, "A) Nivel Crítico: Lámina Cilíndrica", Scissors, "text-green-700", "bg-[#9db65b]")}
           {bloquesGroups.length > 0 && renderLevelTable(bloquesGroups, "B) Nivel Crítico: Bloque Formulado", Box, "text-indigo-700", "bg-indigo-600")}
         </div>
       ) : !isProcessing && (
-        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 space-y-4">
-          <div className="flex flex-col items-center gap-3 opacity-20">
-            <Scale className="w-12 h-12 text-slate-300" />
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos de lista de materiales consolidados</p>
-          </div>
+        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+          <Scale className="w-12 h-12 text-slate-200 mx-auto" />
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-4">Sin datos de lista de materiales consolidados</p>
         </div>
       )}
     </div>
