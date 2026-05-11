@@ -37,6 +37,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [materialesEnPlan, setMaterialesEnPlan] = useState<string[]>([]);
   const [totalKgCalculated, setTotalKgCalculated] = useState<number>(0);
 
+  // Descriptores técnicos permitidos para visualización y proceso
+  const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
+
   const fetchGrupos = async () => {
     try {
       const res = await grupoService.getAll();
@@ -142,16 +145,23 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
-
   const ordenesFiltradas = useMemo(() => {
     return ordenes.filter(o => {
+      // 1. Filtro de Centro (Siempre 1000 para este módulo)
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
+      // 2. Filtro de Almacenes Específicos
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return false;
       
+      // 3. Filtro Estricto por Descriptores (NO MOSTRAR MATERIALES OTROS)
+      const { desc } = extractMaterialInfo(o);
+      const descUpper = desc.toUpperCase();
+      const isRelevant = DESCRIPTORS.some(keyword => descUpper.includes(keyword));
+      if (!isRelevant) return false;
+
+      // 4. Filtro por Fecha (si aplica)
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -159,6 +169,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
       return true;
     }).sort((a, b) => {
+      // Ordenación por Almacén
       const almA = String(a.ALMACEN || a.Almacen || '').trim();
       const almB = String(b.ALMACEN || b.Almacen || '').trim();
       return almA.localeCompare(almB);
@@ -172,17 +183,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
-      let matched = false;
+      
       for (const keyword of DESCRIPTORS) {
         if (descUpper.includes(keyword)) {
           groups[keyword].push(o);
-          matched = true;
           break;
         }
-      }
-      if (!matched) {
-        if (!groups["OTROS MATERIALES"]) groups["OTROS MATERIALES"] = [];
-        groups["OTROS MATERIALES"].push(o);
       }
     });
     return groups;
@@ -284,7 +290,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           
           <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 text-center flex flex-col items-center gap-3">
             <Layers className="w-8 h-8 text-blue-600 opacity-40" />
-            <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Utilice la pestaña "BOOM de Materiales" para visualizar el desglose jerárquico completo y sin truncamientos.</p>
+            <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Utilice la pestaña "BOOM de Materiales" para visualizar el desglose jerárquico completo de componentes críticos.</p>
           </div>
         </TabsContent>
 
