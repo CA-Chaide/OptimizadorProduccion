@@ -1,35 +1,32 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Layers, Loader2, Activity, PlayCircle, Info, Database } from 'lucide-react';
+import { serviciosService } from '@/services/servicios.service';
+import { useRuntimeInspector } from '@/services/RuntimeInspector';
+import { logger } from '@/services/LogService';
+import { useAppContext } from '@/context/AppProvider';
+import { ClipboardList, Loader2, DatabaseZap, PlayCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { serviciosService } from '@/services/servicios.service';
-import { logger } from '@/services/LogService';
 
 interface TacticalNeedsSectionProps {
   ordenes: any[];
-  onTotalKgChange?: (total: number) => void;
-  onMaterialsCalculated?: (codes: string[]) => void;
 }
 
 interface RawBOMRow {
   NIVEL: number;
-  CENTRO: string;
+  COMPONENTE: string;
+  DESCRIPCION_COMPONENTE: string;
   FERT_PRINCIPAL: string;
   DESCRIPCION_FERT: string;
   MATERIAL_PADRE: string;
-  COMPONENTE: string;
-  DESCRIPCION_COMPONENTE: string;
-  CANTIDAD_UNITARIA: number;
-  CANTIDAD_ACUMULADA: number;
-  CANTIDAD_EXPLOTADA: number; 
+  UNID: string;
+  CANTIDAD_EXPLOTADA: number;
 }
 
 /**
- * Asegura que los valores numéricos sean válidos
+ * Asegura que los valores numéricos sean válidos para evitar errores de renderizado NaN
  */
 const safeNum = (val: any): number => {
   const n = Number(val);
@@ -57,24 +54,21 @@ const extractMaterialInfo = (item: any) => {
   return { code, desc: desc.toUpperCase() };
 };
 
-export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ 
-  ordenes, 
-  onTotalKgChange,
-  onMaterialsCalculated
-}) => {
+export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ ordenes }) => {
+  const inspector = useRuntimeInspector('TacticalNeedsSection');
+  const { addNotification } = useAppContext();
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
   const processExplosion = async () => {
     if (!ordenes || ordenes.length === 0) {
-      logger.warn('[BOOM] No hay órdenes disponibles para procesar.');
+      addNotification('warning', 'No hay órdenes disponibles para procesar la explosión.');
       return;
     }
 
     setIsProcessing(true);
-    setError(null);
     setBomRows([]);
     setProgress({ current: 0, total: ordenes.length });
 
@@ -87,19 +81,17 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const order = ordenes[i];
         const { code: rootCode, desc: rootDesc } = extractMaterialInfo(order);
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
-        const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+        const orderQty = safeNum(order.CANTIDAD || order.CANTPROGRAMADA || 0);
 
-        // AGREGAR NIVEL 1 (EL PADRE DE LA ORDEN)
+        // AGREGAR NIVEL 1 (EL PADRE DE LA ORDEN PROVISIONAL)
         allExplodedRows.push({
           NIVEL: 1,
-          CENTRO: centro,
+          COMPONENTE: rootCode,
+          DESCRIPCION_COMPONENTE: rootDesc,
           FERT_PRINCIPAL: rootCode,
           DESCRIPCION_FERT: rootDesc,
           MATERIAL_PADRE: '---',
-          COMPONENTE: rootCode,
-          DESCRIPCION_COMPONENTE: rootDesc,
-          CANTIDAD_UNITARIA: 1,
-          CANTIDAD_ACUMULADA: 1,
+          UNID: 'KG',
           CANTIDAD_EXPLOTADA: orderQty
         });
 
@@ -114,46 +106,34 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             
             data.forEach((row: any) => {
               const level = safeNum(row.NIVEL);
-              if (level < 1) return; // Ignorar niveles 0 o inválidos
+              if (level < 2) return; // Ignorar niveles 0, 1 (ya manejados) o inválidos
 
+              // Usar CANTIDAD_ACUMULADA para obtener el factor real desde la raíz
               const factor = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
               const cantExplotada = orderQty * factor;
 
               allExplodedRows.push({
                 NIVEL: level,
-                CENTRO: String(row.CENTRO || centro),
+                COMPONENTE: String(row.COMPONENTE || '').replace(/^0+/, '').slice(-8),
+                DESCRIPCION_COMPONENTE: String(row.DESCRIPCION_COMPONENTE || 'SIN DESCRIPCIÓN').toUpperCase(),
                 FERT_PRINCIPAL: String(row.FERT_PRINCIPAL || rootCode).replace(/^0+/, '').slice(-8),
                 DESCRIPCION_FERT: String(row.DESCRIPCION_FERT || rootDesc).toUpperCase(),
                 MATERIAL_PADRE: String(row.MATERIAL_PADRE || '').replace(/^0+/, '').slice(-8) || '---',
-                COMPONENTE: String(row.COMPONENTE || '').replace(/^0+/, '').slice(-8),
-                DESCRIPCION_COMPONENTE: String(row.DESCRIPCION_COMPONENTE || 'SIN DESCRIPCIÓN').toUpperCase(),
-                CANTIDAD_UNITARIA: safeNum(row.CANTIDAD_UNITARIA),
-                CANTIDAD_ACUMULADA: factor,
+                UNID: 'KG',
                 CANTIDAD_EXPLOTADA: cantExplotada
               });
             });
           }
         } catch (err) {
-          logger.error(`[BOOM] Error al explotar material ${rootCode}: ${(err as Error).message}`);
+          logger.warn(`[BOOM] Error al explotar material ${rootCode}: ${(err as Error).message}`);
         }
         setProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
       setBomRows(allExplodedRows);
-      
-      if (onMaterialsCalculated) {
-        onMaterialsCalculated([...new Set(allExplodedRows.map(r => r.COMPONENTE))]);
-      }
-      
-      if (onTotalKgChange) {
-        // Masa crítica: solo niveles componentes (Nivel > 1)
-        const total = allExplodedRows.reduce((sum, n) => sum + (n.NIVEL > 1 ? n.CANTIDAD_EXPLOTADA : 0), 0);
-        onTotalKgChange(isNaN(total) ? 0 : total);
-      }
-
-      logger.success(`[BOOM] Explosión terminada. ${allExplodedRows.length} registros generados.`);
+      logger.success(`[BOOM] Explosión terminada. ${allExplodedRows.length} registros técnicos generados.`);
     } catch (err) {
-      setError((err as Error).message);
+      logger.error(`Error crítico en explosión: ${(err as Error).message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -164,20 +144,20 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
-            <Database className="w-6 h-6" />
+            <ClipboardList className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales Explotada (BOOM)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Estructura Jerárquica Real | Visualización Transparente</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Jerárquica Completa | Transparencia de Insumos</p>
           </div>
         </div>
         <Button 
           onClick={processExplosion} 
           disabled={isProcessing || ordenes.length === 0} 
-          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
+          className="bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
         >
           {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-          Explosionar Lista
+          Sincronizar Plan Maestro
         </Button>
       </div>
 
@@ -186,7 +166,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
             <span className="flex items-center gap-2">
               <Activity className="w-3 h-3" />
-              Sincronizando con SAP...
+              Explotando Recetas en SAP...
             </span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
@@ -203,15 +183,15 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                   <th className="px-5 py-4 text-center border-r border-white/5 w-16">NV</th>
                   <th className="px-5 py-4 text-left border-r border-white/5">NOMBRECOMPONENTE</th>
                   <th className="px-5 py-4 text-left border-r border-white/5">COMPONENTE</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">NOMBRE (Padre)</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">MATERIAL padre</th>
+                  <th className="px-5 py-4 text-left border-r border-white/5">NOMBRE (PADRE)</th>
+                  <th className="px-5 py-4 text-left border-r border-white/5">MATERIAL PADRE</th>
                   <th className="px-5 py-4 text-center border-r border-white/5 w-20">UNID</th>
                   <th className="px-5 py-4 text-right bg-black/20 w-32">CANTORDEN</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {bomRows.map((row, idx) => (
-                  <tr key={idx} className={cn("hover:bg-gray-50 transition-all group", row.NIVEL === 1 ? "bg-slate-50" : "")}>
+                  <tr key={idx} className={cn("hover:bg-gray-50 transition-all group", row.NIVEL === 1 ? "bg-indigo-50/20 font-bold" : "")}>
                     <td className={cn(
                       "px-5 py-3 border-r border-gray-100 font-black text-center",
                       row.NIVEL === 1 ? "text-indigo-600" : "text-slate-400"
@@ -222,7 +202,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                     <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.COMPONENTE}</td>
                     <td className="px-5 py-3 text-left font-black text-gray-400 uppercase tracking-tight border-r border-gray-100">{row.DESCRIPCION_FERT}</td>
                     <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.MATERIAL_PADRE}</td>
-                    <td className="px-5 py-3 text-center font-black text-slate-400 border-r border-gray-100 uppercase tracking-widest">KG</td>
+                    <td className="px-5 py-3 text-center font-black text-slate-400 border-r border-gray-100 uppercase tracking-widest">{row.UNID}</td>
                     <td className="px-5 py-3 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
                       {row.CANTIDAD_EXPLOTADA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </td>
@@ -233,16 +213,16 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           </div>
         </div>
       ) : !isProcessing && (
-        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
-          <Database className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión para visualizar la jerarquía completa (1-5)</p>
+        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+          <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sincronice el plan maestro para visualizar la estructura técnica (Niveles 1-5)</p>
         </div>
       )}
 
       <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota: Los datos se presentan según la estructura jerárquica de SAP. El Nivel 1 es el producto terminado, los niveles 2-5 son componentes sucesivos.
+          Nota: Se muestra el 100% de la jerarquía técnica sin filtros. El Nivel 1 representa el material raíz de la orden provisional, los niveles 2-5 son componentes del BOOM.
         </p>
       </div>
     </div>
