@@ -68,7 +68,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
       for (let i = 0; i < ordenes.length; i++) {
         const order = ordenes[i];
-        const fertCode = extractCode(order.MATERIAL || order.CodMaterial || '');
+        const fertCodeRaw = order.MATERIAL || order.CodMaterial || '';
+        const fertCode = extractCode(fertCodeRaw);
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
         const orderNum = order.ORDENPREVISIONAL || order.ORDEN || '—';
@@ -80,43 +81,31 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         });
         const puestoDestino = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
 
-        // Padding 18 dígitos para SAP
+        // Padding 18 dígitos para SAP (Crítico para que el backend reconozca el material)
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 1000);
           
           if (response && response.data) {
+            // Manejo robusto de la respuesta (array directo o anidado)
             const explosionData = Array.isArray(response.data) ? response.data : (response.data.data || []);
             
-            explosionData.forEach((row: any) => {
-              const compCode = String(row.COMPONENTE || '').slice(-8);
-              const descComp = String(row.DESCRIPCION_COMPONENTE || '').toUpperCase();
-              
-              if (!compCode) return;
-              
-              const factorConsumo = Number(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
-              const cantidadKG = orderQty * factorConsumo;
+            if (explosionData.length > 0) {
+              explosionData.forEach((row: any) => {
+                const compCode = String(row.COMPONENTE || '').slice(-8);
+                const descComp = String(row.DESCRIPCION_COMPONENTE || '').toUpperCase();
+                
+                if (!compCode) return;
+                
+                // Usamos CANTIDAD_ACUMULADA (factor total de la receta) * Cantidad de la Orden
+                const factorConsumo = Number(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
+                const cantidadKG = orderQty * factorConsumo;
 
-              if (consolidatedMap.has(compCode)) {
-                const existing = consolidatedMap.get(compCode)!;
-                existing.totalKG += cantidadKG;
-                existing.origins.push({
-                  orden: orderNum,
-                  nombrePadre: String(row.DESCRIPCION_FERT || '').toUpperCase(),
-                  materialPadre: String(row.MATERIAL_PADRE || '').slice(-8),
-                  materialFert: String(row.FERT_PRINCIPAL || '').slice(-8),
-                  puestoDestino: puestoDestino,
-                  cantidadKG: cantidadKG,
-                  nivel: Number(row.NIVEL)
-                });
-              } else {
-                consolidatedMap.set(compCode, {
-                  codigoComponente: compCode,
-                  nombreComponente: descComp,
-                  unidad: "KG",
-                  totalKG: cantidadKG,
-                  origins: [{
+                if (consolidatedMap.has(compCode)) {
+                  const existing = consolidatedMap.get(compCode)!;
+                  existing.totalKG += cantidadKG;
+                  existing.origins.push({
                     orden: orderNum,
                     nombrePadre: String(row.DESCRIPCION_FERT || '').toUpperCase(),
                     materialPadre: String(row.MATERIAL_PADRE || '').slice(-8),
@@ -124,10 +113,26 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                     puestoDestino: puestoDestino,
                     cantidadKG: cantidadKG,
                     nivel: Number(row.NIVEL)
-                  }]
-                });
-              }
-            });
+                  });
+                } else {
+                  consolidatedMap.set(compCode, {
+                    codigoComponente: compCode,
+                    nombreComponente: descComp,
+                    unidad: "KG",
+                    totalKG: cantidadKG,
+                    origins: [{
+                      orden: orderNum,
+                      nombrePadre: String(row.DESCRIPCION_FERT || '').toUpperCase(),
+                      materialPadre: String(row.MATERIAL_PADRE || '').slice(-8),
+                      materialFert: String(row.FERT_PRINCIPAL || '').slice(-8),
+                      puestoDestino: puestoDestino,
+                      cantidadKG: cantidadKG,
+                      nivel: Number(row.NIVEL)
+                    }]
+                  });
+                }
+              });
+            }
           }
         } catch (err) {
           logger.error(`[BOOM] Error en material ${fertCode}`, err);
@@ -136,13 +141,14 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         setProgress(prev => ({ ...prev, current: i + 1 }));
       }
 
+      // Ordenar por peso total descendente
       const results = Array.from(consolidatedMap.values()).sort((a, b) => b.totalKG - a.totalKG);
       setGroupedNeeds(results);
       
       if (onMaterialsCalculated) onMaterialsCalculated(results.map(r => r.codigoComponente));
       if (onTotalKgChange) onTotalKgChange(results.reduce((sum, n) => sum + n.totalKG, 0));
 
-      logger.success(`[BOOM] Explosión técnica completada.`);
+      logger.success(`[BOOM] Explosión técnica completada. ${results.length} componentes identificados.`);
 
     } catch (err) {
       logger.error('[BOOM] Error crítico en explosión', err);
@@ -166,8 +172,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             <Database className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Materiales (Estructura SAP)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Multinivel | Trazabilidad por Material Padre y FERT</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales Explotada (SAP)</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Jerárquica | Consolidación por Componente Insumo</p>
           </div>
         </div>
         <Button 
@@ -183,7 +189,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       {isProcessing && (
         <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span>Consultando Jerarquías y Niveles SAP...</span>
+            <span>Analizando Estructuras Multinivel...</span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />
@@ -256,7 +262,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
           <Layers className="w-16 h-16 text-slate-200" />
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Presione Sincronizar para visualizar el BOOM jerárquico de materiales (P. Ej. 30024848).
+            Presione Sincronizar para visualizar el desglose jerárquico de materiales.
           </p>
         </div>
       )}
@@ -264,7 +270,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Estructura Jerárquica: Nivel 1 es el Insumo Consolidado. Nivel 2 desglosa el Material Padre inmediato y el Producto Final (FERT) de origen.
+          Trazabilidad Jerárquica: El Nivel 1 muestra el Insumo Consolidado. El Nivel 2 desglosa el Material Padre y el FERT Principal con su Puesto de Trabajo destino.
         </p>
       </div>
     </div>
