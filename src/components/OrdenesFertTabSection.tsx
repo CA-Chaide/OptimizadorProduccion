@@ -437,25 +437,25 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           const capacidadOcupada = (tiempoRequeridoH / TIEMPO_DISPONIBLE_DIARIO) * 100;
                           
                           return (
-                          <div key={date} className="grid grid-cols-5 gap-0 items-center text-sm p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
+                          <div key={date} className="grid grid-cols-5 gap-0 items-center text-base p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
+                                  <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
                                   <p className="font-bold text-gray-900">{date}</p>
                               </div>
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA</p>
+                                  <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA</p>
                                   <p className="font-bold text-gray-900">{cantProgramada.toLocaleString()}</p>
                               </div>
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO (h)</p>
+                                  <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO (h)</p>
                                   <p className="font-bold text-indigo-700">{tiempoRequeridoH.toFixed(2)}</p>
                               </div>
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO DISPONIBLE (h)</p>
+                                  <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">TIEMPO DISPONIBLE (h)</p>
                                   <p className="font-bold text-emerald-700">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
                               </div>
                               <div className="text-center px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD</p>
+                                  <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD</p>
                                   <p className={cn("font-bold", capacidadOcupada > 100 ? "text-red-600" : "text-blue-600")}>
                                     {capacidadOcupada.toFixed(2)}%
                                   </p>
@@ -464,7 +464,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           );
                         })
                       ) : (
-                        <p className="p-4 text-center text-gray-500 text-xs italic">Selecciona una fecha para ver el resumen diario.</p>
+                        <p className="p-4 text-center text-gray-500 text-sm italic">Selecciona una fecha para ver el resumen diario.</p>
                       )}
                   </div>
                 </div>
@@ -472,17 +472,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                 {/* Recuadro PENDIENTES TOTALES */}
                 <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm h-full">
                   <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
-                  <div className="grid grid-cols-3 gap-0 items-center text-sm border rounded-md bg-white min-h-[80px]">
+                  <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                          <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
                           <p className="font-bold text-gray-900">{totalCantProgramadaGeneral.toLocaleString()}</p>
                       </div>
                       <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                          <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO TOTAL (h)</p>
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO TOTAL (h)</p>
                           <p className="font-bold text-indigo-700">{(totalTiempoRequeridoGeneral / 60).toFixed(2)}</p>
                       </div>
                       <div className="text-center p-3 h-full flex flex-col justify-center">
-                          <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">DIAS PENDIENTES</p>
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">DIAS PENDIENTES</p>
                           <p className="font-bold text-blue-600">
                             {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO).toFixed(2)} Días
                           </p>
@@ -494,26 +494,26 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               {/* Recuadro ESTATUS ACTUAL ORDENES */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                 <h4 className="text-sm font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
-                <div className="grid grid-cols-3 gap-0 items-center text-sm border rounded-md bg-white min-h-[80px]">
+                <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                     <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">RETRASADAS</p>
+                        <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">RETRASADAS</p>
                         <div className="flex items-center justify-center gap-2">
                           <p className="font-bold text-red-600">{statusSummary.retrasadas.toLocaleString()}</p>
-                          <span className="text-[11px] text-red-400 font-mono">/ {statusSummary.retrasadasTimeH.toFixed(1)}h</span>
+                          <span className="text-xs text-red-400 font-mono">/ {statusSummary.retrasadasTimeH.toFixed(1)}h</span>
                         </div>
                     </div>
                     <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">EN PROCESO</p>
+                        <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">EN PROCESO</p>
                         <div className="flex items-center justify-center gap-2">
                           <p className="font-bold text-blue-600">{statusSummary.enProceso.toLocaleString()}</p>
-                          <span className="text-[11px] text-blue-400 font-mono">/ {statusSummary.enProcesoTimeH.toFixed(1)}h</span>
+                          <span className="text-xs text-blue-400 font-mono">/ {statusSummary.enProcesoTimeH.toFixed(1)}h</span>
                         </div>
                     </div>
                     <div className="text-center p-3 h-full flex flex-col justify-center">
-                        <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">POR PLANIFICAR</p>
+                        <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">POR PLANIFICAR</p>
                         <div className="flex items-center justify-center gap-2">
                           <p className="font-bold text-teal-600">{statusSummary.porPlanificar.toLocaleString()}</p>
-                          <span className="text-[11px] text-teal-400 font-mono">/ {statusSummary.porPlanificarTimeH.toFixed(1)}h</span>
+                          <span className="text-xs text-teal-400 font-mono">/ {statusSummary.porPlanificarTimeH.toFixed(1)}h</span>
                         </div>
                     </div>
                 </div>
