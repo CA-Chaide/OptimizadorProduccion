@@ -72,14 +72,14 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '');
         const orderNum = order.ORDENPREVISIONAL || order.ORDEN || '—';
 
-        // Buscar el puesto de trabajo del padre en el catálogo maestro de tiempos
+        // Lookup del puesto de trabajo del padre
         const infoMaestra = tiempos.find(t => {
           const tCode = extractCode(t.CodMaterial || t.codigo_material || '');
           return tCode === fertCode;
         });
         const puestoPadre = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
 
-        // Padding de 18 dígitos crítico para la API de SAP
+        // Padding 18 dígitos para SAP
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
@@ -94,9 +94,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
               
               if (!compCode) return;
               
-              // REVISIÓN DE INTEGRIDAD: No existen filtros truncando la visualización.
-              // Se procesan todos los componentes del BOM del material padre.
-
               const factorConsumo = Number(comp.CANTIDAD_UNITARIA || 0);
               const cantidadKG = orderQty * factorConsumo;
 
@@ -140,8 +137,6 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       if (onMaterialsCalculated) onMaterialsCalculated(results.map(r => r.codigoComponente));
       if (onTotalKgChange) onTotalKgChange(results.reduce((sum, n) => sum + n.totalKG, 0));
 
-      logger.log(`[TacticalNeeds] Explosión finalizada. ${results.length} componentes encontrados.`);
-
     } catch (err) {
       logger.error(`Error crítico en explosión: ${(err as Error).message}`);
     } finally {
@@ -158,31 +153,30 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
   return (
     <div className="space-y-6 text-left">
-      {/* Panel de Sincronización */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
             <Layers className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Materiales (Lista de Consumo)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Técnica Jerárquica | Trazabilidad de Órdenes</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Materiales (Jerarquía de Consumo)</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Técnica Completa | Vinculación Padre-Hijo</p>
           </div>
         </div>
         <Button 
           onClick={processExplosion} 
           disabled={isProcessing || ordenes.length === 0} 
-          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
         >
           {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-          {isProcessing ? 'Sincronizando...' : 'Sincronizar Plan Maestro'}
+          Sincronizar Plan Maestro
         </Button>
       </div>
 
       {isProcessing && (
         <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Analizando Recetas Técnicas</span>
+            <span>Analizando Estructuras Técnicas</span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />
@@ -193,21 +187,20 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         <div className="border-2 border-gray-50 rounded-2xl overflow-hidden bg-white shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[10px] font-sans">
-              <thead className="bg-[#1e293b] text-white uppercase font-black tracking-tighter">
+              <thead className="bg-[#0f172a] text-white uppercase font-black tracking-tighter">
                 <tr>
-                  <th className="px-5 py-4 text-left border-r border-white/5">NombreComponente</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">Componente</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">Nombre (Padre)</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">Material Padre</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">PuestoTrabajo</th>
-                  <th className="px-5 py-4 text-center border-r border-white/5">Unid</th>
-                  <th className="px-5 py-4 text-right bg-black/10">CantOrden (KG)</th>
+                  <th className="px-5 py-4 text-left border-r border-white/5">NOMBRECOMPONENTE</th>
+                  <th className="px-5 py-4 text-left border-r border-white/5">COMPONENTE</th>
+                  <th className="px-5 py-4 text-left border-r border-white/5">NOMBRE (Padre)</th>
+                  <th className="px-5 py-4 text-left border-r border-white/5">MATERIAL padre</th>
+                  <th className="px-5 py-4 text-left border-r border-white/5">PUESTOTRABAJO</th>
+                  <th className="px-5 py-4 text-center border-r border-white/5">UNID</th>
+                  <th className="px-5 py-4 text-right bg-black/20">CANTORDEN (KG)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {groupedNeeds.map((group) => (
                   <React.Fragment key={group.codigoComponente}>
-                    {/* Nivel 1: El Componente Consolidado */}
                     <tr 
                       className="bg-slate-50 cursor-pointer hover:bg-indigo-50/50 transition-colors"
                       onClick={() => toggleGroup(group.codigoComponente)}
@@ -219,14 +212,13 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                         {group.nombreComponente}
                       </td>
                       <td className="px-5 py-3 font-mono font-black text-indigo-600">{group.codigoComponente}</td>
-                      <td colSpan={3} className="px-5 py-3 text-left font-bold text-gray-400 italic">Resumen consolidado de necesidades</td>
+                      <td colSpan={3} className="px-5 py-3 text-left font-bold text-gray-300 italic uppercase">Resumen consolidado</td>
                       <td className="px-5 py-3 text-center font-black text-slate-400">{group.unidad}</td>
-                      <td className="px-5 py-3 text-right font-black text-indigo-700 bg-slate-200/50">
+                      <td className="px-5 py-3 text-right font-black text-indigo-700 bg-indigo-100/50">
                         {group.totalKG.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     </tr>
 
-                    {/* Nivel 2: Desglose de Origen */}
                     {expandedGroups.has(group.codigoComponente) && group.parents.map((parent, pIdx) => (
                       <tr key={`${group.codigoComponente}-${pIdx}`} className="bg-white hover:bg-blue-50/20 transition-all border-l-4 border-indigo-500">
                         <td className="px-5 py-2"></td>
@@ -247,28 +239,20 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                   </React.Fragment>
                 ))}
               </tbody>
-              <tfoot className="bg-slate-800 text-white font-black text-[10px] uppercase">
-                <tr>
-                  <td colSpan={6} className="px-6 py-4 text-right tracking-widest">Total Masa Crítica Requerida:</td>
-                  <td className="px-5 py-4 text-right font-mono text-indigo-300 text-lg">
-                    {groupedNeeds.reduce((sum, n) => sum + n.totalKG, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KG
-                  </td>
-                </tr>
-              </tfoot>
             </table>
           </div>
         </div>
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
           <Layers className="w-16 h-16 text-slate-200" />
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos de BOOM de materiales. Sincronice el plan maestro.</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos jerárquicos. Sincronice el plan maestro.</p>
         </div>
       )}
 
       <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Verificación de Integridad: No existen filtros truncando la visualización. Se muestran todos los componentes detectados en la jerarquía del BOM.
+          Verificación de Jerarquía: Se visualizan todos los componentes técnicos vinculados a los materiales filtrados en el paso anterior.
         </p>
       </div>
     </div>

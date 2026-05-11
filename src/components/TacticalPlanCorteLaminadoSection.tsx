@@ -37,7 +37,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [materialesEnPlan, setMaterialesEnPlan] = useState<string[]>([]);
   const [totalKgCalculated, setTotalKgCalculated] = useState<number>(0);
 
-  // Descriptores técnicos permitidos para visualización y proceso (FILTRO EXCLUYENTE)
   const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
 
   const fetchGrupos = async () => {
@@ -80,7 +79,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const fetchTiemposEnsamblado = async () => {
     try {
-      // Cargar con límite amplio para asegurar la vinculación de líneas
       const res = await serviciosService.getTiemposEnsamblado(1, 15000);
       const data = res.data?.data || res.data || [];
       if (Array.isArray(data)) {
@@ -116,7 +114,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
-  // Mapa de tiempos optimizado para lookup por ID de 8 dígitos
   const tiemposMap = useMemo(() => {
     const map = new Map<string, any>();
     tiemposEnsamblado.forEach(t => {
@@ -149,21 +146,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const ordenesFiltradas = useMemo(() => {
     return ordenes.filter(o => {
-      // 1. Filtro de Centro (Planta 1000)
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== '1000') return false;
 
-      // 2. Filtro de Almacenes Operativos
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return false;
       
-      // 3. Filtro Estricto por Descriptores (Sin "OTROS")
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
       const isRelevant = DESCRIPTORS.some(keyword => descUpper.includes(keyword));
       if (!isRelevant) return false;
 
-      // 4. Filtro por Fecha
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -184,7 +177,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
-      
       for (const keyword of DESCRIPTORS) {
         if (descUpper.includes(keyword)) {
           groups[keyword].push(o);
@@ -204,7 +196,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión de Necesidades y BOOM de Materiales</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión de Necesidades y Jerarquía de Materiales</p>
           </div>
         </div>
       </div>
@@ -288,11 +280,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
           </div>
-          
-          <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 text-center flex flex-col items-center gap-3">
-            <Layers className="w-8 h-8 text-blue-600 opacity-40" />
-            <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Utilice la pestaña "BOOM de Materiales" para visualizar el desglose jerárquico completo de componentes técnicos.</p>
-          </div>
         </TabsContent>
 
         <TabsContent value="bom" className="animate-in fade-in duration-300">
@@ -329,7 +316,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <React.Fragment key={category}>
                           <tr className="bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest text-left">
                             <td colSpan={7} className="px-6 py-2.5 flex items-center gap-3">
-                              <Layers className="w-4 h-4 text-red-400" />
                               Categoría: {category} ({items.length} Órdenes)
                             </td>
                           </tr>
