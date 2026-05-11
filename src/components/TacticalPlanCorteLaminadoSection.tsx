@@ -152,9 +152,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return false;
       
-      const { desc } = extractMaterialInfo(o);
+      const { desc, code } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
-      const isRelevant = DESCRIPTORS.some(keyword => descUpper.includes(keyword));
+      
+      // Permitir material 30024848 explícitamente o por descriptor
+      const isRelevant = DESCRIPTORS.some(keyword => descUpper.includes(keyword)) || code === '30024848';
       if (!isRelevant) return false;
 
       if (selectedDate !== 'all') {
@@ -173,16 +175,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const groupedOrdersByDescriptor = useMemo(() => {
     const groups: Record<string, any[]> = {};
     DESCRIPTORS.forEach(desc => { groups[desc] = []; });
+    groups["OTROS RELEVANTES"] = [];
 
     ordenesFiltradas.forEach(o => {
       const { desc } = extractMaterialInfo(o);
       const descUpper = desc.toUpperCase();
+      let matched = false;
       for (const keyword of DESCRIPTORS) {
         if (descUpper.includes(keyword)) {
           groups[keyword].push(o);
+          matched = true;
           break;
         }
       }
+      if (!matched) groups["OTROS RELEVANTES"].push(o);
     });
     return groups;
   }, [ordenesFiltradas]);

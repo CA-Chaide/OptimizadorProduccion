@@ -50,7 +50,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
   const processExplosion = async () => {
     if (!ordenes || ordenes.length === 0) {
-      logger.warn('[TacticalNeeds] No hay órdenes para procesar.');
+      logger.warn('[TacticalNeeds] No hay órdenes filtradas para procesar.');
       return;
     }
 
@@ -68,18 +68,18 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const order = ordenes[i];
         const fertCode = extractCode(order.MATERIAL || order.CodMaterial || '');
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
-        const orderQty = Number(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+        const orderQty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
         const orderName = String(order.NOMBRE || order.NombreMaterial || order.Material || '').replace(/^\d+\s*/, '');
         const orderNum = order.ORDENPREVISIONAL || order.ORDEN || '—';
 
-        // Lookup del puesto de trabajo del padre
+        // Lookup del puesto de trabajo del padre en el maestro
         const infoMaestra = tiempos.find(t => {
           const tCode = extractCode(t.CodMaterial || t.codigo_material || '');
           return tCode === fertCode;
         });
         const puestoPadre = infoMaestra?.PuestoTrabajo || infoMaestra?.puesto_trabajo || '—';
 
-        // Padding 18 dígitos para SAP
+        // Padding 18 dígitos para SAP (CRÍTICO PARA MATERIAL 30024848)
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
@@ -125,7 +125,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             });
           }
         } catch (err) {
-          console.warn(`Error en BOM para material ${fertCode}:`, err);
+          logger.error(`Error en BOM para material ${fertCode}:`, err);
         }
 
         setProgress(prev => ({ ...prev, current: i + 1 }));
@@ -159,8 +159,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
             <Layers className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Materiales (Jerarquía de Consumo)</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Técnica Completa | Vinculación Padre-Hijo</p>
+            <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Materiales (Recetas Explotadas)</h3>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Sincronización con SAP | Trazabilidad por ID Material</p>
           </div>
         </div>
         <Button 
@@ -176,7 +176,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       {isProcessing && (
         <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-            <span>Analizando Estructuras Técnicas</span>
+            <span>Explotando Niveles de Material...</span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
           <Progress value={(progress.current / progress.total) * 100} className="h-2 bg-indigo-100" />
@@ -212,7 +212,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                         {group.nombreComponente}
                       </td>
                       <td className="px-5 py-3 font-mono font-black text-indigo-600">{group.codigoComponente}</td>
-                      <td colSpan={3} className="px-5 py-3 text-left font-bold text-gray-300 italic uppercase">Resumen consolidado</td>
+                      <td colSpan={3} className="px-5 py-3 text-left font-bold text-gray-300 italic uppercase">Resumen de necesidad por componente</td>
                       <td className="px-5 py-3 text-center font-black text-slate-400">{group.unidad}</td>
                       <td className="px-5 py-3 text-right font-black text-indigo-700 bg-indigo-100/50">
                         {group.totalKG.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -245,14 +245,14 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-4">
           <Layers className="w-16 h-16 text-slate-200" />
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin datos jerárquicos. Sincronice el plan maestro.</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Presione Sincronizar para visualizar la estructura del material 30024848 y otros.</p>
         </div>
       )}
 
       <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Verificación de Jerarquía: Se visualizan todos los componentes técnicos vinculados a los materiales filtrados en el paso anterior.
+          Estructura Jerárquica: El Nivel 1 muestra el componente de la receta. El Nivel 2 muestra los materiales padres que lo requieren.
         </p>
       </div>
     </div>
