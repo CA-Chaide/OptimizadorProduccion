@@ -9,9 +9,12 @@ import { ClipboardList, Loader2, DatabaseZap, PlayCircle, Info, Activity } from 
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 interface TacticalNeedsSectionProps {
   ordenes: any[];
+  onTotalKgChange?: (total: number) => void;
+  onMaterialsCalculated?: (materials: string[]) => void;
 }
 
 interface RawBOMRow {
@@ -39,7 +42,11 @@ const cleanCode = (code: string): string => {
   return String(code || '').replace(/^0+/, '').slice(-8);
 };
 
-export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ ordenes }) => {
+export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ 
+  ordenes,
+  onTotalKgChange,
+  onMaterialsCalculated
+}) => {
   const inspector = useRuntimeInspector('TacticalNeedsSection');
   const { addNotification } = useAppContext();
 
@@ -58,6 +65,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
     setProgress({ current: 0, total: ordenes.length });
 
     const allExplodedRows: RawBOMRow[] = [];
+    const uniqueMaterials = new Set<string>();
+    let totalKg = 0;
 
     try {
       logger.log(`[BOOM] Iniciando explosión técnica de ${ordenes.length} materiales...`);
@@ -77,18 +86,24 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 1000);
           
           if (response && response.data) {
-            // El API puede devolver { data: [...] } o directamente el array
+            // El API devuelve { data: [...] } según el método getMaestroMaterialesExplosion
             const rawData = Array.isArray(response.data) ? response.data : (response.data.data || []);
             
             rawData.forEach((row: any) => {
-              // Mapeo directo según la estructura del método getMaestroMaterialesExplosion
+              // Mapeo directo según la estructura JSON de SAP solicitada
               const factor = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
               const cantExplotada = orderQty * factor;
+              
+              const level = String(safeNum(row.NIVEL));
+              const componentCode = cleanCode(row.COMPONENTE);
+              
+              if (componentCode) uniqueMaterials.add(componentCode);
+              totalKg += cantExplotada;
 
               allExplodedRows.push({
-                NV: String(safeNum(row.NIVEL)),
+                NV: level,
                 NOMBRECOMPONENTE: String(row.DESCRIPCION_COMPONENTE || 'SIN DESCRIPCIÓN').toUpperCase(),
-                COMPONENTE: cleanCode(row.COMPONENTE),
+                COMPONENTE: componentCode,
                 NOMBRE_PADRE: String(row.DESCRIPCION_FERT || '---').toUpperCase(),
                 MATERIAL_PADRE: cleanCode(row.MATERIAL_PADRE),
                 UNID: 'KG',
@@ -103,10 +118,15 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
       }
       
       setBomRows(allExplodedRows);
+      
+      // Notificar cambios al padre si existen los callbacks
+      if (onTotalKgChange) onTotalKgChange(totalKg);
+      if (onMaterialsCalculated) onMaterialsCalculated(Array.from(uniqueMaterials));
+
       logger.success(`[BOOM] Explosión terminada. ${allExplodedRows.length} registros técnicos generados.`);
       inspector.captureVariable('bomRowsCount', allExplodedRows.length);
     } catch (err) {
-      logger.log(`Error crítico en explosión: ${(err as Error).message}`, 'error');
+      logger.error(`Error crítico en explosión: ${(err as Error).message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -121,7 +141,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
           </div>
           <div>
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Visualización Cruda SAP | Niveles 1-5 | Cantidades en KG</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Jerárquica SAP | Niveles 1-5 | Sin Filtros ni Agrupaciones</p>
           </div>
         </div>
         <Button 
@@ -188,14 +208,14 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({ orde
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
           <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sincronice el plan maestro para visualizar la estructura técnica completa</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sincronice el plan maestro para visualizar la explosión técnica detallada</p>
         </div>
       )}
 
       <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota: Se muestra la información técnica cruda generada por el método de explosión masiva de SAP, reflejando fielmente la jerarquía de niveles y componentes.
+          Nota: Visualización íntegra de componentes según el método de explosión masiva de SAP, reflejando fielmente la jerarquía técnica multinivel (1-5).
         </p>
       </div>
     </div>
