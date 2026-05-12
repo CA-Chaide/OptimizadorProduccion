@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2, Binary } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { TacticalNeedsSection } from './TacticalNeedsSection';
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -34,8 +33,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
-  const [materialesEnPlan, setMaterialesEnPlan] = useState<string[]>([]);
-  const [totalKgCalculated, setTotalKgCalculated] = useState<number>(0);
 
   const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
 
@@ -203,10 +200,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'plan', l: 'Plan Maestro', i: LayoutDashboard }, 
-            { v: 'bom', l: 'BOOM de Materiales', i: Binary },
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
@@ -272,23 +268,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Masa Crítica Requerida (KG)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes en Procesamiento</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">
-                  {totalKgCalculated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {ordenesFiltradas.length}
                 </p>
               </div>
             </div>
           </div>
-        </TabsContent>
-
-        <TabsContent value="bom" className="animate-in fade-in duration-300">
-           <TacticalNeedsSection 
-            ordenes={ordenesFiltradas} 
-            onTotalKgChange={setTotalKgCalculated}
-            onMaterialsCalculated={setMaterialesEnPlan}
-          />
         </TabsContent>
 
         <TabsContent value="ordenes">
@@ -368,13 +356,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   ) : (
                     tiemposEnsamblado.map((t, i) => {
                       const info = extractMaterialInfo(t);
-                      const isInPlan = materialesEnPlan.includes(info.code);
                       return (
-                        <tr key={i} className={cn("transition-colors", isInPlan ? "bg-blue-50/50 hover:bg-blue-100" : "hover:bg-gray-50/50")}>
-                          <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50 flex items-center justify-center gap-2">
-                            {info.code}
-                            {isInPlan && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
-                          </td>
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50">{info.code}</td>
                           <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
                           <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
                           <td className="px-4 py-3 border-r border-gray-100 font-bold text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
