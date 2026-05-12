@@ -77,20 +77,8 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
         const fertCode = match ? match[1] : matRaw;
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = safeNum(order.CANTIDAD || order.CANTPROGRAMADA || 0);
-        const orderName = String(order.NOMBRE || order.Descripcion || matRaw.replace(/^\d+\s*/, '')).toUpperCase();
 
-        // 1. Inyectar Nivel 1 (Raíz de la Orden)
-        allRows.push({
-          nv: "1",
-          nombreComponente: orderName,
-          componente: cleanCode(fertCode),
-          nombrePadre: "RAÍZ",
-          materialPadre: "—",
-          unid: "UND",
-          cantOrden: orderQty
-        });
-
-        // 2. Consultar Niveles Inferiores (2-5) en SAP
+        // Consultar Explosión Multinivel (1-5) en SAP
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
@@ -152,7 +140,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           </div>
           <div>
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Cruda SAP | Niveles 1-5 | Lista Paginada</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Jerárquica SAP | Niveles 1-5 | Lista Paginada</p>
           </div>
         </div>
         <Button 
@@ -196,12 +184,13 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {paginatedRows.map((row, idx) => (
-                    <tr key={idx} className={cn("hover:bg-gray-50 transition-all group", row.nv === "1" ? "bg-indigo-50/30 font-bold" : "")}>
+                    <tr key={idx} className="hover:bg-gray-50 transition-all group">
                       <td className={cn(
                         "px-5 py-3 border-r border-gray-100 font-black text-center",
-                        row.nv === "1" ? "text-indigo-600" : "text-slate-400"
+                        row.nv === "1" ? "bg-green-100 text-green-700" : 
+                        row.nv === "2" ? "bg-blue-100 text-blue-700" : "text-slate-400"
                       )}>
-                        {row.nv}
+                        {row.nv === "1" ? ".1" : row.nv === "2" ? "..2" : `...${row.nv}`}
                       </td>
                       <td className="px-5 py-3 font-black text-slate-800 uppercase text-left">{row.nombreComponente}</td>
                       <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.componente}</td>
@@ -248,7 +237,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
           <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión técnica para visualizar la estructura multinivel</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión técnica para visualizar la jerarquía técnica de materiales</p>
         </div>
       )}
 
