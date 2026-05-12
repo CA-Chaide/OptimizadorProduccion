@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, DatabaseZap, PlayCircle, Info, Activity } from 'lucide-react';
+import { ClipboardList, Loader2, DatabaseZap, PlayCircle, Info, Activity, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
@@ -17,27 +17,21 @@ interface TacticalNeedsSectionProps {
   onMaterialsCalculated?: (materials: string[]) => void;
 }
 
-interface RawBOMRow {
-  NV: string;
-  NOMBRECOMPONENTE: string;
-  COMPONENTE: string;
-  NOMBRE_PADRE: string;
-  MATERIAL_PADRE: string;
-  UNID: string;
-  CANTORDEN: number;
+interface BOMRow {
+  nv: string;
+  nombreComponente: string;
+  componente: string;
+  nombrePadre: string;
+  materialPadre: string;
+  unid: string;
+  cantOrden: number;
 }
 
-/**
- * Asegura que los valores numéricos sean válidos para evitar errores de renderizado NaN
- */
 const safeNum = (val: any): number => {
   const n = Number(val);
   return isNaN(n) ? 0 : n;
 };
 
-/**
- * Limpia el código de material para visualización (8 dígitos)
- */
 const cleanCode = (code: string): string => {
   return String(code || '').replace(/^0+/, '').slice(-8);
 };
@@ -52,7 +46,11 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
-  const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
+  const [bomRows, setBomRows] = useState<BOMRow[]>([]);
+  
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
 
   const processExplosion = async () => {
     if (!ordenes || ordenes.length === 0) {
@@ -62,75 +60,88 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
 
     setIsProcessing(true);
     setBomRows([]);
+    setCurrentPage(1);
     setProgress({ current: 0, total: ordenes.length });
 
-    const allExplodedRows: RawBOMRow[] = [];
+    const allRows: BOMRow[] = [];
     const uniqueMaterials = new Set<string>();
     let totalKg = 0;
 
     try {
-      logger.log(`[BOOM] Iniciando explosión técnica de ${ordenes.length} materiales...`);
+      logger.log(`[BOOM] Iniciando explosión jerárquica de ${ordenes.length} órdenes...`);
 
       for (let i = 0; i < ordenes.length; i++) {
         const order = ordenes[i];
-        const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
+        const matRaw = String(order.MATERIAL || order.Material || order.CodMaterial || '').trim();
         const match = matRaw.match(/^(\d+)/);
         const fertCode = match ? match[1] : matRaw;
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = safeNum(order.CANTIDAD || order.CANTPROGRAMADA || 0);
+        const orderName = String(order.NOMBRE || order.Descripcion || matRaw.replace(/^\d+\s*/, '')).toUpperCase();
 
-        // Padding 18 dígitos para consulta SAP
+        // 1. Inyectar Nivel 1 (Raíz de la Orden)
+        allRows.push({
+          nv: "1",
+          nombreComponente: orderName,
+          componente: cleanCode(fertCode),
+          nombrePadre: "RAÍZ",
+          materialPadre: "—",
+          unid: "UND",
+          cantOrden: orderQty
+        });
+
+        // 2. Consultar Niveles Inferiores (2-5) en SAP
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 1000);
-          
-          if (response && response.data) {
-            // El API devuelve { data: [...] } según el método getMaestroMaterialesExplosion
-            const rawData = Array.isArray(response.data) ? response.data : (response.data.data || []);
-            
-            rawData.forEach((row: any) => {
-              // Mapeo directo según la estructura JSON de SAP solicitada
+          const data = response?.data || response?.data?.data || [];
+
+          if (Array.isArray(data)) {
+            data.forEach((row: any) => {
               const factor = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
               const cantExplotada = orderQty * factor;
-              
-              const level = String(safeNum(row.NIVEL));
               const componentCode = cleanCode(row.COMPONENTE);
               
               if (componentCode) uniqueMaterials.add(componentCode);
               totalKg += cantExplotada;
 
-              allExplodedRows.push({
-                NV: level,
-                NOMBRECOMPONENTE: String(row.DESCRIPCION_COMPONENTE || 'SIN DESCRIPCIÓN').toUpperCase(),
-                COMPONENTE: componentCode,
-                NOMBRE_PADRE: String(row.DESCRIPCION_FERT || '---').toUpperCase(),
-                MATERIAL_PADRE: cleanCode(row.MATERIAL_PADRE),
-                UNID: 'KG',
-                CANTORDEN: cantExplotada
+              allRows.push({
+                nv: String(safeNum(row.NIVEL)),
+                nombreComponente: String(row.DESCRIPCION_COMPONENTE || 'SIN DESCRIPCIÓN').toUpperCase(),
+                componente: componentCode,
+                nombrePadre: String(row.DESCRIPCION_FERT || '---').toUpperCase(),
+                materialPadre: cleanCode(row.MATERIAL_PADRE),
+                unid: 'KG',
+                cantOrden: cantExplotada
               });
             });
           }
         } catch (err) {
-          logger.warn(`[BOOM] Error al explotar material ${fertCode}: ${(err as Error).message}`);
+          logger.warn(`[BOOM] Error en material ${fertCode}: ${(err as Error).message}`);
         }
         setProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
-      setBomRows(allExplodedRows);
-      
-      // Notificar cambios al padre si existen los callbacks
+      setBomRows(allRows);
       if (onTotalKgChange) onTotalKgChange(totalKg);
       if (onMaterialsCalculated) onMaterialsCalculated(Array.from(uniqueMaterials));
 
-      logger.success(`[BOOM] Explosión terminada. ${allExplodedRows.length} registros técnicos generados.`);
-      inspector.captureVariable('bomRowsCount', allExplodedRows.length);
+      logger.success(`[BOOM] Explosión técnica completada. ${allRows.length} registros cargados.`);
+      inspector.captureVariable('totalRows', allRows.length);
     } catch (err) {
       logger.error(`Error crítico en explosión: ${(err as Error).message}`);
     } finally {
       setIsProcessing(false);
     }
   };
+
+  // Lógica de Paginación
+  const totalPages = Math.max(1, Math.ceil(bomRows.length / rowsPerPage));
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return bomRows.slice(start, start + rowsPerPage);
+  }, [bomRows, currentPage, rowsPerPage]);
 
   return (
     <div className="space-y-6 text-left">
@@ -141,7 +152,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           </div>
           <div>
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Jerárquica SAP | Niveles 1-5 | Sin Filtros ni Agrupaciones</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Explosión Cruda SAP | Niveles 1-5 | Lista Paginada</p>
           </div>
         </div>
         <Button 
@@ -150,7 +161,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           className="bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
         >
           {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-          Sincronizar Plan Maestro
+          Procesar Explosión Técnica
         </Button>
       </div>
 
@@ -159,7 +170,7 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
           <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
             <span className="flex items-center gap-2">
               <Activity className="w-3 h-3" />
-              Explotando Recetas en SAP...
+              Sincronizando Recetas con SAP...
             </span>
             <span>{progress.current} / {progress.total} órdenes</span>
           </div>
@@ -168,54 +179,83 @@ export const TacticalNeedsSection: React.FC<TacticalNeedsSectionProps> = ({
       )}
 
       {!isProcessing && bomRows.length > 0 ? (
-        <div className="border-2 border-gray-50 rounded-2xl overflow-hidden bg-white shadow-xl">
-          <div className="overflow-x-auto max-h-[600px] relative">
-            <table className="w-full border-collapse text-[10px] font-sans">
-              <thead className="bg-[#0f172a] text-white uppercase font-black tracking-tighter sticky top-0 z-20">
-                <tr>
-                  <th className="px-5 py-4 text-center border-r border-white/5 w-16">NV</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">NOMBRECOMPONENTE</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">COMPONENTE</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">NOMBRE (PADRE)</th>
-                  <th className="px-5 py-4 text-left border-r border-white/5">MATERIAL PADRE</th>
-                  <th className="px-5 py-4 text-center border-r border-white/5 w-20">UNID</th>
-                  <th className="px-5 py-4 text-right bg-black/20 w-32">CANTORDEN</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {bomRows.map((row, idx) => (
-                  <tr key={idx} className={cn("hover:bg-gray-50 transition-all group", row.NV === "1" ? "bg-indigo-50/20 font-bold" : "")}>
-                    <td className={cn(
-                      "px-5 py-3 border-r border-gray-100 font-black text-center",
-                      row.NV === "1" ? "text-indigo-600" : "text-slate-400"
-                    )}>
-                      {row.NV}
-                    </td>
-                    <td className="px-5 py-3 font-black text-slate-800 uppercase text-left">{row.NOMBRECOMPONENTE}</td>
-                    <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.COMPONENTE}</td>
-                    <td className="px-5 py-3 text-left font-black text-gray-400 uppercase tracking-tight border-r border-gray-100">{row.NOMBRE_PADRE}</td>
-                    <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.MATERIAL_PADRE}</td>
-                    <td className="px-5 py-3 text-center font-black text-slate-400 border-r border-gray-100 uppercase tracking-widest">{row.UNID}</td>
-                    <td className="px-5 py-3 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
-                      {row.CANTORDEN.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                    </td>
+        <div className="space-y-4">
+          <div className="border-2 border-gray-50 rounded-2xl overflow-hidden bg-white shadow-xl">
+            <div className="overflow-x-auto max-h-[600px] relative">
+              <table className="w-full border-collapse text-[10px] font-sans">
+                <thead className="bg-[#0f172a] text-white uppercase font-black tracking-tighter sticky top-0 z-20">
+                  <tr>
+                    <th className="px-5 py-4 text-center border-r border-white/5 w-16">NV</th>
+                    <th className="px-5 py-4 text-left border-r border-white/5">NOMBRECOMPONENTE</th>
+                    <th className="px-5 py-4 text-left border-r border-white/5">COMPONENTE</th>
+                    <th className="px-5 py-4 text-left border-r border-white/5">NOMBRE (PADRE)</th>
+                    <th className="px-5 py-4 text-left border-r border-white/5">MATERIAL PADRE</th>
+                    <th className="px-5 py-4 text-center border-r border-white/5 w-20">UNID</th>
+                    <th className="px-5 py-4 text-right bg-black/20 w-32">CANTORDEN</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paginatedRows.map((row, idx) => (
+                    <tr key={idx} className={cn("hover:bg-gray-50 transition-all group", row.nv === "1" ? "bg-indigo-50/30 font-bold" : "")}>
+                      <td className={cn(
+                        "px-5 py-3 border-r border-gray-100 font-black text-center",
+                        row.nv === "1" ? "text-indigo-600" : "text-slate-400"
+                      )}>
+                        {row.nv}
+                      </td>
+                      <td className="px-5 py-3 font-black text-slate-800 uppercase text-left">{row.nombreComponente}</td>
+                      <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.componente}</td>
+                      <td className="px-5 py-3 text-left font-black text-gray-400 uppercase tracking-tight border-r border-gray-100">{row.nombrePadre}</td>
+                      <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.materialPadre}</td>
+                      <td className="px-5 py-3 text-center font-black text-slate-400 border-r border-gray-100 uppercase tracking-widest">{row.unid}</td>
+                      <td className="px-5 py-3 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
+                        {row.cantOrden.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Controles de Paginación */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-4">
+              <span className="text-[10px] font-black uppercase text-gray-400">Filas por página:</span>
+              <select 
+                value={rowsPerPage} 
+                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-[10px] font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {[20, 50, 100, 250].map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <span className="text-[10px] font-black uppercase text-gray-400">
+                Mostrando {Math.min(bomRows.length, (currentPage-1)*rowsPerPage + 1)}-{Math.min(bomRows.length, currentPage*rowsPerPage)} de {bomRows.length}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="h-8 w-8 rounded-xl"><ChevronsLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" size="icon" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="h-8 w-8 rounded-xl"><ChevronLeft className="h-4 w-4" /></Button>
+              <div className="flex items-center gap-1 px-4">
+                <span className="text-[10px] font-black text-gray-700 uppercase">Página {currentPage} / {totalPages}</span>
+              </div>
+              <Button variant="outline" size="icon" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl"><ChevronRight className="h-4 w-4" /></Button>
+              <Button variant="outline" size="icon" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="h-8 w-8 rounded-xl"><ChevronsRight className="h-4 w-4" /></Button>
+            </div>
           </div>
         </div>
       ) : !isProcessing && (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
           <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sincronice el plan maestro para visualizar la explosión técnica detallada</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión técnica para visualizar la estructura multinivel</p>
         </div>
       )}
 
       <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota: Visualización íntegra de componentes según el método de explosión masiva de SAP, reflejando fielmente la jerarquía técnica multinivel (1-5).
+          Nota: Visualización íntegra de componentes según el método de explosión técnica multinivel de SAP.
         </p>
       </div>
     </div>
