@@ -39,6 +39,7 @@ const safeNum = (val: any): number => {
   return isNaN(n) ? 0 : n;
 };
 
+// Helper robusto para extraer propiedades de objetos de la API SAP (Case-insensitive)
 const getProp = (obj: any, key: string): string => {
   if (!obj) return '';
   const val = obj[key] ?? obj[key.toUpperCase()] ?? obj[key.toLowerCase()] ?? '';
@@ -443,7 +444,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             return (
                               <tr key={`${routingKey}-${i}`} className="hover:bg-gray-50 transition-colors group">
                                 <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                                <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono text-[10px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                                <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                                 <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
                                 <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 truncate max-w-[280px] text-gray-600 font-bold uppercase">{info.desc}</td>
                                 <td className="px-4 py-4 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
