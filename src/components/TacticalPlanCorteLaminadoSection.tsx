@@ -280,10 +280,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes">
-          <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
-                <thead className="bg-slate-900 text-white sticky top-0 z-10 uppercase font-black tracking-tighter">
+                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-tight">
                   <tr>
                     <th className="px-5 py-4 border-r border-white/5">Orden</th>
                     <th className="px-5 py-4 border-r border-white/5">Fecha</th>
@@ -303,10 +303,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       if (items.length === 0) return null;
                       return (
                         <React.Fragment key={category}>
-                          <tr className="bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest text-left">
-                            <td colSpan={8} className="px-6 py-2.5 flex items-center gap-3">
-                              <div className="w-2 h-2 rounded-full bg-red-500" />
-                              Categoría: {category} ({items.length} Órdenes)
+                          <tr className="bg-slate-50 border-y border-gray-200">
+                            <td colSpan={8} className="px-6 py-2">
+                              <div className="flex items-center gap-3">
+                                <div className="w-1.5 h-4 bg-red-600 rounded-full" />
+                                <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                                  Categoría: {category} ({items.length} Órdenes)
+                                </span>
+                              </div>
                             </td>
                           </tr>
                           {items.map((o, i) => {
@@ -340,10 +344,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-4">
-          <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[700px]">
               <table className="w-full border-collapse text-center">
-                <thead className="bg-slate-900 text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tighter border-b border-white/5">
+                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
                   <tr>
                     <th className="px-5 py-4 border-r border-white/5">Material</th>
                     <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
