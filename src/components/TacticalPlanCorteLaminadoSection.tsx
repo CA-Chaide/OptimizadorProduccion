@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, ClipboardList, DatabaseZap, PlayCircle, Info, ChevronsLeft, ChevronsRight, Search } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
+import { Progress } from "@/components/ui/progress";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -19,6 +20,29 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Badge } from '@/components/ui/badge';
+
+interface RawBOMRow {
+  nivel: string;
+  centro: string;
+  fertPrincipal: string;
+  descripcionFert: string;
+  materialPadre: string;
+  componente: string;
+  descripcionComponente: string;
+  cantUnitaria: number;
+  cantAcumulada: number;
+  cantTotalExplotada: number;
+}
+
+const safeNum = (val: any): number => {
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
+};
+
+const cleanCode = (code: string): string => {
+  return String(code || '').replace(/^0+/, '').trim();
+};
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
@@ -32,6 +56,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
+
+  // Estado para la explosión de materiales
+  const [isExploding, setIsExploding] = useState(false);
+  const [explosionProgress, setExplosionProgress] = useState({ current: 0, total: 0 });
+  const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
+  const [bomPage, setBomPage] = useState(1);
+  const [bomRowsPerPage, setBomRowsPerPage] = useState(20);
 
   const HOJAS_RUTA_VALIDAS = ["HR-ACH", "HR-BO", "HR-LAMIN"];
 
@@ -127,6 +158,44 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [tiemposEnsamblado]);
 
+  const groupedOrdersByRouting = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    HOJAS_RUTA_VALIDAS.forEach(hr => { groups[hr] = []; });
+
+    ordenes.forEach(o => {
+      const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
+      if (itemCentro !== '1000') return;
+
+      const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return;
+
+      if (selectedDate !== 'all') {
+        const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
+        const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
+        if (itemDate !== selectedDate) return;
+      }
+
+      const { code } = extractMaterialInfo(o);
+      const maestroData = tiemposMap.get(code);
+      const hrValue = String(maestroData?.HojaRuta || o.HojaRuta || '').toUpperCase();
+      
+      for (const hrKey of HOJAS_RUTA_VALIDAS) {
+        if (hrValue.includes(hrKey)) {
+          groups[hrKey].push(o);
+          break;
+        }
+      }
+    });
+
+    return groups;
+  }, [ordenes, selectedDate, tiemposMap]);
+
+  const filteredOrdersFlat = useMemo(() => {
+    return Object.values(groupedOrdersByRouting).flat();
+  }, [groupedOrdersByRouting]);
+
+  const totalFilteredOrdersCount = filteredOrdersFlat.length;
+
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -148,44 +217,72 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  const groupedOrdersByRouting = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    HOJAS_RUTA_VALIDAS.forEach(hr => { groups[hr] = []; });
+  // --- Lógica para Explosión de Materiales ---
+  const handleProcessExplosion = async () => {
+    if (filteredOrdersFlat.length === 0) {
+      addNotification('warning', 'No hay órdenes filtradas para procesar la lista de materiales.');
+      return;
+    }
 
-    ordenes.forEach(o => {
-      // Filtro inicial por Centro 1000 y Almacén específico de Laminado
-      const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
-      if (itemCentro !== '1000') return;
+    setIsExploding(true);
+    setBomRows([]);
+    setBomPage(1);
+    setExplosionProgress({ current: 0, total: filteredOrdersFlat.length });
 
-      const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return;
+    const allRows: RawBOMRow[] = [];
 
-      // Filtro de fecha
-      if (selectedDate !== 'all') {
-        const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
-        const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
-        if (itemDate !== selectedDate) return;
-      }
+    try {
+      for (let i = 0; i < filteredOrdersFlat.length; i++) {
+        const order = filteredOrdersFlat[i];
+        const { code: fertCode } = extractMaterialInfo(order);
+        const centro = String(order.CENTRO || order.Centro || '1000').trim();
+        const orderQty = safeNum(order.CANTIDAD || order.CANTPROGRAMADA || 0);
 
-      // Identificación de Hoja de Ruta
-      const { code } = extractMaterialInfo(o);
-      const maestroData = tiemposMap.get(code);
-      const hrValue = String(maestroData?.HojaRuta || o.HojaRuta || '').toUpperCase();
-      
-      for (const hrKey of HOJAS_RUTA_VALIDAS) {
-        if (hrValue.includes(hrKey)) {
-          groups[hrKey].push(o);
-          break;
+        const fullCodeForApi = fertCode.padStart(18, '0');
+
+        try {
+          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 1000);
+          const rawData = response?.data || response?.data?.data || [];
+
+          if (Array.isArray(rawData)) {
+            rawData.forEach((row: any) => {
+              const acum = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
+              const totalNeeded = orderQty * acum;
+
+              allRows.push({
+                nivel: String(safeNum(row.NIVEL)),
+                centro: String(row.CENTRO || centro),
+                fertPrincipal: cleanCode(row.FERT_PRINCIPAL),
+                descripcionFert: String(row.DESCRIPCION_FERT || '—').toUpperCase(),
+                materialPadre: cleanCode(row.MATERIAL_PADRE),
+                componente: cleanCode(row.COMPONENTE),
+                descripcionComponente: String(row.DESCRIPCION_COMPONENTE || '—').toUpperCase(),
+                cantUnitaria: safeNum(row.CANTIDAD_UNITARIA),
+                cantAcumulada: acum,
+                cantTotalExplotada: totalNeeded
+              });
+            });
+          }
+        } catch (err) {
+          console.warn(`Error en material ${fertCode}:`, err);
         }
+        setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
       }
-    });
+      
+      setBomRows(allRows);
+      addNotification('success', `Explosión técnica completada. ${allRows.length} registros cargados.`);
+    } catch (err) {
+      addNotification('error', `Error crítico en explosión: ${(err as Error).message}`);
+    } finally {
+      setIsExploding(false);
+    }
+  };
 
-    return groups;
-  }, [ordenes, selectedDate, tiemposMap]);
-
-  const totalFilteredOrdersCount = useMemo(() => {
-    return Object.values(groupedOrdersByRouting).reduce((sum, list) => sum + list.length, 0);
-  }, [groupedOrdersByRouting]);
+  const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
+  const paginatedBomRows = useMemo(() => {
+    const start = (bomPage - 1) * bomRowsPerPage;
+    return bomRows.slice(start, start + bomRowsPerPage);
+  }, [bomRows, bomPage, bomRowsPerPage]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -202,10 +299,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'plan', l: 'Plan Maestro', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
+            { v: 'listaMateriales', l: 'Lista Materiales', i: ClipboardList },
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
@@ -279,7 +377,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="ordenes">
+        <TabsContent value="ordenes" className="animate-in fade-in duration-300">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
@@ -343,7 +441,125 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="tiempos" className="space-y-4">
+        <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
+                <ClipboardList className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Maestro de Componentes (BOOM)</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 text-left">
+                  Jerarquía Multinivel 1-5 | Basado en Órdenes Filtradas por Ruta
+                </p>
+              </div>
+            </div>
+            <Button 
+              onClick={handleProcessExplosion} 
+              disabled={isExploding || filteredOrdersFlat.length === 0} 
+              className="bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
+            >
+              {isExploding ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+              Explosionar Recetas en SAP
+            </Button>
+          </div>
+
+          {isExploding && (
+            <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
+              <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                <span className="flex items-center gap-2">
+                  <Activity className="w-3 h-3" />
+                  Sincronizando BOOM...
+                </span>
+                <span>{explosionProgress.current} / {explosionProgress.total} órdenes</span>
+              </div>
+              <Progress value={(explosionProgress.current / explosionProgress.total) * 100} className="h-2 bg-indigo-100" />
+            </div>
+          )}
+
+          {!isExploding && bomRows.length > 0 ? (
+            <div className="space-y-4">
+              <div className="border-2 border-gray-50 rounded-2xl overflow-hidden bg-white shadow-xl">
+                <div className="overflow-x-auto max-h-[600px] relative">
+                  <table className="w-full border-collapse text-[10px] font-sans">
+                    <thead className="bg-[#0f172a] text-white uppercase font-black tracking-tighter sticky top-0 z-20">
+                      <tr>
+                        <th className="px-5 py-4 text-center border-r border-white/5 w-16">NV</th>
+                        <th className="px-5 py-4 text-left border-r border-white/5">COMPONENTE</th>
+                        <th className="px-5 py-4 text-left border-r border-white/5">DESCRIPCIÓN COMPONENTE</th>
+                        <th className="px-5 py-4 text-left border-r border-white/5">MATERIAL PADRE</th>
+                        <th className="px-5 py-4 text-left border-r border-white/5">FERT PRINCIPAL</th>
+                        <th className="px-5 py-4 text-left border-r border-white/5">DESCRIPCIÓN FERT</th>
+                        <th className="px-5 py-4 text-center border-r border-white/5 w-24">CANT. UNT.</th>
+                        <th className="px-5 py-4 text-center border-r border-white/5 w-24">CANT. ACUM.</th>
+                        <th className="px-5 py-4 text-right bg-black/20 w-32">CANT. TOTAL (KG)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {paginatedBomRows.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50 transition-all group">
+                          <td className={cn(
+                            "px-5 py-3 border-r border-gray-100 font-black text-center",
+                            row.nivel === "1" ? "bg-green-100 text-green-700" : 
+                            row.nivel === "2" ? "bg-blue-100 text-blue-700" : "text-slate-400"
+                          )}>
+                            {row.nivel === "1" ? ".1" : row.nivel === "2" ? "..2" : `...${row.nivel}`}
+                          </td>
+                          <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.componente}</td>
+                          <td className="px-5 py-3 font-black text-slate-800 uppercase text-left">{row.descripcionComponente}</td>
+                          <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.materialPadre}</td>
+                          <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.fertPrincipal}</td>
+                          <td className="px-5 py-3 text-left font-black text-gray-400 uppercase tracking-tight border-r border-gray-100 truncate max-w-[200px]" title={row.descripcionFert}>
+                            {row.descripcionFert}
+                          </td>
+                          <td className="px-5 py-3 text-center font-mono text-slate-500 border-r border-gray-100">{row.cantUnitaria.toFixed(3)}</td>
+                          <td className="px-5 py-3 text-center font-mono font-bold text-slate-600 border-r border-gray-100">{row.cantAcumulada.toFixed(3)}</td>
+                          <td className="px-5 py-3 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
+                            {row.cantTotalExplotada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Controles de Paginación del BOOM */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Filas por página:</span>
+                  <select 
+                    value={bomRowsPerPage} 
+                    onChange={(e) => { setBomRowsPerPage(Number(e.target.value)); setBomPage(1); }}
+                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-[10px] font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {[20, 50, 100, 250].map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
+                    Mostrando {Math.min(bomRows.length, (bomPage-1)*bomRowsPerPage + 1)}-{Math.min(bomRows.length, bomPage*bomRowsPerPage)} de {bomRows.length}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" onClick={() => setBomPage(1)} disabled={bomPage === 1} className="h-8 w-8 rounded-xl"><ChevronsLeft className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" onClick={() => setBomPage(prev => Math.max(1, prev - 1))} disabled={bomPage === 1} className="h-8 w-8 rounded-xl"><ChevronLeft className="h-4 w-4" /></Button>
+                  <div className="flex items-center gap-1 px-4">
+                    <span className="text-[10px] font-black text-gray-700 uppercase">Página {bomPage} / {totalBomPages}</span>
+                  </div>
+                  <Button variant="outline" size="icon" onClick={() => setBomPage(prev => Math.min(totalBomPages, prev + 1))} disabled={bomPage === totalBomPages} className="h-8 w-8 rounded-xl"><ChevronRight className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" onClick={() => setBomPage(totalBomPages)} disabled={bomPage === totalBomPages} className="h-8 w-8 rounded-xl"><ChevronsRight className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            </div>
+          ) : !isExploding && (
+            <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+              <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4 text-center">Inicie la explosión técnica para visualizar la data cruda de SAP</p>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[700px]">
               <table className="w-full border-collapse text-center">
