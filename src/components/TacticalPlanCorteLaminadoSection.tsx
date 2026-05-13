@@ -280,30 +280,32 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes">
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
-              <table className="w-full border-collapse text-center font-sans">
-                <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+              <table className="w-full border-collapse text-center font-sans text-[11px]">
+                <thead className="bg-slate-900 text-white sticky top-0 z-10 uppercase font-black tracking-tighter">
                   <tr>
-                    <th className="px-3 py-4 border-r border-gray-100">Orden</th>
-                    <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
-                    <th className="px-3 py-4 border-r border-gray-100">Material</th>
-                    <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
-                    <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
-                    <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700">Línea Maestra</th>
-                    <th className="px-3 py-4 font-black">Almacén</th>
+                    <th className="px-5 py-4 border-r border-white/5">Orden</th>
+                    <th className="px-5 py-4 border-r border-white/5">Fecha</th>
+                    <th className="px-5 py-4 border-r border-white/5">Material</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-left">Descripción</th>
+                    <th className="px-5 py-4 border-r border-white/5">Cant.</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-blue-300">Línea Maestra</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-amber-300">Máquina</th>
+                    <th className="px-5 py-4">Almacén</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-[10px]">
+                <tbody className="divide-y divide-gray-100">
                   {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic font-bold">Sin carga operativa relevante detectada</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin carga operativa relevante detectada</td></tr>
                   ) : (
                     Object.entries(groupedOrdersByDescriptor).map(([category, items]) => {
                       if (items.length === 0) return null;
                       return (
                         <React.Fragment key={category}>
                           <tr className="bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest text-left">
-                            <td colSpan={7} className="px-6 py-2.5 flex items-center gap-3">
+                            <td colSpan={8} className="px-6 py-2.5 flex items-center gap-3">
+                              <div className="w-2 h-2 rounded-full bg-red-500" />
                               Categoría: {category} ({items.length} Órdenes)
                             </td>
                           </tr>
@@ -312,16 +314,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                             const maestroData = tiemposMap.get(info.code);
                             const lineaMaestra = maestroData?.Linea || maestroData?.linea || '—';
+                            const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
 
                             return (
-                              <tr key={`${category}-${i}`} className="hover:bg-red-50/20 transition-colors">
-                                <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                                <td className="px-3 py-2 font-mono font-bold text-red-600 border-r border-gray-100 tracking-tighter">{info.code}</td>
-                                <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] text-gray-500 uppercase">{info.desc}</td>
-                                <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-50 font-mono">{qty}</td>
-                                <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-50 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
-                                <td className="px-3 py-2 font-bold text-gray-800">{o.Almacen || o.ALMACEN || '—'}</td>
+                              <tr key={`${category}-${i}`} className="hover:bg-gray-50 transition-colors group">
+                                <td className="px-4 py-3 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                                <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-[10px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                                <td className="px-4 py-3 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
+                                <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[280px] text-gray-600 font-bold uppercase">{info.desc}</td>
+                                <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
+                                <td className="px-4 py-3 font-black text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
+                                <td className="px-4 py-3 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
+                                <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                               </tr>
                             );
                           })}
@@ -336,37 +340,37 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="space-y-4">
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[700px]">
               <table className="w-full border-collapse text-center">
-                <thead className="bg-gray-100 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                <thead className="bg-slate-900 text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tighter border-b border-white/5">
                   <tr>
-                    <th className="px-4 py-4 border-r border-gray-100">Material</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Puesto Trabajo</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Línea</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-red-600 font-black">Tiempo Estándar (Min)</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Stock Actual</th>
-                    <th className="px-4 py-4 font-black">Seguridad</th>
+                    <th className="px-5 py-4 border-r border-white/5">Material</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
+                    <th className="px-5 py-4 border-r border-white/5">Puesto Trabajo</th>
+                    <th className="px-5 py-4 border-r border-white/5">Línea</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-red-400 font-black">Tiempo Estándar (Min)</th>
+                    <th className="px-5 py-4 border-r border-white/5">Stock Actual</th>
+                    <th className="px-5 py-4 font-black">Seguridad</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-[11px]">
+                <tbody className="divide-y divide-gray-100 text-[11px]">
                   {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-gray-400 italic font-bold uppercase tracking-widest">Sin registros técnicos cargados</td></tr>
+                    <tr><td colSpan={7} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin registros técnicos cargados</td></tr>
                   ) : (
                     tiemposEnsamblado.map((t, i) => {
                       const info = extractMaterialInfo(t);
                       return (
-                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-4 py-3 font-mono font-bold text-red-600 border-r border-gray-50">{info.code}</td>
-                          <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 font-bold text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
-                          <td className="px-4 py-3 font-mono font-bold text-red-500 border-r border-gray-50">
+                        <tr key={i} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-5 py-3 font-mono font-black text-red-600 border-r border-dashed border-gray-100">{info.code}</td>
+                          <td className="px-5 py-3 text-left border-r border-dashed border-gray-100 text-gray-600 font-bold uppercase truncate max-w-[280px]">{info.desc}</td>
+                          <td className="px-5 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
+                          <td className="px-5 py-3 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
+                          <td className="px-5 py-3 font-mono font-black text-red-500 border-r border-dashed border-gray-100 bg-red-50/5">
                             {Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
                           </td>
-                          <td className="px-4 py-3 text-gray-400 font-mono border-r border-gray-50">{(t.StockActual || 0).toLocaleString()}</td>
-                          <td className="px-4 py-3 text-gray-700 font-mono font-bold">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                          <td className="px-5 py-3 text-gray-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
+                          <td className="px-5 py-3 text-gray-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
                         </tr>
                       );
                     })
