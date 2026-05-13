@@ -120,6 +120,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return map;
   }, [tiemposEnsamblado]);
 
+  // Ordenar Tiempos de Ensamblado por columna Material
+  const sortedTiempos = useMemo(() => {
+    return [...tiemposEnsamblado].sort((a, b) => {
+      const infoA = extractMaterialInfo(a);
+      const infoB = extractMaterialInfo(b);
+      return infoA.code.localeCompare(infoB.code);
+    });
+  }, [tiemposEnsamblado]);
+
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -353,24 +362,24 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
                     <th className="px-5 py-4 border-r border-white/5">Puesto Trabajo</th>
                     <th className="px-5 py-4 border-r border-white/5">Línea</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-red-400 font-black">Tiempo Estándar (Min)</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-teal-400 font-black">Tiempo Estándar (Min)</th>
                     <th className="px-5 py-4 border-r border-white/5">Stock Actual</th>
                     <th className="px-5 py-4 font-black">Seguridad</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {tiemposEnsamblado.length === 0 ? (
+                  {sortedTiempos.length === 0 ? (
                     <tr><td colSpan={7} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin registros técnicos cargados</td></tr>
                   ) : (
-                    tiemposEnsamblado.map((t, i) => {
+                    sortedTiempos.map((t, i) => {
                       const info = extractMaterialInfo(t);
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-5 py-3 font-mono font-black text-red-600 border-r border-dashed border-gray-100">{info.code}</td>
+                          <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
                           <td className="px-5 py-3 text-left border-r border-dashed border-gray-100 text-gray-600 font-bold uppercase truncate max-w-[280px]">{info.desc}</td>
                           <td className="px-5 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
                           <td className="px-5 py-3 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
-                          <td className="px-5 py-3 font-mono font-black text-red-500 border-r border-dashed border-gray-100 bg-red-50/5">
+                          <td className="px-5 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/5">
                             {Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
                           </td>
                           <td className="px-5 py-3 text-gray-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
