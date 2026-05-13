@@ -42,7 +42,8 @@ const safeNum = (val: any): number => {
 // Helper para extraer propiedades de forma insensible a mayúsculas/minúsculas
 const getProp = (obj: any, key: string): string => {
   if (!obj) return '';
-  return String(obj[key] || obj[key.toUpperCase()] || obj[key.toLowerCase()] || '').trim();
+  const val = obj[key] || obj[key.toUpperCase()] || obj[key.toLowerCase()];
+  return val ? String(val).trim() : '';
 };
 
 const getNumProp = (obj: any, key: string): number => {
@@ -79,7 +80,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const filtered = (res.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
         const center = String(g.centro || '').trim();
-        return (name.includes('corte y laminado') || name.includes('laminado')) && center === '1000';
+        return (name.includes('corte y laminado') || name.includes('laminado'));
       });
       setGrupos(filtered);
       return filtered;
@@ -114,8 +115,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const res = await serviciosService.getTiemposEnsamblado(1, 15000);
       const data = res.data?.data || res.data || [];
       if (Array.isArray(data)) {
-        const filtered = data.filter((t: any) => String(t.Centro || t.centro || '').trim() === '1000');
-        setTiemposEnsamblado(filtered);
+        setTiemposEnsamblado(data);
       }
     } catch (error) {
       console.error('Error cargando tiempos:', error);
@@ -169,12 +169,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     HOJAS_RUTA_VALIDAS.forEach(hr => { groups[hr] = []; });
 
     ordenes.forEach(o => {
-      const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
-      if (itemCentro !== '1000') return;
-
-      const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return;
-
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -236,15 +230,29 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     try {
       for (let i = 0; i < filteredOrdersFlat.length; i++) {
         const order = filteredOrdersFlat[i];
-        const { code: fertCode } = extractMaterialInfo(order);
+        const { code: fertCode, desc: fertDesc } = extractMaterialInfo(order);
+        const centro = String(order.CENTRO || order.Centro || order.centro || "1000").trim();
         
-        // Evitar duplicar explosión para el mismo material en esta carga
-        if (processedCodes.has(fertCode)) {
+        // Evitar duplicar explosión para el mismo material y centro en esta carga
+        const cacheKey = `${fertCode}|${centro}`;
+        if (processedCodes.has(cacheKey)) {
           setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
           continue;
         }
 
-        const centro = "1000"; // Restricción estricta centro 1000
+        // AGREGAR FILA NIVEL 0 (RAÍZ)
+        allRows.push({
+          NIVEL: 0,
+          CENTRO: centro,
+          FERT_PRINCIPAL: fertCode,
+          DESCRIPCION_FERT: fertDesc.toUpperCase(),
+          MATERIAL_PADRE: '—',
+          COMPONENTE: fertCode,
+          DESCRIPCION_COMPONENTE: fertDesc.toUpperCase(),
+          CANTIDAD_UNITARIA: 1,
+          CANTIDAD_ACUMULADA: 1
+        });
+
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
@@ -255,21 +263,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             rawData.forEach((row: any) => {
               allRows.push({
                 NIVEL: getNumProp(row, 'NIVEL'),
-                CENTRO: String(getProp(row, 'CENTRO') || centro),
-                FERT_PRINCIPAL: String(getProp(row, 'FERT_PRINCIPAL') || fertCode),
-                DESCRIPCION_FERT: String(getProp(row, 'DESCRIPCION_FERT') || '').toUpperCase(),
-                MATERIAL_PADRE: String(getProp(row, 'MATERIAL_PADRE') || ''),
+                CENTRO: centro,
+                FERT_PRINCIPAL: fertCode,
+                DESCRIPCION_FERT: fertDesc.toUpperCase(),
+                MATERIAL_PADRE: String(getProp(row, 'MATERIAL_PADRE') || fertCode),
                 COMPONENTE: String(getProp(row, 'COMPONENTE') || ''),
                 DESCRIPCION_COMPONENTE: String(getProp(row, 'DESCRIPCION_COMPONENTE') || '').toUpperCase(),
                 CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
                 CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA') || getNumProp(row, 'CANTIDAD_UNITARIA')
               });
             });
-            processedCodes.add(fertCode);
           }
         } catch (err) {
           console.warn(`Error en material ${fertCode}:`, err);
         }
+        processedCodes.add(cacheKey);
         setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
@@ -337,7 +345,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div>
                 <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
-                  {selectedDate === 'all' ? 'Vista Consolidada (Centro 1000)' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                  {selectedDate === 'all' ? 'Vista Consolidada (Planta)' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
@@ -386,10 +394,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Centro Activo</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Actividad Técnica</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
-                <p className="text-xl font-black text-gray-800">1000</p>
+                <p className="text-xl font-black text-gray-800">{HOJAS_RUTA_VALIDAS.length} Rutas</p>
               </div>
             </div>
           </div>
@@ -413,7 +421,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredOrdersFlat.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin órdenes provisionales para las rutas HR autorizadas en Centro 1000</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin órdenes provisionales para las rutas HR autorizadas</td></tr>
                   ) : (
                     Object.entries(groupedOrdersByRouting).map(([routingKey, items]) => {
                       if (items.length === 0) return null;
@@ -466,7 +474,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <ClipboardList className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Reporte Técnico SAP (Centro 1000)</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Reporte Técnico SAP</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
                   Explosión Automática | Jerarquía Técnica de Componentes
                 </p>
@@ -507,8 +515,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {paginatedBomRows.map((row, idx) => (
-                        <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
-                          <td className="px-4 py-2 border-r border-gray-100 font-black text-center bg-slate-50/30">{row.NIVEL}</td>
+                        <tr key={idx} className={cn(
+                          "hover:bg-blue-50/50 transition-colors",
+                          row.NIVEL === 0 ? "bg-slate-50 font-bold" : ""
+                        )}>
+                          <td className="px-4 py-2 border-r border-gray-100 font-black text-center">{row.NIVEL === 0 ? '0' : `.${row.NIVEL}`}</td>
                           <td className="px-4 py-2 border-r border-gray-100 font-bold text-gray-500">{row.CENTRO}</td>
                           <td className="px-4 py-2 border-r border-gray-100 font-mono font-bold text-indigo-600">{row.FERT_PRINCIPAL}</td>
                           <td className="px-4 py-2 border-r border-gray-100 text-gray-400 font-bold uppercase truncate max-w-[180px]">{row.DESCRIPCION_FERT}</td>
@@ -591,7 +602,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
                   {sortedTiempos.length === 0 ? (
-                    <tr><td colSpan={7} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin registros técnicos cargados para Centro 1000</td></tr>
+                    <tr><td colSpan={7} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin registros técnicos cargados</td></tr>
                   ) : (
                     sortedTiempos.map((t, i) => {
                       const info = extractMaterialInfo(t);
