@@ -42,12 +42,12 @@ const safeNum = (val: any): number => {
 // Helper para extraer propiedades sin importar el case (SAP vs JS)
 const getProp = (obj: any, key: string) => {
   if (!obj) return '';
-  return obj[key] || obj[key.toLowerCase()] || '';
+  return obj[key] || obj[key.toUpperCase()] || obj[key.toLowerCase()] || '';
 };
 
 const getNumProp = (obj: any, key: string) => {
   if (!obj) return 0;
-  const val = obj[key] !== undefined ? obj[key] : obj[key.toLowerCase()];
+  const val = obj[key] !== undefined ? obj[key] : (obj[key.toUpperCase()] !== undefined ? obj[key.toUpperCase()] : obj[key.toLowerCase()]);
   return safeNum(val);
 };
 
@@ -143,7 +143,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-    return { code, desc };
+    return { code, desc, raw: matStr };
   };
 
   const tiemposMap = useMemo(() => {
@@ -229,25 +229,33 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setExplosionProgress({ current: 0, total: filteredOrdersFlat.length });
 
     const allRows: RawBOMRow[] = [];
+    const processedFerts = new Set<string>();
 
     try {
       for (let i = 0; i < filteredOrdersFlat.length; i++) {
         const order = filteredOrdersFlat[i];
         const { code: fertCode } = extractMaterialInfo(order);
+        
+        // Evitar reprocesar el mismo FERT si ya se explosionó en esta carga
+        if (processedFerts.has(fertCode)) {
+          setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
+          continue;
+        }
+
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
-          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 500);
+          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 1000);
           const rawData = response?.data?.data || response?.data || [];
 
-          if (Array.isArray(rawData)) {
+          if (Array.isArray(rawData) && rawData.length > 0) {
             rawData.forEach((row: any) => {
               allRows.push({
                 NIVEL: getNumProp(row, 'NIVEL'),
                 CENTRO: String(getProp(row, 'CENTRO') || centro),
-                FERT_PRINCIPAL: String(getProp(row, 'FERT_PRINCIPAL') || ''),
-                DESCRIPCION_FERT: String(getProp(row, 'DESCRIPCION_FERT') || ''),
+                FERT_PRINCIPAL: String(getProp(row, 'FERT_PRINCIPAL') || fertCode),
+                DESCRIPCION_FERT: String(getProp(row, 'DESCRIPCION_FERT') || '').toUpperCase(),
                 MATERIAL_PADRE: String(getProp(row, 'MATERIAL_PADRE') || ''),
                 COMPONENTE: String(getProp(row, 'COMPONENTE') || ''),
                 DESCRIPCION_COMPONENTE: String(getProp(row, 'DESCRIPCION_COMPONENTE') || '').toUpperCase(),
@@ -255,6 +263,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA') || getNumProp(row, 'CANTIDAD_UNITARIA')
               });
             });
+            processedFerts.add(fertCode);
           }
         } catch (err) {
           console.warn(`Error en material ${fertCode}:`, err);
@@ -263,7 +272,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
       
       setBomRows(allRows);
-      inspector.captureVariable('bomRows', allRows.length);
+      inspector.captureVariable('bomRowsCount', allRows.length);
     } catch (err) {
       console.error(`Error crítico en explosión: ${(err as Error).message}`);
     } finally {
@@ -271,7 +280,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   };
 
-  // Auto-enlistar lista de materiales al entrar al tab
+  // Automatización de carga de Lista de Materiales
   useEffect(() => {
     if (activeTab === 'listaMateriales' && bomRows.length === 0 && filteredOrdersFlat.length > 0 && !isExploding) {
       handleProcessExplosion();
@@ -455,9 +464,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <ClipboardList className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Explosión Técnica</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Reporte Técnico SAP</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Visualización Técnica | Datos Directos SAP
+                  Carga Automática | Data Técnica Multinivel (BOM)
                 </p>
               </div>
             </div>
@@ -468,9 +477,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Sincronizando con SAP...
+                  Explosionando Recetas en SAP...
                 </span>
-                <span>{explosionProgress.current} / {explosionProgress.total} órdenes</span>
+                <span>{explosionProgress.current} / {explosionProgress.total} materiales</span>
               </div>
               <Progress value={(explosionProgress.current / explosionProgress.total) * 100} className="h-2 bg-indigo-100" />
             </div>
@@ -507,7 +516,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-4 py-2 border-r border-gray-100 text-right font-mono font-bold text-slate-500">
                             {row.CANTIDAD_UNITARIA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono font-black text-slate-800 bg-slate-50/30">
+                          <td className="px-4 py-2 text-right font-mono font-black text-slate-800 bg-slate-50/10">
                             {row.CANTIDAD_ACUMULADA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                           </td>
                         </tr>
@@ -537,7 +546,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     onChange={(e) => { setBomRowsPerPage(Number(e.target.value)); setBomPage(1); }}
                     className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-[10px] font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    {[50, 100, 250, 500].map(v => <option key={v} value={v}>{v}</option>)}
+                    {[100, 250, 500].map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                   <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
                     Mostrando {Math.min(bomRows.length, (bomPage-1)*bomRowsPerPage + 1)}-{Math.min(bomRows.length, bomPage*bomRowsPerPage)} de {bomRows.length}
