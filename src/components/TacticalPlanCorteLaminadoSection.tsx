@@ -42,14 +42,16 @@ const safeNum = (val: any): number => {
 // Helper robusto para extraer propiedades de objetos de la API SAP (Case-insensitive)
 const getProp = (obj: any, key: string): string => {
   if (!obj) return '';
-  const val = obj[key] ?? obj[key.toUpperCase()] ?? obj[key.toLowerCase()] ?? '';
-  return String(val).trim();
+  const searchKey = key.toUpperCase();
+  const foundKey = Object.keys(obj).find(k => k.toUpperCase() === searchKey);
+  return foundKey ? String(obj[foundKey]).trim() : '';
 };
 
 const getNumProp = (obj: any, key: string): number => {
   if (!obj) return 0;
-  const val = obj[key] ?? obj[key.toUpperCase()] ?? obj[key.toLowerCase()] ?? 0;
-  return safeNum(val);
+  const searchKey = key.toUpperCase();
+  const foundKey = Object.keys(obj).find(k => k.toUpperCase() === searchKey);
+  return foundKey ? safeNum(obj[foundKey]) : 0;
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
@@ -213,10 +215,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // MOTOR DE EXPLOSIÓN AUTOMÁTICA CON BÚSQUEDA JERÁRQUICA
+  // MOTOR DE EXPLOSIÓN TÉCNICA AUTOMÁTICA
   const handleProcessExplosion = async () => {
-    // Filtrar órdenes para que solo se procesen las que NO son del centro 2000
-    const ordersForExplosion = filteredOrdersFlat.filter(o => String(o.CENTRO || o.Centro || '').trim() !== '2000');
+    // Filtrar órdenes que NO son del centro 2000
+    const ordersForExplosion = filteredOrdersFlat.filter(o => 
+      String(o.CENTRO || o.Centro || '').trim() !== '2000'
+    );
     
     if (ordersForExplosion.length === 0) {
       setBomRows([]);
@@ -229,31 +233,29 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setExplosionProgress({ current: 0, total: ordersForExplosion.length });
 
     const allRows: RawBOMRow[] = [];
-    const processedMaterialKeys = new Set<string>();
+    const processedKeys = new Set<string>();
 
     try {
       for (let i = 0; i < ordersForExplosion.length; i++) {
         const order = ordersForExplosion[i];
-        const { code: orderMaterialCode } = extractMaterialInfo(order);
+        const { code } = extractMaterialInfo(order);
         const centro = String(order.CENTRO || order.Centro || "1000").trim();
         
-        if (processedMaterialKeys.has(`${orderMaterialCode}|${centro}`)) {
+        if (processedKeys.has(`${code}|${centro}`)) {
           setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
           continue;
         }
 
-        // Padding de 18 dígitos para SAP
-        const fullCodeForApi = orderMaterialCode.padStart(18, '0');
+        const fullCodeForApi = code.padStart(18, '0');
 
         try {
-          // Consultamos la explosión del material. El método devuelve la jerarquía técnica.
-          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 3000);
+          // Consultamos la explosión técnica íntegra desde SAP
+          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 5000);
           const rawData = response?.data?.data || response?.data || [];
 
-          if (Array.isArray(rawData) && rawData.length > 0) {
-            // Recorremos la data técnica devuelta por SAP
+          if (Array.isArray(rawData)) {
             rawData.forEach((row: any) => {
-              // NO mostrar nada del centro 2000
+              // EXCLUSIÓN ESTRICTA CENTRO 2000
               const rowCentro = getProp(row, 'CENTRO');
               if (rowCentro === '2000') return;
 
@@ -261,20 +263,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 NIVEL: getProp(row, 'NIVEL'),
                 CENTRO: rowCentro,
                 FERT_PRINCIPAL: getProp(row, 'FERT_PRINCIPAL'),
-                DESCRIPCION_FERT: getProp(row, 'DESCRIPCION_FERT').toUpperCase(),
+                DESCRIPCION_FERT: getProp(row, 'DESCRIPCION_FERT'),
                 MATERIAL_PADRE: getProp(row, 'MATERIAL_PADRE'),
                 COMPONENTE: getProp(row, 'COMPONENTE'),
-                DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase(),
+                DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE'),
                 CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
                 CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA')
               });
             });
           }
         } catch (err) {
-          console.warn(`Error al explosionar material ${orderMaterialCode}:`, err);
+          console.warn(`Error al explosionar material ${code}:`, err);
         }
         
-        processedMaterialKeys.add(`${orderMaterialCode}|${centro}`);
+        processedKeys.add(`${code}|${centro}`);
         setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
@@ -287,12 +289,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   };
 
-  // Disparador automático al cambiar de pestaña
+  // Disparador automático al entrar en la pestaña
   useEffect(() => {
-    if (activeTab === 'listaMateriales' && !isExploding) {
+    if (activeTab === 'listaMateriales' && !isExploding && ordenes.length > 0) {
       handleProcessExplosion();
     }
-  }, [activeTab]);
+  }, [activeTab, ordenes.length]);
 
   const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
   const paginatedBomRows = useMemo(() => {
@@ -382,7 +384,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Popover>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (Autorizada)</p>
               <div className="flex items-center gap-2">
@@ -471,9 +473,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <ClipboardList className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Auditoría Técnica SAP</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales (Jerarquía Técnica)</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Excluyendo Centro 2000 | Trazabilidad por Material Padre y Componente
+                  Exclusivo Planta Local | Auditoría Íntegra por Nivel y Material Padre
                 </p>
               </div>
             </div>
@@ -484,7 +486,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Analizando Jerarquía SAP...
+                  Sincronizando con SAP...
                 </span>
                 <span>{explosionProgress.current} / {explosionProgress.total} materiales</span>
               </div>
@@ -496,8 +498,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="space-y-4">
               <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-xl">
                 <div className="overflow-x-auto max-h-[600px] relative text-left">
-                  <table className="w-full border-collapse font-sans">
-                    <thead className="bg-[#bde0fe] text-[#003566] uppercase font-black tracking-tight sticky top-0 z-20 text-[10px] border-b border-blue-200">
+                  <table className="w-full border-collapse font-sans text-[10px]">
+                    <thead className="bg-[#bde0fe] text-[#003566] uppercase font-black tracking-tight sticky top-0 z-20 border-b border-blue-200">
                       <tr>
                         <th className="px-4 py-3 border-r border-blue-200 text-center">NIVEL</th>
                         <th className="px-4 py-3 border-r border-blue-200">CENTRO</th>
@@ -510,11 +512,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <th className="px-4 py-3 text-right">CANTIDAD_ACUMULADA</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                    <tbody className="divide-y divide-gray-100">
                       {paginatedBomRows.map((row, idx) => (
                         <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
                           <td className="px-4 py-2 border-r border-gray-100 font-black text-center text-slate-400">
-                            {row.NIVEL === '0' ? '0' : `.${row.NIVEL}`}
+                            {row.NIVEL === '0' || row.NIVEL === '' ? '0' : `.${row.NIVEL}`}
                           </td>
                           <td className="px-4 py-2 border-r border-gray-100 font-bold text-gray-500">{row.CENTRO}</td>
                           <td className="px-4 py-2 border-r border-gray-100 font-mono font-bold text-indigo-600">{row.FERT_PRINCIPAL}</td>
@@ -531,13 +533,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="sticky bottom-0 z-30 bg-slate-100 text-slate-800 font-black text-[10px] uppercase border-t-2 border-slate-300">
+                    <tfoot className="sticky bottom-0 z-30 bg-slate-100 text-slate-800 font-black uppercase border-t-2 border-slate-300">
                       <tr>
                         <td colSpan={7} className="px-4 py-3 text-right tracking-widest bg-slate-50">Total general:</td>
                         <td className="px-4 py-3 text-right font-mono bg-white border-r border-slate-200">
                           {bomTotals.unitaria.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono bg-white">
+                        <td className="px-4 py-3 text-right font-mono bg-white text-indigo-700">
                           {bomTotals.acumulada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
                       </tr>
@@ -546,7 +548,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm text-left">
                 <div className="flex items-center gap-4">
                   <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Filas por página:</span>
                   <select 
@@ -578,6 +580,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Analizando estructura técnica en SAP...</p>
             </div>
           )}
+
+          <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
+            <Info className="w-4 h-4 text-blue-600" />
+            <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
+              Nota: Auditoría íntegra basada en el método de explosión jerárquica multinivel de SAP.
+            </p>
+          </div>
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
@@ -603,15 +612,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       const info = extractMaterialInfo(t);
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-5 py-4 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-5 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 font-bold uppercase truncate max-w-[280px]">{info.desc}</td>
-                          <td className="px-5 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
-                          <td className="px-5 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
-                          <td className="px-5 py-4 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/5">
+                          <td className="px-4 py-4 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
+                          <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 font-bold uppercase truncate max-w-[280px]">{info.desc}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
+                          <td className="px-4 py-4 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/5">
                             {Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
                           </td>
-                          <td className="px-5 py-4 text-gray-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
-                          <td className="px-5 py-4 text-gray-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                          <td className="px-4 py-4 text-gray-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
+                          <td className="px-4 py-4 text-gray-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
                         </tr>
                       );
                     })
