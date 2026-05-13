@@ -2,8 +2,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, ClipboardList, DatabaseZap, PlayCircle, Info, ChevronsLeft, ChevronsRight, Search } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, DatabaseZap, PlayCircle, Info, ChevronsLeft, ChevronsRight, Search } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
@@ -21,7 +21,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Badge } from '@/components/ui/badge';
 
 interface RawBOMRow {
   nivel: string;
@@ -48,13 +47,15 @@ const cleanCode = (code: string): string => {
 const formatLevel = (level: string | number) => {
   const l = Number(level);
   if (isNaN(l)) return level;
+  if (l === 0) return "0";
   return ".".repeat(l) + l;
 };
 
 const getLevelClass = (level: string | number) => {
   const l = Number(level);
-  if (l === 1) return "bg-green-500 text-white font-black";
-  if (l === 2) return "bg-blue-400 text-white font-black";
+  if (l === 0) return "bg-green-600 text-white font-black";
+  if (l === 1) return "bg-blue-500 text-white font-black";
+  if (l === 2) return "bg-indigo-400 text-white font-bold";
   return "text-slate-400 font-bold";
 };
 
@@ -76,7 +77,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [explosionProgress, setExplosionProgress] = useState({ current: 0, total: 0 });
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [bomPage, setBomPage] = useState(1);
-  const [bomRowsPerPage, setBomRowsPerPage] = useState(20);
+  const [bomRowsPerPage, setBomRowsPerPage] = useState(50);
 
   const HOJAS_RUTA_VALIDAS = ["HR-ACH", "HR-BO", "HR-LAMIN"];
 
@@ -91,7 +92,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setGrupos(filtered);
       return filtered;
     } catch (error) {
-      console.error('Error cargando grupos:', error);
       return [];
     }
   };
@@ -103,7 +103,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setRestriccionesArray(filtered);
       return filtered;
     } catch (error) {
-      console.error('Error cargando restricciones:', error);
       return [];
     }
   };
@@ -208,8 +207,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return Object.values(groupedOrdersByRouting).flat();
   }, [groupedOrdersByRouting]);
 
-  const totalFilteredOrdersCount = filteredOrdersFlat.length;
-
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -248,9 +245,23 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     try {
       for (let i = 0; i < filteredOrdersFlat.length; i++) {
         const order = filteredOrdersFlat[i];
-        const { code: fertCode } = extractMaterialInfo(order);
+        const { code: fertCode, desc: fertDesc } = extractMaterialInfo(order);
         const centro = String(order.CENTRO || order.Centro || '1000').trim();
         const orderQty = safeNum(order.CANTIDAD || order.CANTPROGRAMADA || 0);
+
+        // Agregamos el FERT Principal como Nivel 0
+        allRows.push({
+          nivel: "0",
+          centro,
+          fertPrincipal: fertCode,
+          descripcionFert: fertDesc.toUpperCase(),
+          materialPadre: "—",
+          componente: fertCode,
+          descripcionComponente: fertDesc.toUpperCase(),
+          cantUnitaria: 1,
+          cantAcumulada: 1,
+          cantTotalExplotada: orderQty
+        });
 
         const fullCodeForApi = fertCode.padStart(18, '0');
 
@@ -261,19 +272,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           if (Array.isArray(rawData)) {
             rawData.forEach((row: any) => {
               const acum = safeNum(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
-              const totalNeeded = orderQty * acum;
-
               allRows.push({
                 nivel: String(safeNum(row.NIVEL)),
                 centro: String(row.CENTRO || centro),
-                fertPrincipal: cleanCode(row.FERT_PRINCIPAL),
-                descripcionFert: String(row.DESCRIPCION_FERT || '—').toUpperCase(),
+                fertPrincipal: fertCode,
+                descripcionFert: fertDesc.toUpperCase(),
                 materialPadre: cleanCode(row.MATERIAL_PADRE),
                 componente: cleanCode(row.COMPONENTE),
                 descripcionComponente: String(row.DESCRIPCION_COMPONENTE || '—').toUpperCase(),
                 cantUnitaria: safeNum(row.CANTIDAD_UNITARIA),
                 cantAcumulada: acum,
-                cantTotalExplotada: totalNeeded
+                cantTotalExplotada: orderQty * acum
               });
             });
           }
@@ -283,16 +292,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
-      // Ordenar por FERT Principal y luego por Nivel Jerárquico
-      const sorted = allRows.sort((a, b) => {
-        if (a.fertPrincipal !== b.fertPrincipal) return a.fertPrincipal.localeCompare(b.fertPrincipal);
-        const nivA = Number(a.nivel);
-        const nivB = Number(b.nivel);
-        if (nivA !== nivB) return nivA - nivB;
-        return a.materialPadre.localeCompare(b.materialPadre);
-      });
-
-      setBomRows(sorted);
+      setBomRows(allRows);
       addNotification('success', `Explosión técnica completada. ${allRows.length} registros cargados.`);
     } catch (err) {
       addNotification('error', `Error crítico en explosión: ${(err as Error).message}`);
@@ -387,7 +387,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (Válida)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
-                <p className="text-xl font-black text-gray-800">{totalFilteredOrdersCount}</p>
+                <p className="text-xl font-black text-gray-800">{filteredOrdersFlat.length}</p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
@@ -417,7 +417,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {totalFilteredOrdersCount === 0 ? (
+                  {filteredOrdersFlat.length === 0 ? (
                     <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">No se detectaron órdenes con hojas de ruta autorizadas</td></tr>
                   ) : (
                     Object.entries(groupedOrdersByRouting).map(([routingKey, items]) => {
@@ -473,7 +473,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Estructura Jerárquica de Materiales (BOM)</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 text-left">
-                  Explosión por Orden | Niveles 1-5 | Estándar SAP
+                  Explosión de Órdenes | Niveles 0-5 | Auditoría Estándar SAP
                 </p>
               </div>
             </div>
@@ -492,7 +492,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Sincronizando con SAP...
+                  Explosionando Recetas en SAP...
                 </span>
                 <span>{explosionProgress.current} / {explosionProgress.total} órdenes</span>
               </div>
@@ -517,39 +517,25 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px]">
                       {paginatedBomRows.map((row, idx) => {
-                        const showOrderSeparator = idx === 0 || row.fertPrincipal !== paginatedBomRows[idx - 1].fertPrincipal;
+                        const isRoot = row.nivel === "0";
                         return (
-                          <React.Fragment key={idx}>
-                            {showOrderSeparator && (
-                              <tr className="bg-slate-100 border-y-2 border-slate-200">
-                                <td colSpan={6} className="px-6 py-2">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-2 h-4 bg-[#0f172a] rounded-full" />
-                                    <span className="text-[10px] font-black uppercase text-slate-800 tracking-widest">
-                                      MATERIAL: {row.fertPrincipal} - {row.descripcionFert}
-                                    </span>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                            <tr className="hover:bg-gray-50 transition-all group">
-                              <td className="px-4 py-3 border-r border-gray-100">
-                                <div className={cn(
-                                  "w-full py-1 rounded-md text-center shadow-sm",
-                                  getLevelClass(row.nivel)
-                                )}>
-                                  {formatLevel(row.nivel)}
-                                </div>
-                              </td>
-                              <td className="px-5 py-3 font-mono font-black text-indigo-700 border-r border-dashed border-gray-100">{row.componente}</td>
-                              <td className="px-5 py-3 font-black text-slate-700 uppercase">{row.descripcionComponente}</td>
-                              <td className="px-5 py-3 text-left font-mono font-bold text-slate-400 border-r border-dashed border-gray-100">{row.materialPadre}</td>
-                              <td className="px-5 py-3 text-right font-mono font-black text-slate-800 bg-slate-50/5">
-                                {row.cantTotalExplotada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                              </td>
-                              <td className="px-4 py-3 text-center font-black text-slate-400">KG</td>
-                            </tr>
-                          </React.Fragment>
+                          <tr key={idx} className={cn("hover:bg-gray-50 transition-all group", isRoot && "bg-slate-50")}>
+                            <td className="px-4 py-2 border-r border-gray-100">
+                              <div className={cn(
+                                "w-full py-1 rounded-md text-center shadow-sm font-mono text-[9px]",
+                                getLevelClass(row.nivel)
+                              )}>
+                                {formatLevel(row.nivel)}
+                              </div>
+                            </td>
+                            <td className={cn("px-5 py-2 font-mono font-black border-r border-dashed border-gray-100", isRoot ? "text-slate-900" : "text-indigo-700")}>{row.componente}</td>
+                            <td className="px-5 py-2 font-black text-slate-700 uppercase">{row.descripcionComponente}</td>
+                            <td className="px-5 py-2 text-left font-mono font-bold text-slate-400 border-r border-dashed border-gray-100">{row.materialPadre}</td>
+                            <td className="px-5 py-2 text-right font-mono font-black text-slate-800 bg-slate-50/5">
+                              {row.cantTotalExplotada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                            </td>
+                            <td className="px-4 py-2 text-center font-black text-slate-400">KG</td>
+                          </tr>
                         );
                       })}
                     </tbody>
@@ -566,7 +552,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     onChange={(e) => { setBomRowsPerPage(Number(e.target.value)); setBomPage(1); }}
                     className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-[10px] font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    {[20, 50, 100, 250].map(v => <option key={v} value={v}>{v}</option>)}
+                    {[50, 100, 250, 500].map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                   <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
                     Mostrando {Math.min(bomRows.length, (bomPage-1)*bomRowsPerPage + 1)}-{Math.min(bomRows.length, bomPage*bomRowsPerPage)} de {bomRows.length}
@@ -587,9 +573,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isExploding && (
             <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
               <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión técnica para visualizar la estructura multinivel de SAP</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión técnica para visualizar la data cruda de SAP</p>
             </div>
           )}
+
+          <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+            <Info className="w-4 h-4 text-blue-600" />
+            <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
+              Nota: Auditoría íntegra basada en el método de explosión jerárquica multinivel de SAP para las Hojas de Ruta de Laminado.
+            </p>
+          </div>
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
