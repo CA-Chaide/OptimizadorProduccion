@@ -39,7 +39,6 @@ const safeNum = (val: any): number => {
   return isNaN(n) ? 0 : n;
 };
 
-// Helper robusto para extraer propiedades de la API (insensible a mayúsculas/minúsculas)
 const getProp = (obj: any, key: string): string => {
   if (!obj) return '';
   const val = obj[key] ?? obj[key.toUpperCase()] ?? obj[key.toLowerCase()] ?? '';
@@ -213,54 +212,68 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // MOTOR DE EXPLOSIÓN AUTOMÁTICA SEGÚN IMAGEN SAP
+  // MOTOR DE EXPLOSIÓN AUTOMÁTICA CON BÚSQUEDA JERÁRQUICA
   const handleProcessExplosion = async () => {
-    if (filteredOrdersFlat.length === 0) return;
+    // Filtrar órdenes para que solo se procesen las que NO son del centro 2000
+    const ordersForExplosion = filteredOrdersFlat.filter(o => String(o.CENTRO || o.Centro || '').trim() !== '2000');
+    
+    if (ordersForExplosion.length === 0) {
+      setBomRows([]);
+      return;
+    }
 
     setIsExploding(true);
     setBomRows([]);
     setBomPage(1);
-    setExplosionProgress({ current: 0, total: filteredOrdersFlat.length });
+    setExplosionProgress({ current: 0, total: ordersForExplosion.length });
 
     const allRows: RawBOMRow[] = [];
-    const processedFertCodes = new Set<string>();
+    const processedMaterialKeys = new Set<string>();
 
     try {
-      for (let i = 0; i < filteredOrdersFlat.length; i++) {
-        const order = filteredOrdersFlat[i];
-        const { code: fertCode } = extractMaterialInfo(order);
-        const centro = String(order.CENTRO || order.Centro || order.centro || "1000").trim();
+      for (let i = 0; i < ordersForExplosion.length; i++) {
+        const order = ordersForExplosion[i];
+        const { code: orderMaterialCode } = extractMaterialInfo(order);
+        const centro = String(order.CENTRO || order.Centro || "1000").trim();
         
-        if (processedFertCodes.has(`${fertCode}|${centro}`)) {
+        if (processedMaterialKeys.has(`${orderMaterialCode}|${centro}`)) {
           setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
           continue;
         }
 
-        const fullCodeForApi = fertCode.padStart(18, '0');
+        // Padding de 18 dígitos para SAP
+        const fullCodeForApi = orderMaterialCode.padStart(18, '0');
 
         try {
-          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 1500);
+          // Consultamos la explosión del material. El método devuelve la jerarquía técnica.
+          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 3000);
           const rawData = response?.data?.data || response?.data || [];
 
           if (Array.isArray(rawData) && rawData.length > 0) {
+            // Recorremos la data técnica devuelta por SAP
             rawData.forEach((row: any) => {
+              // NO mostrar nada del centro 2000
+              const rowCentro = getProp(row, 'CENTRO');
+              if (rowCentro === '2000') return;
+
               allRows.push({
-                NIVEL: getProp(row, 'NIVEL') || '1',
-                CENTRO: getProp(row, 'CENTRO') || centro,
-                FERT_PRINCIPAL: getProp(row, 'FERT_PRINCIPAL') || fertCode,
+                NIVEL: getProp(row, 'NIVEL'),
+                CENTRO: rowCentro,
+                FERT_PRINCIPAL: getProp(row, 'FERT_PRINCIPAL'),
                 DESCRIPCION_FERT: getProp(row, 'DESCRIPCION_FERT').toUpperCase(),
                 MATERIAL_PADRE: getProp(row, 'MATERIAL_PADRE'),
                 COMPONENTE: getProp(row, 'COMPONENTE'),
                 DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase(),
                 CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
-                CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA') || getNumProp(row, 'CANTIDAD_UNITARIA')
+                CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA')
               });
             });
           }
         } catch (err) {
-          console.warn(`Error al explosionar material ${fertCode}:`, err);
+          console.warn(`Error al explosionar material ${orderMaterialCode}:`, err);
         }
-        processedFertCodes.add(`${fertCode}|${centro}`);
+        
+        processedMaterialKeys.add(`${orderMaterialCode}|${centro}`);
         setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
@@ -273,11 +286,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   };
 
+  // Disparador automático al cambiar de pestaña
   useEffect(() => {
-    if (activeTab === 'listaMateriales' && bomRows.length === 0 && filteredOrdersFlat.length > 0 && !isExploding) {
+    if (activeTab === 'listaMateriales' && !isExploding) {
       handleProcessExplosion();
     }
-  }, [activeTab, filteredOrdersFlat, bomRows.length, isExploding]);
+  }, [activeTab]);
 
   const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
   const paginatedBomRows = useMemo(() => {
@@ -450,15 +464,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-4 text-left">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm text-left">
+            <div className="flex items-center gap-4">
               <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
                 <ClipboardList className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Reporte Técnico SAP</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Auditoría Técnica SAP</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Explosión Multinivel | Trazabilidad por Material Padre y Componente
+                  Excluyendo Centro 2000 | Trazabilidad por Material Padre y Componente
                 </p>
               </div>
             </div>
@@ -531,7 +545,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
               </div>
 
-              {/* Controles de Paginación */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex items-center gap-4">
                   <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Filas por página:</span>
