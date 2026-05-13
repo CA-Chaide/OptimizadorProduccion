@@ -39,13 +39,13 @@ const safeNum = (val: any): number => {
   return isNaN(n) ? 0 : n;
 };
 
-// Helper para extraer propiedades sin importar el case (SAP vs JS)
-const getProp = (obj: any, key: string) => {
+// Helper para extraer propiedades de forma insensible a mayúsculas/minúsculas
+const getProp = (obj: any, key: string): string => {
   if (!obj) return '';
-  return obj[key] || obj[key.toUpperCase()] || obj[key.toLowerCase()] || '';
+  return String(obj[key] || obj[key.toUpperCase()] || obj[key.toLowerCase()] || '').trim();
 };
 
-const getNumProp = (obj: any, key: string) => {
+const getNumProp = (obj: any, key: string): number => {
   if (!obj) return 0;
   const val = obj[key] !== undefined ? obj[key] : (obj[key.toUpperCase()] !== undefined ? obj[key.toUpperCase()] : obj[key.toLowerCase()]);
   return safeNum(val);
@@ -155,6 +155,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return map;
   }, [tiemposEnsamblado]);
 
+  // Tiempos ordenados por código de material
   const sortedTiempos = useMemo(() => {
     return [...tiemposEnsamblado].sort((a, b) => {
       const infoA = extractMaterialInfo(a);
@@ -220,6 +221,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
+  // MOTOR DE EXPLOSIÓN AUTOMÁTICA
   const handleProcessExplosion = async () => {
     if (filteredOrdersFlat.length === 0) return;
 
@@ -229,20 +231,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setExplosionProgress({ current: 0, total: filteredOrdersFlat.length });
 
     const allRows: RawBOMRow[] = [];
-    const processedFerts = new Set<string>();
+    const processedCodes = new Set<string>();
 
     try {
       for (let i = 0; i < filteredOrdersFlat.length; i++) {
         const order = filteredOrdersFlat[i];
         const { code: fertCode } = extractMaterialInfo(order);
         
-        // Evitar reprocesar el mismo FERT si ya se explosionó en esta carga
-        if (processedFerts.has(fertCode)) {
+        // Evitar duplicar explosión para el mismo material en esta carga
+        if (processedCodes.has(fertCode)) {
           setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
           continue;
         }
 
-        const centro = String(order.CENTRO || order.Centro || '1000').trim();
+        const centro = "1000"; // Restricción estricta centro 1000
         const fullCodeForApi = fertCode.padStart(18, '0');
 
         try {
@@ -263,7 +265,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA') || getNumProp(row, 'CANTIDAD_UNITARIA')
               });
             });
-            processedFerts.add(fertCode);
+            processedCodes.add(fertCode);
           }
         } catch (err) {
           console.warn(`Error en material ${fertCode}:`, err);
@@ -280,7 +282,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   };
 
-  // Automatización de carga de Lista de Materiales
+  // Carga automática al entrar al tab de Lista de Materiales
   useEffect(() => {
     if (activeTab === 'listaMateriales' && bomRows.length === 0 && filteredOrdersFlat.length > 0 && !isExploding) {
       handleProcessExplosion();
@@ -335,7 +337,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div>
                 <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
-                  {selectedDate === 'all' ? 'Vista Consolidada (Hojas de Ruta Válidas)' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                  {selectedDate === 'all' ? 'Vista Consolidada (Centro 1000)' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
@@ -377,17 +379,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (Válida)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (Autorizada)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{filteredOrdersFlat.length}</p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Sincronización</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Centro Activo</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
-                <p className="text-xl font-black text-gray-800">Filtrado</p>
+                <p className="text-xl font-black text-gray-800">1000</p>
               </div>
             </div>
           </div>
@@ -411,7 +413,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredOrdersFlat.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">No se detectaron órdenes con hojas de ruta autorizadas</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin órdenes provisionales para las rutas HR autorizadas en Centro 1000</td></tr>
                   ) : (
                     Object.entries(groupedOrdersByRouting).map(([routingKey, items]) => {
                       if (items.length === 0) return null;
@@ -464,9 +466,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <ClipboardList className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Reporte Técnico SAP</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Lista de Materiales - Reporte Técnico SAP (Centro 1000)</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Carga Automática | Data Técnica Multinivel (BOM)
+                  Explosión Automática | Jerarquía Técnica de Componentes
                 </p>
               </div>
             </div>
@@ -477,7 +479,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Explosionando Recetas en SAP...
+                  Sincronizando con SAP...
                 </span>
                 <span>{explosionProgress.current} / {explosionProgress.total} materiales</span>
               </div>
@@ -589,7 +591,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
                   {sortedTiempos.length === 0 ? (
-                    <tr><td colSpan={7} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin registros técnicos cargados</td></tr>
+                    <tr><td colSpan={7} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin registros técnicos cargados para Centro 1000</td></tr>
                   ) : (
                     sortedTiempos.map((t, i) => {
                       const info = extractMaterialInfo(t);
