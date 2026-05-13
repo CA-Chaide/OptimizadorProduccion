@@ -124,8 +124,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [hasSetDefaultDate, setHasSetDefaultDate] = useState(false);
 
-  // Constante de tiempo disponible diario: 8h * 11 mesas * 87% eficiencia = 76.56h
-  const TIEMPO_DISPONIBLE_DIARIO = 8 * 11 * 0.87;
+  // Constante de tiempo disponible diario actualizada a 83.52h
+  const TIEMPO_DISPONIBLE_DIARIO = 83.52;
 
   const tiemposMap = useMemo(() => {
     if (!tiemposData || tiemposData.length === 0) {
