@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Scissors, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, DatabaseZap, PlayCircle, Info, ChevronsLeft, ChevronsRight, Search } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -221,10 +221,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [viewDate]);
 
   const handleProcessExplosion = async () => {
-    if (filteredOrdersFlat.length === 0) {
-      addNotification('warning', 'No hay órdenes filtradas para procesar la lista de materiales.');
-      return;
-    }
+    if (filteredOrdersFlat.length === 0) return;
 
     setIsExploding(true);
     setBomRows([]);
@@ -266,14 +263,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
       
       setBomRows(allRows);
-      addNotification('success', `Explosión técnica completada. ${allRows.length} registros cargados.`);
       inspector.captureVariable('bomRows', allRows.length);
     } catch (err) {
-      addNotification('error', `Error crítico en explosión: ${(err as Error).message}`);
+      console.error(`Error crítico en explosión: ${(err as Error).message}`);
     } finally {
       setIsExploding(false);
     }
   };
+
+  // Auto-enlistar lista de materiales al entrar al tab
+  useEffect(() => {
+    if (activeTab === 'listaMateriales' && bomRows.length === 0 && filteredOrdersFlat.length > 0 && !isExploding) {
+      handleProcessExplosion();
+    }
+  }, [activeTab, filteredOrdersFlat, bomRows.length, isExploding]);
 
   const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
   const paginatedBomRows = useMemo(() => {
@@ -458,14 +461,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </p>
               </div>
             </div>
-            <Button 
-              onClick={handleProcessExplosion} 
-              disabled={isExploding || filteredOrdersFlat.length === 0} 
-              className="bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
-            >
-              {isExploding ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-              Explosionar Recetas Técnicas
-            </Button>
           </div>
 
           {isExploding && (
@@ -563,7 +558,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isExploding && (
             <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
               <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4 text-center">Inicie la explosión técnica para visualizar la data técnica de SAP</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4 text-center">Cargando lista de materiales desde SAP...</p>
             </div>
           )}
         </TabsContent>
