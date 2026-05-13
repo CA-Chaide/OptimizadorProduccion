@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, CheckCircle2 } from 'lucide-react';
+import { Scissors, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
 
-  const DESCRIPTORS = ["LAMINA CILINDRICA", "BANDA INT", "BANDA BASE", "BANDA CHN", "ACOLCHADO", "TAPA SF BABY"];
+  const HOJAS_RUTA = ["HR-ACH", "HR-BO", "HR-LAMIN"];
 
   const fetchGrupos = async () => {
     try {
@@ -120,7 +120,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return map;
   }, [tiemposEnsamblado]);
 
-  // Ordenar Tiempos de Ensamblado por columna Material
   const sortedTiempos = useMemo(() => {
     return [...tiemposEnsamblado].sort((a, b) => {
       const infoA = extractMaterialInfo(a);
@@ -158,12 +157,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return false;
       
-      const { desc } = extractMaterialInfo(o);
-      const descUpper = desc.toUpperCase();
-      
-      const isRelevant = DESCRIPTORS.some(keyword => descUpper.includes(keyword));
-      if (!isRelevant) return false;
-
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -177,22 +170,28 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
-  const groupedOrdersByDescriptor = useMemo(() => {
+  const groupedOrdersByRouting = useMemo(() => {
     const groups: Record<string, any[]> = {};
-    DESCRIPTORS.forEach(desc => { groups[desc] = []; });
+    HOJAS_RUTA.forEach(hr => { groups[hr] = []; });
+    groups["OTRAS HOJAS DE RUTA"] = [];
 
     ordenesFiltradas.forEach(o => {
-      const { desc } = extractMaterialInfo(o);
-      const descUpper = desc.toUpperCase();
-      for (const keyword of DESCRIPTORS) {
-        if (descUpper.includes(keyword)) {
-          groups[keyword].push(o);
+      const { code } = extractMaterialInfo(o);
+      const maestroData = tiemposMap.get(code);
+      const hrValue = String(maestroData?.HojaRuta || o.HojaRuta || '').toUpperCase();
+      
+      let matched = false;
+      for (const hrKey of HOJAS_RUTA) {
+        if (hrValue.includes(hrKey)) {
+          groups[hrKey].push(o);
+          matched = true;
           break;
         }
       }
+      if (!matched) groups["OTRAS HOJAS DE RUTA"].push(o);
     });
     return groups;
-  }, [ordenesFiltradas]);
+  }, [ordenesFiltradas, tiemposMap]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -308,16 +307,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {ordenesFiltradas.length === 0 ? (
                     <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin carga operativa relevante detectada</td></tr>
                   ) : (
-                    Object.entries(groupedOrdersByDescriptor).map(([category, items]) => {
+                    Object.entries(groupedOrdersByRouting).map(([routingKey, items]) => {
                       if (items.length === 0) return null;
                       return (
-                        <React.Fragment key={category}>
+                        <React.Fragment key={routingKey}>
                           <tr className="bg-slate-50 border-y border-gray-200">
                             <td colSpan={8} className="px-6 py-2">
                               <div className="flex items-center gap-3">
                                 <div className="w-1.5 h-4 bg-red-600 rounded-full" />
                                 <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                                  Categoría: {category} ({items.length} Órdenes)
+                                  Hoja de Ruta: {routingKey} ({items.length} Órdenes)
                                 </span>
                               </div>
                             </td>
@@ -330,7 +329,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
 
                             return (
-                              <tr key={`${category}-${i}`} className="hover:bg-gray-50 transition-colors group">
+                              <tr key={`${routingKey}-${i}`} className="hover:bg-gray-50 transition-colors group">
                                 <td className="px-4 py-3 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                                 <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-[10px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                                 <td className="px-4 py-3 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
