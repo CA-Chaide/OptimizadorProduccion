@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -42,6 +43,19 @@ const safeNum = (val: any): number => {
 
 const cleanCode = (code: string): string => {
   return String(code || '').replace(/^0+/, '').trim();
+};
+
+const formatLevel = (level: string | number) => {
+  const l = Number(level);
+  if (isNaN(l)) return level;
+  return ".".repeat(l) + l;
+};
+
+const getLevelClass = (level: string | number) => {
+  const l = Number(level);
+  if (l === 1) return "bg-green-500 text-white font-black";
+  if (l === 2) return "bg-blue-400 text-white font-black";
+  return "text-slate-400 font-bold";
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
@@ -269,7 +283,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
-      setBomRows(allRows);
+      // Ordenar por FERT Principal y luego por Nivel Jerárquico
+      const sorted = allRows.sort((a, b) => {
+        if (a.fertPrincipal !== b.fertPrincipal) return a.fertPrincipal.localeCompare(b.fertPrincipal);
+        const nivA = Number(a.nivel);
+        const nivB = Number(b.nivel);
+        if (nivA !== nivB) return nivA - nivB;
+        return a.materialPadre.localeCompare(b.materialPadre);
+      });
+
+      setBomRows(sorted);
       addNotification('success', `Explosión técnica completada. ${allRows.length} registros cargados.`);
     } catch (err) {
       addNotification('error', `Error crítico en explosión: ${(err as Error).message}`);
@@ -448,9 +471,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <ClipboardList className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Maestro de Componentes (BOOM)</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Estructura Jerárquica de Materiales (BOM)</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 text-left">
-                  Jerarquía Multinivel 1-5 | Basado en Órdenes Filtradas por Ruta
+                  Explosión por Orden | Niveles 1-5 | Estándar SAP
                 </p>
               </div>
             </div>
@@ -469,7 +492,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Sincronizando BOOM...
+                  Sincronizando con SAP...
                 </span>
                 <span>{explosionProgress.current} / {explosionProgress.total} órdenes</span>
               </div>
@@ -479,52 +502,62 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           {!isExploding && bomRows.length > 0 ? (
             <div className="space-y-4">
-              <div className="border-2 border-gray-50 rounded-2xl overflow-hidden bg-white shadow-xl">
+              <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-xl">
                 <div className="overflow-x-auto max-h-[600px] relative">
-                  <table className="w-full border-collapse text-[10px] font-sans">
+                  <table className="w-full border-collapse text-left font-sans">
                     <thead className="bg-[#0f172a] text-white uppercase font-black tracking-tighter sticky top-0 z-20">
                       <tr>
-                        <th className="px-5 py-4 text-center border-r border-white/5 w-16">NV</th>
-                        <th className="px-5 py-4 text-left border-r border-white/5">COMPONENTE</th>
-                        <th className="px-5 py-4 text-left border-r border-white/5">DESCRIPCIÓN COMPONENTE</th>
-                        <th className="px-5 py-4 text-left border-r border-white/5">MATERIAL PADRE</th>
-                        <th className="px-5 py-4 text-left border-r border-white/5">FERT PRINCIPAL</th>
-                        <th className="px-5 py-4 text-left border-r border-white/5">DESCRIPCIÓN FERT</th>
-                        <th className="px-5 py-4 text-center border-r border-white/5 w-24">CANT. UNT.</th>
-                        <th className="px-5 py-4 text-center border-r border-white/5 w-24">CANT. ACUM.</th>
-                        <th className="px-5 py-4 text-right bg-black/20 w-32">CANT. TOTAL (KG)</th>
+                        <th className="px-4 py-4 text-center border-r border-white/5 w-24">NV</th>
+                        <th className="px-5 py-4 border-r border-white/5">Nº COMPONENTES</th>
+                        <th className="px-5 py-4 border-r border-white/5">TEXTO BREVE-OBJETO</th>
+                        <th className="px-5 py-4 border-r border-white/5">MATERIAL PADRE</th>
+                        <th className="px-5 py-4 border-r border-white/5 text-right font-black text-blue-300">CTD. COMPONENTE (UMC)</th>
+                        <th className="px-4 py-4 text-center w-16">UM</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {paginatedBomRows.map((row, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50 transition-all group">
-                          <td className={cn(
-                            "px-5 py-3 border-r border-gray-100 font-black text-center",
-                            row.nivel === "1" ? "bg-green-100 text-green-700" : 
-                            row.nivel === "2" ? "bg-blue-100 text-blue-700" : "text-slate-400"
-                          )}>
-                            {row.nivel === "1" ? ".1" : row.nivel === "2" ? "..2" : `...${row.nivel}`}
-                          </td>
-                          <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-gray-100">{row.componente}</td>
-                          <td className="px-5 py-3 font-black text-slate-800 uppercase text-left">{row.descripcionComponente}</td>
-                          <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.materialPadre}</td>
-                          <td className="px-5 py-3 text-left font-mono font-black text-slate-400 border-r border-gray-100">{row.fertPrincipal}</td>
-                          <td className="px-5 py-3 text-left font-black text-gray-400 uppercase tracking-tight border-r border-gray-100 truncate max-w-[200px]" title={row.descripcionFert}>
-                            {row.descripcionFert}
-                          </td>
-                          <td className="px-5 py-3 text-center font-mono text-slate-500 border-r border-gray-100">{row.cantUnitaria.toFixed(3)}</td>
-                          <td className="px-5 py-3 text-center font-mono font-bold text-slate-600 border-r border-gray-100">{row.cantAcumulada.toFixed(3)}</td>
-                          <td className="px-5 py-3 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
-                            {row.cantTotalExplotada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                          </td>
-                        </tr>
-                      ))}
+                    <tbody className="divide-y divide-gray-100 text-[10px]">
+                      {paginatedBomRows.map((row, idx) => {
+                        const showOrderSeparator = idx === 0 || row.fertPrincipal !== paginatedBomRows[idx - 1].fertPrincipal;
+                        return (
+                          <React.Fragment key={idx}>
+                            {showOrderSeparator && (
+                              <tr className="bg-slate-100 border-y-2 border-slate-200">
+                                <td colSpan={6} className="px-6 py-2">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-2 h-4 bg-[#0f172a] rounded-full" />
+                                    <span className="text-[10px] font-black uppercase text-slate-800 tracking-widest">
+                                      MATERIAL: {row.fertPrincipal} - {row.descripcionFert}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            <tr className="hover:bg-gray-50 transition-all group">
+                              <td className="px-4 py-3 border-r border-gray-100">
+                                <div className={cn(
+                                  "w-full py-1 rounded-md text-center shadow-sm",
+                                  getLevelClass(row.nivel)
+                                )}>
+                                  {formatLevel(row.nivel)}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 font-mono font-black text-indigo-700 border-r border-dashed border-gray-100">{row.componente}</td>
+                              <td className="px-5 py-3 font-black text-slate-700 uppercase">{row.descripcionComponente}</td>
+                              <td className="px-5 py-3 text-left font-mono font-bold text-slate-400 border-r border-dashed border-gray-100">{row.materialPadre}</td>
+                              <td className="px-5 py-3 text-right font-mono font-black text-slate-800 bg-slate-50/5">
+                                {row.cantTotalExplotada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                              </td>
+                              <td className="px-4 py-3 text-center font-black text-slate-400">KG</td>
+                            </tr>
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              {/* Controles de Paginación del BOOM */}
+              {/* Controles de Paginación */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex items-center gap-4">
                   <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Filas por página:</span>
@@ -554,7 +587,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isExploding && (
             <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
               <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4 text-center">Inicie la explosión técnica para visualizar la data cruda de SAP</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie la explosión técnica para visualizar la estructura multinivel de SAP</p>
             </div>
           )}
         </TabsContent>
