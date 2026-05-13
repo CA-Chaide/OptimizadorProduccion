@@ -255,6 +255,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       setBomRows(allRows);
       addNotification('success', `Explosión técnica completada. ${allRows.length} registros cargados.`);
+      inspector.captureVariable('bomRows', allRows.length);
     } catch (err) {
       addNotification('error', `Error crítico en explosión: ${(err as Error).message}`);
     } finally {
@@ -441,7 +442,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Lista de Materiales - Explosión Técnica</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 text-left">
-                  Visualización Jerárquica | Datos Directos SAP
+                  Visualización Directa | Datos de Recetas SAP
                 </p>
               </div>
             </div>
