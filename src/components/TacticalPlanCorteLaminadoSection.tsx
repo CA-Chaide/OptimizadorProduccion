@@ -120,6 +120,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return map;
   }, [tiemposEnsamblado]);
 
+  // Ordenar tiempos por código de material
   const sortedTiempos = useMemo(() => {
     return [...tiemposEnsamblado].sort((a, b) => {
       const infoA = extractMaterialInfo(a);
@@ -276,12 +277,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Órdenes en Procesamiento</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Procesamiento</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
-                <p className="text-xl font-black text-gray-800">
-                  {ordenesFiltradas.length}
-                </p>
+                <p className="text-xl font-black text-gray-800">Sincronizado</p>
               </div>
             </div>
           </div>
@@ -313,10 +312,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <React.Fragment key={routingKey}>
                           <tr className="bg-slate-50 border-y border-gray-200">
                             <td colSpan={8} className="px-6 py-2">
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-3 text-left">
                                 <div className="w-1.5 h-4 bg-red-600 rounded-full" />
                                 <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                                  Hoja de Ruta: {routingKey} ({items.length} Órdenes)
+                                  HOJA DE RUTA: {routingKey} ({items.length} Órdenes)
                                 </span>
                               </div>
                             </td>
@@ -330,14 +329,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
                             return (
                               <tr key={`${routingKey}-${i}`} className="hover:bg-gray-50 transition-colors group">
-                                <td className="px-4 py-3 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                                <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-[10px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                                <td className="px-4 py-3 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
-                                <td className="px-4 py-3 text-left border-r border-dashed border-gray-100 truncate max-w-[280px] text-gray-600 font-bold uppercase">{info.desc}</td>
-                                <td className="px-4 py-3 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
-                                <td className="px-4 py-3 font-black text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
-                                <td className="px-4 py-3 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
-                                <td className="px-4 py-3 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                                <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                                <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono text-[10px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                                <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
+                                <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 truncate max-w-[280px] text-gray-600 font-bold uppercase">{info.desc}</td>
+                                <td className="px-4 py-4 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
+                                <td className="px-4 py-4 font-black text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
+                                <td className="px-4 py-4 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
+                                <td className="px-4 py-4 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                               </tr>
                             );
                           })}
@@ -374,15 +373,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       const info = extractMaterialInfo(t);
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-5 py-3 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-5 py-3 text-left border-r border-dashed border-gray-100 text-gray-600 font-bold uppercase truncate max-w-[280px]">{info.desc}</td>
-                          <td className="px-5 py-3 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
-                          <td className="px-5 py-3 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
-                          <td className="px-5 py-3 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/5">
+                          <td className="px-5 py-4 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
+                          <td className="px-5 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 font-bold uppercase truncate max-w-[280px]">{info.desc}</td>
+                          <td className="px-5 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
+                          <td className="px-5 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
+                          <td className="px-5 py-4 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/5">
                             {Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
                           </td>
-                          <td className="px-5 py-3 text-gray-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
-                          <td className="px-5 py-3 text-gray-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                          <td className="px-5 py-4 text-gray-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
+                          <td className="px-5 py-4 text-gray-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
                         </tr>
                       );
                     })
