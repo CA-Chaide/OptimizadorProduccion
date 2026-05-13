@@ -11,7 +11,6 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -34,7 +33,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
 
-  const HOJAS_RUTA = ["HR-ACH", "HR-BO", "HR-LAMIN"];
+  const HOJAS_RUTA_VALIDAS = ["HR-ACH", "HR-BO", "HR-LAMIN"];
 
   const fetchGrupos = async () => {
     try {
@@ -120,7 +119,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return map;
   }, [tiemposEnsamblado]);
 
-  // Ordenar tiempos por código de material
   const sortedTiempos = useMemo(() => {
     return [...tiemposEnsamblado].sort((a, b) => {
       const infoA = extractMaterialInfo(a);
@@ -150,49 +148,44 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  const ordenesFiltradas = useMemo(() => {
-    return ordenes.filter(o => {
+  const groupedOrdersByRouting = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    HOJAS_RUTA_VALIDAS.forEach(hr => { groups[hr] = []; });
+
+    ordenes.forEach(o => {
+      // Filtro inicial por Centro 1000 y Almacén específico de Laminado
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
-      if (itemCentro !== '1000') return false;
+      if (itemCentro !== '1000') return;
 
       const itemAlmacen = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return false;
-      
+      if (itemAlmacen !== '1006' && itemAlmacen !== '1008') return;
+
+      // Filtro de fecha
       if (selectedDate !== 'all') {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
-        if (itemDate !== selectedDate) return false;
+        if (itemDate !== selectedDate) return;
       }
-      return true;
-    }).sort((a, b) => {
-      const almA = String(a.ALMACEN || a.Almacen || '').trim();
-      const almB = String(b.ALMACEN || b.Almacen || '').trim();
-      return almA.localeCompare(almB);
-    });
-  }, [ordenes, selectedDate]);
 
-  const groupedOrdersByRouting = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    HOJAS_RUTA.forEach(hr => { groups[hr] = []; });
-    groups["OTRAS HOJAS DE RUTA"] = [];
-
-    ordenesFiltradas.forEach(o => {
+      // Identificación de Hoja de Ruta
       const { code } = extractMaterialInfo(o);
       const maestroData = tiemposMap.get(code);
       const hrValue = String(maestroData?.HojaRuta || o.HojaRuta || '').toUpperCase();
       
-      let matched = false;
-      for (const hrKey of HOJAS_RUTA) {
+      for (const hrKey of HOJAS_RUTA_VALIDAS) {
         if (hrValue.includes(hrKey)) {
           groups[hrKey].push(o);
-          matched = true;
           break;
         }
       }
-      if (!matched) groups["OTRAS HOJAS DE RUTA"].push(o);
     });
+
     return groups;
-  }, [ordenesFiltradas, tiemposMap]);
+  }, [ordenes, selectedDate, tiemposMap]);
+
+  const totalFilteredOrdersCount = useMemo(() => {
+    return Object.values(groupedOrdersByRouting).reduce((sum, list) => sum + list.length, 0);
+  }, [groupedOrdersByRouting]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -203,7 +196,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión de Necesidades y Jerarquía de Materiales</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión Exclusiva de Hojas de Ruta: HR-ACH, HR-BO, HR-LAMIN</p>
           </div>
         </div>
       </div>
@@ -228,7 +221,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div>
                 <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
-                  {selectedDate === 'all' ? 'Vista Mensual Consolidada' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
+                  {selectedDate === 'all' ? 'Vista Consolidada (Hojas de Ruta Válidas)' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
@@ -270,17 +263,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (# Órdenes)</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (Válida)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
-                <p className="text-xl font-black text-gray-800">{ordenesFiltradas.length}</p>
+                <p className="text-xl font-black text-gray-800">{totalFilteredOrdersCount}</p>
               </div>
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Procesamiento</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Estado de Sincronización</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
-                <p className="text-xl font-black text-gray-800">Sincronizado</p>
+                <p className="text-xl font-black text-gray-800">Filtrado</p>
               </div>
             </div>
           </div>
@@ -303,8 +296,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {ordenesFiltradas.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin carga operativa relevante detectada</td></tr>
+                  {totalFilteredOrdersCount === 0 ? (
+                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">No se detectaron órdenes con hojas de ruta autorizadas</td></tr>
                   ) : (
                     Object.entries(groupedOrdersByRouting).map(([routingKey, items]) => {
                       if (items.length === 0) return null;
