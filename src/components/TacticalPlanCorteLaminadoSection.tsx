@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -58,7 +57,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
 
-  const [activeTab, setActiveTab] = useState('plan');
+  const [activeTab, setActiveTab] = useState('ordenes');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
@@ -208,7 +207,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // MOTOR DE EXPLOSIÓN TÉCNICA AUTOMÁTICA (SIN FILTROS DE OTROS TABS)
+  // MOTOR DE EXPLOSIÓN TÉCNICA AUTOMÁTICA
   const handleProcessExplosion = async () => {
     if (ordenes.length === 0) return;
 
@@ -216,7 +215,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setBomRows([]);
     setBomPage(1);
     
-    // Obtenemos códigos únicos de las órdenes provisionales totales (sin filtros cruzados)
+    // Obtenemos códigos únicos de las órdenes provisionales
     const uniqueOrderMaterials = Array.from(new Set(ordenes.map(o => extractMaterialInfo(o).code)));
     
     setExplosionProgress({ current: 0, total: uniqueOrderMaterials.length });
@@ -226,21 +225,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     try {
       for (let i = 0; i < uniqueOrderMaterials.length; i++) {
         const code = uniqueOrderMaterials[i];
-        
-        // Buscamos una orden de referencia para el centro, priorizando el 1000 si hay conflicto
         const refOrder = ordenes.find(o => extractMaterialInfo(o).code === code);
         const centro = String(refOrder?.CENTRO || refOrder?.Centro || "1000").trim();
         
-        const fullCodeForApi = code.padStart(18, '0');
-
         try {
-          // Consultamos la explosión técnica jerárquica desde SAP
-          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 5000);
+          // Consultamos la explosión técnica jerárquica desde SAP mediante el nuevo procedimiento unificado
+          const response = await serviciosService.getMaestroMaterialesExplosion(centro, code, 1, 5000);
           const rawData = response?.data?.data || response?.data || [];
 
           if (Array.isArray(rawData)) {
             rawData.forEach((row: any) => {
-              // FILTRO MANDATORIO: EXCLUIR CENTRO 2000
+              // EXCLUSIÓN ESTRICTA CENTRO 2000
               const rowCentro = getProp(row, 'CENTRO');
               if (rowCentro === '2000') return;
 
@@ -312,16 +307,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
-            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
+            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Laminado</h2>
             <p className="text-xs text-gray-500 font-medium">Gestión Técnica y Auditoría de BOOM</p>
           </div>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'plan', l: 'Plan Maestro', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'listaMateriales', l: 'Lista Materiales', i: ClipboardList },
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
@@ -332,12 +326,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="plan" className="space-y-6 animate-in fade-in duration-300">
-           <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
+        <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-6">
+          <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Fecha de Operación</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
                   {selectedDate === 'all' ? 'Vista Consolidada (Planta)' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
@@ -347,7 +341,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-10 px-6 rounded-2xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-xs uppercase transition-all shadow-sm">
-                  <Filter className="w-4 h-4" /> Fecha
+                  <Filter className="w-4 h-4" /> Filtrar Fecha
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
@@ -379,26 +373,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Popover>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-            <Card className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (Autorizada)</p>
-              <div className="flex items-center gap-2">
-                <Package className="w-4 h-4 text-red-600" />
-                <p className="text-xl font-black text-gray-800">{filteredOrdersFlat.length}</p>
-              </div>
-            </Card>
-            <Card className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Actividad Técnica</p>
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-indigo-600" />
-                <p className="text-xl font-black text-gray-800">{HOJAS_RUTA_VALIDAS.length} Rutas</p>
-              </div>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="ordenes" className="animate-in fade-in duration-300">
-           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-tight">
@@ -452,7 +427,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales (Planta Quito)</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Carga automática desde SAP | Exclusión Planta Gye | Auditoría Técnica
+                  Integración Directa SAP | Exclusión Planta Gye | Auditoría Jerárquica
                 </p>
               </div>
             </div>
@@ -461,7 +436,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
               <input 
                 type="text" 
-                placeholder="Buscar en BOOM..." 
+                placeholder="Buscar en el BOOM..." 
                 value={bomSearch}
                 onChange={(e) => { setBomSearch(e.target.value); setBomPage(1); }}
                 className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-red-500/50"
@@ -474,9 +449,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Consultando motor SAP...
+                  Consultando Motor Técnico SAP...
                 </span>
-                <span>{explosionProgress.current} / {explosionProgress.total} materiales base</span>
+                <span>{explosionProgress.current} / {explosionProgress.total} materiales procesados</span>
               </div>
               <Progress value={(explosionProgress.current / explosionProgress.total) * 100} className="h-2 bg-indigo-100" />
             </div>
@@ -565,14 +540,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isExploding && (
             <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
               <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Analizando estructura técnica en SAP...</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Analizando Estructura Técnica en SAP...</p>
             </div>
           )}
 
           <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
             <Info className="w-4 h-4 text-blue-600" />
             <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-              Nota: Auditoría íntegra basada en la búsqueda jerárquica de componentes. Centro 2000 excluido automáticamente.
+              Nota: Auditoría íntegra basada en el método de explosión jerárquica masiva de SAP.
             </p>
           </div>
         </TabsContent>
