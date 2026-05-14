@@ -14,12 +14,22 @@ import {
   ChevronRight, 
   ChevronsLeft, 
   ChevronsRight,
-  DatabaseZap
+  DatabaseZap,
+  Filter,
+  Calendar as CalendarIcon,
+  Activity,
+  PlayCircle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from "@/components/ui/progress";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -27,6 +37,8 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface RawBOMRow {
   NIVEL: string;
@@ -38,6 +50,19 @@ interface RawBOMRow {
   DESCRIPCION_COMPONENTE: string;
   CANTIDAD_UNITARIA: number;
   CANTIDAD_ACUMULADA: number;
+}
+
+interface ResumenNecesidadRow {
+  fecha: string;
+  orden: string;
+  fert: string;
+  descripcionFert: string;
+  cantOrden: number;
+  responsable: string;
+  componente: string;
+  descripcionComponente: string;
+  cantUnitaria: number;
+  cantTotal: number;
 }
 
 const safeNum = (val: any): number => {
@@ -70,12 +95,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Estados para Filtro Dinámico de Fechas
+  const [selectedDate, setSelectedDate] = useState<string>('all');
+  const [viewDate, setViewDate] = useState(new Date());
+
   // Estados para el BOOM de Materiales (Auditoría Técnica)
   const [fertBusqueda, setFertBusqueda] = useState('');
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [isSearchingBOM, setIsSearchingBOM] = useState(false);
   const [bomPage, setBomPage] = useState(1);
   const [bomRowsPerPage, setBomRowsPerPage] = useState(100);
+
+  // Estados para Resumen Necesidades
+  const [resumenNecesidades, setResumenNecesidades] = useState<ResumenNecesidadRow[]>([]);
+  const [isProcessingResumen, setIsProcessingResumen] = useState(false);
+  const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
 
   const fetchGrupos = async () => {
     try {
@@ -129,6 +163,44 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     init();
   }, []);
 
+  // Lógica de filtrado de órdenes por Centro y Fecha
+  const filteredOrders = useMemo(() => {
+    return ordenes.filter(o => {
+      const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
+      if (centro === '2000') return false; // Exclusión estricta Centro 2000
+
+      if (selectedDate !== 'all') {
+        const dateRaw = String(o.FECHAINICIO || o.FECHA || '').trim();
+        const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
+        if (date !== selectedDate) return false;
+      }
+      return true;
+    });
+  }, [ordenes, selectedDate]);
+
+  const datesWithOrders = useMemo(() => {
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
+      if (centro === '2000') return;
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null' && d !== 'undefined') {
+        const normalized = d.includes('T') ? d.split('T')[0] : d;
+        dates.add(normalized);
+      }
+    });
+    return dates;
+  }, [ordenes]);
+
+  const calendarDays = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
+
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -151,17 +223,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     try {
       const fullCode = fertBusqueda.trim().padStart(18, '0');
-      // Consulta al motor de SAP (Centro 1000 por defecto para la búsqueda)
       const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 5000);
       const rawData = response?.data?.data || response?.data || [];
 
       if (Array.isArray(rawData)) {
-        // Filtrado: Excluir Centro 2000 y filtrar por 'LAMINA CILINDRICA'
         const filtered = rawData
           .filter(row => {
             const centro = getProp(row, 'CENTRO');
             const descripcion = getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase();
-            // Criterio: No Centro 2000 Y debe contener 'LAMINA CILINDRICA'
             return centro !== '2000' && descripcion.includes('LAMINA CILINDRICA');
           })
           .map(row => ({
@@ -177,14 +246,76 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           }));
         
         setBomRows(filtered);
-        if (filtered.length === 0) {
-          addNotification('info', 'No se encontraron componentes "Lámina Cilíndrica" para este material.');
-        }
       }
     } catch (err) {
       addNotification('error', 'Error al consultar el BOOM técnico.');
     } finally {
       setIsSearchingBOM(false);
+    }
+  };
+
+  /**
+   * PROCESO DE CÁLCULO DE RESUMEN DE NECESIDADES
+   */
+  const handleProcessResumen = async () => {
+    if (filteredOrders.length === 0) {
+      addNotification('warning', 'No hay órdenes en el período seleccionado para procesar.');
+      return;
+    }
+
+    setIsProcessingResumen(true);
+    setResumenNecesidades([]);
+    setResumenProgress({ current: 0, total: filteredOrders.length });
+
+    const allResumenRows: ResumenNecesidadRow[] = [];
+    const uniqueMaterials = [...new Set(filteredOrders.map(o => extractMaterialInfo(o).code))];
+
+    try {
+      for (let i = 0; i < filteredOrders.length; i++) {
+        const order = filteredOrders[i];
+        const info = extractMaterialInfo(order);
+        const fullCode = info.code.padStart(18, '0');
+        const qty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+
+        try {
+          const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
+          const rawData = response?.data?.data || response?.data || [];
+
+          if (Array.isArray(rawData)) {
+            const componentesLaminas = rawData.filter(row => {
+              const desc = getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase();
+              const centro = getProp(row, 'CENTRO');
+              return centro !== '2000' && desc.includes('LAMINA CILINDRICA');
+            });
+
+            componentesLaminas.forEach(comp => {
+              const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA');
+              allResumenRows.push({
+                fecha: String(order.FECHAINICIO || order.FECHA || '').split('T')[0],
+                orden: String(order.ORDENPREVISIONAL || order.ORDEN || '—'),
+                fert: info.code,
+                descripcionFert: info.desc,
+                cantOrden: qty,
+                responsable: String(order.RESPCONTROLPROD || order.RespControlProd || '—'),
+                componente: getProp(comp, 'COMPONENTE'),
+                descripcionComponente: getProp(comp, 'DESCRIPCION_COMPONENTE'),
+                cantUnitaria: cantAcum,
+                cantTotal: qty * cantAcum
+              });
+            });
+          }
+        } catch (e) {
+          console.warn(`Error procesando BOOM para material ${info.code}`);
+        }
+
+        setResumenProgress(prev => ({ ...prev, current: i + 1 }));
+      }
+      setResumenNecesidades(allResumenRows);
+      addNotification('success', `Resumen generado: ${allResumenRows.length} líneas de necesidad técnica.`);
+    } catch (err) {
+      addNotification('error', 'Error al procesar el resumen de necesidades.');
+    } finally {
+      setIsProcessingResumen(false);
     }
   };
 
@@ -195,40 +326,26 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
 
-  const bomTotals = useMemo(() => {
-    return bomRows.reduce((acc, row) => ({
-      unitaria: acc.unitaria + row.CANTIDAD_UNITARIA,
-      acumulada: acc.acumulada + row.CANTIDAD_ACUMULADA
-    }), { unitaria: 0, acumulada: 0 });
-  }, [bomRows]);
-
-  const uniqueFertsFromOrders = useMemo(() => {
-    const ferts = new Set<string>();
-    ordenes.forEach(o => {
-      const info = extractMaterialInfo(o);
-      if (info.code) ferts.add(info.code);
-    });
-    return Array.from(ferts).sort();
-  }, [ordenes]);
-
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
+      {/* Header Seccion */}
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión Operativa de Órdenes y Auditoría Técnica (BOOM)</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión de Necesidades Técnicas y Auditoría de Materiales</p>
           </div>
         </div>
       </div>
 
       <Tabs defaultValue="ordenes" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
+            { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
             { v: 'listaMateriales', l: 'Lista Materiales (BOOM)', i: ClipboardList },
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
@@ -238,7 +355,44 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="ordenes" className="animate-in fade-in duration-300">
+        <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-4">
+          {/* Filtro de Fecha sutil en la parte superior de la tabla */}
+          <div className="flex justify-end">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm">
+                  <Filter className="w-3 h-3 text-red-500" /> {selectedDate === 'all' ? 'Todas las Fechas' : selectedDate}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
+                <div className="bg-white p-3 font-sans">
+                  <div className="flex items-center justify-between mb-3 text-left">
+                    <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                    <div className="flex gap-1 bg-gray-50 rounded-lg p-1">
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-3 h-3" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronRight className="w-3 h-3" /></Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-7 gap-y-1 text-center mb-2">
+                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
+                    {calendarDays.map((day, idx) => {
+                      if (!day) return <div key={`cal-pad-${idx}`} className="p-1" />;
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const isSelected = selectedDate === dateStr;
+                      return (
+                        <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-red-600 text-white shadow-md" : "hover:bg-gray-100")}>
+                          <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                          {datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-red-400 rounded-full" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-red-600 h-7 mt-1 rounded-lg hover:bg-red-50" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
@@ -255,10 +409,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {ordenes.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin órdenes cargadas</td></tr>
+                  {filteredOrders.length === 0 ? (
+                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin órdenes para el período seleccionado</td></tr>
                   ) : (
-                    ordenes.map((o, i) => {
+                    filteredOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
                       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                       const maquina = String(o.MAQUINA || o.Maquina || o.recurso || o.RECURSO || '—').trim();
@@ -286,6 +440,104 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </Card>
         </TabsContent>
 
+        {/* --- NUEVO TAB: RESUMEN NECESIDADES --- */}
+        <TabsContent value="resumen" className="animate-in fade-in duration-300 space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50 p-5 rounded-2xl border border-gray-200 shadow-sm text-left">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600">
+                <LayoutDashboard className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter leading-tight">Consolidado de Necesidades Técnicas</h3>
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                  Órdenes vs. Componentes Críticos (Láminas Cilíndricas) | Período: {selectedDate === 'all' ? 'Consolidado' : selectedDate}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {/* Botón de Proceso */}
+              <Button 
+                onClick={handleProcessResumen}
+                disabled={isProcessingResumen || filteredOrders.length === 0}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
+              >
+                {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                Calcular Necesidades del Período
+              </Button>
+            </div>
+          </div>
+
+          {isProcessingResumen && (
+            <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
+              <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Procesando Auditoría Táctica...</span>
+                <span>{resumenProgress.current} / {resumenProgress.total} Órdenes</span>
+              </div>
+              <Progress value={(resumenProgress.current / resumenProgress.total) * 100} className="h-2 bg-indigo-100" />
+            </div>
+          )}
+
+          {!isProcessingResumen && resumenNecesidades.length > 0 ? (
+            <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+              <div className="overflow-x-auto max-h-[550px]">
+                <table className="w-full border-collapse font-sans text-[10px]">
+                  <thead className="bg-[#bde0fe] text-slate-800 uppercase font-black tracking-tight sticky top-0 z-20 border-b border-blue-200">
+                    <tr>
+                      <th className="px-4 py-4 border-r border-blue-100 text-left">Fecha</th>
+                      <th className="px-4 py-4 border-r border-blue-100 text-left">Orden</th>
+                      <th className="px-4 py-4 border-r border-blue-100 text-left">FERT (Principal)</th>
+                      <th className="px-4 py-4 border-r border-blue-100 text-left">Descripción FERT</th>
+                      <th className="px-4 py-4 border-r border-blue-100 text-center">Cant. Orden</th>
+                      <th className="px-4 py-4 border-r border-blue-100 text-left">Componente (Lámina)</th>
+                      <th className="px-4 py-4 border-r border-blue-100 text-left">Descripción Componente</th>
+                      <th className="px-4 py-4 border-r border-blue-100 text-right">Cant. Unit.</th>
+                      <th className="px-4 py-4 text-right bg-blue-100/50 text-indigo-900">Total Necesidad (U)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 font-bold">
+                    {resumenNecesidades.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                        <td className="px-4 py-3 border-r border-gray-100 text-gray-400 font-mono text-[9px]">{row.fecha}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-gray-500 font-black">{row.orden}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 font-mono font-black text-red-600 tracking-tighter">{row.fert}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-gray-500 uppercase truncate max-w-[140px]" title={row.descripcionFert}>{row.descripcionFert}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-center text-slate-800 font-mono">{row.cantOrden}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 font-mono font-black text-indigo-600">{row.componente}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase font-black text-slate-600">{row.descripcionComponente}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-right font-mono text-slate-500">{row.cantUnitaria.toFixed(3)}</td>
+                        <td className="px-4 py-3 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
+                          {row.cantTotal.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="sticky bottom-0 z-30 bg-[#1e293b] text-white font-black uppercase border-t border-slate-700">
+                    <tr>
+                      <td colSpan={8} className="px-4 py-3 text-right tracking-widest text-[9px] text-gray-400">Total Necesidad Técnicas Acumuladas:</td>
+                      <td className="px-4 py-3 text-right font-mono text-blue-300 text-xs">
+                        {resumenNecesidades.reduce((s, r) => s + r.cantTotal, 0).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          ) : !isProcessingResumen && (
+            <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+              <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie el cálculo para cruzar órdenes con recetas técnicas filtradas</p>
+            </div>
+          )}
+
+          <div className="px-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
+            <Info className="w-3.5 h-3.5 text-blue-500" />
+            <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">
+              Nota: Este resumen realiza una explosión jerárquica multinivel de cada material en la orden y aisla los componentes de tipo "Lámina Cilíndrica".
+            </p>
+          </div>
+        </TabsContent>
+
         <TabsContent value="listaMateriales" className="space-y-4 animate-in fade-in duration-300">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-200 shadow-sm text-left">
             <div className="flex items-center gap-3">
@@ -305,15 +557,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
                 <input 
                   type="text" 
-                  list="order-ferts"
                   placeholder="Buscar FERT Principal..." 
                   value={fertBusqueda}
                   onChange={(e) => setFertBusqueda(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
                 />
-                <datalist id="order-ferts">
-                  {uniqueFertsFromOrders.map(f => <option key={f} value={f} />)}
-                </datalist>
               </div>
               <Button 
                 type="submit"
@@ -347,7 +595,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       {paginatedBomRows.map((row, idx) => {
                         const nivelVal = safeNum(row.NIVEL);
                         const indentation = ".".repeat(nivelVal);
-                        
                         return (
                           <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
                             <td className="px-3 py-2 border-r border-gray-100 text-center text-slate-400 font-mono text-[9px]">
@@ -355,37 +602,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             </td>
                             <td className="px-3 py-2 border-r border-gray-100 text-gray-400 text-center">{row.CENTRO}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-indigo-600 tracking-tighter">{row.FERT_PRINCIPAL}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-gray-500 uppercase truncate max-w-[150px]" title={row.DESCRIPCION_FERT}>
-                              {row.DESCRIPCION_FERT}
-                            </td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-gray-500 uppercase truncate max-w-[150px]" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-gray-400 tracking-tighter">{row.MATERIAL_PADRE}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-700 tracking-tighter">{row.COMPONENTE}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-left">
-                              <span className="uppercase font-black tracking-tight text-slate-600">
-                                {row.DESCRIPCION_COMPONENTE}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-right font-mono text-slate-500">
-                              {row.CANTIDAD_UNITARIA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono text-slate-800">
-                              {row.CANTIDAD_ACUMULADA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                            </td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-left uppercase font-black text-slate-600">{row.DESCRIPCION_COMPONENTE}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-right font-mono text-slate-500">{row.CANTIDAD_UNITARIA.toFixed(3)}</td>
+                            <td className="px-3 py-2 text-right font-mono text-slate-800">{row.CANTIDAD_ACUMULADA.toFixed(3)}</td>
                           </tr>
                         );
                       })}
                     </tbody>
-                    <tfoot className="sticky bottom-0 z-30 bg-[#1e293b] text-white font-black uppercase border-t border-slate-700">
-                      <tr>
-                        <td colSpan={7} className="px-4 py-2.5 text-right tracking-widest text-[8px] text-gray-400">Total general:</td>
-                        <td className="px-3 py-2.5 text-right font-mono border-r border-white/10 text-xs">
-                          {bomTotals.unitaria.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                        </td>
-                        <td className="px-3 py-2.5 text-right font-mono text-blue-300 text-xs">
-                          {bomTotals.acumulada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                        </td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
               </div>
@@ -400,14 +626,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   >
                     {[100, 250, 500].map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
-                  <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">
-                    Página {bomPage} de {totalBomPages}
-                  </span>
                 </div>
 
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="icon" onClick={() => setBomPage(1)} disabled={bomPage === 1} className="h-7 w-7 rounded-lg"><ChevronsLeft className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="icon" onClick={() => setBomPage(prev => Math.max(1, prev - 1))} disabled={bomPage === 1} className="h-7 w-7 rounded-lg"><ChevronLeft className="h-3.5 w-3.5" /></Button>
+                  <div className="px-4 text-[9px] font-black text-gray-700 uppercase">Página {bomPage} / {totalBomPages}</div>
                   <Button variant="ghost" size="icon" onClick={() => setBomPage(prev => Math.min(totalBomPages, prev + 1))} disabled={bomPage === totalBomPages} className="h-7 w-7 rounded-lg"><ChevronRight className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="icon" onClick={() => setBomPage(totalBomPages)} disabled={bomPage === totalBomPages} className="h-7 w-7 rounded-lg"><ChevronsRight className="h-3.5 w-3.5" /></Button>
                 </div>
@@ -416,16 +640,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isSearchingBOM && (
             <div className="py-20 text-center bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200">
               <DatabaseZap className="w-12 h-12 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Ingrese un código FERT para consultar la estructura jerárquica filtrada</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Ingrese un código FERT para consultar la estructura técnica en SAP</p>
             </div>
           )}
-
-          <div className="px-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
-            <Info className="w-3.5 h-3.5 text-blue-500" />
-            <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">
-              Nota: La auditoría técnica muestra únicamente los componentes de tipo "Lámina Cilíndrica" dentro del BOOM seleccionado, excluyendo datos de la Planta Guayaquil.
-            </p>
-          </div>
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
