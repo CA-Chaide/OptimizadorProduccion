@@ -16,7 +16,7 @@ import {
   ChevronRight, 
   ChevronsLeft, 
   ChevronsRight,
-  DatabaseZap // Se agrega la importación faltante
+  DatabaseZap
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -156,7 +156,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const rawData = response?.data?.data || response?.data || [];
 
       if (Array.isArray(rawData)) {
-        // Filtrar estrictamente para excluir Centro 2000
         const filtered = rawData
           .filter(row => getProp(row, 'CENTRO') !== '2000')
           .map(row => ({
@@ -237,18 +236,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-5 py-4 border-r border-white/5">Material</th>
                     <th className="px-5 py-4 border-r border-white/5 text-left">Descripción</th>
                     <th className="px-5 py-4 border-r border-white/5">Cant.</th>
+                    <th className="px-5 py-4 border-r border-white/5">Responsable</th>
                     <th className="px-5 py-4 border-r border-white/5">Máquina</th>
                     <th className="px-5 py-4">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {ordenes.length === 0 ? (
-                    <tr><td colSpan={7} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin órdenes cargadas</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin órdenes cargadas</td></tr>
                   ) : (
                     ordenes.map((o, i) => {
                       const info = extractMaterialInfo(o);
                       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                       const maquina = String(o.MAQUINA || o.Maquina || o.recurso || o.RECURSO || '—').trim();
+                      const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '—').trim();
 
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors group">
@@ -257,6 +258,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
                           <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 truncate max-w-[350px] text-gray-600 font-bold uppercase">{info.desc}</td>
                           <td className="px-4 py-4 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-indigo-600 bg-indigo-50/5 uppercase">{responsable}</td>
                           <td className="px-4 py-4 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
                           <td className="px-4 py-4 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
