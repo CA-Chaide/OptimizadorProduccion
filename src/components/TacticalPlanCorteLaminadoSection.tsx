@@ -18,7 +18,9 @@ import {
   ChevronsRight,
   DatabaseZap,
   TrendingUp,
-  History
+  History,
+  Layers,
+  Box
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -146,7 +148,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const handleSearchBOM = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!fertBusqueda.trim()) {
-      addNotification('warning', 'Ingrese un código de material para buscar su BOOM.');
+      addNotification('warning', 'Ingrese un código FERT para consultar su BOOM.');
       return;
     }
 
@@ -156,12 +158,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     try {
       const fullCode = fertBusqueda.trim().padStart(18, '0');
-      // Consulta al motor de SAP con el Centro 1000
+      // Consulta al motor de SAP (Centro 1000 por defecto para la búsqueda)
       const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 5000);
       const rawData = response?.data?.data || response?.data || [];
 
       if (Array.isArray(rawData)) {
-        // Filtro estricto: EXCLUIR CENTRO 2000
+        // Filtro: Excluir Centro 2000
         const filtered = rawData
           .filter(row => getProp(row, 'CENTRO') !== '2000')
           .map(row => ({
@@ -178,13 +180,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         
         setBomRows(filtered);
         if (filtered.length === 0) {
-          addNotification('info', 'No se encontraron componentes locales para este material.');
+          addNotification('info', 'No se encontraron registros técnicos locales.');
         }
-      } else {
-        addNotification('info', 'La consulta no devolvió una estructura técnica válida.');
       }
     } catch (err) {
-      addNotification('error', 'Error al consultar la lista maestra de SAP.');
+      addNotification('error', 'Error al consultar el BOOM técnico.');
     } finally {
       setIsSearchingBOM(false);
     }
@@ -204,7 +204,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }), { unitaria: 0, acumulada: 0 });
   }, [bomRows]);
 
-  // Lista de FERTs únicos de las órdenes para el buscador rápido
   const uniqueFertsFromOrders = useMemo(() => {
     const ferts = new Set<string>();
     ordenes.forEach(o => {
@@ -223,12 +222,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Auditoría de Órdenes y Lista de Materiales (BOM)</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión Operativa de Órdenes y Auditoría Técnica (BOOM)</p>
           </div>
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs defaultValue="ordenes" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
@@ -290,7 +289,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="listaMateriales" className="space-y-4 animate-in fade-in duration-300">
-          {/* Header Compacto con Buscador */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-200 shadow-sm text-left">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600">
@@ -298,8 +296,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter leading-tight">Auditoría Jerárquica de Materiales (BOM)</h3>
-                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">
-                  Filtro: Excluye Centro 2000 | Niveles 0-5
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                  Visualización estructural SAP | Excluye Planta Guayaquil
                 </p>
               </div>
             </div>
@@ -329,7 +327,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </form>
           </div>
 
-          {/* Tabla de Resultados Estructural */}
           {!isSearchingBOM && bomRows.length > 0 ? (
             <div className="space-y-4">
               <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
@@ -352,9 +349,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       {paginatedBomRows.map((row, idx) => {
                         const nivelVal = safeNum(row.NIVEL);
                         const indentation = ".".repeat(nivelVal);
+                        const isLamina = String(row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('LAMINA CILINDRICA');
                         
                         return (
-                          <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                          <tr key={idx} className={cn(
+                            "hover:bg-blue-50/30 transition-colors",
+                            isLamina ? "bg-amber-50/40 border-l-4 border-l-amber-400" : ""
+                          )}>
                             <td className="px-3 py-2 border-r border-gray-100 text-center text-slate-400 font-mono text-[9px]">
                               {indentation}{nivelVal}
                             </td>
@@ -365,13 +366,23 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             </td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-gray-400 tracking-tighter">{row.MATERIAL_PADRE}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-700 tracking-tighter">{row.COMPONENTE}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-slate-600 uppercase truncate max-w-[250px]" title={row.DESCRIPCION_COMPONENTE}>
-                              {row.DESCRIPCION_COMPONENTE}
+                            <td className="px-3 py-2 border-r border-gray-100 text-left relative">
+                              <span className={cn(
+                                "uppercase font-black tracking-tight",
+                                isLamina ? "text-amber-700" : "text-slate-600"
+                              )}>
+                                {row.DESCRIPCION_COMPONENTE}
+                              </span>
+                              {isLamina && (
+                                <Badge className="ml-2 bg-amber-500 hover:bg-amber-600 text-white text-[8px] font-black h-4 uppercase tracking-tighter leading-none px-1">
+                                  Lámina Crítica
+                                </Badge>
+                              )}
                             </td>
                             <td className="px-3 py-2 border-r border-gray-100 text-right font-mono text-slate-500">
                               {row.CANTIDAD_UNITARIA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono text-slate-800 bg-slate-50/30">
+                            <td className="px-3 py-2 text-right font-mono text-slate-800">
                               {row.CANTIDAD_ACUMULADA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                             </td>
                           </tr>
@@ -393,7 +404,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
               </div>
 
-              {/* Paginación Compacta */}
               <div className="flex items-center justify-between gap-4 px-2">
                 <div className="flex items-center gap-3">
                   <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Filas:</span>
@@ -420,14 +430,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isSearchingBOM && (
             <div className="py-20 text-center bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200">
               <DatabaseZap className="w-12 h-12 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Ingrese un código de material para auditar su estructura técnica en SAP</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Ingrese un código FERT para consultar la estructura técnica en SAP</p>
             </div>
           )}
 
           <div className="px-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
             <Info className="w-3.5 h-3.5 text-blue-500" />
             <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">
-              Nota: La información técnica es consultada en tiempo real. Se excluye la Planta Guayaquil (Centro 2000) por requerimiento operativo.
+              Nota: La auditoría técnica resalta automáticamente las láminas cilíndricas para priorizar su control operativo en el flujo de laminado.
             </p>
           </div>
         </TabsContent>
