@@ -73,6 +73,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [bomPage, setBomPage] = useState(1);
   const [bomRowsPerPage, setBomRowsPerPage] = useState(100);
+  const [bomSearch, setBomSearch] = useState('');
 
   const HOJAS_RUTA_VALIDAS = ["HR-ACH", "HR-BO", "HR-LAMIN"];
 
@@ -215,14 +216,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // MOTOR DE EXPLOSIÓN TÉCNICA AUTOMÁTICA
+  // MOTOR DE EXPLOSIÓN TÉCNICA AUTOMÁTICA (EXCLUYE CENTRO 2000)
   const handleProcessExplosion = async () => {
-    // Filtrar órdenes que NO son del centro 2000
-    const ordersForExplosion = filteredOrdersFlat.filter(o => 
-      String(o.CENTRO || o.Centro || '').trim() !== '2000'
-    );
-    
-    if (ordersForExplosion.length === 0) {
+    if (filteredOrdersFlat.length === 0) {
       setBomRows([]);
       return;
     }
@@ -230,18 +226,19 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setIsExploding(true);
     setBomRows([]);
     setBomPage(1);
-    setExplosionProgress({ current: 0, total: ordersForExplosion.length });
+    setExplosionProgress({ current: 0, total: filteredOrdersFlat.length });
 
     const allRows: RawBOMRow[] = [];
-    const processedKeys = new Set<string>();
+    const processedCodes = new Set<string>();
 
     try {
-      for (let i = 0; i < ordersForExplosion.length; i++) {
-        const order = ordersForExplosion[i];
+      for (let i = 0; i < filteredOrdersFlat.length; i++) {
+        const order = filteredOrdersFlat[i];
         const { code } = extractMaterialInfo(order);
         const centro = String(order.CENTRO || order.Centro || "1000").trim();
         
-        if (processedKeys.has(`${code}|${centro}`)) {
+        // Evitamos re-explosionar el mismo código en el mismo proceso
+        if (processedCodes.has(code)) {
           setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
           continue;
         }
@@ -249,13 +246,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const fullCodeForApi = code.padStart(18, '0');
 
         try {
-          // Consultamos la explosión técnica íntegra desde SAP
+          // Consultamos la explosión técnica jerárquica desde SAP
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCodeForApi, 1, 5000);
           const rawData = response?.data?.data || response?.data || [];
 
           if (Array.isArray(rawData)) {
             rawData.forEach((row: any) => {
-              // EXCLUSIÓN ESTRICTA CENTRO 2000
+              // FILTRO MANDATORIO: EXCLUIR CENTRO 2000
               const rowCentro = getProp(row, 'CENTRO');
               if (rowCentro === '2000') return;
 
@@ -276,7 +273,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           console.warn(`Error al explosionar material ${code}:`, err);
         }
         
-        processedKeys.add(`${code}|${centro}`);
+        processedCodes.add(code);
         setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
@@ -291,23 +288,33 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   // Disparador automático al entrar en la pestaña
   useEffect(() => {
-    if (activeTab === 'listaMateriales' && !isExploding && ordenes.length > 0) {
+    if (activeTab === 'listaMateriales' && !isExploding && filteredOrdersFlat.length > 0) {
       handleProcessExplosion();
     }
-  }, [activeTab, ordenes.length]);
+  }, [activeTab, filteredOrdersFlat.length]);
 
-  const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
+  const filteredBomRows = useMemo(() => {
+    if (!bomSearch.trim()) return bomRows;
+    const q = bomSearch.toLowerCase();
+    return bomRows.filter(r => 
+      r.COMPONENTE.toLowerCase().includes(q) || 
+      r.DESCRIPCION_COMPONENTE.toLowerCase().includes(q) ||
+      r.FERT_PRINCIPAL.toLowerCase().includes(q)
+    );
+  }, [bomRows, bomSearch]);
+
+  const totalBomPages = Math.max(1, Math.ceil(filteredBomRows.length / bomRowsPerPage));
   const paginatedBomRows = useMemo(() => {
     const start = (bomPage - 1) * bomRowsPerPage;
-    return bomRows.slice(start, start + bomRowsPerPage);
-  }, [bomRows, bomPage, bomRowsPerPage]);
+    return filteredBomRows.slice(start, start + bomRowsPerPage);
+  }, [filteredBomRows, bomPage, bomRowsPerPage]);
 
   const bomTotals = useMemo(() => {
-    return bomRows.reduce((acc, row) => ({
+    return filteredBomRows.reduce((acc, row) => ({
       unitaria: acc.unitaria + row.CANTIDAD_UNITARIA,
       acumulada: acc.acumulada + row.CANTIDAD_ACUMULADA
     }), { unitaria: 0, acumulada: 0 });
-  }, [bomRows]);
+  }, [filteredBomRows]);
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
@@ -473,11 +480,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <ClipboardList className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales (Jerarquía Técnica)</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales (Planta Quito)</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Exclusivo Planta Local | Auditoría Íntegra por Nivel y Material Padre
+                  Jerarquía Técnica Enlazada | Auditoría Directa de Recetas SAP
                 </p>
               </div>
+            </div>
+            
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Buscar en BOOM..." 
+                value={bomSearch}
+                onChange={(e) => { setBomSearch(e.target.value); setBomPage(1); }}
+                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-red-500/50"
+              />
             </div>
           </div>
 
@@ -486,7 +504,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Sincronizando con SAP...
+                  Sincronizando BOOM con SAP...
                 </span>
                 <span>{explosionProgress.current} / {explosionProgress.total} materiales</span>
               </div>
@@ -516,7 +534,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       {paginatedBomRows.map((row, idx) => (
                         <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
                           <td className="px-4 py-2 border-r border-gray-100 font-black text-center text-slate-400">
-                            {row.NIVEL === '0' || row.NIVEL === '' ? '0' : `.${row.NIVEL}`}
+                            {row.NIVEL}
                           </td>
                           <td className="px-4 py-2 border-r border-gray-100 font-bold text-gray-500">{row.CENTRO}</td>
                           <td className="px-4 py-2 border-r border-gray-100 font-mono font-bold text-indigo-600">{row.FERT_PRINCIPAL}</td>
@@ -559,7 +577,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     {[100, 250, 500].map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                   <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
-                    Mostrando {Math.min(bomRows.length, (bomPage-1)*bomRowsPerPage + 1)}-{Math.min(bomRows.length, bomPage*bomRowsPerPage)} de {bomRows.length}
+                    Mostrando {Math.min(filteredBomRows.length, (bomPage-1)*bomRowsPerPage + 1)}-{Math.min(filteredBomRows.length, bomPage*bomRowsPerPage)} de {filteredBomRows.length}
                   </span>
                 </div>
 
@@ -584,7 +602,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
             <Info className="w-4 h-4 text-blue-600" />
             <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-              Nota: Auditoría íntegra basada en el método de explosión jerárquica multinivel de SAP.
+              Nota: Auditoría íntegra basada en la búsqueda jerárquica de componentes subordinados al material de la orden. Centro 2000 excluido por seguridad.
             </p>
           </div>
         </TabsContent>
