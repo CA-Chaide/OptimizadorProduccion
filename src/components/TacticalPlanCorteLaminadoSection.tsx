@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Scissors, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, DatabaseZap, PlayCircle, Info, ChevronsLeft, ChevronsRight, Search } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,15 +42,15 @@ const safeNum = (val: any): number => {
 // Helper robusto para extraer propiedades de objetos de la API SAP (Case-insensitive)
 const getProp = (obj: any, key: string): string => {
   if (!obj) return '';
-  const searchKey = key.toUpperCase();
-  const foundKey = Object.keys(obj).find(k => k.toUpperCase() === searchKey);
+  const searchKey = key.toUpperCase().trim();
+  const foundKey = Object.keys(obj).find(k => k.toUpperCase().trim() === searchKey);
   return foundKey ? String(obj[foundKey]).trim() : '';
 };
 
 const getNumProp = (obj: any, key: string): number => {
   if (!obj) return 0;
-  const searchKey = key.toUpperCase();
-  const foundKey = Object.keys(obj).find(k => k.toUpperCase() === searchKey);
+  const searchKey = key.toUpperCase().trim();
+  const foundKey = Object.keys(obj).find(k => k.toUpperCase().trim() === searchKey);
   return foundKey ? safeNum(obj[foundKey]) : 0;
 };
 
@@ -157,14 +157,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return map;
   }, [tiemposEnsamblado]);
 
-  const sortedTiempos = useMemo(() => {
-    return [...tiemposEnsamblado].sort((a, b) => {
-      const infoA = extractMaterialInfo(a);
-      const infoB = extractMaterialInfo(b);
-      return infoA.code.localeCompare(infoB.code);
-    });
-  }, [tiemposEnsamblado]);
-
   const groupedOrdersByRouting = useMemo(() => {
     const groups: Record<string, any[]> = {};
     HOJAS_RUTA_VALIDAS.forEach(hr => { groups[hr] = []; });
@@ -216,33 +208,29 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // MOTOR DE EXPLOSIÓN TÉCNICA AUTOMÁTICA (EXCLUYE CENTRO 2000)
+  // MOTOR DE EXPLOSIÓN TÉCNICA AUTOMÁTICA (SIN FILTROS DE OTROS TABS)
   const handleProcessExplosion = async () => {
-    if (filteredOrdersFlat.length === 0) {
-      setBomRows([]);
-      return;
-    }
+    if (ordenes.length === 0) return;
 
     setIsExploding(true);
     setBomRows([]);
     setBomPage(1);
-    setExplosionProgress({ current: 0, total: filteredOrdersFlat.length });
+    
+    // Obtenemos códigos únicos de las órdenes provisionales totales (sin filtros cruzados)
+    const uniqueOrderMaterials = Array.from(new Set(ordenes.map(o => extractMaterialInfo(o).code)));
+    
+    setExplosionProgress({ current: 0, total: uniqueOrderMaterials.length });
 
     const allRows: RawBOMRow[] = [];
-    const processedCodes = new Set<string>();
 
     try {
-      for (let i = 0; i < filteredOrdersFlat.length; i++) {
-        const order = filteredOrdersFlat[i];
-        const { code } = extractMaterialInfo(order);
-        const centro = String(order.CENTRO || order.Centro || "1000").trim();
+      for (let i = 0; i < uniqueOrderMaterials.length; i++) {
+        const code = uniqueOrderMaterials[i];
         
-        // Evitamos re-explosionar el mismo código en el mismo proceso
-        if (processedCodes.has(code)) {
-          setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
-          continue;
-        }
-
+        // Buscamos una orden de referencia para el centro, priorizando el 1000 si hay conflicto
+        const refOrder = ordenes.find(o => extractMaterialInfo(o).code === code);
+        const centro = String(refOrder?.CENTRO || refOrder?.Centro || "1000").trim();
+        
         const fullCodeForApi = code.padStart(18, '0');
 
         try {
@@ -273,7 +261,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           console.warn(`Error al explosionar material ${code}:`, err);
         }
         
-        processedCodes.add(code);
         setExplosionProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
@@ -288,10 +275,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   // Disparador automático al entrar en la pestaña
   useEffect(() => {
-    if (activeTab === 'listaMateriales' && !isExploding && filteredOrdersFlat.length > 0) {
+    if (activeTab === 'listaMateriales' && !isExploding && ordenes.length > 0 && bomRows.length === 0) {
       handleProcessExplosion();
     }
-  }, [activeTab, filteredOrdersFlat.length]);
+  }, [activeTab, ordenes.length]);
 
   const filteredBomRows = useMemo(() => {
     if (!bomSearch.trim()) return bomRows;
@@ -299,7 +286,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return bomRows.filter(r => 
       r.COMPONENTE.toLowerCase().includes(q) || 
       r.DESCRIPCION_COMPONENTE.toLowerCase().includes(q) ||
-      r.FERT_PRINCIPAL.toLowerCase().includes(q)
+      r.FERT_PRINCIPAL.toLowerCase().includes(q) ||
+      r.MATERIAL_PADRE.toLowerCase().includes(q)
     );
   }, [bomRows, bomSearch]);
 
@@ -325,7 +313,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión Técnica: HR-ACH, HR-BO, HR-LAMIN</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión Técnica y Auditoría de BOOM</p>
           </div>
         </div>
       </div>
@@ -345,7 +333,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="plan" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
+           <div className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-600/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-red-600" /></div>
               <div>
@@ -392,25 +380,25 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
+            <Card className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carga Operativa (Autorizada)</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-red-600" />
                 <p className="text-xl font-black text-gray-800">{filteredOrdersFlat.length}</p>
               </div>
-            </div>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
+            </Card>
+            <Card className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Actividad Técnica</p>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-600" />
                 <p className="text-xl font-black text-gray-800">{HOJAS_RUTA_VALIDAS.length} Rutas</p>
               </div>
-            </div>
+            </Card>
           </div>
         </TabsContent>
 
         <TabsContent value="ordenes" className="animate-in fade-in duration-300">
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-tight">
@@ -420,50 +408,32 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-5 py-4 border-r border-white/5">Material</th>
                     <th className="px-5 py-4 border-r border-white/5 text-left">Descripción</th>
                     <th className="px-5 py-4 border-r border-white/5">Cant.</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-blue-300">Línea Maestra</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-blue-300">Hoja Ruta</th>
                     <th className="px-5 py-4 border-r border-white/5 text-amber-300">Máquina</th>
                     <th className="px-5 py-4">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredOrdersFlat.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30">Sin órdenes autorizadas en este horizonte</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin órdenes autorizadas en este horizonte</td></tr>
                   ) : (
-                    Object.entries(groupedOrdersByRouting).map(([routingKey, items]) => {
-                      if (items.length === 0) return null;
-                      return (
-                        <React.Fragment key={routingKey}>
-                          <tr className="bg-slate-50 border-y border-gray-200 text-left">
-                            <td colSpan={8} className="px-6 py-2">
-                              <div className="flex items-center gap-3">
-                                <div className="w-1.5 h-4 bg-red-600 rounded-full" />
-                                <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                                  HOJA DE RUTA: {routingKey} ({items.length} Órdenes)
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-                          {items.map((o, i) => {
-                            const info = extractMaterialInfo(o);
-                            const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                            const maestroData = tiemposMap.get(info.code);
-                            const lineaMaestra = maestroData?.Linea || maestroData?.linea || '—';
-                            const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
+                    filteredOrdersFlat.map((o, i) => {
+                      const info = extractMaterialInfo(o);
+                      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                      const maestroData = tiemposMap.get(info.code);
+                      const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
 
-                            return (
-                              <tr key={`${routingKey}-${i}`} className="hover:bg-gray-50 transition-colors group">
-                                <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                                <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                                <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
-                                <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 truncate max-w-[280px] text-gray-600 font-bold uppercase">{info.desc}</td>
-                                <td className="px-4 py-4 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
-                                <td className="px-4 py-4 font-black text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/10 uppercase italic">{lineaMaestra}</td>
-                                <td className="px-4 py-4 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
-                                <td className="px-4 py-4 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
-                              </tr>
-                            );
-                          })}
-                        </React.Fragment>
+                      return (
+                        <tr key={i} className="hover:bg-gray-50 transition-colors group">
+                          <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                          <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
+                          <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 truncate max-w-[280px] text-gray-600 font-bold uppercase">{info.desc}</td>
+                          <td className="px-4 py-4 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
+                          <td className="px-4 py-4 font-black text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/10 uppercase italic">{maestroData?.HojaRuta || '—'}</td>
+                          <td className="px-4 py-4 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
+                          <td className="px-4 py-4 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                        </tr>
                       );
                     })
                   )}
@@ -474,7 +444,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm text-left">
+           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm text-left">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600">
                 <ClipboardList className="w-6 h-6" />
@@ -482,7 +452,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales (Planta Quito)</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Jerarquía Técnica Enlazada | Auditoría Directa de Recetas SAP
+                  Carga automática desde SAP | Exclusión Planta Gye | Auditoría Técnica
                 </p>
               </div>
             </div>
@@ -504,9 +474,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Sincronizando BOOM con SAP...
+                  Consultando motor SAP...
                 </span>
-                <span>{explosionProgress.current} / {explosionProgress.total} materiales</span>
+                <span>{explosionProgress.current} / {explosionProgress.total} materiales base</span>
               </div>
               <Progress value={(explosionProgress.current / explosionProgress.total) * 100} className="h-2 bg-indigo-100" />
             </div>
@@ -602,13 +572,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
             <Info className="w-4 h-4 text-blue-600" />
             <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-              Nota: Auditoría íntegra basada en la búsqueda jerárquica de componentes subordinados al material de la orden. Centro 2000 excluido por seguridad.
+              Nota: Auditoría íntegra basada en la búsqueda jerárquica de componentes. Centro 2000 excluido automáticamente.
             </p>
           </div>
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[700px]">
               <table className="w-full border-collapse text-center">
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
@@ -623,16 +593,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px]">
-                  {sortedTiempos.length === 0 ? (
+                  {tiemposEnsamblado.length === 0 ? (
                     <tr><td colSpan={7} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin registros técnicos cargados</td></tr>
                   ) : (
-                    sortedTiempos.map((t, i) => {
+                    tiemposEnsamblado.map((t, i) => {
                       const info = extractMaterialInfo(t);
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-4 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
                           <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 font-bold uppercase truncate max-w-[280px]">{info.desc}</td>
-                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || '—'}</td>
                           <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
                           <td className="px-4 py-4 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/5">
                             {Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
