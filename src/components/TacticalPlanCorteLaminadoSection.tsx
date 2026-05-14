@@ -74,8 +74,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [bomRowsPerPage, setBomRowsPerPage] = useState(100);
   const [bomSearch, setBomSearch] = useState('');
 
-  const HOJAS_RUTA_VALIDAS = ["HR-ACH", "HR-BO", "HR-LAMIN"];
-
   const fetchGrupos = async () => {
     try {
       const res = await grupoService.getAll();
@@ -157,6 +155,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [tiemposEnsamblado]);
 
   const groupedOrdersByRouting = useMemo(() => {
+    const HOJAS_RUTA_VALIDAS = ["HR-ACH", "HR-BO", "HR-LAMIN"];
     const groups: Record<string, any[]> = {};
     HOJAS_RUTA_VALIDAS.forEach(hr => { groups[hr] = []; });
 
@@ -207,15 +206,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  // MOTOR DE EXPLOSIÓN TÉCNICA AUTOMÁTICA
+  // MOTOR DE EXPLOSIÓN TÉCNICA MANUAL
   const handleProcessExplosion = async () => {
-    if (ordenes.length === 0) return;
+    if (ordenes.length === 0) {
+      addNotification('warning', 'No hay órdenes provisionales cargadas para procesar.');
+      return;
+    }
 
     setIsExploding(true);
     setBomRows([]);
     setBomPage(1);
     
-    // Obtenemos códigos únicos de las órdenes provisionales
+    // Obtenemos códigos únicos de las órdenes provisionales actuales
     const uniqueOrderMaterials = Array.from(new Set(ordenes.map(o => extractMaterialInfo(o).code)));
     
     setExplosionProgress({ current: 0, total: uniqueOrderMaterials.length });
@@ -229,7 +231,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const centro = String(refOrder?.CENTRO || refOrder?.Centro || "1000").trim();
         
         try {
-          // Consultamos la explosión técnica jerárquica desde SAP mediante el nuevo procedimiento unificado
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, code, 1, 5000);
           const rawData = response?.data?.data || response?.data || [];
 
@@ -261,19 +262,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       setBomRows(allRows);
       inspector.captureVariable('bomRowsCount', allRows.length);
+      addNotification('success', `Explosión técnica completada con ${allRows.length} componentes.`);
     } catch (err) {
-      console.error(`Error crítico en explosión: ${(err as Error).message}`);
+      addNotification('error', `Error crítico en explosión: ${(err as Error).message}`);
     } finally {
       setIsExploding(false);
     }
   };
-
-  // Disparador automático al entrar en la pestaña
-  useEffect(() => {
-    if (activeTab === 'listaMateriales' && !isExploding && ordenes.length > 0 && bomRows.length === 0) {
-      handleProcessExplosion();
-    }
-  }, [activeTab, ordenes.length]);
 
   const filteredBomRows = useMemo(() => {
     if (!bomSearch.trim()) return bomRows;
@@ -396,7 +391,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       const info = extractMaterialInfo(o);
                       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                       const maestroData = tiemposMap.get(info.code);
-                      const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
+                      const maquina = String(o.MAQUINA || o.Maquina || o.recurso || o.RECURSO || '—').trim();
 
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors group">
@@ -405,7 +400,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
                           <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 truncate max-w-[280px] text-gray-600 font-bold uppercase">{info.desc}</td>
                           <td className="px-4 py-4 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
-                          <td className="px-4 py-4 font-black text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/10 uppercase italic">{maestroData?.HojaRuta || '—'}</td>
+                          <td className="px-4 py-4 font-black text-indigo-700 border-r border-dashed border-gray-100 bg-indigo-50/10 uppercase italic">{maestroData?.HojaRuta || o.HojaRuta || '—'}</td>
                           <td className="px-4 py-4 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
                           <td className="px-4 py-4 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
@@ -425,22 +420,32 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <ClipboardList className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales (Planta Quito)</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">BOOM de Lista de Materiales (Auditoría Técnica)</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Integración Directa SAP | Exclusión Planta Gye | Auditoría Jerárquica
+                  Integración Directa SAP | Exclusión Planta Gye | Filtrado por Fert de Órdenes
                 </p>
               </div>
             </div>
             
-            <div className="relative w-full md:w-64">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Buscar en el BOOM..." 
-                value={bomSearch}
-                onChange={(e) => { setBomSearch(e.target.value); setBomPage(1); }}
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-red-500/50"
-              />
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <input 
+                  type="text" 
+                  placeholder="Buscar en el BOOM..." 
+                  value={bomSearch}
+                  onChange={(e) => { setBomSearch(e.target.value); setBomPage(1); }}
+                  className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                />
+              </div>
+              <Button 
+                onClick={handleProcessExplosion} 
+                disabled={isExploding || ordenes.length === 0}
+                className="bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest transition-all shadow-md shrink-0"
+              >
+                {isExploding ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                Explosionar Recetas Técnicas
+              </Button>
             </div>
           </div>
 
@@ -449,9 +454,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <Activity className="w-3 h-3" />
-                  Consultando Motor Técnico SAP...
+                  Sincronizando Estructura SAP...
                 </span>
-                <span>{explosionProgress.current} / {explosionProgress.total} materiales procesados</span>
+                <span>{explosionProgress.current} / {explosionProgress.total} materiales base</span>
               </div>
               <Progress value={(explosionProgress.current / explosionProgress.total) * 100} className="h-2 bg-indigo-100" />
             </div>
@@ -462,7 +467,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-xl">
                 <div className="overflow-x-auto max-h-[600px] relative text-left">
                   <table className="w-full border-collapse font-sans text-[10px]">
-                    <thead className="bg-[#bde0fe] text-[#003566] uppercase font-black tracking-tight sticky top-0 z-20 border-b border-blue-200">
+                    <thead className="bg-[#bde0fe] text-[#000000] uppercase font-black tracking-tight sticky top-0 z-20 border-b border-blue-200">
                       <tr>
                         <th className="px-4 py-3 border-r border-blue-200 text-center">NIVEL</th>
                         <th className="px-4 py-3 border-r border-blue-200">CENTRO</th>
@@ -478,12 +483,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-100">
                       {paginatedBomRows.map((row, idx) => (
                         <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
-                          <td className="px-4 py-2 border-r border-gray-100 font-black text-center text-slate-400">
+                          <td className="px-4 py-2 border-r border-gray-100 font-black text-center text-slate-500">
                             {row.NIVEL}
                           </td>
                           <td className="px-4 py-2 border-r border-gray-100 font-bold text-gray-500">{row.CENTRO}</td>
                           <td className="px-4 py-2 border-r border-gray-100 font-mono font-bold text-indigo-600">{row.FERT_PRINCIPAL}</td>
-                          <td className="px-4 py-2 border-r border-gray-100 text-gray-400 font-bold uppercase truncate max-w-[180px]">{row.DESCRIPCION_FERT}</td>
+                          <td className="px-4 py-2 border-r border-gray-100 text-gray-400 font-bold uppercase truncate max-w-[180px]" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td>
                           <td className="px-4 py-2 border-r border-gray-100 font-mono text-gray-400">{row.MATERIAL_PADRE}</td>
                           <td className="px-4 py-2 border-r border-gray-100 font-mono font-black text-slate-700">{row.COMPONENTE}</td>
                           <td className="px-4 py-2 border-r border-gray-100 font-black text-slate-600 uppercase">{row.DESCRIPCION_COMPONENTE}</td>
@@ -496,13 +501,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="sticky bottom-0 z-30 bg-slate-100 text-slate-800 font-black uppercase border-t-2 border-slate-300">
+                    <tfoot className="sticky bottom-0 z-30 bg-[#0f172a] text-white font-black uppercase border-t-2 border-slate-700">
                       <tr>
-                        <td colSpan={7} className="px-4 py-3 text-right tracking-widest bg-slate-50">Total general:</td>
-                        <td className="px-4 py-3 text-right font-mono bg-white border-r border-slate-200">
+                        <td colSpan={7} className="px-4 py-3 text-right tracking-widest">Total general:</td>
+                        <td className="px-4 py-3 text-right font-mono border-r border-white/10">
                           {bomTotals.unitaria.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono bg-white text-indigo-700">
+                        <td className="px-4 py-3 text-right font-mono text-blue-300">
                           {bomTotals.acumulada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
                       </tr>
@@ -540,14 +545,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isExploding && (
             <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
               <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Analizando Estructura Técnica en SAP...</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Presione el botón para consultar el motor técnico de SAP</p>
             </div>
           )}
 
-          <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
+          <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2 text-left shadow-sm">
             <Info className="w-4 h-4 text-blue-600" />
             <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-              Nota: Auditoría íntegra basada en el método de explosión jerárquica masiva de SAP.
+              Nota: Auditoría íntegra basada en el método de explosión jerárquica multinivel. Los datos del Centro 2000 han sido excluidos.
             </p>
           </div>
         </TabsContent>
