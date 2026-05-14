@@ -16,11 +16,15 @@ import {
   ChevronRight, 
   ChevronsLeft, 
   ChevronsRight,
-  DatabaseZap
+  DatabaseZap,
+  TrendingUp,
+  History
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from "@/components/ui/progress";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -152,10 +156,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     try {
       const fullCode = fertBusqueda.trim().padStart(18, '0');
+      // Consulta al motor de SAP con el Centro 1000
       const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 5000);
       const rawData = response?.data?.data || response?.data || [];
 
       if (Array.isArray(rawData)) {
+        // Filtro estricto: EXCLUIR CENTRO 2000
         const filtered = rawData
           .filter(row => getProp(row, 'CENTRO') !== '2000')
           .map(row => ({
@@ -172,13 +178,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         
         setBomRows(filtered);
         if (filtered.length === 0) {
-          addNotification('info', 'No se encontraron componentes para este material (Excluyendo GYE).');
+          addNotification('info', 'No se encontraron componentes locales para este material.');
         }
       } else {
-        addNotification('info', 'La consulta no devolvió una estructura jerárquica válida.');
+        addNotification('info', 'La consulta no devolvió una estructura técnica válida.');
       }
     } catch (err) {
-      addNotification('error', 'Error al consultar el motor de SAP.');
+      addNotification('error', 'Error al consultar la lista maestra de SAP.');
     } finally {
       setIsSearchingBOM(false);
     }
@@ -198,6 +204,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }), { unitaria: 0, acumulada: 0 });
   }, [bomRows]);
 
+  // Lista de FERTs únicos de las órdenes para el buscador rápido
+  const uniqueFertsFromOrders = useMemo(() => {
+    const ferts = new Set<string>();
+    ordenes.forEach(o => {
+      const info = extractMaterialInfo(o);
+      if (info.code) ferts.add(info.code);
+    });
+    return Array.from(ferts).sort();
+  }, [ordenes]);
+
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
   return (
@@ -207,7 +223,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión de Órdenes y Auditoría de Lista de Materiales (BOM)</p>
+            <p className="text-xs text-gray-500 font-medium">Auditoría de Órdenes y Lista de Materiales (BOM)</p>
           </div>
         </div>
       </div>
@@ -258,7 +274,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
                           <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 truncate max-w-[350px] text-gray-600 font-bold uppercase">{info.desc}</td>
                           <td className="px-4 py-4 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
-                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-indigo-600 bg-indigo-50/5 uppercase">{responsable}</td>
+                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-indigo-600 bg-indigo-50/5 uppercase">
+                            <Badge variant="outline" className="text-[10px] font-bold border-indigo-200 bg-indigo-50/50">{responsable}</Badge>
+                          </td>
                           <td className="px-4 py-4 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
                           <td className="px-4 py-4 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
@@ -271,86 +289,102 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm text-left">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600 shadow-inner">
-                <ClipboardList className="w-8 h-8" />
+        <TabsContent value="listaMateriales" className="space-y-4 animate-in fade-in duration-300">
+          {/* Header Compacto con Buscador */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-200 shadow-sm text-left">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600">
+                <ClipboardList className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-gray-800 uppercase tracking-tighter leading-none">BOOM de Lista de Materiales</h3>
-                <h4 className="text-sm font-bold text-gray-400 uppercase tracking-tighter">(Auditoría Técnica)</h4>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-2">
-                  Integración Directa SAP | Exclusión Planta GYE | Búsqueda por FERT
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter leading-tight">Auditoría Jerárquica de Materiales (BOM)</h3>
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">
+                  Filtro: Excluye Centro 2000 | Niveles 0-5
                 </p>
               </div>
             </div>
             
-            <form onSubmit={handleSearchBOM} className="flex items-center gap-3 w-full md:w-auto">
-              <div className="relative w-full md:w-80">
-                <Search className="absolute left-4 top-3.5 h-4 w-4 text-gray-400" />
+            <form onSubmit={handleSearchBOM} className="flex items-center gap-2 w-full md:w-auto">
+              <div className="relative flex-1 md:w-64">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
                 <input 
                   type="text" 
-                  placeholder="Ingrese Código de Material (FERT)..." 
+                  list="order-ferts"
+                  placeholder="Buscar FERT Principal..." 
                   value={fertBusqueda}
                   onChange={(e) => setFertBusqueda(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all"
+                  className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
                 />
+                <datalist id="order-ferts">
+                  {uniqueFertsFromOrders.map(f => <option key={f} value={f} />)}
+                </datalist>
               </div>
               <Button 
                 type="submit"
                 disabled={isSearchingBOM}
-                className="bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl h-12 px-8 text-[11px] font-black uppercase tracking-widest transition-all shadow-lg"
+                className="bg-[#1e293b] hover:bg-slate-800 text-white rounded-lg h-9 px-4 text-[10px] font-black uppercase tracking-widest transition-all"
               >
-                {isSearchingBOM ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Consultar SAP'}
+                {isSearchingBOM ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Auditar'}
               </Button>
             </form>
           </div>
 
+          {/* Tabla de Resultados Estructural */}
           {!isSearchingBOM && bomRows.length > 0 ? (
             <div className="space-y-4">
-              <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-2xl">
-                <div className="overflow-x-auto max-h-[600px] relative text-left">
+              <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                <div className="overflow-x-auto max-h-[550px] relative text-left">
                   <table className="w-full border-collapse font-sans text-[10px]">
-                    <thead className="bg-[#bde0fe] text-black uppercase font-black tracking-tight sticky top-0 z-20 border-b border-blue-200">
+                    <thead className="bg-[#bde0fe] text-slate-800 uppercase font-black tracking-tight sticky top-0 z-20 border-b border-blue-200">
                       <tr>
-                        <th className="px-4 py-4 border-r border-blue-100 text-center w-16">Nivel</th>
-                        <th className="px-4 py-4 border-r border-blue-100 w-20">Centro</th>
-                        <th className="px-4 py-4 border-r border-blue-100 w-32">FERT Principal</th>
-                        <th className="px-4 py-4 border-r border-blue-100">Descripción FERT</th>
-                        <th className="px-4 py-4 border-r border-blue-100 w-32">Material Padre</th>
-                        <th className="px-4 py-4 border-r border-blue-100 w-32">Componente</th>
-                        <th className="px-4 py-4 border-r border-blue-100">Descripción Componente</th>
-                        <th className="px-4 py-4 border-r border-blue-100 text-right w-32">Cant. Unitaria</th>
-                        <th className="px-4 py-4 text-right w-32">Cant. Acumulada</th>
+                        <th className="px-3 py-3 border-r border-blue-100 text-center w-14">NV</th>
+                        <th className="px-3 py-3 border-r border-blue-100 w-16">CT</th>
+                        <th className="px-3 py-3 border-r border-blue-100 w-28">FERT Principal</th>
+                        <th className="px-3 py-3 border-r border-blue-100">Descripción FERT</th>
+                        <th className="px-3 py-3 border-r border-blue-100 w-28">Material Padre</th>
+                        <th className="px-3 py-3 border-r border-blue-100 w-28">Componente</th>
+                        <th className="px-3 py-3 border-r border-blue-100">Descripción Componente</th>
+                        <th className="px-3 py-3 border-r border-blue-100 text-right w-24">Cant. Unit.</th>
+                        <th className="px-3 py-3 text-right w-24">Cant. Acum.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 font-bold">
-                      {paginatedBomRows.map((row, idx) => (
-                        <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
-                          <td className="px-4 py-3 border-r border-gray-100 text-center text-slate-500 font-black">{row.NIVEL}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 text-gray-500">{row.CENTRO}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600">{row.FERT_PRINCIPAL}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 text-gray-400 uppercase truncate max-w-[200px]" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 font-mono text-gray-400">{row.MATERIAL_PADRE}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-700">{row.COMPONENTE}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 text-slate-600 uppercase">{row.DESCRIPCION_COMPONENTE}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 text-right font-mono text-slate-500">
-                            {row.CANTIDAD_UNITARIA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-slate-800 bg-slate-50/30">
-                            {row.CANTIDAD_ACUMULADA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                          </td>
-                        </tr>
-                      ))}
+                      {paginatedBomRows.map((row, idx) => {
+                        const nivelVal = safeNum(row.NIVEL);
+                        const indentation = ".".repeat(nivelVal);
+                        
+                        return (
+                          <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                            <td className="px-3 py-2 border-r border-gray-100 text-center text-slate-400 font-mono text-[9px]">
+                              {indentation}{nivelVal}
+                            </td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-gray-400 text-center">{row.CENTRO}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-indigo-600 tracking-tighter">{row.FERT_PRINCIPAL}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-gray-500 uppercase truncate max-w-[150px]" title={row.DESCRIPCION_FERT}>
+                              {row.DESCRIPCION_FERT}
+                            </td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-gray-400 tracking-tighter">{row.MATERIAL_PADRE}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-700 tracking-tighter">{row.COMPONENTE}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-slate-600 uppercase truncate max-w-[250px]" title={row.DESCRIPCION_COMPONENTE}>
+                              {row.DESCRIPCION_COMPONENTE}
+                            </td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-right font-mono text-slate-500">
+                              {row.CANTIDAD_UNITARIA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-slate-800 bg-slate-50/30">
+                              {row.CANTIDAD_ACUMULADA.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
-                    <tfoot className="sticky bottom-0 z-30 bg-[#0f172a] text-white font-black uppercase border-t-2 border-slate-700">
+                    <tfoot className="sticky bottom-0 z-30 bg-[#1e293b] text-white font-black uppercase border-t border-slate-700">
                       <tr>
-                        <td colSpan={7} className="px-4 py-3 text-right tracking-widest text-[9px]">Total general:</td>
-                        <td className="px-4 py-3 text-right font-mono border-r border-white/10 text-[11px]">
+                        <td colSpan={7} className="px-4 py-2.5 text-right tracking-widest text-[8px] text-gray-400">Total general de auditoría:</td>
+                        <td className="px-3 py-2.5 text-right font-mono border-r border-white/10 text-xs">
                           {bomTotals.unitaria.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-blue-300 text-[11px]">
+                        <td className="px-3 py-2.5 text-right font-mono text-blue-300 text-xs">
                           {bomTotals.acumulada.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                         </td>
                       </tr>
@@ -359,43 +393,41 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm text-left">
-                <div className="flex items-center gap-4">
-                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Filas por página:</span>
+              {/* Paginación Compacta */}
+              <div className="flex items-center justify-between gap-4 px-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Filas:</span>
                   <select 
                     value={bomRowsPerPage} 
                     onChange={(e) => { setBomRowsPerPage(Number(e.target.value)); setBomPage(1); }}
-                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-[10px] font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                    className="bg-white border border-gray-200 rounded px-2 py-1 text-[9px] font-bold text-gray-600 focus:outline-none"
                   >
                     {[100, 250, 500].map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
-                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
-                    Mostrando {Math.min(bomRows.length, (bomPage-1)*bomRowsPerPage + 1)}-{Math.min(bomRows.length, bomPage*bomRowsPerPage)} de {bomRows.length}
+                  <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">
+                    Página {bomPage} de {totalBomPages}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={() => setBomPage(1)} disabled={bomPage === 1} className="h-8 w-8 rounded-xl"><ChevronsLeft className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" onClick={() => setBomPage(prev => Math.max(1, prev - 1))} disabled={bomPage === 1} className="h-8 w-8 rounded-xl"><ChevronLeft className="h-4 w-4" /></Button>
-                  <div className="flex items-center gap-1 px-4">
-                    <span className="text-[10px] font-black text-gray-700 uppercase">Página {bomPage} de {totalBomPages}</span>
-                  </div>
-                  <Button variant="outline" size="icon" onClick={() => setBomPage(prev => Math.min(totalBomPages, prev + 1))} disabled={bomPage === totalBomPages} className="h-8 w-8 rounded-xl"><ChevronRight className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" onClick={() => setBomPage(totalBomPages)} disabled={bomPage === totalBomPages} className="h-8 w-8 rounded-xl"><ChevronsRight className="h-4 w-4" /></Button>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => setBomPage(1)} disabled={bomPage === 1} className="h-7 w-7 rounded-lg"><ChevronsLeft className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => setBomPage(prev => Math.max(1, prev - 1))} disabled={bomPage === 1} className="h-7 w-7 rounded-lg"><ChevronLeft className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => setBomPage(prev => Math.min(totalBomPages, prev + 1))} disabled={bomPage === totalBomPages} className="h-7 w-7 rounded-lg"><ChevronRight className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => setBomPage(totalBomPages)} disabled={bomPage === totalBomPages} className="h-7 w-7 rounded-lg"><ChevronsRight className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             </div>
           ) : !isSearchingBOM && (
-            <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
-              <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Ingrese un código FERT para consultar la estructura técnica en SAP</p>
+            <div className="py-20 text-center bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200">
+              <DatabaseZap className="w-12 h-12 text-indigo-100 mx-auto" />
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Ingrese un código de material para auditar su estructura técnica en SAP</p>
             </div>
           )}
 
-          <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2 text-left shadow-sm">
-            <Info className="w-4 h-4 text-blue-600" />
-            <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-              Nota: Auditoría técnica basada en el motor de explosión multinivel de SAP. Los datos de la Planta Guayaquil (Centro 2000) son excluidos.
+          <div className="px-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
+            <Info className="w-3.5 h-3.5 text-blue-500" />
+            <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">
+              Nota: La información técnica es consultada en tiempo real. Se excluye la Planta Guayaquil (Centro 2000) por requerimiento operativo.
             </p>
           </div>
         </TabsContent>
