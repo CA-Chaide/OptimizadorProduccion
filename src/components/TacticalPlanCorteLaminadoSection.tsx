@@ -1,7 +1,23 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Scissors, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Search, Filter, AlertCircle, Info, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { 
+  Scissors, 
+  Package, 
+  Loader2, 
+  Clock, 
+  LayoutDashboard, 
+  ClipboardList, 
+  Search, 
+  Filter, 
+  AlertCircle, 
+  Info, 
+  ChevronLeft, 
+  ChevronRight, 
+  ChevronsLeft, 
+  ChevronsRight,
+  DatabaseZap // Se agrega la importación faltante
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -55,7 +71,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Estados para el BOOM de Materiales
+  // Estados para el BOOM de Materiales (Auditoría Técnica)
   const [fertBusqueda, setFertBusqueda] = useState('');
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [isSearchingBOM, setIsSearchingBOM] = useState(false);
@@ -123,7 +139,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   };
 
-  // --- BUSCADOR TÉCNICO DE BOOM (INDIVIDUAL) ---
   const handleSearchBOM = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!fertBusqueda.trim()) {
@@ -136,26 +151,30 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setBomPage(1);
 
     try {
-      // Normalizar código a 18 dígitos para SAP
       const fullCode = fertBusqueda.trim().padStart(18, '0');
-      // Por defecto buscamos en Centro 1000 si no se especifica
       const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 5000);
       const rawData = response?.data?.data || response?.data || [];
 
       if (Array.isArray(rawData)) {
-        const filtered = rawData.filter(row => getProp(row, 'CENTRO') !== '2000').map(row => ({
-          NIVEL: getProp(row, 'NIVEL'),
-          CENTRO: getProp(row, 'CENTRO'),
-          FERT_PRINCIPAL: getProp(row, 'FERT_PRINCIPAL'),
-          DESCRIPCION_FERT: getProp(row, 'DESCRIPCION_FERT'),
-          MATERIAL_PADRE: getProp(row, 'MATERIAL_PADRE'),
-          COMPONENTE: getProp(row, 'COMPONENTE'),
-          DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE'),
-          CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
-          CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA')
-        }));
+        // Filtrar estrictamente para excluir Centro 2000
+        const filtered = rawData
+          .filter(row => getProp(row, 'CENTRO') !== '2000')
+          .map(row => ({
+            NIVEL: getProp(row, 'NIVEL'),
+            CENTRO: getProp(row, 'CENTRO'),
+            FERT_PRINCIPAL: getProp(row, 'FERT_PRINCIPAL'),
+            DESCRIPCION_FERT: getProp(row, 'DESCRIPCION_FERT'),
+            MATERIAL_PADRE: getProp(row, 'MATERIAL_PADRE'),
+            COMPONENTE: getProp(row, 'COMPONENTE'),
+            DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE'),
+            CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
+            CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA')
+          }));
+        
         setBomRows(filtered);
-        if (filtered.length === 0) addNotification('info', 'No se encontraron componentes para este material (Excluyendo GYE).');
+        if (filtered.length === 0) {
+          addNotification('info', 'No se encontraron componentes para este material (Excluyendo GYE).');
+        }
       } else {
         addNotification('info', 'La consulta no devolvió una estructura jerárquica válida.');
       }
@@ -170,6 +189,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const start = (bomPage - 1) * bomRowsPerPage;
     return bomRows.slice(start, start + bomRowsPerPage);
   }, [bomRows, bomPage, bomRowsPerPage]);
+
+  const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
 
   const bomTotals = useMemo(() => {
     return bomRows.reduce((acc, row) => ({
@@ -187,7 +208,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Visualización de Órdenes y Auditoría de Lista de Materiales</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión de Órdenes y Auditoría de Lista de Materiales (BOM)</p>
           </div>
         </div>
       </div>
@@ -196,7 +217,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsList className="grid grid-cols-3 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
-            { v: 'listaMateriales', l: 'Lista Materiales', i: ClipboardList },
+            { v: 'listaMateriales', l: 'Lista Materiales (BOOM)', i: ClipboardList },
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
@@ -258,7 +279,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <h3 className="text-lg font-black text-gray-800 uppercase tracking-tighter leading-none">BOOM de Lista de Materiales</h3>
                 <h4 className="text-sm font-bold text-gray-400 uppercase tracking-tighter">(Auditoría Técnica)</h4>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-2">
-                  Integración Directa SAP | Exclusión Planta GYE | Filtrado por FERT de Órdenes
+                  Integración Directa SAP | Exclusión Planta GYE | Búsqueda por FERT
                 </p>
               </div>
             </div>
@@ -338,7 +359,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm text-left">
                 <div className="flex items-center gap-4">
-                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Registros por página:</span>
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Filas por página:</span>
                   <select 
                     value={bomRowsPerPage} 
                     onChange={(e) => { setBomRowsPerPage(Number(e.target.value)); setBomPage(1); }}
@@ -372,7 +393,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2 text-left shadow-sm">
             <Info className="w-4 h-4 text-blue-600" />
             <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-              Nota: Auditoría técnica basada en el motor de explosión multinivel de SAP. Los datos de la Planta Guayaquil (Centro 2000) no son visibles en este reporte.
+              Nota: Auditoría técnica basada en el motor de explosión multinivel de SAP. Los datos de la Planta Guayaquil (Centro 2000) son excluidos.
             </p>
           </div>
         </TabsContent>
