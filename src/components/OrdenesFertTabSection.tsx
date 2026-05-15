@@ -425,10 +425,30 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           </div>
 
           {displayMode === 'plan' && (
-            <div className="space-y-4">
-              <div className="flex flex-col md:flex-row gap-4">
-                {/* Recuadro CAPACIDAD POR FECHA */}
-                <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="flex flex-col space-y-4">
+                {/* Recuadro PENDIENTES TOTALES - PRIMERO */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
+                  <h4 className="text-[11px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
+                  <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
+                      <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
+                          <p className="font-bold text-base text-gray-900">{totalCantProgramadaGeneral.toLocaleString()}</p>
+                      </div>
+                      <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO TOTAL (h)</p>
+                          <p className="font-bold text-base text-indigo-700">{(totalTiempoRequeridoGeneral / 60).toFixed(2)}</p>
+                      </div>
+                      <div className="text-center p-3 h-full flex flex-col justify-center">
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">DIAS PENDIENTES</p>
+                          <p className="font-bold text-base text-blue-600">
+                            {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO).toFixed(2)} Días
+                          </p>
+                      </div>
+                  </div>
+                </div>
+
+                {/* Recuadro CAPACIDAD POR FECHA - SEGUNDO */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                   <h4 className="text-[11px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
                   <div className="space-y-0 max-h-64 overflow-y-auto border rounded-md">
                       {selectedDates.length > 0 ? (
@@ -440,23 +460,23 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           <div key={date} className="grid grid-cols-5 gap-0 items-center text-base p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
                                   <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
-                                  <p className="font-bold text-gray-900">{date}</p>
+                                  <p className="font-bold text-base text-gray-900">{date}</p>
                               </div>
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
                                   <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA</p>
-                                  <p className="font-bold text-gray-900">{cantProgramada.toLocaleString()}</p>
+                                  <p className="font-bold text-base text-gray-900">{cantProgramada.toLocaleString()}</p>
                               </div>
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
                                   <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO (h)</p>
-                                  <p className="font-bold text-indigo-700">{tiempoRequeridoH.toFixed(2)}</p>
+                                  <p className="font-bold text-base text-indigo-700">{tiempoRequeridoH.toFixed(2)}</p>
                               </div>
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
                                   <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">TIEMPO DISPONIBLE (h)</p>
-                                  <p className="font-bold text-emerald-700">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
+                                  <p className="font-bold text-base text-emerald-700">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
                               </div>
                               <div className="text-center px-2 h-full flex flex-col justify-center">
                                   <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD</p>
-                                  <p className={cn("font-bold", capacidadOcupada > 100 ? "text-red-600" : "text-blue-600")}>
+                                  <p className={cn("font-bold text-base", capacidadOcupada > 100 ? "text-red-600" : "text-blue-600")}>
                                     {capacidadOcupada.toFixed(2)}%
                                   </p>
                               </div>
@@ -464,60 +484,38 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           );
                         })
                       ) : (
-                        <p className="p-4 text-center text-gray-500 text-sm italic">Selecciona una fecha para ver el resumen diario.</p>
+                        <p className="p-4 text-center text-gray-500 text-sm italic bg-white">Selecciona una fecha para ver el resumen diario.</p>
                       )}
                   </div>
                 </div>
 
-                {/* Recuadro PENDIENTES TOTALES */}
-                <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm h-full">
-                  <h4 className="text-[11px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
+                {/* Recuadro ESTATUS ACTUAL ORDENES - TERCERO */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
+                  <h4 className="text-[11px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
-                          <p className="font-bold text-gray-900">{totalCantProgramadaGeneral.toLocaleString()}</p>
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">RETRASADAS</p>
+                          <div className="flex items-center justify-center gap-2">
+                            <p className="font-bold text-base text-red-600">{statusSummary.retrasadas.toLocaleString()}</p>
+                            <span className="text-xs text-red-400 font-mono">/ {statusSummary.retrasadasTimeH.toFixed(1)}h</span>
+                          </div>
                       </div>
                       <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO TOTAL (h)</p>
-                          <p className="font-bold text-indigo-700">{(totalTiempoRequeridoGeneral / 60).toFixed(2)}</p>
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">EN PROCESO</p>
+                          <div className="flex items-center justify-center gap-2">
+                            <p className="font-bold text-base text-blue-600">{statusSummary.enProceso.toLocaleString()}</p>
+                            <span className="text-xs text-blue-400 font-mono">/ {statusSummary.enProcesoTimeH.toFixed(1)}h</span>
+                          </div>
                       </div>
                       <div className="text-center p-3 h-full flex flex-col justify-center">
-                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">DIAS PENDIENTES</p>
-                          <p className="font-bold text-blue-600">
-                            {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO).toFixed(2)} Días
-                          </p>
+                          <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">POR PLANIFICAR</p>
+                          <div className="flex items-center justify-center gap-2">
+                            <p className="font-bold text-base text-teal-600">{statusSummary.porPlanificar.toLocaleString()}</p>
+                            <span className="text-xs text-teal-400 font-mono">/ {statusSummary.porPlanificarTimeH.toFixed(1)}h</span>
+                          </div>
                       </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Recuadro ESTATUS ACTUAL ORDENES */}
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                <h4 className="text-[11px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
-                <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
-                    <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                        <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">RETRASADAS</p>
-                        <div className="flex items-center justify-center gap-2">
-                          <p className="font-bold text-red-600">{statusSummary.retrasadas.toLocaleString()}</p>
-                          <span className="text-xs text-red-400 font-mono">/ {statusSummary.retrasadasTimeH.toFixed(1)}h</span>
-                        </div>
-                    </div>
-                    <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                        <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">EN PROCESO</p>
-                        <div className="flex items-center justify-center gap-2">
-                          <p className="font-bold text-blue-600">{statusSummary.enProceso.toLocaleString()}</p>
-                          <span className="text-xs text-blue-400 font-mono">/ {statusSummary.enProcesoTimeH.toFixed(1)}h</span>
-                        </div>
-                    </div>
-                    <div className="text-center p-3 h-full flex flex-col justify-center">
-                        <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1">POR PLANIFICAR</p>
-                        <div className="flex items-center justify-center gap-2">
-                          <p className="font-bold text-teal-600">{statusSummary.porPlanificar.toLocaleString()}</p>
-                          <span className="text-xs text-teal-400 font-mono">/ {statusSummary.porPlanificarTimeH.toFixed(1)}h</span>
-                        </div>
-                    </div>
-                </div>
-              </div>
             </div>
           )}
         </div>
