@@ -127,10 +127,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   useEffect(() => {
     setMounted(true);
-    setViewDate(new Date());
+    const today = new Date();
+    setViewDate(today);
 
     const init = async () => {
-      setIsLoading(true);
       try {
         const groupsRes = await grupoService.getAll();
         const filteredGroups = (groupsRes.data || []).filter(g => {
