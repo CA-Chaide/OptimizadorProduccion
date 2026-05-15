@@ -84,26 +84,29 @@ const getNumProp = (obj: any, key: string): number => {
 };
 
 /**
- * Catálogo de pesos por rollo basado en patrones de densidad
- * Identifica pesos (12, 18, 20, 24, 28, 30, 35, 40, 50 Kg) partiendo del listado compartido
+ * Catálogo de pesos por rollo basado en patrones de densidad y código de material
  */
-const getPesoPorRollo = (descripcion: string): number => {
+const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   const desc = descripcion.toUpperCase();
-  if (desc.includes('D12')) return 12;
-  if (desc.includes('D18')) return 18;
-  if (desc.includes('D20')) return 20;
-  if (desc.includes('D24')) return 24;
-  if (desc.includes('D28')) return 28;
-  if (desc.includes('D30')) return 30;
-  if (desc.includes('D35')) return 35;
-  if (desc.includes('D40')) return 40;
-  if (desc.includes('D50')) return 50;
+  const code = materialCode.toUpperCase();
+
+  // Mapeo por densidad (Estándar Industrial)
+  if (desc.includes('D12') || code.includes('D12')) return 12;
+  if (desc.includes('D18') || code.includes('D18')) return 18;
+  if (desc.includes('D20') || code.includes('D20')) return 20;
+  if (desc.includes('D24') || code.includes('D24')) return 24;
+  if (desc.includes('D28') || code.includes('D28')) return 28;
+  if (desc.includes('D30') || code.includes('D30')) return 30;
+  if (desc.includes('D35') || code.includes('D35')) return 35;
+  if (desc.includes('D40') || code.includes('D40')) return 40;
+  if (desc.includes('D50') || code.includes('D50')) return 50;
   
-  // Intento de captura por número directo después de "D"
+  // Intento de captura por número directo después de "D" en la descripción
   const match = desc.match(/D(\d+)/);
   if (match) {
     const density = parseInt(match[1]);
-    if ([12, 18, 20, 24, 28, 30, 35, 40, 50].includes(density)) return density;
+    const validWeights = [12, 18, 20, 24, 28, 30, 35, 40, 50];
+    if (validWeights.includes(density)) return density;
   }
   
   return 35; // Peso estándar por defecto si no se identifica
@@ -113,7 +116,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
 
-  // Guarda de Hidratación para evitar discrepancias Servidor/Cliente
+  // Estados de control de montaje para evitar errores de hidratación
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('ordenes');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -122,24 +125,26 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filtros
+  // Filtros dinámicos
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date>(new Date());
 
-  // BOOM
+  // BOOM (Auditoría Técnica)
   const [fertBusqueda, setFertBusqueda] = useState('');
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [isSearchingBOM, setIsSearchingBOM] = useState(false);
   const [bomPage, setBomPage] = useState(1);
   const [bomRowsPerPage, setBomRowsPerPage] = useState(50);
 
-  // Resumen Unificado
+  // Resumen Unificado de Necesidades
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
 
   useEffect(() => {
     setMounted(true);
+    setViewDate(new Date());
+    
     const init = async () => {
       try {
         const groupsRes = await grupoService.getAll();
@@ -197,14 +202,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [ordenes]);
 
   const calendarDays = useMemo(() => {
-    if (!viewDate) return [];
+    if (!mounted) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
     const startDay = getDay(start);
     const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
-  }, [viewDate]);
+  }, [viewDate, mounted]);
 
   const handleSearchBOM = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -264,7 +269,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 const ex = consolidatedMap.get(code)!;
                 ex.consumoKg += kgTotal;
               } else {
-                const pRollo = getPesoPorRollo(desc);
+                const pRollo = getPesoPorRollo(code, desc);
                 consolidatedMap.set(code, {
                   material: code,
                   descripcion: desc,
@@ -298,7 +303,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
-  if (!mounted) return null; // Previene errores de hidratación
+  if (!mounted) return null;
 
   if (isLoading) {
     return (
