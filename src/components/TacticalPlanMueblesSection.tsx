@@ -200,10 +200,11 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="plan" className="w-full">
-          <TabsList className="grid w-full grid-cols-9 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
+          <TabsList className="grid w-full grid-cols-10 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
               <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0">Restricciones</TabsTrigger>
               <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Prev.</TabsTrigger>
+              <TabsTrigger value="ordenesFert" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Fert</TabsTrigger>
               <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0">Tiempos</TabsTrigger>
               <TabsTrigger value="habilidades" className="border-r border-dashed border-gray-300 last:border-r-0">Habilidades</TabsTrigger>
               <TabsTrigger value="cascos" className="border-r border-dashed border-gray-300 last:border-r-0">Cascos</TabsTrigger>
@@ -227,6 +228,22 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                       <ProvisionalOrdersTabSection />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="ordenesFert" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Órdenes FERT</CardTitle>
+                      <CardDescription>
+                          Listado completo de órdenes FERT registradas en el sistema para el área de Muebles.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <OrdenesFertTabSection 
+                        restricciones={restriccionesMuebles} 
+                        displayMode="full"
+                      />
                   </CardContent>
               </Card>
           </TabsContent>
