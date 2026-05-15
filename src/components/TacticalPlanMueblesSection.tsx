@@ -13,6 +13,7 @@ import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
 import { CuboInventariosTab } from './CuboInventariosTab';
 import { CuboInventariosTelasTab } from './CuboInventariosTelasTab';
 import { MaterialesBrutosTab } from './MaterialesBrutosTab';
+import { HabilidadesMueblesTab } from './HabilidadesMueblesTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -199,11 +200,12 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="plan" className="w-full">
-          <TabsList className="grid w-full grid-cols-8 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
+          <TabsList className="grid w-full grid-cols-9 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
               <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0">Restricciones</TabsTrigger>
               <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Prev.</TabsTrigger>
               <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0">Tiempos</TabsTrigger>
+              <TabsTrigger value="habilidades" className="border-r border-dashed border-gray-300 last:border-r-0">Habilidades</TabsTrigger>
               <TabsTrigger value="cascos" className="border-r border-dashed border-gray-300 last:border-r-0">Cascos</TabsTrigger>
               <TabsTrigger value="telas" className="border-r border-dashed border-gray-300 last:border-r-0">Telas</TabsTrigger>
               <TabsTrigger value="materialesBrutos" className="border-r border-dashed border-gray-300 last:border-r-0">Mat. Brutos</TabsTrigger>
@@ -230,6 +232,19 @@ export const TacticalPlanMueblesSection: React.FC = () => {
           </TabsContent>
           <TabsContent value="tiemposMuebles" className="mt-4">
               <TiemposEnsambladoTab data={tiemposMueblesData} isLoading={isTiemposLoading} />
+          </TabsContent>
+          <TabsContent value="habilidades" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Habilidades del Personal (CuboHabilidadesOP)</CardTitle>
+                      <CardDescription>
+                          Consulta de competencias y calificaciones técnicas para el personal del área de Muebles.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <HabilidadesMueblesTab />
+                  </CardContent>
+              </Card>
           </TabsContent>
           <TabsContent value="cascos" className="mt-4">
               <Card>
