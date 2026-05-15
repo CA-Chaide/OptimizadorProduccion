@@ -19,7 +19,8 @@ import {
   PlayCircle,
   UserCheck,
   TrendingUp,
-  Info
+  Info,
+  Box
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -110,7 +111,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   // Filtros
   const [selectedDate, setSelectedDate] = useState<string>('all');
-  const [viewDate, setViewDate] = useState(new Date(2025, 0, 1)); // Fecha estática inicial
+  const [viewDate, setViewDate] = useState(new Date(2025, 0, 1)); 
 
   // BOOM
   const [fertBusqueda, setFertBusqueda] = useState('');
@@ -284,7 +285,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   if (!mounted || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center p-20 gap-4">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <Loader2 className="w-10 h-10 animate-spin text-red-600" />
         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Módulo de Laminado...</p>
       </div>
     );
