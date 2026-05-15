@@ -428,7 +428,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             <div className="flex flex-col space-y-4">
                 {/* Recuadro PENDIENTES TOTALES - PRIMERO */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[12px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
+                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
                           <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
@@ -449,7 +449,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
                 {/* Recuadro CAPACIDAD POR FECHA - SEGUNDO */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[12px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
+                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
                   <div className="space-y-0 max-h-64 overflow-y-auto border rounded-md">
                       {selectedDates.length > 0 ? (
                         planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => {
@@ -491,7 +491,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
                 {/* Recuadro ESTATUS ACTUAL ORDENES - TERCERO */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[12px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
+                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
                           <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">RETRASADAS</p>
