@@ -83,29 +83,37 @@ const getNumProp = (obj: any, key: string): number => {
   return foundKey ? safeNum(obj[foundKey]) : 0;
 };
 
-// Catálogo de pesos por rollo basado en densidad y estándares compartidos
+/**
+ * Catálogo de pesos por rollo basado en patrones de densidad
+ * Identifica pesos (12, 18, 20, 24, 28, 30, 35, 40, 50 Kg) partiendo del listado compartido
+ */
 const getPesoPorRollo = (descripcion: string): number => {
   const desc = descripcion.toUpperCase();
+  if (desc.includes('D12')) return 12;
+  if (desc.includes('D18')) return 18;
+  if (desc.includes('D20')) return 20;
+  if (desc.includes('D24')) return 24;
+  if (desc.includes('D28')) return 28;
+  if (desc.includes('D30')) return 30;
+  if (desc.includes('D35')) return 35;
+  if (desc.includes('D40')) return 40;
+  if (desc.includes('D50')) return 50;
+  
+  // Intento de captura por número directo después de "D"
   const match = desc.match(/D(\d+)/);
   if (match) {
     const density = parseInt(match[1]);
-    if (density === 12) return 12;
-    if (density === 18) return 18;
-    if (density === 20) return 20;
-    if (density === 24) return 24;
-    if (density === 28) return 28;
-    if (density === 30) return 30;
-    if (density === 35) return 35;
-    if (density === 40) return 40;
-    if (density === 50) return 50;
+    if ([12, 18, 20, 24, 28, 30, 35, 40, 50].includes(density)) return density;
   }
-  return 35; // Valor por defecto
+  
+  return 35; // Peso estándar por defecto si no se identifica
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
 
+  // Guarda de Hidratación para evitar discrepancias Servidor/Cliente
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('ordenes');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -116,14 +124,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   // Filtros
   const [selectedDate, setSelectedDate] = useState<string>('all');
-  const [viewDate, setViewDate] = useState<Date | null>(null);
+  const [viewDate, setViewDate] = useState<Date>(new Date());
 
   // BOOM
   const [fertBusqueda, setFertBusqueda] = useState('');
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [isSearchingBOM, setIsSearchingBOM] = useState(false);
   const [bomPage, setBomPage] = useState(1);
-  const [bomRowsPerPage, setBomRowsPerPage] = useState(100);
+  const [bomRowsPerPage, setBomRowsPerPage] = useState(50);
 
   // Resumen Unificado
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
@@ -132,8 +140,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   useEffect(() => {
     setMounted(true);
-    setViewDate(new Date());
-
     const init = async () => {
       try {
         const groupsRes = await grupoService.getAll();
@@ -275,6 +281,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       const finalArray = Array.from(consolidatedMap.values()).map(row => ({
         ...row,
+        // Cálculo de unidades (rollos) = Kg totales / peso unitario del rollo
         consumoUn: row.pesoRollo > 0 ? row.consumoKg / row.pesoRollo : 0
       })).sort((a, b) => b.consumoKg - a.consumoKg);
       
@@ -291,7 +298,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
-  if (!mounted || !viewDate) return null;
+  if (!mounted) return null; // Previene errores de hidratación
 
   if (isLoading) {
     return (
@@ -333,7 +340,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="flex items-center gap-4">
               <div className="p-2 bg-red-500/10 rounded-xl text-red-600"><UserCheck className="w-4 h-4" /></div>
               <div>
-                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Filtro por Responsables</p>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Responsables Críticos</p>
                 <div className="flex gap-1.5 mt-0.5">
                   {RESPONSABLES_VALIDOS.map(c => <Badge key={c} variant="outline" className="text-[9px] font-black bg-white border-gray-200">{c}</Badge>)}
                 </div>
@@ -341,9 +348,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-[10px] uppercase shadow-sm">
-                  <Filter className="w-3 h-3 text-red-500" /> {selectedDate === 'all' ? 'Ver todo' : selectedDate}
-                </Button>
+                <button className="h-9 px-4 rounded-xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-2 font-bold text-[10px] uppercase shadow-sm transition-all">
+                  <Filter className="w-3 h-3 text-red-500" /> {selectedDate === 'all' ? 'Plan Maestro' : selectedDate}
+                </button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
                 <div className="bg-white p-4 font-sans text-left">
@@ -446,7 +453,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           )}
 
           {!isProcessingResumen && unifiedNeeds.length > 0 ? (
-            <Card className="rounded-2xl border border-gray-100 shadow-xl overflow-hidden bg-white">
+            <div className="border border-gray-100 rounded-2xl shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full border-collapse font-sans text-[11px] text-center">
                   <thead className="sticky top-0 z-20">
@@ -485,7 +492,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tfoot>
                 </table>
               </div>
-            </Card>
+            </div>
           ) : !isProcessingResumen && (
             <div className="py-24 text-center bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100">
               <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
