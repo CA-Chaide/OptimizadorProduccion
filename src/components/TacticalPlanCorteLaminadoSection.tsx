@@ -84,7 +84,8 @@ const getNumProp = (obj: any, key: string): number => {
 };
 
 /**
- * Catálogo de pesos por rollo basado en patrones de densidad y código de material
+ * Catálogo técnico de pesos por rollo (SAP)
+ * Basado en patrones de densidad D12-D50
  */
 const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   const desc = descripcion.toUpperCase();
@@ -114,7 +115,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
 
+  // Guarda de hidratación
   const [mounted, setMounted] = useState(false);
+  
   const [activeTab, setActiveTab] = useState('ordenes');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
@@ -297,7 +300,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
-  if (!mounted) return null;
+  if (!mounted) return (
+    <div className="flex flex-col items-center justify-center p-20 gap-4">
+      <Loader2 className="w-10 h-10 animate-spin text-red-600" />
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Iniciando Entorno de Laminado...</p>
+    </div>
+  );
 
   if (isLoading) {
     return (
@@ -336,7 +344,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="space-y-4 animate-in fade-in duration-300">
           <div className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-red-500/10 rounded-xl text-red-600"><UserCheck className="w-4 h-4" /></div>
               <div>
                 <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Responsables Críticos</p>
@@ -443,7 +451,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           {isProcessingResumen && (
             <div className="space-y-3 bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100">
-              <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+              <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest text-left">
                 <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Procesando Auditoría de SAP...</span>
                 <span>{resumenProgress.current} / {resumenProgress.total} Órdenes</span>
               </div>
@@ -467,15 +475,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100 font-bold">
                     {unifiedNeeds.map((row, idx) => (
                       <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left bg-blue-50/10">{row.material}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left bg-blue-50/5">{row.material}</td>
                         <td className="px-6 py-3 border-r border-gray-100 text-left text-slate-500 uppercase font-bold truncate max-w-[300px]" title={row.descripcion}>{row.descripcion}</td>
                         <td className="px-6 py-3 border-r border-gray-100 font-mono text-green-700 text-center bg-green-50/5">
                           {row.pesoRollo.toFixed(1)}
                         </td>
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-orange-50/20 text-right">
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-orange-50/10 text-right">
                           {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-6 py-3 font-mono text-red-600 bg-orange-50/20 text-right">
+                        <td className="px-6 py-3 font-mono text-red-600 bg-orange-50/10 text-right">
                           {row.consumoUn.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                         </td>
                       </tr>
@@ -504,8 +512,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
              <div className="flex items-center gap-3">
                <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><ClipboardList className="w-5 h-5" /></div>
                <div>
-                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Auditoría Estructural de Materiales (BOM)</h3>
-                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Filtrado por: LÁMINA CILÍNDRICA | Excluye: Centro 2000</p>
+                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Auditoría Estructural de Materiales (BOM)</h3>
+                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Filtrado por: LÁMINA CILÍNDRICA | Excluye: Centro 2000</p>
                </div>
              </div>
              <form onSubmit={handleSearchBOM} className="flex gap-2">
