@@ -83,6 +83,7 @@ const getNumProp = (obj: any, key: string): number => {
   return foundKey ? safeNum(obj[foundKey]) : 0;
 };
 
+// Catálogo de pesos por rollo basado en densidad y estándares compartidos
 const getPesoPorRollo = (descripcion: string): number => {
   const desc = descripcion.toUpperCase();
   if (desc.includes('D12')) return 12;
@@ -94,7 +95,7 @@ const getPesoPorRollo = (descripcion: string): number => {
   if (desc.includes('D35')) return 35;
   if (desc.includes('D40')) return 40;
   if (desc.includes('D50')) return 50;
-  return 35; 
+  return 35; // Valor por defecto
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
@@ -111,7 +112,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   // Filtros
   const [selectedDate, setSelectedDate] = useState<string>('all');
-  const [viewDate, setViewDate] = useState(new Date(2025, 0, 1)); 
+  const [viewDate, setViewDate] = useState<Date | null>(null);
 
   // BOOM
   const [fertBusqueda, setFertBusqueda] = useState('');
@@ -127,8 +128,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   useEffect(() => {
     setMounted(true);
-    const today = new Date();
-    setViewDate(today);
+    setViewDate(new Date());
 
     const init = async () => {
       try {
@@ -187,6 +187,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [ordenes]);
 
   const calendarDays = useMemo(() => {
+    if (!viewDate) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
@@ -218,7 +219,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA')
         })));
       }
-    } catch (err) { addNotification('error', 'Error en BOOM.'); } finally { setIsSearchingBOM(false); }
+    } catch (err) { 
+      addNotification('error', 'Error al consultar la explosión técnica.'); 
+    } finally { 
+      setIsSearchingBOM(false); 
+    }
   };
 
   const handleProcessResumen = async () => {
@@ -282,7 +287,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
-  if (!mounted || isLoading) {
+  // Sincronización de Hidratación: Evitar renderizado desigual entre servidor y cliente
+  if (!mounted || !viewDate) return null;
+
+  if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center p-20 gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-red-600" />
@@ -439,12 +447,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full border-collapse font-sans text-[11px] text-center">
                   <thead className="sticky top-0 z-20">
-                    <tr className="bg-[#4472c4] text-white uppercase font-black tracking-tight text-[10px]">
-                      <th className="px-6 py-4 border-r border-white/10 text-left w-32">Material</th>
-                      <th className="px-6 py-4 border-r border-white/10 text-left">Descripción Técnica</th>
-                      <th className="px-6 py-4 border-r border-white/10 bg-[#f4b084] text-black w-48">Consumo Actual OF [Kg]</th>
-                      <th className="px-6 py-4 border-r border-white/10 bg-[#f4b084] text-black w-48">Consumo Actual OF [Un]</th>
-                      <th className="px-6 py-4 bg-[#e2efda] text-black w-40">peso / rollo (Kg)</th>
+                    <tr className="bg-[#bde0fe] text-black uppercase font-black tracking-tight text-[10px]">
+                      <th className="px-6 py-4 border-r border-gray-100 text-left w-32">Material</th>
+                      <th className="px-6 py-4 border-r border-gray-100 text-left">Descripción</th>
+                      <th className="px-6 py-4 border-r border-gray-100 bg-[#fce4d6] w-48 text-right">Consumo Actual OF [Kg]</th>
+                      <th className="px-6 py-4 border-r border-gray-100 bg-[#fce4d6] w-48 text-right">Consumo Actual OF [Un]</th>
+                      <th className="px-6 py-4 bg-[#e2efda] w-40 text-right">peso / rollo (Kg)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 font-bold">
@@ -452,13 +460,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-6 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left">{row.material}</td>
                         <td className="px-6 py-3 border-r border-gray-100 text-left text-slate-500 uppercase font-bold truncate max-w-[300px]" title={row.descripcion}>{row.descripcion}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-[#fce4d6]/30 text-right">
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-[#fce4d6]/10 text-right">
                           {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-red-600 bg-[#fce4d6]/30 text-right">
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-red-600 bg-[#fce4d6]/10 text-right">
                           {row.consumoUn.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                         </td>
-                        <td className="px-6 py-3 font-mono text-green-700 bg-[#d9eada]/30 text-right font-black">
+                        <td className="px-6 py-3 font-mono text-green-700 bg-[#e2efda]/10 text-right">
                           {row.pesoRollo.toFixed(1)}
                         </td>
                       </tr>
