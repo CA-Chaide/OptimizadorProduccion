@@ -367,14 +367,11 @@ export const serviciosService = {
   },
 
 
-  async getMaestroMaterialesExplosion(centro: string, fert: string, page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+  async getMaestroMaterialesExplosion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     try {
-      const response = await fetch(API_URL + "/MaestroMaterialesExplosionPaginado", {
+      const response = await fetch(API_URL + "/TiempoAprovisionamientoMateriasPrimas", {
         method: "POST",
-        headers: getHeaders(),
         body: JSON.stringify({ 
-          Centro: centro,
-          Fert: fert,
           page: page, 
           rowsPerPage: rowsPerPage,
         }),

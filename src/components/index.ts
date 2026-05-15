@@ -19,6 +19,7 @@ export * from './TacticalPlanSection';
 export * from './TacticalPlan2Section';
 export * from './ProvisionalOrdersTabSection';
 export * from './OrdenesFertTabSection';
+export * from './HorariosTabSection';
 export * from './HabilidadesOpTabSection';
 export * from './TiemposEnsambladoTabSection';
 export * from './ProgDiariaTabSection';
