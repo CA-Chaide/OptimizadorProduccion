@@ -18,7 +18,8 @@ import {
   Filter,
   Calendar as CalendarIcon,
   Activity,
-  PlayCircle
+  PlayCircle,
+  UserCheck
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -64,6 +65,8 @@ interface ResumenNecesidadRow {
   cantUnitaria: number;
   cantTotal: number;
 }
+
+const RESPONSABLES_VALIDOS = ["009", "018", "022", "014", "042", "043"];
 
 const safeNum = (val: any): number => {
   const n = Number(val);
@@ -163,11 +166,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     init();
   }, []);
 
-  // Lógica de filtrado de órdenes por Centro y Fecha
+  // Lógica de filtrado de órdenes por Centro, Fecha y RESPONSABLES ESPECÍFICOS
   const filteredOrders = useMemo(() => {
     return ordenes.filter(o => {
       const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
-      if (centro === '2000') return false; // Exclusión estricta Centro 2000
+      if (centro === '2000') return false; 
+
+      // FILTRO DE RESPONSABLES DINÁMICOS
+      const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '').trim();
+      if (!RESPONSABLES_VALIDOS.includes(responsable)) return false;
 
       if (selectedDate !== 'all') {
         const dateRaw = String(o.FECHAINICIO || o.FECHA || '').trim();
@@ -183,6 +190,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     ordenes.forEach(o => {
       const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (centro === '2000') return;
+      
+      const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '').trim();
+      if (!RESPONSABLES_VALIDOS.includes(responsable)) return;
+
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
       if (d && d !== 'null' && d !== 'undefined') {
         const normalized = d.includes('T') ? d.split('T')[0] : d;
@@ -254,9 +265,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   };
 
-  /**
-   * PROCESO DE CÁLCULO DE RESUMEN DE NECESIDADES
-   */
   const handleProcessResumen = async () => {
     if (filteredOrders.length === 0) {
       addNotification('warning', 'No hay órdenes en el período seleccionado para procesar.');
@@ -268,7 +276,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setResumenProgress({ current: 0, total: filteredOrders.length });
 
     const allResumenRows: ResumenNecesidadRow[] = [];
-    const uniqueMaterials = [...new Set(filteredOrders.map(o => extractMaterialInfo(o).code))];
 
     try {
       for (let i = 0; i < filteredOrders.length; i++) {
@@ -326,11 +333,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
 
+  const getResponsableColor = (code: string) => {
+    const colors: Record<string, string> = {
+      "009": "bg-blue-100 text-blue-700 border-blue-200",
+      "018": "bg-emerald-100 text-emerald-700 border-emerald-200",
+      "022": "bg-purple-100 text-purple-700 border-purple-200",
+      "014": "bg-amber-100 text-amber-700 border-amber-200",
+      "042": "bg-rose-100 text-rose-700 border-rose-200",
+      "043": "bg-indigo-100 text-indigo-700 border-indigo-200"
+    };
+    return colors[code] || "bg-gray-100 text-gray-700 border-gray-200";
+  };
+
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
-      {/* Header Seccion */}
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
@@ -356,8 +374,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-4">
-          {/* Filtro de Fecha sutil en la parte superior de la tabla */}
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between bg-gray-50/50 p-3 rounded-2xl border border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-500/10 rounded-xl text-red-600"><UserCheck className="w-4 h-4" /></div>
+              <div>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Responsables Activos</p>
+                <div className="flex gap-1.5 mt-0.5">
+                  {RESPONSABLES_VALIDOS.map(code => (
+                    <Badge key={code} variant="outline" className={cn("text-[9px] font-black border", getResponsableColor(code))}>
+                      {code}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm">
@@ -396,21 +427,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-tight">
+                <thead className="bg-[#f8fafc] text-slate-400 border-b border-gray-100 uppercase font-black tracking-widest text-[9px]">
                   <tr>
-                    <th className="px-5 py-4 border-r border-white/5">Orden</th>
-                    <th className="px-5 py-4 border-r border-white/5">Fecha</th>
-                    <th className="px-5 py-4 border-r border-white/5">Material</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-left">Descripción</th>
-                    <th className="px-5 py-4 border-r border-white/5">Cant.</th>
-                    <th className="px-5 py-4 border-r border-white/5">Responsable</th>
-                    <th className="px-5 py-4 border-r border-white/5">Máquina</th>
+                    <th className="px-5 py-4 border-r border-gray-100">Orden</th>
+                    <th className="px-5 py-4 border-r border-gray-100">Fecha</th>
+                    <th className="px-5 py-4 border-r border-gray-100">Material</th>
+                    <th className="px-5 py-4 border-r border-gray-100 text-left">Descripción</th>
+                    <th className="px-5 py-4 border-r border-gray-100">Cant.</th>
+                    <th className="px-5 py-4 border-r border-gray-100">Responsable</th>
+                    <th className="px-5 py-4 border-r border-gray-100">Máquina</th>
                     <th className="px-5 py-4">Almacén</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-50">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin órdenes para el período seleccionado</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-gray-300 italic font-black uppercase tracking-widest opacity-20 text-center">Sin órdenes para el criterio actual</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
@@ -419,17 +450,19 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '—').trim();
 
                       return (
-                        <tr key={i} className="hover:bg-gray-50 transition-colors group">
-                          <td className="px-4 py-4 font-bold text-gray-900 border-r border-dashed border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                          <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 truncate max-w-[350px] text-gray-600 font-bold uppercase">{info.desc}</td>
-                          <td className="px-4 py-4 font-black text-gray-900 border-r border-dashed border-gray-100 font-mono text-xs">{qty.toLocaleString()}</td>
-                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-indigo-600 bg-indigo-50/5 uppercase">
-                            <Badge variant="outline" className="text-[10px] font-bold border-indigo-200 bg-indigo-50/50">{responsable}</Badge>
+                        <tr key={i} className="hover:bg-slate-50/50 transition-colors group">
+                          <td className="px-4 py-3.5 font-bold text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                          <td className="px-4 py-3.5 border-r border-gray-50 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                          <td className="px-4 py-3.5 font-mono font-black text-red-500 border-r border-gray-50 tracking-tighter">{info.code}</td>
+                          <td className="px-4 py-3.5 text-left border-r border-gray-50 truncate max-w-[320px] text-slate-600 font-bold uppercase leading-tight">{info.desc}</td>
+                          <td className="px-4 py-3.5 font-black text-slate-900 border-r border-gray-50 font-mono text-xs">{qty.toLocaleString()}</td>
+                          <td className="px-4 py-3.5 border-r border-gray-50">
+                            <Badge variant="outline" className={cn("text-[10px] font-black border py-0.5", getResponsableColor(responsable))}>
+                              {responsable}
+                            </Badge>
                           </td>
-                          <td className="px-4 py-4 font-black text-amber-700 border-r border-dashed border-gray-100 bg-amber-50/10 uppercase">{maquina}</td>
-                          <td className="px-4 py-4 font-bold text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-4 py-3.5 font-black text-slate-400 border-r border-gray-50 uppercase text-[10px]">{maquina}</td>
+                          <td className="px-4 py-3.5 font-bold text-slate-300 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
                     })
@@ -440,7 +473,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* --- NUEVO TAB: RESUMEN NECESIDADES --- */}
         <TabsContent value="resumen" className="animate-in fade-in duration-300 space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50 p-5 rounded-2xl border border-gray-200 shadow-sm text-left">
             <div className="flex items-center gap-3">
@@ -456,7 +488,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
             
             <div className="flex items-center gap-2">
-              {/* Botón de Proceso */}
               <Button 
                 onClick={handleProcessResumen}
                 disabled={isProcessingResumen || filteredOrders.length === 0}
@@ -529,13 +560,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Inicie el cálculo para cruzar órdenes con recetas técnicas filtradas</p>
             </div>
           )}
-
-          <div className="px-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-2 text-left">
-            <Info className="w-3.5 h-3.5 text-blue-500" />
-            <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">
-              Nota: Este resumen realiza una explosión jerárquica multinivel de cada material en la orden y aisla los componentes de tipo "Lámina Cilíndrica".
-            </p>
-          </div>
         </TabsContent>
 
         <TabsContent value="listaMateriales" className="space-y-4 animate-in fade-in duration-300">
