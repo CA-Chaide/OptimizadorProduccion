@@ -90,7 +90,6 @@ const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   const desc = descripcion.toUpperCase();
   const code = materialCode.toUpperCase();
 
-  // Mapeo por densidad (Estándar Industrial)
   if (desc.includes('D12') || code.includes('D12')) return 12;
   if (desc.includes('D18') || code.includes('D18')) return 18;
   if (desc.includes('D20') || code.includes('D20')) return 20;
@@ -101,7 +100,6 @@ const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   if (desc.includes('D40') || code.includes('D40')) return 40;
   if (desc.includes('D50') || code.includes('D50')) return 50;
   
-  // Intento de captura por número directo después de "D" en la descripción
   const match = desc.match(/D(\d+)/);
   if (match) {
     const density = parseInt(match[1]);
@@ -109,14 +107,13 @@ const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
     if (validWeights.includes(density)) return density;
   }
   
-  return 35; // Peso estándar por defecto si no se identifica
+  return 35; 
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
 
-  // Estados de control de montaje para evitar errores de hidratación
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('ordenes');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -125,18 +122,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filtros dinámicos
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date>(new Date());
 
-  // BOOM (Auditoría Técnica)
   const [fertBusqueda, setFertBusqueda] = useState('');
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [isSearchingBOM, setIsSearchingBOM] = useState(false);
   const [bomPage, setBomPage] = useState(1);
   const [bomRowsPerPage, setBomRowsPerPage] = useState(50);
 
-  // Resumen Unificado de Necesidades
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
@@ -189,6 +183,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [ordenes, selectedDate]);
 
   const datesWithOrders = useMemo(() => {
+    if (!mounted) return new Set<string>();
     const dates = new Set<string>();
     ordenes.forEach(o => {
       const centro = String(o.CENTRO || o.Centro || '').trim();
@@ -199,7 +194,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
     });
     return dates;
-  }, [ordenes]);
+  }, [ordenes, mounted]);
 
   const calendarDays = useMemo(() => {
     if (!mounted) return [];
@@ -286,7 +281,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       const finalArray = Array.from(consolidatedMap.values()).map(row => ({
         ...row,
-        // Cálculo de unidades (rollos) = Kg totales / peso unitario del rollo
         consumoUn: row.pesoRollo > 0 ? row.consumoKg / row.pesoRollo : 0
       })).sort((a, b) => b.consumoKg - a.consumoKg);
       
@@ -432,11 +426,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
           <div className="flex flex-col md:flex-row items-end justify-between gap-4">
              <div className="flex items-center gap-4">
-                <div className="bg-[#991b1b] text-white p-3 rounded-xl shadow-lg border-b-4 border-black/20 min-w-[160px] text-center">
+                <div className="bg-[#7f1d1d] text-white p-3 rounded-xl shadow-lg min-w-[160px] text-center border-b-4 border-black/20">
                     <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Consumo Diario (Kg)</p>
                     <p className="text-xl font-black font-mono">{totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
                 </div>
-                <div className="bg-[#991b1b] text-white p-3 rounded-xl shadow-lg border-b-4 border-black/20 min-w-[160px] text-center">
+                <div className="bg-[#7f1d1d] text-white p-3 rounded-xl shadow-lg min-w-[160px] text-center border-b-4 border-black/20">
                     <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Total Rollos (Un)</p>
                     <p className="text-xl font-black font-mono">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
                 </div>
@@ -462,37 +456,36 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full border-collapse font-sans text-[11px] text-center">
                   <thead className="sticky top-0 z-20">
-                    <tr className="bg-[#bde0fe] text-black uppercase font-black tracking-tight text-[10px]">
+                    <tr className="bg-[#bde0fe] text-slate-800 uppercase font-black tracking-tight text-[10px]">
                       <th className="px-6 py-4 border-r border-gray-100 text-left w-32">Material</th>
                       <th className="px-6 py-4 border-r border-gray-100 text-left">Descripción</th>
-                      <th className="px-6 py-4 border-r border-gray-100 bg-[#fce4d6] w-48 text-right">Consumo Actual OF [Kg]</th>
-                      <th className="px-6 py-4 border-r border-gray-100 bg-[#fce4d6] w-48 text-right">Consumo Actual OF [Un]</th>
-                      <th className="px-6 py-4 bg-[#e2efda] w-40 text-right">peso / rollo (Kg)</th>
+                      <th className="px-6 py-4 border-r border-gray-100 w-40 text-center">peso / rollo (Kg)</th>
+                      <th className="px-6 py-4 border-r border-gray-100 w-48 text-right">Consumo Actual OF [Kg]</th>
+                      <th className="px-6 py-4 w-48 text-right">Consumo Actual OF [Un]</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 font-bold">
                     {unifiedNeeds.map((row, idx) => (
                       <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left">{row.material}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left bg-blue-50/10">{row.material}</td>
                         <td className="px-6 py-3 border-r border-gray-100 text-left text-slate-500 uppercase font-bold truncate max-w-[300px]" title={row.descripcion}>{row.descripcion}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-[#fce4d6]/10 text-right">
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-green-700 text-center bg-green-50/5">
+                          {row.pesoRollo.toFixed(1)}
+                        </td>
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-orange-50/20 text-right">
                           {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-red-600 bg-[#fce4d6]/10 text-right">
+                        <td className="px-6 py-3 font-mono text-red-600 bg-orange-50/20 text-right">
                           {row.consumoUn.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
-                        <td className="px-6 py-3 font-mono text-green-700 bg-[#e2efda]/10 text-right">
-                          {row.pesoRollo.toFixed(1)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0">
                     <tr>
-                      <td colSpan={2} className="px-6 py-4 text-right tracking-widest text-slate-400">Total Período Seleccionado:</td>
+                      <td colSpan={3} className="px-6 py-4 text-right tracking-widest text-slate-400">Total Consolidado del Período:</td>
                       <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
                       <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                      <td className="px-6 py-4 bg-black/20"></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -501,7 +494,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isProcessingResumen && (
             <div className="py-24 text-center bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100">
               <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Calcule las necesidades para visualizar el consolidado de láminas</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Calcule las necesidades para visualizar el consolidado estructural</p>
             </div>
           )}
         </TabsContent>
