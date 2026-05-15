@@ -86,15 +86,19 @@ const getNumProp = (obj: any, key: string): number => {
 // Catálogo de pesos por rollo basado en densidad y estándares compartidos
 const getPesoPorRollo = (descripcion: string): number => {
   const desc = descripcion.toUpperCase();
-  if (desc.includes('D12')) return 12;
-  if (desc.includes('D18')) return 18;
-  if (desc.includes('D20')) return 20;
-  if (desc.includes('D24')) return 24;
-  if (desc.includes('D28')) return 28;
-  if (desc.includes('D30')) return 30;
-  if (desc.includes('D35')) return 35;
-  if (desc.includes('D40')) return 40;
-  if (desc.includes('D50')) return 50;
+  const match = desc.match(/D(\d+)/);
+  if (match) {
+    const density = parseInt(match[1]);
+    if (density === 12) return 12;
+    if (density === 18) return 18;
+    if (density === 20) return 20;
+    if (density === 24) return 24;
+    if (density === 28) return 28;
+    if (density === 30) return 30;
+    if (density === 35) return 35;
+    if (density === 40) return 40;
+    if (density === 50) return 50;
+  }
   return 35; // Valor por defecto
 };
 
@@ -287,7 +291,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
-  // Sincronización de Hidratación: Evitar renderizado desigual entre servidor y cliente
   if (!mounted || !viewDate) return null;
 
   if (isLoading) {
