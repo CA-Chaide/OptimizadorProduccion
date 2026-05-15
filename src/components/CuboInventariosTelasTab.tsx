@@ -47,7 +47,6 @@ export const CuboInventariosTelasTab: React.FC = () => {
                 let fetchedData: CuboInventariosItem[] = [];
 
                 for (let i = 1; i <= totalPagesToFetch; i++) {
-                    addNotification('info', `Cargando lote ${i} de ${totalPagesToFetch} de inventario...`);
                     const pageResponse = await serviciosService.getCuboInventarios(i, BATCH_SIZE);
                     if (pageResponse.data && Array.isArray(pageResponse.data)) {
                         fetchedData = fetchedData.concat(pageResponse.data);
@@ -55,7 +54,6 @@ export const CuboInventariosTelasTab: React.FC = () => {
                 }
 
                 setAllData(fetchedData);
-                addNotification('success', `Se cargaron ${fetchedData.length} registros de inventario.`);
 
                 if (fetchedData.length > 0 && columns.length === 0) {
                     let originalColumns = Object.keys(fetchedData[0]);
@@ -83,9 +81,16 @@ export const CuboInventariosTelasTab: React.FC = () => {
     }, [addNotification, columns.length]);
 
     const filteredData = useMemo(() => {
-        return allData.filter(row => 
+        const filtered = allData.filter(row => 
             row.Descripcion && String(row.Descripcion).toUpperCase().includes('TELA MUEBLES')
         );
+
+        // Ordenar prioritariamente por StockActual (de mayor a menor)
+        return filtered.sort((a, b) => {
+            const stockA = Number(a.StockActual) || 0;
+            const stockB = Number(b.StockActual) || 0;
+            return stockB - stockA;
+        });
     }, [allData]);
 
     const totalRecords = filteredData.length;
@@ -173,22 +178,28 @@ export const CuboInventariosTelasTab: React.FC = () => {
                 <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
             </div>
              <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh]">
-                 <table ref={tableRef} className="min-w-full text-xs divide-y divide-gray-200">
-                     <TableHeader className="bg-gray-100 sticky top-0">
+                 <table ref={tableRef} className="min-w-full text-xs border-collapse">
+                     <TableHeader className="bg-gray-100 sticky top-0 z-10">
                          <TableRow>
-                             {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
+                             {columns.map(col => (
+                                <TableHead key={col} className="text-center font-bold text-gray-700 uppercase tracking-wider px-4 py-2 border-r border-dashed border-gray-300 last:border-r-0">
+                                    {col}
+                                </TableHead>
+                             ))}
                          </TableRow>
                      </TableHeader>
                      <TableBody>
                         {displayedData.map((row, idx) => (
-                           <TableRow key={idx}>
-                                {columns.map(col => {
+                           <TableRow key={idx} className="hover:bg-gray-50">
+                                {columns.map((col, colIndex) => {
                                     let displayValue = String(row[col] ?? '-');
                                     if (col === 'Material') {
                                         displayValue = displayValue.slice(-8);
                                     }
                                     return (
-                                        <TableCell key={`${idx}-${col}`}>{displayValue}</TableCell>
+                                        <TableCell key={`${idx}-${col}`} className={`px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 ${col === 'StockActual' && Number(row[col]) > 0 ? 'font-bold text-green-700 bg-green-50/30' : ''}`}>
+                                            {displayValue}
+                                        </TableCell>
                                     );
                                 })}
                            </TableRow>
@@ -209,7 +220,7 @@ export const CuboInventariosTelasTab: React.FC = () => {
                     </select>
                 </div>
                 <div className="flex items-center space-x-2">
-                     <span className="text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+                     <span className="text-sm text-gray-600">Página {currentPage} de {totalPages} ({totalRecords} registros)</span>
                      <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={currentPage === 1}>Primera</Button>
                      <Button variant="outline" size="sm" onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>Anterior</Button>
                      <Button variant="outline" size="sm" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages}>Siguiente</Button>
