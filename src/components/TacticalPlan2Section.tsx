@@ -11,7 +11,6 @@ import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
 import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { ProgDiariaTabSection } from './ProgDiariaTabSection';
-import { HorariosTabSection } from './HorariosTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -89,7 +88,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-8 mb-8">
+        <TabsList className="grid w-full grid-cols-7 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -113,10 +112,6 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="fert" className="flex items-center gap-2">
             <ClipboardList className="w-4 h-4" />
             Fert
-          </TabsTrigger>
-          <TabsTrigger value="horarios" className="flex items-center gap-2">
-            <CalendarDays className="w-4 h-4" />
-            Horarios
           </TabsTrigger>
           <TabsTrigger value="prog_diaria" className="flex items-center gap-2">
             <ListChecks className="w-4 h-4" />
@@ -258,18 +253,6 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <OrdenesFertTabSection />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="horarios">
-          <Card>
-            <CardHeader>
-              <CardTitle>Horarios y Capacidad por Área</CardTitle>
-              <CardDescription>Resumen de turnos y restricciones de tiempo aplicables.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <HorariosTabSection />
             </CardContent>
           </Card>
         </TabsContent>
