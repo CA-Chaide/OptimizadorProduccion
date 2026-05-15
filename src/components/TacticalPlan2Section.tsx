@@ -11,7 +11,6 @@ import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
 import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { ProgDiariaTabSection } from './ProgDiariaTabSection';
-import { HorariosTabSection } from './HorariosTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -263,14 +262,7 @@ export const TacticalPlan2Section: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="prog_turnos">
-          <Card>
-            <CardHeader>
-              <CardTitle>Programación de Turnos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <HorariosTabSection />
-            </CardContent>
-          </Card>
+          {/* Pestaña vacía por solicitud del usuario */}
         </TabsContent>
 
         <TabsContent value="prog_diaria">
