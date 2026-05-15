@@ -57,7 +57,7 @@ interface UnifiedNeedRow {
   material: string;
   descripcion: string;
   consumoKg: number;
-  consumoUn: number; // Este será el número de rollos (Kg / PesoRollo)
+  consumoUn: number; 
   pesoRollo: number;
 }
 
@@ -82,7 +82,6 @@ const getNumProp = (obj: any, key: string): number => {
   return foundKey ? safeNum(obj[foundKey]) : 0;
 };
 
-// Función para determinar el peso por rollo según el catálogo o descripción
 const getPesoPorRollo = (descripcion: string): number => {
   const desc = descripcion.toUpperCase();
   if (desc.includes('D12')) return 12;
@@ -94,13 +93,14 @@ const getPesoPorRollo = (descripcion: string): number => {
   if (desc.includes('D35')) return 35;
   if (desc.includes('D40')) return 40;
   if (desc.includes('D50')) return 50;
-  return 35; // Peso estándar de fallback
+  return 35; 
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
 
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('ordenes');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
@@ -110,7 +110,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   // Filtros
   const [selectedDate, setSelectedDate] = useState<string>('all');
-  const [viewDate, setViewDate] = useState(new Date());
+  const [viewDate, setViewDate] = useState(new Date(2025, 0, 1)); // Fecha estática inicial
 
   // BOOM
   const [fertBusqueda, setFertBusqueda] = useState('');
@@ -125,6 +125,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
 
   useEffect(() => {
+    setMounted(true);
+    setViewDate(new Date());
+
     const init = async () => {
       setIsLoading(true);
       try {
@@ -250,7 +253,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   material: code,
                   descripcion: desc,
                   consumoKg: kgTotal,
-                  consumoUn: 0, // Se calculará al final
+                  consumoUn: 0,
                   pesoRollo: pRollo
                 });
               }
@@ -262,7 +265,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       const finalArray = Array.from(consolidatedMap.values()).map(row => ({
         ...row,
-        // Cálculo solicitado: Unidades = Kg Totales / Peso por Rollo
         consumoUn: row.pesoRollo > 0 ? row.consumoKg / row.pesoRollo : 0
       })).sort((a, b) => b.consumoKg - a.consumoKg);
       
@@ -278,6 +280,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [unifiedNeeds]);
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
+
+  if (!mounted || isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Módulo de Laminado...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
