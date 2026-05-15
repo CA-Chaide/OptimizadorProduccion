@@ -84,7 +84,7 @@ export const CuboInventariosTelasTab: React.FC = () => {
 
     const filteredData = useMemo(() => {
         return allData.filter(row => 
-            row.Descripcion && String(row.Descripcion).toUpperCase().includes('TELA')
+            row.Descripcion && String(row.Descripcion).toUpperCase().includes('TELA MUEBLES')
         );
     }, [allData]);
 
