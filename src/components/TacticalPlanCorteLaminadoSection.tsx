@@ -19,7 +19,7 @@ import {
   PlayCircle,
   UserCheck,
   TrendingUp,
-  Scale
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -57,7 +57,7 @@ interface UnifiedNeedRow {
   material: string;
   descripcion: string;
   consumoKg: number;
-  consumoUn: number;
+  consumoUn: number; // Este será el número de rollos (Kg / PesoRollo)
   pesoRollo: number;
 }
 
@@ -82,6 +82,21 @@ const getNumProp = (obj: any, key: string): number => {
   return foundKey ? safeNum(obj[foundKey]) : 0;
 };
 
+// Función para determinar el peso por rollo según el catálogo o descripción
+const getPesoPorRollo = (descripcion: string): number => {
+  const desc = descripcion.toUpperCase();
+  if (desc.includes('D12')) return 12;
+  if (desc.includes('D18')) return 18;
+  if (desc.includes('D20')) return 20;
+  if (desc.includes('D24')) return 24;
+  if (desc.includes('D28')) return 28;
+  if (desc.includes('D30')) return 30;
+  if (desc.includes('D35')) return 35;
+  if (desc.includes('D40')) return 40;
+  if (desc.includes('D50')) return 50;
+  return 35; // Peso estándar de fallback
+};
+
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
@@ -93,82 +108,58 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Estados para Filtro Dinámico de Fechas
+  // Filtros
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState(new Date());
 
-  // Estados para el BOOM de Materiales (Auditoría Técnica)
+  // BOOM
   const [fertBusqueda, setFertBusqueda] = useState('');
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [isSearchingBOM, setIsSearchingBOM] = useState(false);
   const [bomPage, setBomPage] = useState(1);
   const [bomRowsPerPage, setBomRowsPerPage] = useState(100);
 
-  // Estados para Resumen Necesidades Unificado
+  // Resumen Unificado
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
 
-  const fetchGrupos = async () => {
-    try {
-      const res = await grupoService.getAll();
-      const filtered = (res.data || []).filter(g => {
-        const name = (g.nombre_grupo || '').toLowerCase();
-        return (name.includes('corte y laminado') || name.includes('laminado'));
-      });
-      setGrupos(filtered);
-      return filtered;
-    } catch (error) { return []; }
-  };
-
-  const fetchRestricciones = async (gruposIds: number[]) => {
-    try {
-      const res = await restriccionService.getAll();
-      const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
-      setRestriccionesArray(filtered);
-      return filtered;
-    } catch (error) { return []; }
-  };
-
-  const fetchOrdenes = async () => {
-    try {
-      const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
-      const data = resProv.data?.data || resProv.data || [];
-      setOrders(Array.isArray(data) ? data : []);
-    } catch (error) { console.error('Error cargando órdenes:', error); }
-  };
-
-  const fetchTiemposEnsamblado = async () => {
-    try {
-      const res = await serviciosService.getTiemposEnsamblado(1, 15000);
-      const data = res.data?.data || res.data || [];
-      if (Array.isArray(data)) setTiemposEnsamblado(data);
-    } catch (error) { console.error('Error cargando tiempos:', error); }
-  };
-
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
-      const groups = await fetchGrupos();
-      const ids = groups.map(g => g.codigo_grupo);
-      await Promise.all([
-        fetchRestricciones(ids),
-        fetchOrdenes(),
-        fetchTiemposEnsamblado()
-      ]);
-      setIsLoading(false);
+      try {
+        const groupsRes = await grupoService.getAll();
+        const filteredGroups = (groupsRes.data || []).filter(g => {
+          const name = (g.nombre_grupo || '').toLowerCase();
+          return (name.includes('corte y laminado') || name.includes('laminado'));
+        });
+        setGrupos(filteredGroups);
+        const ids = filteredGroups.map(g => g.codigo_grupo);
+        
+        const [restrs, provs, times] = await Promise.all([
+          restriccionService.getAll(),
+          serviciosService.OrdenesProvisionalesPaginados(1, 20000),
+          serviciosService.getTiemposEnsamblado(1, 15000)
+        ]);
+
+        setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
+        setOrders(provs.data?.data || provs.data || []);
+        setTiemposEnsamblado(times.data?.data || times.data || []);
+      } catch (e) {
+        console.error('Error init:', e);
+      } finally {
+        setIsLoading(false);
+      }
     };
     init();
   }, []);
 
   const filteredOrders = useMemo(() => {
     return ordenes.filter(o => {
-      const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
+      const centro = String(o.CENTRO || o.Centro || '').trim();
       if (centro === '2000') return false; 
-
       const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '').trim();
       if (!RESPONSABLES_VALIDOS.includes(responsable)) return false;
-
       if (selectedDate !== 'all') {
         const dateRaw = String(o.FECHAINICIO || o.FECHA || '').trim();
         const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
@@ -181,15 +172,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
-      const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
+      const centro = String(o.CENTRO || o.Centro || '').trim();
       if (centro === '2000') return;
-      const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '').trim();
-      if (!RESPONSABLES_VALIDOS.includes(responsable)) return;
+      const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+      if (!RESPONSABLES_VALIDOS.includes(resp)) return;
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null' && d !== 'undefined') {
-        const normalized = d.includes('T') ? d.split('T')[0] : d;
-        dates.add(normalized);
-      }
+      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
     });
     return dates;
   }, [ordenes]);
@@ -203,21 +191,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  const extractMaterialInfo = (item: any) => {
-    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
-    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
-    const match = matStr.match(/^(\d+)/);
-    const code = match ? match[1].slice(-8) : matStr.slice(-8);
-    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-    return { code, desc };
-  };
-
   const handleSearchBOM = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!fertBusqueda.trim()) {
-      addNotification('warning', 'Ingrese un código FERT para consultar su BOOM.');
-      return;
-    }
+    if (!fertBusqueda.trim()) return;
     setIsSearchingBOM(true);
     setBomRows([]);
     setBomPage(1);
@@ -226,99 +202,72 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 5000);
       const rawData = response?.data?.data || response?.data || [];
       if (Array.isArray(rawData)) {
-        const filtered = rawData
-          .filter(row => {
-            const centro = getProp(row, 'CENTRO');
-            const descripcion = getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase();
-            return centro !== '2000' && descripcion.includes('LAMINA CILINDRICA');
-          })
-          .map(row => ({
-            NIVEL: getProp(row, 'NIVEL'),
-            CENTRO: getProp(row, 'CENTRO'),
-            FERT_PRINCIPAL: getProp(row, 'FERT_PRINCIPAL'),
-            DESCRIPCION_FERT: getProp(row, 'DESCRIPCION_FERT'),
-            MATERIAL_PADRE: getProp(row, 'MATERIAL_PADRE'),
-            COMPONENTE: getProp(row, 'COMPONENTE'),
-            DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE'),
-            CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
-            CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA')
-          }));
-        setBomRows(filtered);
+        setBomRows(rawData.filter(row => getProp(row, 'CENTRO') !== '2000' && getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase().includes('LAMINA CILINDRICA')).map(row => ({
+          NIVEL: getProp(row, 'NIVEL'),
+          CENTRO: getProp(row, 'CENTRO'),
+          FERT_PRINCIPAL: getProp(row, 'FERT_PRINCIPAL'),
+          DESCRIPCION_FERT: getProp(row, 'DESCRIPCION_FERT'),
+          MATERIAL_PADRE: getProp(row, 'MATERIAL_PADRE'),
+          COMPONENTE: getProp(row, 'COMPONENTE'),
+          DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE'),
+          CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
+          CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA')
+        })));
       }
-    } catch (err) {
-      addNotification('error', 'Error al consultar el BOOM técnico.');
-    } finally {
-      setIsSearchingBOM(false);
-    }
+    } catch (err) { addNotification('error', 'Error en BOOM.'); } finally { setIsSearchingBOM(false); }
   };
 
   const handleProcessResumen = async () => {
-    if (filteredOrders.length === 0) {
-      addNotification('warning', 'No hay órdenes en el período seleccionado para procesar.');
-      return;
-    }
-
+    if (filteredOrders.length === 0) return;
     setIsProcessingResumen(true);
     setUnifiedNeeds([]);
     setResumenProgress({ current: 0, total: filteredOrders.length });
-
     const consolidatedMap = new Map<string, UnifiedNeedRow>();
 
     try {
       for (let i = 0; i < filteredOrders.length; i++) {
         const order = filteredOrders[i];
-        const info = extractMaterialInfo(order);
-        const fullCode = info.code.padStart(18, '0');
-        const qty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+        const matCode = String(order.MATERIAL || order.CodMaterial || '').match(/^(\d+)/)?.[1] || '';
+        const fullCode = matCode.padStart(18, '0');
+        const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
 
         try {
           const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
           const rawData = response?.data?.data || response?.data || [];
-
           if (Array.isArray(rawData)) {
-            const componentesLaminas = rawData.filter(row => {
-              const desc = getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase();
-              const centro = getProp(row, 'CENTRO');
-              return centro !== '2000' && (desc.includes('LAMINA CILINDRICA') || desc.includes('ROLLO D'));
-            });
-
-            componentesLaminas.forEach(comp => {
-              const compCode = getProp(comp, 'COMPONENTE').slice(-8);
-              const compDesc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
+            rawData.filter(row => getProp(row, 'CENTRO') !== '2000' && getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase().includes('LAMINA CILINDRICA')).forEach(comp => {
+              const code = getProp(comp, 'COMPONENTE').slice(-8);
+              const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
               const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA');
-              const totalKg = qty * cantAcum;
-
-              if (consolidatedMap.has(compCode)) {
-                const existing = consolidatedMap.get(compCode)!;
-                existing.consumoKg += totalKg;
-                existing.consumoUn += qty;
+              const kgTotal = orderQty * cantAcum;
+              
+              if (consolidatedMap.has(code)) {
+                const ex = consolidatedMap.get(code)!;
+                ex.consumoKg += kgTotal;
               } else {
-                // Mocking pesoRollo based on density patterns in description if possible, or random range 20-80
-                const densMatch = compDesc.match(/D(\d+)/);
-                const baseWeight = densMatch ? parseInt(densMatch[1]) + 10 : 35;
-
-                consolidatedMap.set(compCode, {
-                  material: compCode,
-                  descripcion: compDesc,
-                  consumoKg: totalKg,
-                  consumoUn: qty,
-                  pesoRollo: baseWeight
+                const pRollo = getPesoPorRollo(desc);
+                consolidatedMap.set(code, {
+                  material: code,
+                  descripcion: desc,
+                  consumoKg: kgTotal,
+                  consumoUn: 0, // Se calculará al final
+                  pesoRollo: pRollo
                 });
               }
             });
           }
-        } catch (e) {
-          console.warn(`Error procesando BOOM para material ${info.code}`);
-        }
+        } catch (e) {}
         setResumenProgress(prev => ({ ...prev, current: i + 1 }));
       }
-      setUnifiedNeeds(Array.from(consolidatedMap.values()).sort((a, b) => b.consumoKg - a.consumoKg));
-      addNotification('success', `Cálculo unificado completado.`);
-    } catch (err) {
-      addNotification('error', 'Error al procesar el resumen de necesidades.');
-    } finally {
-      setIsProcessingResumen(false);
-    }
+      
+      const finalArray = Array.from(consolidatedMap.values()).map(row => ({
+        ...row,
+        // Cálculo solicitado: Unidades = Kg Totales / Peso por Rollo
+        consumoUn: row.pesoRollo > 0 ? row.consumoKg / row.pesoRollo : 0
+      })).sort((a, b) => b.consumoKg - a.consumoKg);
+      
+      setUnifiedNeeds(finalArray);
+    } finally { setIsProcessingResumen(false); }
   };
 
   const totalsUnified = useMemo(() => {
@@ -328,26 +277,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }), { kg: 0, un: 0 });
   }, [unifiedNeeds]);
 
-  const paginatedBomRows = useMemo(() => {
-    const start = (bomPage - 1) * bomRowsPerPage;
-    return bomRows.slice(start, start + bomRowsPerPage);
-  }, [bomRows, bomPage, bomRowsPerPage]);
-
-  const totalBomPages = Math.max(1, Math.ceil(bomRows.length / bomRowsPerPage));
-
-  const getResponsableColor = (code: string) => {
-    const colors: Record<string, string> = {
-      "009": "bg-blue-100 text-blue-700 border-blue-200",
-      "018": "bg-emerald-100 text-emerald-700 border-emerald-200",
-      "022": "bg-purple-100 text-purple-700 border-purple-200",
-      "014": "bg-amber-100 text-amber-700 border-amber-200",
-      "042": "bg-rose-100 text-rose-700 border-rose-200",
-      "043": "bg-indigo-100 text-indigo-700 border-indigo-200"
-    };
-    return colors[code] || "bg-gray-100 text-gray-700 border-gray-200";
-  };
-
-  if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>;
+  const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -356,115 +286,104 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión de Necesidades Técnicas y Auditoría de Materiales</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión Táctica de Láminas y Auditoría de Materiales</p>
           </div>
         </div>
       </div>
 
-      <Tabs defaultValue="ordenes" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid grid-cols-4 h-10 bg-gray-100/50 p-1 rounded-xl border border-gray-200 mb-6">
           {[ 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
             { v: 'listaMateriales', l: 'Lista Materiales (BOOM)', i: ClipboardList },
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
-            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-red-600">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-4">
-          <div className="flex items-center justify-between bg-gray-50/50 p-3 rounded-2xl border border-gray-200">
-            <div className="flex items-center gap-3">
+        <TabsContent value="ordenes" className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-4">
               <div className="p-2 bg-red-500/10 rounded-xl text-red-600"><UserCheck className="w-4 h-4" /></div>
               <div>
-                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Responsables Activos</p>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Filtro por Responsables</p>
                 <div className="flex gap-1.5 mt-0.5">
-                  {RESPONSABLES_VALIDOS.map(code => (
-                    <Badge key={code} variant="outline" className={cn("text-[9px] font-black border", getResponsableColor(code))}>
-                      {code}
-                    </Badge>
-                  ))}
+                  {RESPONSABLES_VALIDOS.map(c => <Badge key={c} variant="outline" className="text-[9px] font-black bg-white border-gray-200">{c}</Badge>)}
                 </div>
               </div>
             </div>
-
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm">
-                  <Filter className="w-3 h-3 text-red-500" /> {selectedDate === 'all' ? 'Todas las Fechas' : selectedDate}
+                <Button variant="outline" size="sm" className="h-9 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-red-500/50 gap-2 font-bold text-[10px] uppercase shadow-sm">
+                  <Filter className="w-3 h-3 text-red-500" /> {selectedDate === 'all' ? 'Ver todo' : selectedDate}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-                <div className="bg-white p-3 font-sans">
-                  <div className="flex items-center justify-between mb-3 text-left">
-                    <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                    <div className="flex gap-1 bg-gray-50 rounded-lg p-1">
-                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-3 h-3" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronRight className="w-3 h-3" /></Button>
+              <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
+                <div className="bg-white p-4 font-sans text-left">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xs font-black text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7"><ChevronLeft className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7"><ChevronRight className="w-4 h-4" /></Button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-7 gap-y-1 text-center mb-2">
-                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
+                  <div className="grid grid-cols-7 gap-y-1 text-center mb-3">
+                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[9px] font-bold text-gray-300 py-1">{d}</div>)}
                     {calendarDays.map((day, idx) => {
-                      if (!day) return <div key={`cal-pad-${idx}`} className="p-1" />;
-                      const dateStr = format(day, 'yyyy-MM-dd');
-                      const isSelected = selectedDate === dateStr;
+                      if (!day) return <div key={idx} />;
+                      const dStr = format(day, 'yyyy-MM-dd');
+                      const sel = selectedDate === dStr;
                       return (
-                        <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-red-600 text-white shadow-md" : "hover:bg-gray-100")}>
-                          <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>
-                          {datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-red-400 rounded-full" />}
+                        <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white" : "hover:bg-gray-100")}>
+                          <span className={cn("text-xs font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                          {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-red-400 rounded-full" />}
                         </button>
                       );
                     })}
                   </div>
-                  <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-red-600 h-7 mt-1 rounded-lg hover:bg-red-50" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
                 </div>
               </PopoverContent>
             </Popover>
           </div>
 
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px]">
+            <div className="overflow-x-auto">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
                 <thead className="bg-[#f8fafc] text-slate-400 border-b border-gray-100 uppercase font-black tracking-widest text-[9px]">
                   <tr>
-                    <th className="px-5 py-4 border-r border-gray-100">Orden</th>
-                    <th className="px-5 py-4 border-r border-gray-100">Fecha</th>
-                    <th className="px-5 py-4 border-r border-gray-100">Material</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Orden</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Fecha</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Material</th>
                     <th className="px-5 py-4 border-r border-gray-100 text-left">Descripción</th>
-                    <th className="px-5 py-4 border-r border-gray-100">Cant.</th>
-                    <th className="px-5 py-4 border-r border-gray-100">Responsable</th>
-                    <th className="px-5 py-4 border-r border-gray-100">Máquina</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Cant.</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Resp.</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Máquina</th>
                     <th className="px-5 py-4">Almacén</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-gray-300 italic font-black uppercase tracking-widest opacity-20 text-center">Sin órdenes para el criterio actual</td></tr>
+                    <tr><td colSpan={8} className="py-20 text-gray-200 font-black uppercase tracking-widest text-center">No hay registros para este filtro</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
-                      const info = extractMaterialInfo(o);
-                      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                      const maquina = String(o.MAQUINA || o.Maquina || o.recurso || o.RECURSO || '—').trim();
-                      const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '—').trim();
-
+                      const mat = String(o.MATERIAL || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
+                      const desc = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
                       return (
-                        <tr key={i} className="hover:bg-slate-50/50 transition-colors group">
-                          <td className="px-4 py-3.5 font-bold text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                          <td className="px-4 py-3.5 border-r border-gray-50 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                          <td className="px-4 py-3.5 font-mono font-black text-red-500 border-r border-gray-50 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-3.5 text-left border-r border-gray-50 truncate max-w-[320px] text-slate-600 font-bold uppercase leading-tight">{info.desc}</td>
-                          <td className="px-4 py-3.5 font-black text-slate-900 border-r border-gray-50 font-mono text-xs">{qty.toLocaleString()}</td>
-                          <td className="px-4 py-3.5 border-r border-gray-50">
-                            <Badge variant="outline" className={cn("text-[10px] font-black border py-0.5", getResponsableColor(responsable))}>
-                              {responsable}
-                            </Badge>
+                        <tr key={i} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 font-bold text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
+                          <td className="px-4 py-3 border-r border-gray-50 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || '—'}</td>
+                          <td className="px-4 py-3 font-mono font-black text-red-500 border-r border-gray-50 tracking-tighter">{mat}</td>
+                          <td className="px-4 py-3 text-left border-r border-gray-100 truncate max-w-[280px] text-slate-600 font-bold uppercase">{desc}</td>
+                          <td className="px-4 py-3 font-black text-slate-900 border-r border-gray-50">{Number(o.CANTIDAD || 0).toLocaleString()}</td>
+                          <td className="px-4 py-3 border-r border-gray-50">
+                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
-                          <td className="px-4 py-3.5 font-black text-slate-400 border-r border-gray-50 uppercase text-[10px]">{maquina}</td>
-                          <td className="px-4 py-3.5 font-bold text-slate-300 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-50 text-[10px]">{String(o.MAQUINA || '—')}</td>
+                          <td className="px-4 py-3 font-bold text-gray-300 text-[10px]">{o.Almacen || '—'}</td>
                         </tr>
                       );
                     })
@@ -475,36 +394,28 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="resumen" className="animate-in fade-in duration-300 space-y-6">
-          {/* Header con Dashboards de Totales */}
+        <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
           <div className="flex flex-col md:flex-row items-end justify-between gap-4">
              <div className="flex items-center gap-4">
-                <div className="bg-[#991b1b] text-white p-3 rounded-lg shadow-md border-b-4 border-black/20 min-w-[160px] text-center">
+                <div className="bg-[#991b1b] text-white p-3 rounded-xl shadow-lg border-b-4 border-black/20 min-w-[160px] text-center">
                     <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Consumo Diario (Kg)</p>
-                    <p className="text-xl font-black font-mono">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                    <p className="text-xl font-black font-mono">{totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
                 </div>
-                <div className="bg-[#991b1b] text-white p-3 rounded-lg shadow-md border-b-4 border-black/20 min-w-[160px] text-center">
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Consumo Diario (UN)</p>
-                    <p className="text-xl font-black font-mono">{totalsUnified.un.toLocaleString()}</p>
+                <div className="bg-[#991b1b] text-white p-3 rounded-xl shadow-lg border-b-4 border-black/20 min-w-[160px] text-center">
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Total Rollos (Un)</p>
+                    <p className="text-xl font-black font-mono">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
                 </div>
              </div>
-
-             <div className="flex items-center gap-3">
-              <Button 
-                onClick={handleProcessResumen}
-                disabled={isProcessingResumen || filteredOrders.length === 0}
-                className="bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
-              >
-                {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-                Calcular Necesidades Unificadas
-              </Button>
-            </div>
+             <Button onClick={handleProcessResumen} disabled={isProcessingResumen || filteredOrders.length === 0} className="bg-slate-900 hover:bg-black text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest shadow-xl">
+               {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+               Calcular Resumen de Necesidades
+             </Button>
           </div>
 
           {isProcessingResumen && (
-            <div className="space-y-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
+            <div className="space-y-3 bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100">
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-                <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Procesando Unificación Técnica...</span>
+                <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Procesando Auditoría de SAP...</span>
                 <span>{resumenProgress.current} / {resumenProgress.total} Órdenes</span>
               </div>
               <Progress value={(resumenProgress.current / resumenProgress.total) * 100} className="h-2 bg-indigo-100" />
@@ -512,111 +423,99 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           )}
 
           {!isProcessingResumen && unifiedNeeds.length > 0 ? (
-            <Card className="rounded-xl border border-gray-200 shadow-xl overflow-hidden bg-white">
+            <Card className="rounded-2xl border border-gray-100 shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px]">
-                <table className="w-full border-collapse font-sans text-[11px]">
+                <table className="w-full border-collapse font-sans text-[11px] text-center">
                   <thead className="sticky top-0 z-20">
-                    <tr className="bg-[#4472c4] text-white uppercase font-bold tracking-tight">
-                      <th className="px-4 py-3 border-r border-white/20 text-left">Material</th>
-                      <th className="px-4 py-3 border-r border-white/20 text-left">Descripcion</th>
-                      <th className="px-4 py-3 border-r border-white/20 text-right bg-[#f4b084] text-black">Consumo Actual OF [Kg]</th>
-                      <th className="px-4 py-3 border-r border-white/20 text-right bg-[#f4b084] text-black">Consumo Actual OF [Un]</th>
-                      <th className="px-4 py-3 text-right bg-[#e2efda] text-black">peso / rollo (Kg)</th>
+                    <tr className="bg-[#4472c4] text-white uppercase font-black tracking-tight text-[10px]">
+                      <th className="px-6 py-4 border-r border-white/10 text-left w-32">Material</th>
+                      <th className="px-6 py-4 border-r border-white/10 text-left">Descripción Técnica</th>
+                      <th className="px-6 py-4 border-r border-white/10 bg-[#f4b084] text-black w-48">Consumo Actual OF [Kg]</th>
+                      <th className="px-6 py-4 border-r border-white/10 bg-[#f4b084] text-black w-48">Consumo Actual OF [Un]</th>
+                      <th className="px-6 py-4 bg-[#e2efda] text-black w-40">peso / rollo (Kg)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-gray-100 font-bold">
                     {unifiedNeeds.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-2 border-r border-gray-100 font-mono font-bold text-slate-800">{row.material}</td>
-                        <td className="px-4 py-2 border-r border-gray-100 text-left font-medium uppercase text-slate-600">{row.descripcion}</td>
-                        <td className="px-4 py-2 border-r border-gray-100 text-right font-mono font-bold bg-[#fce4d6] text-slate-900">
+                      <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left">{row.material}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-left text-slate-500 uppercase font-bold truncate max-w-[300px]" title={row.descripcion}>{row.descripcion}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-[#fce4d6]/30 text-right">
                           {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-2 border-r border-gray-100 text-right font-mono font-bold bg-[#fce4d6] text-slate-900">
-                          {row.consumoUn.toLocaleString()}
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-red-600 bg-[#fce4d6]/30 text-right">
+                          {row.consumoUn.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                         </td>
-                        <td className="px-4 py-2 text-right font-mono font-bold bg-[#d9eada] text-slate-700">
+                        <td className="px-6 py-3 font-mono text-green-700 bg-[#d9eada]/30 text-right font-black">
                           {row.pesoRollo.toFixed(1)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0">
+                    <tr>
+                      <td colSpan={2} className="px-6 py-4 text-right tracking-widest text-slate-400">Total Período Seleccionado:</td>
+                      <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+                      <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td className="px-6 py-4 bg-black/20"></td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </Card>
           ) : !isProcessingResumen && (
-            <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+            <div className="py-24 text-center bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100">
               <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Calcule las necesidades del período para visualizar el consumo unificado</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Calcule las necesidades para visualizar el consolidado de láminas</p>
             </div>
           )}
         </TabsContent>
 
         <TabsContent value="listaMateriales" className="space-y-4 animate-in fade-in duration-300">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-200 shadow-sm text-left">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600">
-                <ClipboardList className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter leading-tight">Auditoría Jerárquica de Materiales (BOM)</h3>
-                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
-                  Visualización Estructural SAP | Filtro: Láminas Cilíndricas
-                </p>
-              </div>
-            </div>
-            
-            <form onSubmit={handleSearchBOM} className="flex items-center gap-2 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
-                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                <input 
-                  type="text" 
-                  placeholder="Buscar FERT Principal..." 
-                  value={fertBusqueda}
-                  onChange={(e) => setFertBusqueda(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
-                />
-              </div>
-              <Button 
-                type="submit"
-                disabled={isSearchingBOM}
-                className="bg-[#1e293b] hover:bg-slate-800 text-white rounded-lg h-9 px-4 text-[10px] font-black uppercase tracking-widest transition-all"
-              >
-                {isSearchingBOM ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Auditar'}
-              </Button>
-            </form>
+          <div className="flex items-center justify-between bg-gray-100/50 p-4 rounded-2xl border border-gray-200">
+             <div className="flex items-center gap-3">
+               <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><ClipboardList className="w-5 h-5" /></div>
+               <div>
+                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Auditoría Estructural de Materiales (BOM)</h3>
+                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Filtrado por: LÁMINA CILÍNDRICA | Excluye: Centro 2000</p>
+               </div>
+             </div>
+             <form onSubmit={handleSearchBOM} className="flex gap-2">
+               <div className="relative">
+                 <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                 <input type="text" placeholder="FERT Principal..." value={fertBusqueda} onChange={e => setFertBusqueda(e.target.value)} className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold w-48 focus:ring-2 focus:ring-red-500/20" />
+               </div>
+               <Button type="submit" disabled={isSearchingBOM} className="bg-slate-900 text-white rounded-lg h-9 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg">
+                 {isSearchingBOM ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Auditar'}
+               </Button>
+             </form>
           </div>
 
           {!isSearchingBOM && bomRows.length > 0 ? (
             <div className="space-y-4">
-              <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                <div className="overflow-x-auto max-h-[550px] relative text-left">
+              <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-md">
+                <div className="overflow-x-auto max-h-[550px]">
                   <table className="w-full border-collapse font-sans text-[10px]">
                     <thead className="bg-[#bde0fe] text-slate-800 uppercase font-black tracking-tight sticky top-0 z-20 border-b border-blue-200">
                       <tr>
                         <th className="px-3 py-3 border-r border-blue-100 text-center w-14">NV</th>
                         <th className="px-3 py-3 border-r border-blue-100 w-16">CT</th>
-                        <th className="px-3 py-3 border-r border-blue-100 w-28">FERT Principal</th>
-                        <th className="px-3 py-3 border-r border-blue-100">Descripción FERT</th>
-                        <th className="px-3 py-3 border-r border-blue-100 w-28">Material Padre</th>
-                        <th className="px-3 py-3 border-r border-blue-100 w-28">Componente</th>
-                        <th className="px-3 py-3 border-r border-blue-100">Descripción Componente</th>
+                        <th className="px-3 py-3 border-r border-blue-100">FERT Principal</th>
+                        <th className="px-3 py-3 border-r border-blue-100">Material Padre</th>
+                        <th className="px-3 py-3 border-r border-blue-100">Componente</th>
+                        <th className="px-3 py-3 border-r border-blue-100 text-left">Descripción Componente</th>
                         <th className="px-3 py-3 border-r border-blue-100 text-right w-24">Cant. Unit.</th>
                         <th className="px-3 py-3 text-right w-24">Cant. Acum.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 font-bold">
                       {paginatedBomRows.map((row, idx) => {
-                        const nivelVal = safeNum(row.NIVEL);
-                        const indentation = ".".repeat(nivelVal);
+                        const level = parseInt(row.NIVEL);
                         return (
                           <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-3 py-2 border-r border-gray-100 text-center text-slate-400 font-mono text-[9px]">
-                              {indentation}{nivelVal}
-                            </td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-center text-slate-400 font-mono text-[9px]">{ ".".repeat(level) }{level}</td>
                             <td className="px-3 py-2 border-r border-gray-100 text-gray-400 text-center">{row.CENTRO}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-indigo-600 tracking-tighter">{row.FERT_PRINCIPAL}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-gray-500 uppercase truncate max-w-[150px]" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-gray-400 tracking-tighter">{row.MATERIAL_PADRE}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-700 tracking-tighter">{row.COMPONENTE}</td>
                             <td className="px-3 py-2 border-r border-gray-100 text-left uppercase font-black text-slate-600">{row.DESCRIPCION_COMPONENTE}</td>
@@ -626,9 +525,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         );
                       })}
                     </tbody>
-                    <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] border-t border-slate-700">
+                    <tfoot className="bg-gray-800 text-white font-black uppercase text-[10px] sticky bottom-0">
                       <tr>
-                        <td colSpan={7} className="px-3 py-3 text-right tracking-widest text-slate-400">Total General de Estructura:</td>
+                        <td colSpan={6} className="px-3 py-3 text-right tracking-widest text-slate-400">Total General:</td>
                         <td className="px-3 py-3 text-right font-mono text-blue-300">{bomRows.reduce((s, r) => s + r.CANTIDAD_UNITARIA, 0).toFixed(3)}</td>
                         <td className="px-3 py-3 text-right font-mono text-blue-300">{bomRows.reduce((s, r) => s + r.CANTIDAD_ACUMULADA, 0).toFixed(3)}</td>
                       </tr>
@@ -636,32 +535,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </table>
                 </div>
               </div>
-
-              <div className="flex items-center justify-between gap-4 px-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Filas:</span>
-                  <select 
-                    value={bomRowsPerPage} 
-                    onChange={(e) => { setBomRowsPerPage(Number(e.target.value)); setBomPage(1); }}
-                    className="bg-white border border-gray-200 rounded px-2 py-1 text-[9px] font-bold text-gray-600 focus:outline-none"
-                  >
-                    {[100, 250, 500].map(v => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => setBomPage(1)} disabled={bomPage === 1} className="h-7 w-7 rounded-lg"><ChevronsLeft className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" onClick={() => setBomPage(prev => Math.max(1, prev - 1))} disabled={bomPage === 1} className="h-7 w-7 rounded-lg"><ChevronLeft className="h-3.5 w-3.5" /></Button>
-                  <div className="px-4 text-[9px] font-black text-gray-700 uppercase">Página {bomPage} / {totalBomPages}</div>
-                  <Button variant="ghost" size="icon" onClick={() => setBomPage(prev => Math.min(totalBomPages, prev + 1))} disabled={bomPage === totalBomPages} className="h-7 w-7 rounded-lg"><ChevronRight className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" onClick={() => setBomPage(totalBomPages)} disabled={bomPage === totalBomPages} className="h-7 w-7 rounded-lg"><ChevronsRight className="h-3.5 w-3.5" /></Button>
-                </div>
-              </div>
             </div>
           ) : !isSearchingBOM && (
-            <div className="py-20 text-center bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200">
-              <DatabaseZap className="w-12 h-12 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Ingrese un código FERT para consultar la estructura técnica en SAP</p>
+            <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+              <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Ingrese un código FERT para auditar su estructura técnica</p>
             </div>
           )}
         </TabsContent>
@@ -672,28 +550,30 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <table className="w-full border-collapse text-center">
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
                   <tr>
-                    <th className="px-5 py-4 border-r border-white/5">Material</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
                     <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
                     <th className="px-5 py-4 border-r border-white/5">Puesto Trabajo</th>
                     <th className="px-5 py-4 border-r border-white/5">Línea</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-teal-400 font-black">Tiempo Estándar (Min)</th>
-                    <th className="px-5 py-4">Stock / Seguridad</th>
+                    <th className="px-5 py-4 border-r border-white/5 text-teal-400">T. Estándar (Min)</th>
+                    <th className="px-5 py-4">Stock Actual</th>
+                    <th className="px-5 py-4">Seguridad</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px]">
+                <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
                   {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={6} className="py-24 text-gray-400 italic font-black uppercase tracking-widest opacity-30 text-center">Sin registros técnicos cargados</td></tr>
+                    <tr><td colSpan={7} className="py-24 text-gray-300 font-black uppercase tracking-widest opacity-30 text-center">No hay registros cargados</td></tr>
                   ) : (
                     tiemposEnsamblado.map((t, i) => {
-                      const info = extractMaterialInfo(t);
+                      const code = String(t.CodMaterial || '').slice(-8);
+                      const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-4 font-mono font-black text-indigo-600 border-r border-dashed border-gray-100 tracking-tighter">{info.code}</td>
-                          <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 font-bold uppercase truncate max-w-[280px]">{info.desc}</td>
+                          <td className="px-4 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left">{code}</td>
+                          <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 truncate max-w-[280px]">{desc}</td>
                           <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || '—'}</td>
                           <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
-                          <td className="px-4 py-4 font-mono font-black text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/5">
-                            {Number(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}
+                          <td className="px-4 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10">
+                            {Number(t.Tiempo || 0).toFixed(4)}
                           </td>
                           <td className="px-4 py-4 text-gray-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
                           <td className="px-4 py-4 text-gray-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
