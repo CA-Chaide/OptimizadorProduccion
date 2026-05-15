@@ -147,7 +147,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   const COLUMNS_TO_DISPLAY = columns || [
     'FECHA', 'PEDIDO', 'POSICION', 'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
-    'MAQUINA', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
+    'MAQUINA', 'PUESTOTRABAJO', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
   ];
 
   useEffect(() => {
