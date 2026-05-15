@@ -123,9 +123,15 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [hasSetDefaultDate, setHasSetDefaultDate] = useState(false);
+  const [workSchedule, setWorkSchedule] = useState<string>("9");
 
-  // Constante de tiempo disponible diario actualizada a 83.52h
-  const TIEMPO_DISPONIBLE_DIARIO = 83.52;
+  // Constante de tiempo disponible diario dinámica basada en el horario
+  const TIEMPO_DISPONIBLE_DIARIO = useMemo(() => {
+    const hours = parseInt(workSchedule);
+    // Base: 9h = 83.52h (según requerimiento de usuario)
+    // Tasa por hora: 83.52 / 9 = 9.28
+    return hours * 9.28;
+  }, [workSchedule]);
 
   const tiemposMap = useMemo(() => {
     if (!tiemposData || tiemposData.length === 0) {
@@ -392,7 +398,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       {!hideControls && (
         <div className="flex flex-col space-y-6 mb-4">
           <div className="flex items-start justify-between">
-            <div className="flex items-start space-x-2">
+            <div className="flex items-start space-x-4">
               <div className="w-56">
                 <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
                 <MultiSelect
@@ -402,6 +408,22 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                   placeholder="Todas las fechas"
                 />
               </div>
+
+              {displayMode === 'plan' && (
+                <div className="w-64">
+                  <label htmlFor="schedule-filter" className="text-sm font-semibold text-gray-700">Horario de Trabajo:</label>
+                  <select
+                    id="schedule-filter"
+                    value={workSchedule}
+                    onChange={(e) => setWorkSchedule(e.target.value)}
+                    className="w-full h-9 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="8">8 horas / 07:00 - 15:45</option>
+                    <option value="9">9 horas / 07:00 - 17:00</option>
+                    <option value="10">10 horas / 07:00 - 18:00</option>
+                  </select>
+                </div>
+              )}
               
               {displayMode === 'full' && (
                 <>
