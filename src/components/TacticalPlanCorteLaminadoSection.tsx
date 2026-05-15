@@ -85,7 +85,7 @@ const getNumProp = (obj: any, key: string): number => {
 
 /**
  * Catálogo técnico de pesos por rollo (SAP)
- * Basado en patrones de densidad D12-D50
+ * Basado en patrones de densidad D12-D50 definidos por el usuario
  */
 const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   const desc = descripcion.toUpperCase();
@@ -101,14 +101,7 @@ const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   if (desc.includes('D40') || code.includes('D40')) return 40;
   if (desc.includes('D50') || code.includes('D50')) return 50;
   
-  const match = desc.match(/D(\d+)/);
-  if (match) {
-    const density = parseInt(match[1]);
-    const validWeights = [12, 18, 20, 24, 28, 30, 35, 40, 50];
-    if (validWeights.includes(density)) return density;
-  }
-  
-  return 35; 
+  return 35; // Fallback estándar
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
@@ -468,8 +461,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <th className="px-6 py-4 border-r border-gray-100 text-left w-32">Material</th>
                       <th className="px-6 py-4 border-r border-gray-100 text-left">Descripción</th>
                       <th className="px-6 py-4 border-r border-gray-100 w-40 text-center">peso / rollo (Kg)</th>
-                      <th className="px-6 py-4 border-r border-gray-100 w-48 text-right">Consumo Actual OF [Kg]</th>
-                      <th className="px-6 py-4 w-48 text-right">Consumo Actual OF [Un]</th>
+                      <th className="px-6 py-4 border-r border-gray-100 w-48 text-right bg-orange-100/50">Consumo Actual OF [Kg]</th>
+                      <th className="px-6 py-4 w-48 text-right bg-orange-100/50">Consumo Actual OF [Un]</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 font-bold">
