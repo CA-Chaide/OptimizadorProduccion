@@ -12,6 +12,7 @@ import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
 import { CuboInventariosTab } from './CuboInventariosTab';
 import { CuboInventariosTelasTab } from './CuboInventariosTelasTab';
+import { MaterialesBrutosTab } from './MaterialesBrutosTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -198,13 +199,14 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="plan" className="w-full">
-          <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
+          <TabsList className="grid w-full grid-cols-8 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
               <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0">Restricciones</TabsTrigger>
               <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Prev.</TabsTrigger>
               <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0">Tiempos</TabsTrigger>
               <TabsTrigger value="cascos" className="border-r border-dashed border-gray-300 last:border-r-0">Cascos</TabsTrigger>
               <TabsTrigger value="telas" className="border-r border-dashed border-gray-300 last:border-r-0">Telas</TabsTrigger>
+              <TabsTrigger value="materialesBrutos" className="border-r border-dashed border-gray-300 last:border-r-0">Mat. Brutos</TabsTrigger>
               <TabsTrigger value="plan" className="last:border-r-0">PLAN</TabsTrigger>
           </TabsList>
           <TabsContent value="grupos" className="mt-4">
@@ -252,6 +254,19 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                       <CuboInventariosTelasTab />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="materialesBrutos" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Explosión de Materiales Brutos</CardTitle>
+                      <CardDescription>
+                          Consumo de materias primas por producto terminado. Relacione el código de material del PLAN con esta tabla para saber qué insumos requiere.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <MaterialesBrutosTab />
                   </CardContent>
               </Card>
           </TabsContent>
