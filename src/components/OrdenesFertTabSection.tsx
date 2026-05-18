@@ -482,7 +482,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                               
                               {/* Detalle por mesa */}
                               <div className="overflow-x-auto">
-                                <table className="min-w-full text-[11px]">
+                                <table className="min-w-full text-[12px]">
                                   <thead className="bg-gray-100 text-gray-600 uppercase border-b">
                                     <tr>
                                       <th className="px-3 py-1.5 text-left font-bold border-r">Mesa de Trabajo</th>
