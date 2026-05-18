@@ -127,12 +127,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [workTables, setWorkTables] = useState<string>("9");
 
   // Constante de tiempo disponible diario dinámica basada en el horario y mesas de trabajo
+  // FÓRMULA SOLICITADA: Horas * Mesas * 0.87
   const TIEMPO_DISPONIBLE_DIARIO = useMemo(() => {
     const hours = parseInt(workSchedule);
     const tables = parseInt(workTables);
-    // Base: 9h con 9 mesas = 83.52h
-    // Factor por mesa/hora = 83.52 / (9 * 9) = 1.03111111
-    return hours * tables * 1.03111111;
+    return hours * tables * 0.87;
   }, [workSchedule, workTables]);
 
   const tiemposMap = useMemo(() => {
