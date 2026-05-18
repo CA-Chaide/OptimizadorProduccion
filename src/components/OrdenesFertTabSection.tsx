@@ -495,7 +495,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           const capacidadOcupada = (tiempoRequeridoH / TIEMPO_DISPONIBLE_DIARIO) * 100;
                           
                           return (
-                          <div key={date} className="grid grid-cols-4 gap-0 items-center text-base p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
+                          <div key={date} className="grid grid-cols-5 gap-0 items-center text-base p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
+                              <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
+                                  <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
+                                  <p className="font-bold text-base text-gray-900">{date}</p>
+                              </div>
                               <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
                                   <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA</p>
                                   <p className="font-bold text-base text-gray-900">{cantProgramada.toLocaleString()}</p>
