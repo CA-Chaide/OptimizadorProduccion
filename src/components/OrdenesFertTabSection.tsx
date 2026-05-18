@@ -16,6 +16,24 @@ const normalizeMaterialCode = (code: string | number): string => {
   return codeStr.slice(-8);
 };
 
+// Mapeo oficial de Mesas de Trabajo proporcionado por el usuario
+const MESA_MAPPING = [
+  { name: "MESA DE ARMADO 1", code: "TAP-AR01" },
+  { name: "MESA DE ARMADO 2", code: "TAP-AR02" },
+  { name: "MESA DE ARMADO 3", code: "TAP-AR03" },
+  { name: "MESA DE ARMADO 4", code: "TAP-AR04" },
+  { name: "MESA DE ARMADO 5", code: "TAP-AR05" },
+  { name: "MESA DE ARMADO 6", code: "TAP-AR06" },
+  { name: "MESA DE ARMADO 7", code: "TAP-AR07" },
+  { name: "MESA DE ARMADO 8", code: "TAP-AR08" },
+  { name: "MESA DE ARMADO 9", code: "TAP-AR09" },
+  { name: "MESA DE ARMADO 10", code: "TAP-AR10" },
+  { name: "MESA DE ARMADO 11", code: "TAP-AR11" },
+  { name: "MESA DE ARMADO 12", code: "TAP-AR12" },
+  { name: "MESA DE ARMADO 13", code: "TAP-AR13" },
+  { name: "MESA DE ARMADO 14", code: "TAP-AR14" },
+];
+
 interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
   columns?: string[];
@@ -126,13 +144,18 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [workSchedule, setWorkSchedule] = useState<string>("9");
   const [workTables, setWorkTables] = useState<string>("9");
 
-  // Constante de tiempo disponible diario dinámica basada en el horario y mesas de trabajo
-  // FÓRMULA SOLICITADA: Horas * Mesas * 0.87
-  const TIEMPO_DISPONIBLE_DIARIO = useMemo(() => {
+  // TIEMPO DISPONIBLE DIARIO TOTAL (Suma de todas las mesas seleccionadas)
+  const TIEMPO_DISPONIBLE_DIARIO_TOTAL = useMemo(() => {
     const hours = parseInt(workSchedule);
     const tables = parseInt(workTables);
     return hours * tables * 0.87;
   }, [workSchedule, workTables]);
+
+  // TIEMPO DISPONIBLE POR MESA INDIVIDUAL
+  const TIEMPO_DISPONIBLE_POR_MESA = useMemo(() => {
+    const hours = parseInt(workSchedule);
+    return hours * 0.87;
+  }, [workSchedule]);
 
   const tiemposMap = useMemo(() => {
     if (!tiemposData || tiemposData.length === 0) {
@@ -178,7 +201,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         let allData: OrdenFert[] = [];
 
         for (let i = 1; i <= totalPagesToFetch; i++) {
-          addNotification('info', `Cargando lote ${i} de ${totalPagesToFetch} de órdenes FERT...`);
           const pageResponse = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
           if (pageResponse.data && Array.isArray(pageResponse.data)) {
             allData = allData.concat(pageResponse.data);
@@ -207,19 +229,16 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return Array.from(dates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
   }, [orders]);
 
-  // Lógica para establecer la fecha por defecto (Hoy + 3 días laborables) en el modo PLAN
   useEffect(() => {
     if (!hasSetDefaultDate && uniqueDates.length > 0 && displayMode === 'plan') {
       const getTargetDate = () => {
         const today = new Date();
         let daysAdded = 0;
         let result = new Date(today);
-        
-        // Loop para añadir exactamente 3 días laborables (saltando Sábados y Domingos)
         while (daysAdded < 3) {
           result.setDate(result.getDate() + 1);
           const day = result.getDay();
-          if (day !== 0 && day !== 6) { // 0 es Domingo, 6 es Sábado
+          if (day !== 0 && day !== 6) {
             daysAdded++;
           }
         }
@@ -232,7 +251,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
   }, [uniqueDates, hasSetDefaultDate, displayMode]);
 
-  // Base filtrada para Muebles (Centro 1000, Resp 019/006)
   const baseFilteredOrders = useMemo(() => {
     return orders.filter(order => 
       (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
@@ -247,15 +265,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       });
   }, [baseFilteredOrders, selectedDates]);
   
-  const totalCantidadPendiente = useMemo(() => {
-    return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
-  }, [filteredOrders]);
-  
   const totalCantidadPendienteGeneral = useMemo(() => {
     return baseFilteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [baseFilteredOrders]);
 
-  // Cálculos para PENDIENTES TOTALES (Independiente de la fecha)
   const totalCantProgramadaGeneral = useMemo(() => {
     return baseFilteredOrders.reduce((sum, order) => sum + (Number(order.CANTPROGRAMADA) || 0), 0);
   }, [baseFilteredOrders]);
@@ -268,7 +281,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }, 0);
   }, [baseFilteredOrders, tiemposMap]);
 
-  // Cálculos para ESTATUS ACTUAL ORDENES (Con Horas Totales)
   const statusSummary = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -312,36 +324,38 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const planSummaryByDate = useMemo(() => {
     if (displayMode !== 'plan' || selectedDates.length === 0) return [];
 
-    const summaryMap = new Map<string, { cantProgramada: number; tiempoTotal: number }>();
+    return selectedDates.map(date => {
+      const ordersOnDate = filteredOrders.filter(o => o.FECHA === date);
+      
+      const mesasBreakdown = MESA_MAPPING.map(mesa => {
+        const mesaOrders = ordersOnDate.filter(o => String(o.PUESTOTRABAJO || '').trim() === mesa.code);
+        const cantProgramada = mesaOrders.reduce((sum, o) => sum + (Number(o.CANTPROGRAMADA) || 0), 0);
+        const tiempoRequeridoMin = mesaOrders.reduce((sum, o) => {
+          const materialCode = normalizeMaterialCode(o.MATERIAL);
+          const t = tiemposMap.get(materialCode) || 0;
+          return sum + (Number(o.CANTPROGRAMADA) || 0) * t;
+        }, 0);
 
-    selectedDates.forEach(date => {
-        summaryMap.set(date, { cantProgramada: 0, tiempoTotal: 0 });
-    });
+        return {
+          ...mesa,
+          cantProgramada,
+          tiempoRequeridoH: tiempoRequeridoMin / 60
+        };
+      });
 
-    filteredOrders.forEach(order => {
-        const date = order.FECHA;
-        if (summaryMap.has(date)) {
-            const summary = summaryMap.get(date)!;
-            const cantProgramada = Number(order.CANTPROGRAMADA) || 0;
-            summary.cantProgramada += cantProgramada;
+      const totalCantProgramada = mesasBreakdown.reduce((sum, m) => sum + m.cantProgramada, 0);
+      const totalTiempoRequeridoH = mesasBreakdown.reduce((sum, m) => sum + m.tiempoRequeridoH, 0);
 
-            const materialCode = normalizeMaterialCode(order.MATERIAL);
-            const tiempoMin = tiemposMap.get(materialCode);
-            if (tiempoMin) {
-                summary.tiempoTotal += cantProgramada * tiempoMin;
-            }
-        }
-    });
-
-    return Array.from(summaryMap.entries()).map(([date, totals]) => ({
+      return {
         date,
-        ...totals,
-    })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        cantProgramada: totalCantProgramada,
+        tiempoTotalH: totalTiempoRequeridoH,
+        mesas: mesasBreakdown
+      };
+    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [filteredOrders, selectedDates, displayMode, tiemposMap]);
 
-
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
-  
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
   const endIndex = startIndex + pagination.rowsPerPage;
   const displayedOrders = filteredOrders.slice(startIndex, endIndex);
@@ -372,25 +386,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
         <span className="ml-3 text-gray-600">Cargando Órdenes FERT...</span>
       </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-sm text-red-800">
-          <span className="font-semibold">Error:</span> {error}
-        </p>
-      </div>
-    );
-  }
-  
-  if (orders.length === 0) {
-    return (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-500 border-2 border-dashed rounded-lg">
-          <Package className="w-12 h-12 mb-4 text-gray-300" />
-          <p>No hay órdenes FERT disponibles para mostrar.</p>
-        </div>
     );
   }
 
@@ -440,31 +435,12 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                   </div>
                 </>
               )}
-              
-              {displayMode === 'full' && (
-                <>
-                  <div className="flex items-center space-x-3 bg-indigo-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
-                    <Package className="w-6 h-6 text-indigo-600" />
-                    <div>
-                      <p className="text-xs text-indigo-800 font-semibold uppercase">CANT. PENDIENTE</p>
-                      <p className="text-2xl font-bold text-indigo-900">{totalCantidadPendiente.toLocaleString()}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3 bg-teal-50 border border-teal-200 rounded-lg p-3 shadow-sm mt-6">
-                    <Package className="w-6 h-6 text-teal-600" />
-                    <div>
-                      <p className="text-xs text-teal-800 font-semibold uppercase">CANT. TOTAL</p>
-                      <p className="text-2xl font-bold text-teal-900">{totalCantidadPendienteGeneral.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
           </div>
 
           {displayMode === 'plan' && (
             <div className="flex flex-col space-y-4">
-                {/* Recuadro PENDIENTES TOTALES - PRIMERO */}
+                {/* RECUADRO 1: PENDIENTES TOTALES */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                   <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
@@ -479,55 +455,74 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                       <div className="text-center p-3 h-full flex flex-col justify-center">
                           <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">DIAS PENDIENTES</p>
                           <p className="font-bold text-base text-blue-600">
-                            {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO).toFixed(2)} Días
+                            {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO_TOTAL).toFixed(2)} Días
                           </p>
                       </div>
                   </div>
                 </div>
 
-                {/* Recuadro CAPACIDAD POR FECHA - SEGUNDO */}
+                {/* RECUADRO 2: CAPACIDAD POR FECHA (DESGLOSADO POR MESAS) */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                   <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
-                  <div className="space-y-0 max-h-64 overflow-y-auto border rounded-md">
+                  <div className="space-y-4 max-h-[500px] overflow-y-auto">
                       {selectedDates.length > 0 ? (
-                        planSummaryByDate.map(({ date, cantProgramada, tiempoTotal }) => {
-                          const tiempoRequeridoH = tiempoTotal / 60;
-                          const capacidadOcupada = (tiempoRequeridoH / TIEMPO_DISPONIBLE_DIARIO) * 100;
+                        planSummaryByDate.map((daySummary) => {
+                          const capacidadOcupadaTotal = (daySummary.tiempoTotalH / TIEMPO_DISPONIBLE_DIARIO_TOTAL) * 100;
                           
                           return (
-                          <div key={date} className="grid grid-cols-5 gap-0 items-center text-base p-3 border-b last:border-b-0 bg-white hover:bg-indigo-50/30 transition-colors">
-                              <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">FECHA</p>
-                                  <p className="font-bold text-base text-gray-900">{date}</p>
+                          <div key={daySummary.date} className="border rounded-md bg-white overflow-hidden">
+                              {/* Header del día */}
+                              <div className="grid grid-cols-5 gap-0 items-center text-xs p-2 bg-indigo-600 text-white font-bold uppercase tracking-wider">
+                                  <div className="text-center border-r border-indigo-400">FECHA: {daySummary.date}</div>
+                                  <div className="text-center border-r border-indigo-400">CANT. TOTAL: {daySummary.cantProgramada.toLocaleString()}</div>
+                                  <div className="text-center border-r border-indigo-400">REQ. TOTAL: {daySummary.tiempoTotalH.toFixed(2)}h</div>
+                                  <div className="text-center border-r border-indigo-400">DISP. TOTAL: {TIEMPO_DISPONIBLE_DIARIO_TOTAL.toFixed(2)}h</div>
+                                  <div className="text-center">OCUPACIÓN: {capacidadOcupadaTotal.toFixed(1)}%</div>
                               </div>
-                              <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA</p>
-                                  <p className="font-bold text-base text-gray-900">{cantProgramada.toLocaleString()}</p>
-                              </div>
-                              <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO (h)</p>
-                                  <p className="font-bold text-base text-indigo-700">{tiempoRequeridoH.toFixed(2)}</p>
-                              </div>
-                              <div className="text-center border-r border-dashed border-gray-300 px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">TIEMPO DISPONIBLE (h)</p>
-                                  <p className="font-bold text-base text-emerald-700">{TIEMPO_DISPONIBLE_DIARIO.toFixed(2)}</p>
-                              </div>
-                              <div className="text-center px-2 h-full flex flex-col justify-center">
-                                  <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">CAPACIDAD</p>
-                                  <p className={cn("font-bold text-base", capacidadOcupada > 100 ? "text-red-600" : "text-blue-600")}>
-                                    {capacidadOcupada.toFixed(2)}%
-                                  </p>
+                              
+                              {/* Detalle por mesa */}
+                              <div className="overflow-x-auto">
+                                <table className="min-w-full text-[11px]">
+                                  <thead className="bg-gray-100 text-gray-600 uppercase border-b">
+                                    <tr>
+                                      <th className="px-3 py-1.5 text-left font-bold border-r">Mesa de Trabajo</th>
+                                      <th className="px-2 py-1.5 text-center font-bold border-r">Cant. Programada</th>
+                                      <th className="px-2 py-1.5 text-center font-bold border-r">Tiempo Requerido (h)</th>
+                                      <th className="px-2 py-1.5 text-center font-bold border-r">Tiempo Disponible (h)</th>
+                                      <th className="px-2 py-1.5 text-center font-bold">Capacidad (%)</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {daySummary.mesas.map((mesa) => {
+                                      const capMesa = (mesa.tiempoRequeridoH / TIEMPO_DISPONIBLE_POR_MESA) * 100;
+                                      return (
+                                        <tr key={mesa.code} className="hover:bg-gray-50 transition-colors">
+                                          <td className="px-3 py-1.5 font-semibold text-gray-700 border-r bg-gray-50/30">{mesa.name}</td>
+                                          <td className="px-2 py-1.5 text-center font-mono border-r">{mesa.cantProgramada.toLocaleString()}</td>
+                                          <td className="px-2 py-1.5 text-center font-mono text-indigo-700 border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
+                                          <td className="px-2 py-1.5 text-center font-mono text-emerald-700 border-r">{TIEMPO_DISPONIBLE_POR_MESA.toFixed(2)}</td>
+                                          <td className={cn(
+                                            "px-2 py-1.5 text-center font-bold font-mono",
+                                            capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600 bg-blue-50"
+                                          )}>
+                                            {capMesa.toFixed(1)}%
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
                               </div>
                           </div>
                           );
                         })
                       ) : (
-                        <p className="p-4 text-center text-gray-500 text-sm italic bg-white">Selecciona una fecha para ver el resumen diario.</p>
+                        <p className="p-4 text-center text-gray-500 text-sm italic bg-white rounded-md border">Selecciona una fecha para ver el resumen por mesa.</p>
                       )}
                   </div>
                 </div>
 
-                {/* Recuadro ESTATUS ACTUAL ORDENES - TERCERO */}
+                {/* RECUADRO 3: ESTATUS ACTUAL ORDENES */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                   <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
@@ -559,8 +554,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+      {/* Tabla de Órdenes FERT */}
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden border">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
@@ -597,7 +592,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                       {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
                           if (col === 'TIEMPO') {
                               return (
-                                 <td key={col} className={`px-2 py-4 whitespace-nowrap text-sm text-gray-600 text-center font-mono font-semibold text-blue-700 ${colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''}`}>
+                                 <td key={col} className={cn(
+                                   "px-2 py-4 whitespace-nowrap text-sm text-center font-mono font-semibold text-blue-700",
+                                   colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''
+                                 )}>
                                    {tiempoCalculado}
                                  </td>
                               );
@@ -629,7 +627,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         </div>
       </div>
       
-      {/* Pagination Controls */}
+      {/* Controles de Paginación */}
       <div className="flex items-center justify-between mt-4">
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-600">
