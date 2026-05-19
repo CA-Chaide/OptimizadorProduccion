@@ -363,8 +363,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       });
 
       // 2. Asignación Inteligente de Tapiceros
-      // Ordenar mesas por tiempo requerido (carga) descendente
-      const sortedMesasByLoad = [...rawMesas].sort((a, b) => b.tiempoRequeridoH - a.tiempoRequeridoH);
+      // Ordenar mesas por tiempo requerido (carga) descendente para asignar los mejores tapiceros a las más cargadas
+      const sortedMesasByLoad = [...rawMesas]
+        .map((m, originalIndex) => ({ ...m, originalIndex }))
+        .sort((a, b) => b.tiempoRequeridoH - a.tiempoRequeridoH);
       
       // Mapeo de asignación: mesaCode -> tapiceroInfo
       const mesaAssignments = new Map();
@@ -526,11 +528,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                   <thead className="bg-gray-100 text-gray-600 uppercase border-b">
                                     <tr>
                                       <th className="px-3 py-1.5 text-left font-bold border-r">Mesa de Trabajo</th>
+                                      <th className="px-3 py-1.5 text-left font-bold border-r">Personal Asignado</th>
                                       <th className="px-2 py-1.5 text-center font-bold border-r">Cant. Programada</th>
                                       <th className="px-2 py-1.5 text-center font-bold border-r">Tiempo Requerido (h)</th>
                                       <th className="px-2 py-1.5 text-center font-bold border-r">Tiempo Disponible (h)</th>
-                                      <th className="px-2 py-1.5 text-center font-bold border-r">Capacidad (%)</th>
-                                      <th className="px-3 py-1.5 text-left font-bold">Personal Asignado</th>
+                                      <th className="px-2 py-1.5 text-center font-bold">Capacidad (%)</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-100">
@@ -539,17 +541,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                       return (
                                         <tr key={mesa.code} className="hover:bg-gray-50 transition-colors">
                                           <td className="px-3 py-1.5 font-semibold text-gray-700 border-r bg-gray-50/30">{mesa.name}</td>
+                                          <td className="px-3 py-1.5 font-semibold text-blue-600 truncate max-w-[200px] border-r" title={mesa.assignedTapicero}>
+                                            {mesa.assignedTapicero}
+                                          </td>
                                           <td className="px-2 py-1.5 text-center font-mono border-r">{mesa.cantProgramada.toLocaleString()}</td>
                                           <td className="px-2 py-1.5 text-center font-mono text-indigo-700 border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
                                           <td className="px-2 py-1.5 text-center font-mono text-emerald-700 border-r">{TIEMPO_DISPONIBLE_POR_MESA.toFixed(2)}</td>
                                           <td className={cn(
-                                            "px-2 py-1.5 text-center font-bold font-mono border-r",
+                                            "px-2 py-1.5 text-center font-bold font-mono",
                                             capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600 bg-blue-50"
                                           )}>
                                             {capMesa.toFixed(1)}%
-                                          </td>
-                                          <td className="px-3 py-1.5 font-semibold text-blue-600 truncate max-w-[200px]" title={mesa.assignedTapicero}>
-                                            {mesa.assignedTapicero}
                                           </td>
                                         </tr>
                                       );
