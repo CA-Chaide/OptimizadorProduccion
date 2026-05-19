@@ -129,6 +129,7 @@ const MultiSelect: React.FC<{
 export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones, columns, hideControls = false, tiemposData = [], displayMode = 'full' }) => {
   const { addNotification } = useAppContext();
   const [orders, setOrders] = useState<OrdenFert[]>([]);
+  const [tapiceros, setTapiceros] = useState<any[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
     totalRegistros: 0,
@@ -142,7 +143,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [hasSetDefaultDate, setHasSetDefaultDate] = useState(false);
   const [workSchedule, setWorkSchedule] = useState<string>("9");
-  const [workTables, setWorkTables] = useState<string>("9");
+  const [workTables, setWorkTables] = useState<string>("14");
 
   // TIEMPO DISPONIBLE DIARIO TOTAL (Suma de todas las mesas seleccionadas)
   const TIEMPO_DISPONIBLE_DIARIO_TOTAL = useMemo(() => {
@@ -174,11 +175,28 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return map;
   }, [tiemposData]);
 
-
   const COLUMNS_TO_DISPLAY = columns || [
     'FECHA', 'PEDIDO', 'POSICION', 'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
     'MAQUINA', 'PUESTOTRABAJO', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
   ];
+
+  // Cargar Habilidades (Tapiceros)
+  useEffect(() => {
+    const fetchTapiceros = async () => {
+      try {
+        const res = await serviciosService.getCuboHabilidadesOP();
+        if (res && res.data) {
+          const filtered = res.data.filter((s: any) => String(s.ROL).trim().toUpperCase() === "TAPICERO QUITO");
+          // Ordenar por calificación descendente
+          const sorted = filtered.sort((a: any, b: any) => (Number(b.CALIFICACION) || 0) - (Number(a.CALIFICACION) || 0));
+          setTapiceros(sorted);
+        }
+      } catch (e) {
+        console.error("Error cargando tapiceros para el PLAN", e);
+      }
+    };
+    fetchTapiceros();
+  }, []);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -327,7 +345,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return selectedDates.map(date => {
       const ordersOnDate = filteredOrders.filter(o => o.FECHA === date);
       
-      const mesasBreakdown = MESA_MAPPING.map(mesa => {
+      // 1. Calcular estadísticas base por mesa
+      const rawMesas = MESA_MAPPING.map(mesa => {
         const mesaOrders = ordersOnDate.filter(o => String(o.PUESTOTRABAJO || '').trim() === mesa.code);
         const cantProgramada = mesaOrders.reduce((sum, o) => sum + (Number(o.CANTPROGRAMADA) || 0), 0);
         const tiempoRequeridoMin = mesaOrders.reduce((sum, o) => {
@@ -343,6 +362,27 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         };
       });
 
+      // 2. Asignación Inteligente de Tapiceros
+      // Ordenar mesas por tiempo requerido (carga) descendente
+      const sortedMesasByLoad = [...rawMesas].sort((a, b) => b.tiempoRequeridoH - a.tiempoRequeridoH);
+      
+      // Mapeo de asignación: mesaCode -> tapiceroInfo
+      const mesaAssignments = new Map();
+      sortedMesasByLoad.forEach((mesa, idx) => {
+        if (tapiceros[idx]) {
+          mesaAssignments.set(mesa.code, tapiceros[idx]);
+        }
+      });
+
+      // 3. Re-mapear a la estructura final manteniendo el orden original de MESA_MAPPING
+      const mesasBreakdown = rawMesas.map(m => {
+        const tapicero = mesaAssignments.get(m.code);
+        return {
+          ...m,
+          assignedTapicero: tapicero ? `${tapicero.NOMBRE} (${tapicero.CALIFICACION})` : 'Sin Asignar'
+        };
+      });
+
       const totalCantProgramada = mesasBreakdown.reduce((sum, m) => sum + m.cantProgramada, 0);
       const totalTiempoRequeridoH = mesasBreakdown.reduce((sum, m) => sum + m.tiempoRequeridoH, 0);
 
@@ -353,7 +393,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         mesas: mesasBreakdown
       };
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [filteredOrders, selectedDates, displayMode, tiemposMap]);
+  }, [filteredOrders, selectedDates, displayMode, tiemposMap, tapiceros]);
 
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
@@ -489,7 +529,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                       <th className="px-2 py-1.5 text-center font-bold border-r">Cant. Programada</th>
                                       <th className="px-2 py-1.5 text-center font-bold border-r">Tiempo Requerido (h)</th>
                                       <th className="px-2 py-1.5 text-center font-bold border-r">Tiempo Disponible (h)</th>
-                                      <th className="px-2 py-1.5 text-center font-bold">Capacidad (%)</th>
+                                      <th className="px-2 py-1.5 text-center font-bold border-r">Capacidad (%)</th>
+                                      <th className="px-3 py-1.5 text-left font-bold">Personal Asignado</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-100">
@@ -502,10 +543,13 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                           <td className="px-2 py-1.5 text-center font-mono text-indigo-700 border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
                                           <td className="px-2 py-1.5 text-center font-mono text-emerald-700 border-r">{TIEMPO_DISPONIBLE_POR_MESA.toFixed(2)}</td>
                                           <td className={cn(
-                                            "px-2 py-1.5 text-center font-bold font-mono",
+                                            "px-2 py-1.5 text-center font-bold font-mono border-r",
                                             capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600 bg-blue-50"
                                           )}>
                                             {capMesa.toFixed(1)}%
+                                          </td>
+                                          <td className="px-3 py-1.5 font-semibold text-blue-600 truncate max-w-[200px]" title={mesa.assignedTapicero}>
+                                            {mesa.assignedTapicero}
                                           </td>
                                         </tr>
                                       );
