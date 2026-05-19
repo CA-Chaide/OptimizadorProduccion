@@ -186,9 +186,23 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       try {
         const res = await serviciosService.getCuboHabilidadesOP();
         if (res && res.data) {
-          const filtered = res.data.filter((s: any) => String(s.ROL).trim().toUpperCase() === "TAPICERO QUITO");
+          const dataArray = Array.isArray(res.data) ? res.data : [res.data];
+          
+          // Filtro robusto: Tapiceros de Quito
+          const filtered = dataArray.filter((s: any) => {
+            const role = String(s.ROL || '').trim().toUpperCase();
+            const location = String(s.LOCALIDAD || s.CENTRO || s.Centro || '').trim();
+            return role.includes("TAPICERO") && (location.includes("QUITO") || location.includes("1000"));
+          });
+
+          // Si el filtro específico no devuelve nada, intentar filtro general por rol
+          const finalFiltered = filtered.length > 0 ? filtered : dataArray.filter((s: any) => 
+            String(s.ROL || '').trim().toUpperCase().includes("TAPICERO")
+          );
+
           // Ordenar por calificación descendente
-          const sorted = filtered.sort((a: any, b: any) => (Number(b.CALIFICACION) || 0) - (Number(a.CALIFICACION) || 0));
+          const sorted = finalFiltered.sort((a: any, b: any) => (Number(b.CALIFICACION) || 0) - (Number(a.CALIFICACION) || 0));
+          console.log(`[OrdenesFertTabSection] Se cargaron ${sorted.length} tapiceros.`);
           setTapiceros(sorted);
         }
       } catch (e) {
@@ -371,7 +385,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       // Mapeo de asignación: mesaCode -> tapiceroInfo
       const mesaAssignments = new Map();
       sortedMesasByLoad.forEach((mesa, idx) => {
-        if (tapiceros[idx]) {
+        if (tapiceros && tapiceros.length > idx) {
           mesaAssignments.set(mesa.code, tapiceros[idx]);
         }
       });
