@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, DatabaseZap } from 'lucide-react';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, Database, PlayCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,6 @@ const SECONDS_LOAD_BLOCK = 300;
 const SECONDS_REPETITION = 45;    
 const SECONDS_CART_SWAP = 60;     
 
-// Lista de materiales a excluir (ruido operativo)
 const MATERIALES_EXCLUIDOS = ["30009844", "30007116"];
 
 export const TacticalPlanEspumasSection: React.FC = () => {
@@ -43,7 +42,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
-  const [viewDate, setViewDate] = useState(new Date());
+  const [viewDate, setViewDate] = useState<Date | null>(null);
 
   useEffect(() => { 
     setMounted(true); 
@@ -129,7 +128,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   }, [ordenes]);
 
   const calendarDays = useMemo(() => {
-    if (!mounted) return [];
+    if (!mounted || !viewDate) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
@@ -258,16 +257,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
   const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
 
-  if (!mounted) return (
-    <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Iniciando Módulo de Corte...</p>
-    </div>
-  );
+  if (!mounted) return null;
 
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      <Loader2 className="w-10 h-10 animate-spin text-red-600" />
       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Entorno de Corte...</p>
     </div>
   );
@@ -317,28 +311,32 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-                <div className="bg-white p-3 font-sans">
-                  <div className="flex items-center justify-between mb-3 text-left">
-                    <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                    <div className="flex gap-1 bg-gray-50 rounded-lg p-1">
-                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-3 h-3" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronRight className="w-3 h-3" /></Button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-7 gap-y-1 text-center mb-2">
-                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
-                    {calendarDays.map((day, idx) => {
-                      if (!day) return <div key={`cal-pad-${idx}`} className="p-1" />;
-                      const dateStr = format(day, 'yyyy-MM-dd');
-                      const isSelected = selectedDate === dateStr;
-                      return (
-                        <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
-                          <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>
-                          {datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div className="bg-white p-3 font-sans" style={{ minHeight: '300px' }}>
+                  {viewDate && (
+                    <>
+                      <div className="flex items-center justify-between mb-3 text-left">
+                        <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                        <div className="flex gap-1 bg-gray-50 rounded-lg p-1">
+                          <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-3 h-3" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6 hover:bg-white hover:shadow-sm"><ChevronRight className="w-3 h-3" /></Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-7 gap-y-1 text-center mb-2">
+                        {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-head-${idx}`} className="text-[8px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
+                        {calendarDays.map((day, idx) => {
+                          if (!day) return <div key={`cal-pad-${idx}`} className="p-1" />;
+                          const dateStr = format(day, 'yyyy-MM-dd');
+                          const isSelected = selectedDate === dateStr;
+                          return (
+                            <button key={dateStr} onClick={() => setSelectedDate(isSelected ? 'all' : dateStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
+                              <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dateStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                              {datesWithOrders.has(dateStr) && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                   <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-primary h-7 mt-1 rounded-lg hover:bg-primary/5" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
                 </div>
               </PopoverContent>

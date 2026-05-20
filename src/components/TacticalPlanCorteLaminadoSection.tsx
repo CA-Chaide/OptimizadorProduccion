@@ -13,7 +13,7 @@ import {
   ChevronRight, 
   ChevronsLeft, 
   ChevronsRight,
-  DatabaseZap,
+  Database,
   Filter,
   Activity,
   PlayCircle,
@@ -83,10 +83,6 @@ const getNumProp = (obj: any, key: string): number => {
   return foundKey ? safeNum(obj[foundKey]) : 0;
 };
 
-/**
- * Catálogo técnico de pesos por rollo (SAP)
- * Basado en patrones de densidad D12-D50 definidos por el usuario
- */
 const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   const desc = descripcion.toUpperCase();
   const code = materialCode.toUpperCase();
@@ -101,16 +97,14 @@ const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   if (desc.includes('D40') || code.includes('D40')) return 40;
   if (desc.includes('D50') || code.includes('D50')) return 50;
   
-  return 35; // Fallback estándar
+  return 35; 
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
 
-  // Guarda de hidratación
   const [mounted, setMounted] = useState(false);
-  
   const [activeTab, setActiveTab] = useState('ordenes');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
@@ -119,7 +113,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [selectedDate, setSelectedDate] = useState<string>('all');
-  const [viewDate, setViewDate] = useState<Date>(new Date());
+  const [viewDate, setViewDate] = useState<Date | null>(null);
 
   const [fertBusqueda, setFertBusqueda] = useState('');
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
@@ -193,7 +187,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [ordenes, mounted]);
 
   const calendarDays = useMemo(() => {
-    if (!mounted) return [];
+    if (!mounted || !viewDate) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
@@ -293,12 +287,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
-  if (!mounted) return (
-    <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <Loader2 className="w-10 h-10 animate-spin text-red-600" />
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Iniciando Entorno de Laminado...</p>
-    </div>
-  );
+  if (!mounted) return null;
 
   if (isLoading) {
     return (
@@ -353,28 +342,32 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-                <div className="bg-white p-4 font-sans text-left">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xs font-black text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7"><ChevronLeft className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7"><ChevronRight className="w-4 h-4" /></Button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-7 gap-y-1 text-center mb-3">
-                    {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[9px] font-bold text-gray-300 py-1">{d}</div>)}
-                    {calendarDays.map((day, idx) => {
-                      if (!day) return <div key={idx} />;
-                      const dStr = format(day, 'yyyy-MM-dd');
-                      const sel = selectedDate === dStr;
-                      return (
-                        <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white" : "hover:bg-gray-100")}>
-                          <span className={cn("text-xs font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
-                          {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-red-400 rounded-full" />}
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div className="bg-white p-4 font-sans text-left" style={{ minHeight: '320px' }}>
+                  {viewDate && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xs font-black text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7"><ChevronLeft className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7"><ChevronRight className="w-4 h-4" /></Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-7 gap-y-1 text-center mb-3">
+                        {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[9px] font-bold text-gray-300 py-1">{d}</div>)}
+                        {calendarDays.map((day, idx) => {
+                          if (!day) return <div key={idx} />;
+                          const dStr = format(day, 'yyyy-MM-dd');
+                          const sel = selectedDate === dStr;
+                          return (
+                            <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white" : "hover:bg-gray-100")}>
+                              <span className={cn("text-xs font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                              {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-red-400 rounded-full" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               </PopoverContent>
             </Popover>
@@ -494,7 +487,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           ) : !isProcessingResumen && (
             <div className="py-24 text-center bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100">
-              <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
+              <Database className="w-16 h-16 text-indigo-100 mx-auto" />
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Calcule las necesidades para visualizar el consolidado estructural</p>
             </div>
           )}
@@ -567,7 +560,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           ) : !isSearchingBOM && (
             <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
-              <DatabaseZap className="w-16 h-16 text-indigo-100 mx-auto" />
+              <Database className="w-16 h-16 text-indigo-100 mx-auto" />
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Ingrese un código FERT para auditar su estructura técnica</p>
             </div>
           )}
