@@ -107,9 +107,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const allTiempos: any[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
-        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-        const data = res.data?.data || res.data || [];
-        if (Array.isArray(data)) allTiempos.push(...data);
+        try {
+          const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
+          const actualData = res.data?.data || res.data || [];
+          if (Array.isArray(actualData)) allTiempos.push(...actualData);
+        } catch (e) {
+          console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`);
+        }
       }
       setTiemposEnsamblado(allTiempos);
     } catch (error) {
@@ -376,17 +380,24 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   <span className="text-xs font-bold uppercase text-gray-600">Estado de Carga Diaria</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-lg font-black text-primary">{(dailyLoadSummary.get(selectedDate) || 0).toFixed(0)}</span>
-                  <span className="text-xs font-bold text-gray-400"> / {MAX_DAILY_BLOCKS} Bloques</span>
+                  {(() => {
+                    const currentLoad = dailyLoadSummary.get(selectedDate) || 0;
+                    const utilization = (currentLoad / MAX_DAILY_BLOCKS) * 100;
+                    return (
+                      <>
+                        <span className="text-lg font-black text-primary">{currentLoad.toFixed(0)}</span>
+                        <span className="text-xs font-bold text-gray-400"> / {MAX_DAILY_BLOCKS} Bloques</span>
+                        <div className="mt-1">
+                           <Badge className={cn("font-black text-[9px]", utilization <= 100 ? "bg-green-500" : "bg-red-500")}>
+                            {utilization <= 100 ? "CAPACIDAD ÓPTIMA" : "SOBRECARGA CRÍTICA"}
+                          </Badge>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
               <Progress value={((dailyLoadSummary.get(selectedDate) || 0) / MAX_DAILY_BLOCKS) * 100} className="h-2 bg-primary/20" />
-              {(dailyLoadSummary.get(selectedDate) || 0) > MAX_DAILY_BLOCKS && (
-                <div className="mt-3 p-2 bg-red-100 border border-red-200 rounded-lg flex items-center gap-2">
-                  <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                  <p className="text-[9px] font-black text-red-700 uppercase">Sobrecarga detectada. Redistribuya bloques.</p>
-                </div>
-              )}
             </Card>
           )}
 
@@ -427,7 +438,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">0</td>
                         <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">0</td>
                         <td className="px-4 py-3 font-mono text-blue-400 border-r border-gray-50 bg-blue-50/20">0</td>
-                        <td className="px-4 py-3 font-mono font-black text-emerald-600 bg-emerald-50/30">{row.planReposicion}</td>
+                        <td className="px-4 py-3 font-mono font-black text-emerald-600 bg-emerald-50/30">{String(row.planReposicion)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -435,7 +446,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     {Object.entries(summaryTotals.byAperture).sort().map(([ap, total]) => (
                       <tr key={ap} className="bg-indigo-900/40">
                         <td colSpan={11} className="px-4 py-2 text-right uppercase text-indigo-200 tracking-widest text-[9px]">Subtotal Apertura {ap}:</td>
-                        <td className="px-4 py-2 font-mono text-indigo-200">{total}</td>
+                        <td className="px-4 py-2 font-mono text-indigo-200">{String(total)}</td>
                       </tr>
                     ))}
                     <tr className="bg-slate-900">
@@ -444,7 +455,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       <td className="px-4 py-3 font-mono text-indigo-300">{summaryTotals.bloques2000.toFixed(1)}</td>
                       <td className="px-4 py-3 font-mono text-orange-300">{summaryTotals.totalBloques.toFixed(1)}</td>
                       <td colSpan={3} className="border-r border-gray-700"></td>
-                      <td className="px-4 py-3 font-mono text-emerald-300">{summaryTotals.planReposicion}</td>
+                      <td className="px-4 py-3 font-mono text-emerald-300">{String(summaryTotals.planReposicion)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -523,17 +534,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         const info = extractMaterialInfo(o);
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono text-primary border-r border-gray-100">{info.code}</td>
-                            <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[150px] uppercase font-bold text-gray-600">{info.desc}</td>
+                            <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[150px] uppercase font-bold text-gray-600">{info.desc}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-400">{info.dens}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.ancho}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.largo}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.esp}</td>
-                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100">{Number(o.CANTIDAD || 0).toLocaleString()}</td>
-                            <td className="px-3 py-2 font-black text-gray-300 border-r border-gray-100 uppercase">{o.MAQUINA || '—'}</td>
-                            <td className="px-3 py-2 font-bold text-gray-200">{o.Almacen || '—'}</td>
+                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100">{String(o.CANTIDAD || o.CANTPROGRAMADA || 0)}</td>
+                            <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-100 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
+                            <td className="px-3 py-2 font-bold text-gray-200">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
                         );
                       })}
@@ -563,7 +574,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       </thead>
                       <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
                         {center.d.length === 0 ? (
-                          <tr><td colSpan={4} className="py-12 text-center text-gray-300 font-bold uppercase tracking-widest opacity-30">No hay registros</td></tr>
+                          <tr><td colSpan={4} className="py-12 text-center text-gray-300 font-bold uppercase tracking-widest opacity-30">No hay registros cargados</td></tr>
                         ) : (
                           center.d.map((t, i) => {
                             const info = extractMaterialInfo(t);

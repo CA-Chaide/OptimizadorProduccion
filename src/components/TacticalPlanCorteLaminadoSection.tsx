@@ -405,7 +405,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-4 py-3 border-r border-gray-50">
                             <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
-                          <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-50 text-[10px]">{String(o.MAQUINA || '—')}</td>
+                          <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-50 text-[10px]">{String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}</td>
                           <td className="px-4 py-3 font-bold text-gray-300 text-[10px]">{o.Almacen || '—'}</td>
                         </tr>
                       );
@@ -464,7 +464,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-6 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left bg-blue-50/5">{row.material}</td>
                         <td className="px-6 py-3 border-r border-gray-100 text-left text-slate-500 uppercase font-bold truncate max-w-[300px]" title={row.descripcion}>{row.descripcion}</td>
                         <td className="px-6 py-3 border-r border-gray-100 font-mono text-green-700 text-center bg-green-50/5">
-                          {row.pesoRollo.toFixed(1)}
+                          {String(row.pesoRollo)}
                         </td>
                         <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-orange-50/10 text-right">
                           {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
