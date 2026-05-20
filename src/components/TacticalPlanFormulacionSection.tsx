@@ -43,6 +43,11 @@ import { Progress } from "@/components/ui/progress";
 const MAX_DAILY_BLOCKS = 36; 
 const BLOCK_LENGTH_METERS = 20;
 
+const safeNum = (val: any): number => {
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
+};
+
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
   const { addNotification } = useAppContext();
@@ -129,6 +134,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [mounted]);
 
   const datesWithOrders = useMemo(() => {
+    if (!mounted) return new Set<string>();
     const dates = new Set<string>();
     ordenes.forEach(o => {
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
@@ -138,7 +144,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       }
     });
     return dates;
-  }, [ordenes]);
+  }, [ordenes, mounted]);
 
   const calendarDays = useMemo(() => {
     if (!mounted || !viewDate) return [];
@@ -211,6 +217,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
+  
+  const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
+  const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
   const calculateUnifiedSummary = (data1000: any[], data2000: any[]) => {
     const groupsMap = new Map<string, { 
