@@ -265,12 +265,15 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     if (!hasSetDefaultDate && uniqueDates.length > 0 && displayMode === 'plan') {
       const getTargetDate = () => {
         const today = new Date();
+        const holidaysList = ['2026-05-25']; // Feriado nacional Ecuador (Batalla de Pichincha)
         let daysAdded = 0;
         let result = new Date(today);
         while (daysAdded < 3) {
           result.setDate(result.getDate() + 1);
           const day = result.getDay();
-          if (day !== 0 && day !== 6) {
+          const dateStr = result.toISOString().split('T')[0];
+          // Saltar fines de semana y el feriado específico solicitado
+          if (day !== 0 && day !== 6 && !holidaysList.includes(dateStr)) {
             daysAdded++;
           }
         }
@@ -377,12 +380,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       });
 
       // 2. Asignación Inteligente de Tapiceros
-      // Ordenar mesas por tiempo requerido (carga) descendente para asignar los mejores tapiceros a las más cargadas
       const sortedMesasByLoad = [...rawMesas]
         .map((m, originalIndex) => ({ ...m, originalIndex }))
         .sort((a, b) => b.tiempoRequeridoH - a.tiempoRequeridoH);
       
-      // Mapeo de asignación: mesaCode -> tapiceroInfo
       const mesaAssignments = new Map();
       sortedMesasByLoad.forEach((mesa, idx) => {
         if (tapiceros && tapiceros.length > idx) {
@@ -390,7 +391,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         }
       });
 
-      // 3. Re-mapear a la estructura final manteniendo el orden original de MESA_MAPPING
+      // 3. Re-mapear a la estructura final
       const mesasBreakdown = rawMesas.map(m => {
         const tapicero = mesaAssignments.get(m.code);
         return {
