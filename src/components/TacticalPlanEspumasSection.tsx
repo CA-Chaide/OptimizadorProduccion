@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, CheckCircle2, Activity } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Wind, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, ShieldCheck, AlertTriangle, Activity, DatabaseZap } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
@@ -21,14 +21,15 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
-import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
-import { TacticalNeedsSection } from './TacticalNeedsSection';
 
 // --- CONSTANTES TÉCNICAS ---
 const MACHINE_RADIO_CM = 350;    
 const SECONDS_LOAD_BLOCK = 300;   
 const SECONDS_REPETITION = 45;    
 const SECONDS_CART_SWAP = 60;     
+
+// Lista de materiales a excluir por ser ruidosos o no pertenecer al proceso de corte
+const MATERIALES_EXCLUIDOS = ["30009844", "30007116"];
 
 /**
  * Helper para obtener valores de restricciones
@@ -43,7 +44,6 @@ const getParam = (restrictions: Restriccion[], key: string, defaultValue: number
 
 /**
  * PANEL DE CONTROL ESPECÍFICO PARA CENTRO 1000 (QUITO)
- * Visualización en Matriz Técnica con Recursos como Columnas
  */
 const ScheduleControlPanelC1000 = ({ 
   plannedHours, 
@@ -52,20 +52,18 @@ const ScheduleControlPanelC1000 = ({
   plannedHours: number, 
   restrictions: Restriccion[] 
 }) => {
-  // Extraer parámetros dinámicos del grupo
   const t1Param = getParam(restrictions, 'HORAS_TRABAJO_DÍA', 12);
   const t2Param = getParam(restrictions, 'HORAS_TRABAJO_Noche', 10);
   const comidaParam = getParam(restrictions, 'MINUTOS_COMIDAS', 45);
   const pausasParam = getParam(restrictions, 'Pausas_Activas', 15);
   const rendParam = getParam(restrictions, 'RENDIMIENTO_PROCESO', 90);
 
-  // Deducción calculada en horas (Comida + Pausas) por cada turno
   const deductionHoursPerShift = (comidaParam.value + pausasParam.value) / 60;
 
   const resources = [
     { id: 'FECKEN', name: 'Fecken' },
     { id: 'MAQUINA_3', name: 'Máquina 3' },
-    { id: 'MAQUINA_1', name: 'Máquina 1', specialT1: 4 }, // Máquina 1 restringida a 4h en T1
+    { id: 'MAQUINA_1', name: 'Máquina 1', specialT1: 4 }, 
     { id: 'CNC', name: 'CNC' }
   ];
 
@@ -85,7 +83,7 @@ const ScheduleControlPanelC1000 = ({
 
   return (
     <div className="mb-10 text-left font-sans animate-in fade-in slide-in-from-top-4 duration-700">
-      <div className="bg-slate-900 text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6 border-b-2 border-blue-500">
+      <div className="bg-[#1e293b] text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6 border-b-2 border-blue-500">
         <div className="flex items-center gap-3">
           <Clock className="w-5 h-5 text-blue-400" />
           <span className="text-xs font-black tracking-widest uppercase">
@@ -104,24 +102,24 @@ const ScheduleControlPanelC1000 = ({
         <div className="overflow-x-auto">
           <table className="w-full text-center border-collapse text-[11px]">
             <thead>
-              <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
+              <tr className="bg-gray-50 text-gray-400 uppercase font-black border-b border-gray-100">
                 <th className="px-4 py-4 text-left sticky left-0 bg-gray-50 z-10 w-48">Parámetros Operativos</th>
                 {processedResources.map(m => (
                   <th key={m.id} className="px-4 py-4 text-indigo-900 border-l border-gray-100">{m.name}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 font-bold">
               <tr className="hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-3 text-left font-bold text-gray-600 sticky left-0 bg-white border-r border-gray-50">Turno Día (H)</td>
+                <td className="px-4 py-3 text-left font-bold text-gray-500 sticky left-0 bg-white border-r border-gray-50">Turno Día (H)</td>
                 {processedResources.map(m => (
-                  <td key={m.id} className="px-4 py-3 font-mono">{m.t1.toFixed(1)}</td>
+                  <td key={m.id} className="px-4 py-3 font-mono text-gray-700">{m.t1.toFixed(1)}</td>
                 ))}
               </tr>
               <tr className="hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-3 text-left font-bold text-gray-600 sticky left-0 bg-white border-r border-gray-50">Turno Noche (H)</td>
+                <td className="px-4 py-3 text-left font-bold text-gray-500 sticky left-0 bg-white border-r border-gray-50">Turno Noche (H)</td>
                 {processedResources.map(m => (
-                  <td key={m.id} className="px-4 py-3 font-mono">{m.t2.toFixed(1)}</td>
+                  <td key={m.id} className="px-4 py-3 font-mono text-gray-700">{m.t2.toFixed(1)}</td>
                 ))}
               </tr>
               <tr className="hover:bg-gray-50/50 transition-colors bg-red-50/30">
@@ -145,7 +143,6 @@ const ScheduleControlPanelC1000 = ({
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Rendimiento Proceso</span>
               <div className="flex items-center gap-2">
                 <span className="text-2xl font-black text-slate-800 font-mono">{rendParam.value}%</span>
-                {rendParam.isOverridden && <ShieldCheck className="w-4 h-4 text-blue-500" />}
               </div>
            </div>
            
@@ -175,7 +172,7 @@ const ScheduleControlPanelC1000 = ({
 };
 
 /**
- * PANEL DE CONTROL ORIGINAL PARA CENTRO 2000 (GUAYAQUIL)
+ * PANEL DE CONTROL PARA CENTRO 2000 (GUAYAQUIL)
  */
 const ScheduleControlPanelC2000 = ({ 
   plannedHours, 
@@ -205,16 +202,16 @@ const ScheduleControlPanelC2000 = ({
   const saldo = netCapacity - plannedHours;
 
   return (
-    <div className="mb-10 text-left font-sans">
-      <div className="bg-indigo-950 text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6 border-b-2 border-indigo-400">
+    <div className="mb-10 text-left font-sans animate-in fade-in slide-in-from-top-4 duration-700">
+      <div className="bg-[#1e293b] text-white p-3 rounded-t-2xl flex justify-between items-center shadow-lg px-6 border-b-2 border-indigo-400">
         <div className="flex items-center gap-3">
           <Clock className="w-5 h-5 text-indigo-400" />
           <span className="text-xs font-black tracking-widest uppercase">
             Capacidad Operativa - Planta 2000 (Guayaquil)
           </span>
         </div>
-        <Badge className={cn("font-black text-[10px] px-4 py-1 rounded-full", utilizacion <= 100 ? "bg-green-500" : "bg-red-500")}>
-          {utilizacion <= 100 ? "CAPACIDAD NORMAL" : "SOBRECARGA"}
+        <Badge className={cn("font-black text-[10px] px-4 py-1 rounded-full", utilizacion <= 100 ? "bg-green-500 text-white" : "bg-red-500 text-white")}>
+          {utilizacion <= 100 ? "CAPACIDAD NORMAL" : "SOBRECARGA DETECTADA"}
         </Badge>
       </div>
 
@@ -222,20 +219,20 @@ const ScheduleControlPanelC2000 = ({
         <div className="overflow-x-auto">
           <table className="w-full text-center border-collapse text-[11px]">
             <thead>
-              <tr className="bg-gray-50 text-gray-500 uppercase font-black border-b border-gray-100">
+              <tr className="bg-gray-50 text-gray-400 uppercase font-black border-b border-gray-100">
                 <th className="px-4 py-4 text-left w-48">Recurso</th>
                 <th className="px-4 py-4">Turno Día</th>
                 <th className="px-4 py-4">Turno Noche</th>
                 <th className="px-4 py-4 text-red-400">Paros (H)</th>
-                <th className="px-4 py-4 font-black bg-slate-50 border-l border-gray-100">Capacidad Bruta</th>
+                <th className="px-4 py-4 font-black bg-slate-50 border-l border-gray-100 text-slate-700">Capacidad Bruta</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 font-bold">
               {processedResources.map(m => (
                 <tr key={m.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3 text-left font-bold text-gray-700">{m.name}</td>
-                  <td className="px-4 py-3 font-mono">{m.t1.value.toFixed(1)}</td>
-                  <td className="px-4 py-3 font-mono">{m.t2.value.toFixed(1)}</td>
+                  <td className="px-4 py-3 text-left font-bold text-gray-500">{m.name}</td>
+                  <td className="px-4 py-3 font-mono text-gray-700">{m.t1.value.toFixed(1)}</td>
+                  <td className="px-4 py-3 font-mono text-gray-700">{m.t2.value.toFixed(1)}</td>
                   <td className="px-4 py-3 font-mono text-red-400">-{m.p.value.toFixed(2)}</td>
                   <td className="px-4 py-3 font-mono font-black text-slate-800 bg-slate-50/50 border-l border-gray-100">{m.baseHours.toFixed(2)}</td>
                 </tr>
@@ -244,7 +241,7 @@ const ScheduleControlPanelC2000 = ({
           </table>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-gray-200 bg-gray-50/10">
            <div className="p-4 border-r border-gray-100 flex flex-col items-center justify-center">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Rendimiento: {rendParam.value}%</span>
            </div>
@@ -255,7 +252,10 @@ const ScheduleControlPanelC2000 = ({
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Saldo Horas: {saldo.toFixed(1)}h</span>
            </div>
            <div className="p-4 flex flex-col items-center justify-center px-6">
-              <span className="text-[10px] font-black uppercase text-gray-500">UTILIZACIÓN: {utilizacion.toFixed(1)}%</span>
+              <div className="flex items-center gap-2 mb-1">
+                <Activity className={cn("w-4 h-4", utilizacion <= 100 ? "text-green-600" : "text-red-600")} />
+                <span className="text-[10px] font-black uppercase text-gray-500">UTILIZACIÓN: {utilizacion.toFixed(1)}%</span>
+              </div>
               <Progress value={Math.min(utilizacion, 100)} className={cn("h-1.5 w-full mt-1", utilizacion > 100 ? "[&>div]:bg-red-500" : "[&>div]:bg-primary")} />
            </div>
         </div>
@@ -419,11 +419,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (relevantGroups.length === 0) return [];
 
     return data.filter(o => {
+      // 1. Filtrar materiales excluidos específicamente por el usuario
+      const matStr = String(o.MATERIAL || o.CodMaterial || '').trim();
+      if (MATERIALES_EXCLUIDOS.some(ex => matStr.includes(ex))) return false;
+
+      // 2. Filtro de Centro
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
+
+      // 3. Filtro de Almacén
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (centro === '1000' && itemAlmValue !== '1006') return false;
       if (centro === '2000' && itemAlmValue !== '2006') return false;
+
+      // 4. Filtro de Responsable (Cruce con Restricciones del Grupo)
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const matchResp = relevantGroups.some(g => {
         const respCodes = restricciones.filter(r => r.codigo_grupo === g.codigo_grupo && r.nombre_restriccion === 'RESPCTRLPROD')
@@ -431,6 +440,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         return respCodes.length === 0 || respCodes.includes(itemResp);
       });
       if (!matchResp) return false;
+
+      // 5. Filtro de Fecha
       if (applyDateFilter) {
         const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -480,6 +491,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
   const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
 
+  if (!mounted) return null;
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -487,7 +500,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Control de Capacidad Neta y Evaluación de Horarios Operativos</p>
+            <p className="text-xs text-gray-500 font-medium">Análisis de Capacidad Neta y Programación Diaria</p>
           </div>
         </div>
       </div>
@@ -495,11 +508,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'resumen', l: 'Resumen', i: LayoutDashboard }, 
+            { v: 'resumen', l: 'Capacidad', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
-            { v: 'restricciones', l: 'Restricciones', i: Lock }, 
+            { v: 'restricciones', l: 'Reglas', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'tiempos', l: 'Tiempos', i: Clock }
+            { v: 'tiempos', l: 'Catálogo', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -512,7 +525,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-4 h-4 text-primary" /></div>
               <div>
-                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Horizonte de Carga</p>
+                <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Carga Operativa</p>
                 <h3 className="text-xs font-bold text-gray-700 uppercase">
                   {selectedDate === 'all' ? 'Plan Maestro Consolidado' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
@@ -562,7 +575,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[400px]">
                 <table className="w-full border-collapse text-center font-sans">
-                  <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                  <thead className="bg-[#bde0fe] sticky top-0 z-10 text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
                     <tr>
                       <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
                       <th className="px-4 py-3 border-r border-gray-100">Descripción</th>
@@ -570,36 +583,36 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <th className="px-4 py-3 border-r border-gray-100 text-primary">Tipo</th>
                       <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
                       <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Nro. Subbloque</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Nro. Bloque Formulado</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Nro. Cargas Subbloque</th>
-                      <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">Tiempo Operativo</th>
+                      <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Subbloque</th>
+                      <th className="px-4 py-3 border-r border-gray-100 text-orange-800 font-bold">Bloque Form.</th>
+                      <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Cargas</th>
+                      <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">T. Operativo</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50 text-[11px]">
+                  <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
                     {summaryData1000.map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
                         <td className="px-4 py-2 font-black text-gray-400 border-r border-gray-50 uppercase text-[8px]">BLOQUE FORMULADO</td>
-                        <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
+                        <td className="px-4 py-2 text-gray-700 border-r border-gray-50">{row.dens}</td>
                         <td className="px-4 py-2 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
-                        <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
+                        <td className="px-4 py-2 text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-2 font-mono border-r border-gray-50">{row.units.toLocaleString()}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
+                        <td className="px-4 py-2 font-mono text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
+                        <td className="px-4 py-2 font-mono text-orange-800 border-r border-gray-50 bg-orange-50/5">{row.bloques20m.toFixed(1)}</td>
+                        <td className="px-4 py-2 font-mono text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
+                        <td className="px-4 py-2 font-mono text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-800 text-white font-bold text-[11px]">
+                  <tfoot className="bg-slate-900 text-white font-black text-[11px] uppercase">
                     <tr>
-                      <td colSpan={5} className="px-4 py-2 text-right uppercase">Total Planta 1000:</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals1000.units.toLocaleString()}</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals1000.subbloques.toFixed(1)}</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals1000.bloques20m.toFixed(1)}</td>
-                      <td className="px-4 py-2 font-mono">{Math.ceil(summaryTotals1000.cargas)}</td>
-                      <td className="px-4 py-2 font-mono text-teal-300">{summaryTotals1000.timeLog.toFixed(2)}</td>
+                      <td colSpan={5} className="px-4 py-3 text-right tracking-widest">Total Planta 1000:</td>
+                      <td className="px-4 py-3 font-mono">{summaryTotals1000.units.toLocaleString()}</td>
+                      <td className="px-4 py-3 font-mono">{summaryTotals1000.subbloques.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono">{summaryTotals1000.bloques20m.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono">{Math.ceil(summaryTotals1000.cargas)}</td>
+                      <td className="px-4 py-3 font-mono text-teal-300">{summaryTotals1000.timeLog.toFixed(2)}h</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -616,55 +629,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               { id: 'REPOTENCIADO', name: 'Repotenciado', defaultT1: 6 }
             ]}
           />
-
-          <div className="space-y-4">
-            <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-indigo-700">
-              <div className="w-2 h-2 rounded-full bg-indigo-600" /> Planta 2000 - Guayaquil (Almacén 2006)
-            </h3>
-            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-              <div className="overflow-x-auto max-h-[400px]">
-                <table className="w-full border-collapse text-center font-sans">
-                  <thead className="bg-gray-100/80 sticky top-0 z-10 text-[10px] font-bold uppercase text-gray-500 border-b border-gray-100">
-                    <tr>
-                      <th className="px-4 py-3 border-r border-gray-100">Fecha</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Descripción</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-primary">Tipo</th>
-                      <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
-                      <th className="px-4 py-3 border-r border-gray-100">Unidades</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-purple-700">Nro. Subbloque</th>
-                      <th className="px-4 py-3 border-r border-gray-100 text-purple-800 font-bold">Nro. Cargas Subbloque</th>
-                      <th className="px-4 py-3 text-center text-teal-700 bg-teal-50/20">Tiempo Operativo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 text-[11px]">
-                    {summaryData2000.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-4 py-2 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
-                        <td className="px-4 py-2 font-black text-gray-400 border-r border-gray-50 uppercase text-[8px]">BLOQUE FORMULADO</td>
-                        <td className="px-4 py-2 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
-                        <td className="px-4 py-2 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
-                        <td className="px-4 py-2 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
-                        <td className="px-4 py-2 font-mono border-r border-gray-50">{row.units.toLocaleString()}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50">{row.subbloques.toFixed(1)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-purple-700 border-r border-gray-50 bg-purple-50/5">{Math.ceil(row.cargas)}</td>
-                        <td className="px-4 py-2 font-mono font-bold text-teal-600 text-center bg-teal-50/5">{row.timeLog.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-800 text-white font-bold text-[11px]">
-                    <tr>
-                      <td colSpan={5} className="px-4 py-2 text-right uppercase">Total Planta 2000:</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals2000.units.toLocaleString()}</td>
-                      <td className="px-4 py-2 font-mono">{summaryTotals2000.subbloques.toFixed(1)}</td>
-                      <td className="px-4 py-2 font-mono">{Math.ceil(summaryTotals2000.cargas)}</td>
-                      <td className="px-4 py-2 font-mono text-teal-300">{summaryTotals2000.timeLog.toFixed(2)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </Card>
-          </div>
         </TabsContent>
 
         <TabsContent value="grupos">
@@ -681,21 +645,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="restricciones">
-          <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <table className="w-full border-collapse text-center">
-              <thead className="bg-gray-50/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
+              <thead className="bg-[#bde0fe] text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Parámetro Técnico</th>
-                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
+                  <th className="px-6 py-5 border-r border-gray-100">Parámetro Técnico</th>
+                  <th className="px-6 py-5 border-r border-gray-100">Valor</th>
                   <th className="px-6 py-5 text-left">Descripción Operativa</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 text-[11px]">
+              <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
                 {restricciones.map(r => (
-                  <tr key={r.codigo_restriccion} className="hover:bg-amber-50/20">
-                    <td className="px-6 py-4 font-bold text-gray-700 border-r border-dashed border-gray-200 uppercase">{r.nombre_restriccion}</td>
-                    <td className="px-6 py-4 border-r border-dashed border-gray-200">
-                      <Badge variant="outline" className="font-mono text-amber-700 border-amber-200 bg-amber-50/50">{r.valor_restriccion}</Badge>
+                  <tr key={r.codigo_restriccion} className="hover:bg-gray-50/50">
+                    <td className="px-6 py-4 text-gray-500 border-r border-gray-100 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-gray-100">
+                      <Badge variant="outline" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50/50">{r.valor_restriccion}</Badge>
                     </td>
                     <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
                   </tr>
@@ -705,96 +669,69 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-10">
+        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
           {[ 
             { t: 'Planta 1000 - Quito', d: provC1000, id: '1000', totals: summaryTotals1000 }, 
             { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000', totals: summaryTotals2000 } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.id === '1000' ? 'text-green-700' : 'text-indigo-700')}>
+              <h3 className={cn("text-[11px] font-black uppercase flex items-center gap-2 px-1 tracking-widest", center.id === '1000' ? 'text-green-700' : 'text-indigo-700')}>
                 <div className={cn("w-2 h-2 rounded-full", center.id === '1000' ? 'bg-green-600' : 'bg-indigo-600')} /> {center.t} ({center.d.length} órdenes)
               </h3>
-              <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+              <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto max-h-[500px]">
-                  <table className="w-full border-collapse text-center">
-                    <thead className="bg-gray-100/80 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-500 border-b border-gray-100">
+                  <table className="w-full border-collapse text-center font-sans">
+                    <thead className="bg-[#bde0fe] sticky top-0 z-10 text-[9px] font-black uppercase text-slate-800 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-gray-100">Orden</th>
                         <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
                         <th className="px-3 py-4 border-r border-gray-100">Material</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
-                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">Categoría</th>
-                        <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/20 text-amber-900">Tipo</th>
                         <th className="px-2 py-4 border-r border-gray-100">DENS.</th>
                         <th className="px-2 py-4 border-r border-gray-100 bg-blue-50/20">APERT.</th>
                         <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
                         <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
-                        <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
+                        <th className="px-3 py-4 border-r border-gray-100 font-black">Cant.</th>
                         <th className="px-2 py-4 border-r border-gray-100 text-indigo-900 bg-indigo-50/30 font-black">ALT. TOT.</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-orange-50/10 font-black">NRO. SUBBLOQUE</th>
-                        <th className="px-2 py-4 border-r border-gray-100 bg-purple-50/10 font-bold">Nro. Cargas Subbloque</th>
-                        <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">Tiempo Operativo</th>
-                        <th className="px-3 py-4 border-r border-gray-100 font-black">Máquina</th>
-                        <th className="px-3 py-4 font-black">ALM.</th>
+                        <th className="px-4 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/30">T. Operativo</th>
+                        <th className="px-3 py-4 border-r border-gray-100 font-bold">Máquina</th>
+                        <th className="px-3 py-4">ALM.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-gray-50 text-[10px] font-bold">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                        const hasCategory = String(o.CATEGORIA || '').trim() !== '' && String(o.CATEGORIA || '').trim() !== 'N/A';
-                        let alturaTotal = 0, nSubItem = 0, tiempoLogistico = 0, totalCargas = 0;
-                        if (hasCategory) {
-                          const e = parseFloat(info.esp) || 0;
-                          const d = parseFloat(info.dens) || 0;
-                          const w = parseFloat(info.ancho) || 0;
-                          const l = parseFloat(info.largo) || 0;
-                          alturaTotal = qty * e;
-                          const usefulHeight = isNaN(d) ? 103 : (d < 30 ? 103 : 85);
-                          nSubItem = alturaTotal / usefulHeight;
-                          const logic = calculateCargasLogic(nSubItem, w, l);
-                          totalCargas = logic.totalCargas;
-                          const itemBloques20m = (w * nSubItem) / 2000;
-                          const physicalBlocks = Math.ceil(itemBloques20m);
-                          tiempoLogistico = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
-                        }
+                        const e = parseFloat(info.esp) || 0;
+                        const w = parseFloat(info.ancho) || 0;
+                        const alturaTotal = qty * e;
+                        const usefulHeight = (parseFloat(info.dens) < 30) ? 103 : 85;
+                        const nSubItem = alturaTotal / usefulHeight;
+                        const itemBloques20m = (w * nSubItem) / 2000;
+                        const physicalBlocks = Math.ceil(itemBloques20m);
+                        const tOperativo = (physicalBlocks * SECONDS_LOAD_BLOCK + Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION + Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP) / 3600;
+
                         return (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors text-center text-[10px]">
-                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                            <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
+                            <td className="px-3 py-2 font-mono text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase text-[9px]">{String(o.CATEGORIA || o.Categoria || '—')}</td>
-                            <td className="px-3 py-2 font-black text-amber-700 border-r border-gray-100 bg-amber-50/5 uppercase">{info.tipo}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.dens : '—'}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-blue-700 border-r border-gray-100 bg-blue-50/10">{hasCategory ? info.apertura : '—'}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.ancho : '—'}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.largo : '—'}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-gray-700 border-r border-gray-100">{hasCategory ? info.esp : '—'}</td>
-                            <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{hasCategory ? alturaTotal.toFixed(1) : '—'}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-orange-700 border-r border-gray-100 bg-orange-50/10">{hasCategory ? nSubItem.toFixed(2) : '—'}</td>
-                            <td className="px-2 py-2 font-mono font-bold text-purple-700 border-r border-gray-100 bg-purple-50/10">{hasCategory ? Math.ceil(totalCargas) : '—'}</td>
-                            <td className="px-3 py-2 font-mono font-bold border-r border-gray-100 text-teal-600 bg-teal-50/10">{hasCategory && tiempoLogistico > 0 ? tiempoLogistico.toFixed(2) : '—'}</td>
-                            <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-100 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
-                            <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                            <td className="px-2 py-2 font-mono border-r border-gray-100 text-gray-500">{info.dens}</td>
+                            <td className="px-2 py-2 font-mono text-blue-700 border-r border-gray-100 bg-blue-50/10">{info.apertura}</td>
+                            <td className="px-2 py-2 font-mono text-gray-500 border-r border-gray-100">{info.ancho}</td>
+                            <td className="px-2 py-2 font-mono text-gray-500 border-r border-gray-100">{info.largo}</td>
+                            <td className="px-2 py-2 font-mono text-gray-500 border-r border-gray-100">{info.esp}</td>
+                            <td className="px-3 py-2 text-gray-900 border-r border-gray-100 font-mono">{qty}</td>
+                            <td className="px-2 py-2 font-mono text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{alturaTotal.toFixed(1)}</td>
+                            <td className="px-3 py-2 font-mono border-r border-gray-100 text-teal-600 bg-teal-50/10">{tOperativo.toFixed(2)}h</td>
+                            <td className="px-3 py-2 font-black text-gray-400 border-r border-gray-100 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
+                            <td className="px-3 py-2 font-bold text-gray-300">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
                         );
                       })}
                     </tbody>
-                    <tfoot className="bg-gray-800 text-white font-bold text-[9px] uppercase">
-                      <tr>
-                        <td colSpan={11} className="px-3 py-2 text-right">Totales {center.t}:</td>
-                        <td className="px-3 py-2 font-mono">{center.totals.units.toLocaleString()}</td>
-                        <td className="px-2 py-2 font-mono text-indigo-200">{(center.totals.units * 15).toFixed(0)}</td>
-                        <td className="px-2 py-2 font-mono text-orange-200">{center.totals.subbloques.toFixed(1)}</td>
-                        <td className="px-2 py-2 font-mono text-purple-200">{Math.ceil(center.totals.cargas)}</td>
-                        <td className="px-4 py-2 font-mono text-teal-300">{center.totals.timeLog.toFixed(2)}</td>
-                        <td></td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
               </Card>
@@ -806,31 +743,31 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="grid grid-cols-1 gap-10">
             {[ { t: 'Quito 1000', d: tiemposC1000 }, { t: 'Guayaquil 2000', d: tiemposC2000 } ].map((center, idx) => (
               <div key={idx} className="space-y-4">
-                <h3 className="text-sm font-bold uppercase text-gray-400 text-left">Catálogo de Tiempos - {center.t}</h3>
-                <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-white">
+                <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest px-1">Catálogo de Tiempos - {center.t}</h3>
+                <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                   <div className="overflow-x-auto max-h-[400px]">
-                    <table className="w-full border-collapse text-center">
-                      <thead className="bg-gray-100 sticky top-0 text-[10px] font-bold uppercase text-gray-500">
+                    <table className="w-full border-collapse text-center font-sans">
+                      <thead className="bg-[#bde0fe] sticky top-0 text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
                         <tr>
                           <th className="px-4 py-4 border-r border-gray-100">Material</th>
                           <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
                           <th className="px-4 py-4 border-r border-gray-100">Línea</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-teal-600">Estándar (Min)</th>
-                          <th className="px-4 py-4">Stock / Seguridad</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-teal-700">Estándar (Min)</th>
+                          <th className="px-4 py-4">Inventario / Seguridad</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50 text-[11px]">
+                      <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
                         {center.d.length === 0 ? (
-                          <tr><td colSpan={5} className="py-8 text-center text-gray-400 italic">No hay tiempos cargados para este centro</td></tr>
+                          <tr><td colSpan={5} className="py-12 text-center text-gray-300 font-bold uppercase tracking-widest opacity-30">No hay registros cargados</td></tr>
                         ) : (
                           center.d.map((t, i) => {
                             const info = extractMaterialInfo(t);
                             return (
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-4 py-3 font-mono font-bold text-primary border-r border-gray-50">{info.code}</td>
+                                <td className="px-4 py-3 font-mono text-primary border-r border-gray-50">{info.code}</td>
                                 <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                                <td className="px-4 py-3 border-r border-dashed border-gray-200 font-medium text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
-                                <td className="px-4 py-3 font-mono font-bold text-teal-600 border-r border-gray-50">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                                <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
+                                <td className="px-4 py-3 font-mono text-teal-600 border-r border-gray-100 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
                                 <td className="px-4 py-3 text-gray-400 font-mono">{(t.StockActual || 0)} / {(t.StockSeguridad || 0)}</td>
                               </tr>
                             );
