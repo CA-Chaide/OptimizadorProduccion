@@ -17,7 +17,8 @@ import {
   Activity,
   Database,
   PlayCircle,
-  Info
+  Info,
+  History
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -48,6 +49,14 @@ const safeNum = (val: any): number => {
   return isNaN(n) ? 0 : n;
 };
 
+const formatNum = (val: any, decimals: number = 0): string => {
+  const n = safeNum(val);
+  return n.toLocaleString(undefined, { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  });
+};
+
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
   const { addNotification } = useAppContext();
@@ -61,6 +70,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
+
+  // Estados para Tiempos de Curado
+  const [curadoRows, setCuradoRows] = useState<any[]>([]);
+  const [isLoadingCurado, setIsLoadingCurado] = useState(false);
 
   useEffect(() => { 
     setMounted(true); 
@@ -121,6 +134,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
   };
 
+  const fetchCurado = async () => {
+    setIsLoadingCurado(true);
+    try {
+      const res = await serviciosService.getTiemposCuradoBloqueFormulado(1, 5000);
+      const data = res.data?.data || res.data || [];
+      setCuradoRows(Array.isArray(data) ? data : []);
+      inspector.captureVariable('curadoData', data);
+    } catch (error) {
+      console.error('Error cargando tiempos de curado:', error);
+    } finally {
+      setIsLoadingCurado(false);
+    }
+  };
+
   useEffect(() => {
     if (!mounted) return;
     const initData = async () => {
@@ -130,7 +157,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       await Promise.all([
         fetchRestricciones(groupsIds),
         fetchOrdenes(),
-        fetchTiemposEnsamblado(filteredGroups)
+        fetchTiemposEnsamblado(filteredGroups),
+        fetchCurado()
       ]);
       setIsLoading(false);
     };
@@ -170,10 +198,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
     
-    const techMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
-    if (techMatch) {
-      dimensions.dens = techMatch[1]; 
-      dimensions.tipo = techMatch[2].toUpperCase(); 
+    const techPattern = catStr.match(/D(\d+)([a-zA-Z]+)/i);
+    if (techPattern) {
+      dimensions.dens = techPattern[1]; 
+      dimensions.tipo = techPattern[2].toUpperCase(); 
     } else {
       const densMatch = desc.match(/D-?(\d+)/i);
       if (densMatch) dimensions.dens = densMatch[1];
@@ -291,14 +319,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Iniciando Entorno de Formulación...</p>
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Módulo de Formulación...</p>
     </div>
   );
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
@@ -308,12 +336,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Capacidad y Carga', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Parámetros', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
+            { v: 'curado', l: 'Curado', i: History },
             { v: 'tiempos', l: 'Catálogo Tiempos', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
@@ -343,8 +372,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <div className="bg-white p-3 font-sans">
                   {viewDate && (
                     <>
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-[10px] font-bold text-gray-800 capitalize text-left">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                      <div className="flex items-center justify-between mb-3 text-left">
+                        <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
                         <div className="flex gap-1 bg-gray-50 rounded-lg p-1">
                           <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6"><ChevronLeft className="w-3 h-3" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6"><ChevronRight className="w-3 h-3" /></Button>
@@ -385,7 +414,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     const utilization = (currentLoad / MAX_DAILY_BLOCKS) * 100;
                     return (
                       <>
-                        <span className="text-lg font-black text-primary">{currentLoad.toFixed(0)}</span>
+                        <span className="text-lg font-black text-primary">{formatNum(currentLoad)}</span>
                         <span className="text-xs font-bold text-gray-400"> / {MAX_DAILY_BLOCKS} Bloques</span>
                         <div className="mt-1">
                            <Badge className={cn("font-black text-[9px]", utilization <= 100 ? "bg-green-500" : "bg-red-500")}>
@@ -411,33 +440,31 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   <thead className="bg-[#bde0fe] sticky top-0 z-10 text-[9px] font-black uppercase text-slate-800 border-b border-gray-100">
                     <tr>
                       <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
-                      <th className="px-4 py-4 border-r border-gray-100">Descripción</th>
                       <th className="px-4 py-4 border-r border-gray-100">Densidad</th>
                       <th className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
                       <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Nro. Bloques (1000)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Nro. Bloques (2000)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloque Formulado (U)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">BLOQUE STOCK</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">BLOQUE CURADO</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50 text-blue-900">BLOQUE PROCESO</th>
-                      <th className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">PLAN REPOSICIÓN</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Bloques (1000)</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Bloques (2000)</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bruto</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">STOCK</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">CURADO</th>
+                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50 text-blue-900">PROCESO</th>
+                      <th className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">REPOSICIÓN</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-[10px]">
                     {unifiedSummaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
-                        <td className="px-4 py-3 font-black text-gray-400 border-r border-gray-50 uppercase text-[8px]">BLOQUE FORMULADO</td>
                         <td className="px-4 py-3 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
                         <td className="px-4 py-3 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
                         <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{row.bloques1000.toFixed(1)}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{row.bloques2000.toFixed(1)}</td>
-                        <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{row.totalBloques.toFixed(1)}</td>
-                        <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">0</td>
-                        <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">0</td>
-                        <td className="px-4 py-3 font-mono text-blue-400 border-r border-gray-50 bg-blue-50/20">0</td>
+                        <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{formatNum(row.bloques1000, 1)}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{formatNum(row.bloques2000, 1)}</td>
+                        <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{formatNum(row.totalBloques, 1)}</td>
+                        <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">{formatNum(row.bloquesStock)}</td>
+                        <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">{formatNum(row.bloquesCurado)}</td>
+                        <td className="px-4 py-3 font-mono text-blue-400 border-r border-gray-50 bg-blue-50/20">{formatNum(row.bloquesProceso)}</td>
                         <td className="px-4 py-3 font-mono font-black text-emerald-600 bg-emerald-50/30">{String(row.planReposicion)}</td>
                       </tr>
                     ))}
@@ -445,17 +472,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0">
                     {Object.entries(summaryTotals.byAperture).sort().map(([ap, total]) => (
                       <tr key={ap} className="bg-indigo-900/40">
-                        <td colSpan={11} className="px-4 py-2 text-right uppercase text-indigo-200 tracking-widest text-[9px]">Subtotal Apertura {ap}:</td>
-                        <td className="px-4 py-2 font-mono text-indigo-200">{String(total)}</td>
+                        <td colSpan={10} className="px-4 py-2 text-right uppercase text-indigo-200 tracking-widest text-[9px]">Subtotal Apertura {ap}:</td>
+                        <td className="px-4 py-2 font-mono text-indigo-200 text-center">{String(total)}</td>
                       </tr>
                     ))}
                     <tr className="bg-slate-900">
-                      <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-widest">Total Maestro Consolidado:</td>
-                      <td className="px-4 py-3 font-mono text-green-300">{summaryTotals.bloques1000.toFixed(1)}</td>
-                      <td className="px-4 py-3 font-mono text-indigo-300">{summaryTotals.bloques2000.toFixed(1)}</td>
-                      <td className="px-4 py-3 font-mono text-orange-300">{summaryTotals.totalBloques.toFixed(1)}</td>
+                      <td colSpan={4} className="px-4 py-3 text-right uppercase tracking-widest">Total Maestro Consolidado:</td>
+                      <td className="px-4 py-3 font-mono text-green-300">{formatNum(summaryTotals.bloques1000, 1)}</td>
+                      <td className="px-4 py-3 font-mono text-indigo-300">{formatNum(summaryTotals.bloques2000, 1)}</td>
+                      <td className="px-4 py-3 font-mono text-orange-300">{formatNum(summaryTotals.totalBloques, 1)}</td>
                       <td colSpan={3} className="border-r border-gray-700"></td>
-                      <td className="px-4 py-3 font-mono text-emerald-300">{String(summaryTotals.planReposicion)}</td>
+                      <td className="px-4 py-3 font-mono text-emerald-300 text-center">{String(summaryTotals.planReposicion)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -532,18 +559,19 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-50 text-[10px]">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
+                        const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono text-primary border-r border-gray-100">{info.code}</td>
-                            <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[150px] uppercase font-bold text-gray-600">{info.desc}</td>
+                            <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[200px] uppercase font-bold text-gray-600">{info.desc}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-400">{info.dens}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.ancho}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.largo}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.esp}</td>
                             <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100">{String(o.CANTIDAD || o.CANTPROGRAMADA || 0)}</td>
-                            <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-100 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
+                            <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-100 uppercase">{maquina}</td>
                             <td className="px-3 py-2 font-bold text-gray-200">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
                         );
@@ -554,6 +582,55 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </Card>
             </div>
           ))}
+        </TabsContent>
+
+        <TabsContent value="curado" className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3 bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+            <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
+            <div>
+              <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Tiempos de Curado y Maduración</h3>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Control de estabilidad post-formulación por densidad</p>
+            </div>
+          </div>
+
+          <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px]">
+              <table className="w-full border-collapse text-center font-sans">
+                <thead className="bg-[#bde0fe] sticky top-0 z-10 text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
+                  <tr>
+                    <th className="px-6 py-4 border-r border-gray-100 text-left">Material</th>
+                    <th className="px-6 py-4 border-r border-gray-100 text-left">Descripción técnica</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Planta</th>
+                    <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Densidad</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Horas Curado</th>
+                    <th className="px-4 py-4">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
+                  {isLoadingCurado ? (
+                    <tr><td colSpan={6} className="py-20 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-600" /></td></tr>
+                  ) : curadoRows.length === 0 ? (
+                    <tr><td colSpan={6} className="py-20 text-gray-300 font-black uppercase tracking-widest text-center">No hay registros de curado disponibles</td></tr>
+                  ) : (
+                    curadoRows.map((row, i) => {
+                      const mat = String(row.CodMaterial || row.Material || '—').slice(-8);
+                      const desc = String(row.Descripcion || row.Material || '—').toUpperCase();
+                      return (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-3 font-mono text-indigo-600 border-r border-gray-50 text-left">{mat}</td>
+                          <td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{desc}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-gray-400">{row.Centro || '—'}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 bg-blue-50/5 font-black text-blue-800">{row.Densidad || '—'}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 bg-orange-50/5 font-mono font-black text-orange-700">{formatNum(row.HorasCurado || 0, 1)}h</td>
+                          <td className="px-4 py-3"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">Estable</Badge></td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </TabsContent>
 
         <TabsContent value="tiempos">
@@ -580,10 +657,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             const info = extractMaterialInfo(t);
                             return (
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-4 py-3 font-mono text-primary border-r border-gray-50">{info.code}</td>
+                                <td className="px-4 py-3 font-mono text-primary border-r border-gray-50 text-left">{info.code}</td>
                                 <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
                                 <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || '—'}</td>
-                                <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{(t.Tiempo || 0).toFixed(4)}</td>
+                                <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{formatNum(t.Tiempo || 0, 4)}</td>
                               </tr>
                             );
                           })

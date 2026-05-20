@@ -19,7 +19,6 @@ import {
   Info,
   TrendingUp,
   Box,
-  Scissors,
   AlertTriangle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -49,6 +48,19 @@ const SECONDS_REPETITION = 45;
 const SECONDS_CART_SWAP = 60;     
 
 const MATERIALES_EXCLUIDOS = ["30009844", "30007116"];
+
+const safeNum = (val: any): number => {
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
+};
+
+const formatNum = (val: any, decimals: number = 0): string => {
+  const n = safeNum(val);
+  return n.toLocaleString(undefined, { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  });
+};
 
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
@@ -119,7 +131,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       if (tipoMatch) dimensions.tipo = tipoMatch[1].toUpperCase();
     }
 
-    const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
+    const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\盛+(?:\.\d+)?))?/);
     if (dimMatch) {
       dimensions.ancho = dimMatch[1];
       dimensions.largo = dimMatch[2];
@@ -279,7 +291,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center p-20 gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Entorno de Corte...</p>
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Módulo de Corte...</p>
     </div>
   );
 
@@ -369,19 +381,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{m.name}</p>
-                  <p className="text-lg font-black text-gray-800">{String(m.req.toFixed(1))} <span className="text-[10px] font-bold text-gray-400">/ {String(m.avail.toFixed(1))}h</span></p>
+                  <p className="text-lg font-black text-gray-800">{formatNum(m.req, 1)} <span className="text-[10px] font-bold text-gray-400">/ {formatNum(m.avail, 1)}h</span></p>
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-[9px] font-black uppercase">
                     <span className={m.percent > 100 ? "text-red-600" : "text-gray-400"}>Ocupación</span>
-                    <span className={m.percent > 100 ? "text-red-700" : "text-primary"}>{String(m.percent.toFixed(1))}%</span>
+                    <span className={m.percent > 100 ? "text-red-700" : "text-primary"}>{formatNum(m.percent, 1)}%</span>
                   </div>
                   <Progress value={m.percent} className={cn("h-1.5", m.percent > 100 ? "bg-red-200" : "bg-primary/10")} />
                 </div>
                 {m.percent > 100 && (
                   <div className="flex items-center gap-1.5 mt-1">
                     <AlertTriangle className="w-3 h-3 text-red-600" />
-                    <span className="text-[8px] font-black text-red-700 uppercase">Sobrecarga técnica detectada</span>
+                    <span className="text-[8px] font-black text-red-700 uppercase">Sobrecarga técnica</span>
                   </div>
                 )}
               </Card>
@@ -390,7 +402,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-green-700">
-              <div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Almacén 1006)
+              <div className="w-2.5 h-2.5 rounded-full bg-green-600" /> Planta 1000 - Quito (Almacén 1006)
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[400px]">
@@ -416,10 +428,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="px-4 py-2 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
                         <td className="px-4 py-2 text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-2 font-mono border-r border-gray-50">{String(row.units)}</td>
-                        <td className="px-4 py-2 font-mono text-purple-700 border-r border-gray-50">{String(row.subbloques.toFixed(1))}</td>
-                        <td className="px-4 py-2 font-mono text-orange-800 border-r border-gray-50 bg-orange-50/5">{String(row.bloques20m.toFixed(1))}</td>
+                        <td className="px-4 py-2 font-mono text-purple-700 border-r border-gray-50">{formatNum(row.subbloques, 1)}</td>
+                        <td className="px-4 py-2 font-mono text-orange-800 border-r border-gray-50 bg-orange-50/5">{formatNum(row.bloques20m, 1)}</td>
                         <td className="px-4 py-2 font-mono text-purple-700 border-r border-gray-50 bg-purple-50/5">{String(Math.ceil(row.cargas))}</td>
-                        <td className="px-4 py-2 font-mono text-teal-600 text-center bg-teal-50/5">{String(row.timeLog.toFixed(2))}</td>
+                        <td className="px-4 py-2 font-mono text-teal-600 text-center bg-teal-50/5">{formatNum(row.timeLog, 2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -427,10 +439,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <tr>
                       <td colSpan={4} className="px-4 py-3 text-right tracking-widest">Total Planta 1000:</td>
                       <td className="px-4 py-3 font-mono">{String(summaryTotals1000.units)}</td>
-                      <td className="px-4 py-3 font-mono">{String(summaryTotals1000.subbloques.toFixed(1))}</td>
-                      <td className="px-4 py-3 font-mono">{String(summaryTotals1000.bloques20m.toFixed(1))}</td>
+                      <td className="px-4 py-3 font-mono">{formatNum(summaryTotals1000.subbloques, 1)}</td>
+                      <td className="px-4 py-3 font-mono">{formatNum(summaryTotals1000.bloques20m, 1)}</td>
                       <td className="px-4 py-3 font-mono">{String(Math.ceil(summaryTotals1000.cargas))}</td>
-                      <td className="px-4 py-3 font-mono text-teal-300">{String(summaryTotals1000.timeLog.toFixed(2))}h</td>
+                      <td className="px-4 py-3 font-mono text-teal-300">{formatNum(summaryTotals1000.timeLog, 2)}h</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -440,7 +452,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-indigo-700">
-              <div className="w-2 h-2 rounded-full bg-indigo-600" /> Planta 2000 - Guayaquil (Almacén 2006)
+              <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" /> Planta 2000 - Guayaquil (Almacén 2006)
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[400px]">
@@ -466,10 +478,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="px-4 py-2 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
                         <td className="px-4 py-2 text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-2 font-mono border-r border-gray-50">{String(row.units)}</td>
-                        <td className="px-4 py-2 font-mono text-purple-700 border-r border-gray-50">{String(row.subbloques.toFixed(1))}</td>
-                        <td className="px-4 py-2 font-mono text-orange-800 border-r border-gray-50 bg-orange-50/5">{String(row.bloques20m.toFixed(1))}</td>
+                        <td className="px-4 py-2 font-mono text-purple-700 border-r border-gray-50">{formatNum(row.subbloques, 1)}</td>
+                        <td className="px-4 py-2 font-mono text-orange-800 border-r border-gray-50 bg-orange-50/5">{formatNum(row.bloques20m, 1)}</td>
                         <td className="px-4 py-2 font-mono text-purple-700 border-r border-gray-50 bg-purple-50/5">{String(Math.ceil(row.cargas))}</td>
-                        <td className="px-4 py-2 font-mono text-teal-600 text-center bg-teal-50/5">{String(row.timeLog.toFixed(2))}</td>
+                        <td className="px-4 py-2 font-mono text-teal-600 text-center bg-teal-50/5">{formatNum(row.timeLog, 2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -477,10 +489,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <tr>
                       <td colSpan={4} className="px-4 py-3 text-right tracking-widest">Total Planta 2000:</td>
                       <td className="px-4 py-3 font-mono">{String(summaryTotals2000.units)}</td>
-                      <td className="px-4 py-3 font-mono">{String(summaryTotals2000.subbloques.toFixed(1))}</td>
-                      <td className="px-4 py-3 font-mono">{String(summaryTotals2000.bloques20m.toFixed(1))}</td>
+                      <td className="px-4 py-3 font-mono">{formatNum(summaryTotals2000.subbloques, 1)}</td>
+                      <td className="px-4 py-3 font-mono">{formatNum(summaryTotals2000.bloques20m, 1)}</td>
                       <td className="px-4 py-3 font-mono">{String(Math.ceil(summaryTotals2000.cargas))}</td>
-                      <td className="px-4 py-3 font-mono text-teal-300">{String(summaryTotals2000.timeLog.toFixed(2))}h</td>
+                      <td className="px-4 py-3 font-mono text-teal-300">{formatNum(summaryTotals2000.timeLog, 2)}h</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -534,7 +546,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-widest text-left", center.id === '1000' ? 'text-green-700' : 'text-indigo-700')}>
-                <div className={cn("w-2 h-2 rounded-full", center.id === '1000' ? 'bg-green-600' : 'bg-indigo-600')} /> {center.t} ({center.d.length} órdenes)
+                <div className={cn("w-2.5 h-2.5 rounded-full", center.id === '1000' ? 'bg-green-600' : 'bg-indigo-600')} /> {center.t} ({center.d.length} órdenes)
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto max-h-[500px]">
@@ -582,6 +594,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const tCoches = Math.ceil(physicalBlocks / 2) * SECONDS_CART_SWAP;
                         const tOperativo = (tCarga + tDescarga + tCoches) / 3600;
 
+                        const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
+
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
@@ -595,13 +609,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-2 py-2 font-mono text-gray-500 border-r border-gray-100">{info.largo}</td>
                             <td className="px-2 py-2 font-mono text-gray-500 border-r border-gray-100">{info.esp}</td>
                             <td className="px-3 py-2 text-gray-900 border-r border-gray-100 font-mono">{String(qty)}</td>
-                            <td className="px-2 py-2 font-mono text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{String(alturaTotal.toFixed(1))}</td>
-                            <td className="px-2 py-2 font-mono text-purple-700 border-r border-gray-100 bg-purple-50/20">{String(nSub.toFixed(1))}</td>
-                            <td className="px-2 py-2 font-mono text-orange-800 border-r border-gray-100 bg-orange-50/20">{String(nBlocks20m.toFixed(1))}</td>
+                            <td className="px-2 py-2 font-mono text-indigo-900 border-r border-gray-100 bg-indigo-50/20">{formatNum(alturaTotal, 1)}</td>
+                            <td className="px-2 py-2 font-mono text-purple-700 border-r border-gray-100 bg-purple-50/20">{formatNum(nSub, 1)}</td>
+                            <td className="px-2 py-2 font-mono text-orange-800 border-r border-gray-100 bg-orange-50/20">{formatNum(nBlocks20m, 1)}</td>
                             <td className="px-2 py-2 font-mono text-purple-900 border-r border-gray-100 bg-purple-100/20">{String(Math.ceil(totalCargas))}</td>
-                            <td className="px-3 py-2 font-mono border-r border-gray-100 text-teal-600 bg-teal-50/10">{String(tOperativo.toFixed(2))}h</td>
-                            <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-100 uppercase">{o.MAQUINA || o.Maquina || o.RECURSO || '—'}</td>
-                            <td className="px-3 py-2 font-bold text-gray-300">{o.Almacen || o.ALMACEN || '—'}</td>
+                            <td className="px-3 py-2 font-mono border-r border-gray-100 text-teal-600 bg-teal-50/10">{formatNum(tOperativo, 2)}h</td>
+                            <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-100 uppercase">{maquina}</td>
+                            <td className="px-3 py-2 font-bold text-gray-200">{o.Almacen || o.ALMACEN || '—'}</td>
                           </tr>
                         );
                       })}
@@ -638,10 +652,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             const info = extractMaterialInfo(t);
                             return (
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-4 py-3 font-mono text-primary border-r border-gray-50">{info.code}</td>
+                                <td className="px-4 py-3 font-mono text-primary border-r border-gray-50 text-left">{info.code}</td>
                                 <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
                                 <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
-                                <td className="px-4 py-3 font-mono text-teal-600 border-r border-gray-100 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                                <td className="px-4 py-3 font-mono text-teal-600 border-r border-gray-100 bg-teal-50/5">{formatNum(t.Tiempo_Min || t.Tiempo || 0, 4)}</td>
                                 <td className="px-4 py-3 text-gray-400 font-mono">{String(t.StockActual || 0)} / {String(t.StockSeguridad || 0)}</td>
                               </tr>
                             );
