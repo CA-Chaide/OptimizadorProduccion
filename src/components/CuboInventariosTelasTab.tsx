@@ -4,9 +4,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2 } from 'lucide-react';
+import { Package, Loader2, Search } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface CuboInventariosItem {
   [key: string]: any;
@@ -19,6 +20,7 @@ export const CuboInventariosTelasTab: React.FC = () => {
     const [allData, setAllData] = useState<CuboInventariosItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [columns, setColumns] = useState<string[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[0]);
 
@@ -81,9 +83,17 @@ export const CuboInventariosTelasTab: React.FC = () => {
     }, [addNotification, columns.length]);
 
     const filteredData = useMemo(() => {
-        const filtered = allData.filter(row => 
+        let filtered = allData.filter(row => 
             row.Descripcion && String(row.Descripcion).toUpperCase().includes('TELA MUEBLES')
         );
+
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase();
+            filtered = filtered.filter(row => 
+                String(row.Material || '').toLowerCase().includes(term) ||
+                String(row.Descripcion || '').toLowerCase().includes(term)
+            );
+        }
 
         // Ordenar prioritariamente por StockActual (de mayor a menor)
         return filtered.sort((a, b) => {
@@ -91,7 +101,7 @@ export const CuboInventariosTelasTab: React.FC = () => {
             const stockB = Number(b.StockActual) || 0;
             return stockB - stockA;
         });
-    }, [allData]);
+    }, [allData, searchTerm]);
 
     const totalRecords = filteredData.length;
     const totalPages = totalRecords > 0 ? Math.ceil(totalRecords / rowsPerPage) : 1;
@@ -174,6 +184,24 @@ export const CuboInventariosTelasTab: React.FC = () => {
     
     return (
         <div className="space-y-4">
+             <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
+                <div className="relative w-full md:w-96">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                        placeholder="Buscar por código de material..." 
+                        className="pl-10"
+                        value={searchTerm}
+                        onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                    />
+                </div>
+                {isLoading && (
+                    <div className="flex items-center gap-2 text-sm text-blue-600 animate-pulse">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Actualizando datos...
+                    </div>
+                )}
+            </div>
+
              <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
                 <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
             </div>
