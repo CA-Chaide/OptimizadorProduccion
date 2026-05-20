@@ -19,7 +19,8 @@ import {
   Info,
   TrendingUp,
   Box,
-  Scissors
+  Scissors,
+  AlertTriangle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,7 +42,7 @@ import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// --- CONSTANTES TÉCNICAS ---
+// --- CONSTANTES TÉCNICAS Y OPERATIVAS ---
 const MACHINE_RADIO_CM = 350;    
 const SECONDS_LOAD_BLOCK = 300;   
 const SECONDS_REPETITION = 45;    
@@ -51,7 +52,7 @@ const MATERIALES_EXCLUIDOS = ["30009844", "30007116"];
 
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
-  const { addNotification } = useAppContext();
+  const { addNotification, constraints } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
@@ -63,98 +64,40 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
 
+  // Inicialización segura para evitar errores de hidratación
   useEffect(() => { 
     setMounted(true); 
     setViewDate(new Date());
-  }, []);
-
-  const fetchGruposRelevantes = async () => {
-    try {
-      const res = await grupoService.getAll();
-      const filtered = (res.data || []).filter(g => {
-        const name = (g.nombre_grupo || '').toLowerCase();
-        return name.includes('espuma') || name.includes('corte y laminado');
-      });
-      setGrupos(filtered);
-      return filtered;
-    } catch (error) {
-      return [];
-    }
-  };
-
-  const fetchRestricciones = async (gruposIds: number[]) => {
-    try {
-      const res = await restriccionService.getAll();
-      const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
-      setRestricciones(filtered);
-      return filtered;
-    } catch (error) {
-      return [];
-    }
-  };
-
-  const fetchOrdenes = async () => {
-    try {
-      const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
-      const data = resProv.data?.data || resProv.data || [];
-      setOrders(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error cargando órdenes:', error);
-    }
-  };
-
-  const fetchTiemposEnsamblado = async (filteredGroups: Grupo[]) => {
-    try {
-      const allTiempos: any[] = [];
-      for (const g of filteredGroups) {
-        if (!g.centro) continue;
-        const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-        const data = res.data?.data || res.data || [];
-        if (Array.isArray(data)) allTiempos.push(...data);
-      }
-      setTiemposEnsamblado(allTiempos);
-    } catch (error) {
-      console.error('Error cargando tiempos:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (!mounted) return;
+    
     const initData = async () => {
       setIsLoading(true);
-      const filteredGroups = await fetchGruposRelevantes();
-      const groupsIds = filteredGroups.map(g => g.codigo_grupo);
-      await Promise.all([
-        fetchRestricciones(groupsIds),
-        fetchOrdenes(),
-        fetchTiemposEnsamblado(filteredGroups)
-      ]);
-      setIsLoading(false);
+      try {
+        const groupsRes = await grupoService.getAll();
+        const filteredGroups = (groupsRes.data || []).filter(g => {
+          const name = (g.nombre_grupo || '').toLowerCase();
+          return name.includes('espuma') || name.includes('corte y laminado');
+        });
+        setGrupos(filteredGroups);
+        const groupsIds = filteredGroups.map(g => g.codigo_grupo);
+
+        const [restrsRes, provsRes, timesRes] = await Promise.all([
+          restriccionService.getAll(),
+          serviciosService.OrdenesProvisionalesPaginados(1, 20000),
+          serviciosService.getTiemposEnsamblado(1, 15000)
+        ]);
+
+        setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
+        setOrders(provsRes.data?.data || provsRes.data || []);
+        setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
+
+      } catch (error) {
+        console.error('Error init TacticalPlanEspumas:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
     initData();
-  }, [mounted]);
-
-  const datesWithOrders = useMemo(() => {
-    const dates = new Set<string>();
-    ordenes.forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null' && d !== 'undefined') {
-        const normalized = d.includes('T') ? d.split('T')[0] : d;
-        dates.add(normalized);
-      }
-    });
-    return dates;
-  }, [ordenes]);
-
-  const calendarDays = useMemo(() => {
-    if (!mounted || !viewDate) return [];
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const startDay = getDay(start);
-    const padding = startDay === 0 ? 6 : startDay - 1;
-    return [...Array(padding).fill(null), ...days];
-  }, [viewDate, mounted]);
+  }, []);
 
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
@@ -239,6 +182,26 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
+  const datesWithOrders = useMemo(() => {
+    if (!mounted) return new Set<string>();
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
+    });
+    return dates;
+  }, [ordenes, mounted]);
+
+  const calendarDays = useMemo(() => {
+    if (!mounted || !viewDate) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate, mounted]);
+
   const calculateSummary = (data: any[]) => {
     const groupsMap = new Map<string, { fecha: string; dens: string; tipo: string; apertura: string; units: number; subbloques: number; bloques20m: number; cargas: number; timeLog: number }>();
     data.forEach(o => {
@@ -258,9 +221,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const { totalCargas } = calculateCargasLogic(itemSubbloques, ancho, largo);
       const physicalBlocksCount = Math.ceil(itemBloques20m);
       
-      const tCarga = physicalBlocksCount * SECONDS_LOAD_BLOCK;
-      const tDescarga = Math.ceil(qty / (esp > 10 ? 4 : 3)) * SECONDS_REPETITION;
-      const tCoches = Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP;
+      const tCarga = (physicalBlocksCount * SECONDS_LOAD_BLOCK);
+      const tDescarga = (Math.ceil(qty / (esp > 10 ? 4 : 3)) * SECONDS_REPETITION);
+      const tCoches = (Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP);
       const itemTimeLog = (tCarga + tDescarga + tCoches) / 3600;
       
       if (!groupsMap.has(key)) groupsMap.set(key, { fecha, dens: info.dens, tipo: info.tipo, apertura: info.apertura, units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
@@ -275,6 +238,43 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const summaryTotals1000 = useMemo(() => summaryData1000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData1000]);
   const summaryTotals2000 = useMemo(() => summaryData2000.reduce((acc, row) => ({ units: acc.units + row.units, subbloques: acc.subbloques + row.subbloques, bloques20m: acc.bloques20m + row.bloques20m, cargas: acc.cargas + row.cargas, timeLog: acc.timeLog + row.timeLog }), { units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 }), [summaryData2000]);
+
+  // --- LÓGICA DE CAPACIDAD POR MÁQUINA ---
+  const machineCapacitySummary = useMemo(() => {
+    const allProv = [...provC1000, ...provC2000];
+    const map = new Map<string, { name: string; req: number; center: string }>();
+    
+    allProv.forEach(o => {
+      const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || 'SIN MÁQUINA').trim();
+      const center = String(o.CENTRO || o.Centro || '1000').trim();
+      const info = extractMaterialInfo(o);
+      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+      const w = parseFloat(info.ancho) || 0;
+      const e = parseFloat(info.esp) || 0;
+      const dVal = parseFloat(info.dens) || 0;
+      const usefulH = (dVal < 30) ? 103 : 85;
+      const nSub = (qty * e) / usefulH;
+      const nBlq20m = (w * nSub) / 2000;
+      const physBlq = Math.ceil(nBlq20m);
+      const tCarga = physBlq * SECONDS_LOAD_BLOCK;
+      const tDescarga = Math.ceil(qty / (e > 10 ? 4 : 3)) * SECONDS_REPETITION;
+      const tCoches = Math.ceil(physBlq / 2) * SECONDS_CART_SWAP;
+      const hours = (tCarga + tDescarga + tCoches) / 3600;
+
+      const key = `${center}|${maquina}`;
+      if (!map.has(key)) map.set(key, { name: maquina, req: 0, center });
+      map.get(key)!.req += hours;
+    });
+
+    const shiftParams = constraints.shiftParameters || { regularHoursPerDay: 9, extraHoursPerDay: 2 };
+    const availHoursPerMachine = (shiftParams.regularHoursPerDay + shiftParams.extraHoursPerDay) * 0.87;
+
+    return Array.from(map.values()).map(m => ({
+      ...m,
+      avail: availHoursPerMachine,
+      percent: (m.req / availHoursPerMachine) * 100
+    })).sort((a, b) => a.center.localeCompare(b.center) || b.percent - a.percent);
+  }, [provC1000, provC2000, constraints.shiftParameters]);
 
   if (!mounted) return null;
 
@@ -360,6 +360,35 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </div>
               </PopoverContent>
             </Popover>
+          </div>
+
+          {/* MONITOR DE CAPACIDAD POR MÁQUINA */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {machineCapacitySummary.map((m, i) => (
+              <Card key={i} className={cn("p-4 border-none shadow-sm flex flex-col gap-3", m.percent > 100 ? "bg-red-50" : "bg-blue-50/50")}>
+                <div className="flex justify-between items-start">
+                  <div className="p-2 bg-white rounded-lg shadow-xs"><Activity className={cn("w-4 h-4", m.percent > 100 ? "text-red-600" : "text-primary")} /></div>
+                  <Badge className={cn("text-[8px] font-black uppercase", m.center === '1000' ? "bg-green-100 text-green-700" : "bg-indigo-100 text-indigo-700")}>Planta {m.center}</Badge>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{m.name}</p>
+                  <p className="text-lg font-black text-gray-800">{m.req.toFixed(1)} <span className="text-[10px] font-bold text-gray-400">/ {m.avail.toFixed(1)}h</span></p>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[9px] font-black uppercase">
+                    <span className={m.percent > 100 ? "text-red-600" : "text-gray-400"}>Ocupación</span>
+                    <span className={m.percent > 100 ? "text-red-700" : "text-primary"}>{m.percent.toFixed(1)}%</span>
+                  </div>
+                  <Progress value={m.percent} className={cn("h-1.5", m.percent > 100 ? "bg-red-200" : "bg-primary/10")} />
+                </div>
+                {m.percent > 100 && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <AlertTriangle className="w-3 h-3 text-red-600" />
+                    <span className="text-[8px] font-black text-red-700 uppercase">Sobrecarga técnica detectada</span>
+                  </div>
+                )}
+              </Card>
+            ))}
           </div>
 
           <div className="space-y-4">
@@ -562,7 +591,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[150px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase font-bold">{info.categoria}</td>
+                            <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase font-bold">{String(o.CATEGORIA || '—')}</td>
                             <td className="px-2 py-2 font-mono border-r border-gray-100 text-gray-500">{info.dens}</td>
                             <td className="px-2 py-2 font-mono text-blue-700 border-r border-gray-100 bg-blue-50/10">{info.apertura}</td>
                             <td className="px-2 py-2 font-mono text-gray-500 border-r border-gray-100">{info.ancho}</td>
