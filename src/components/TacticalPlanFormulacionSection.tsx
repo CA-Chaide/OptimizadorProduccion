@@ -13,7 +13,6 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Filter, 
-  AlertTriangle, 
   Activity,
   Database,
   PlayCircle,
@@ -23,22 +22,22 @@ import {
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
+import { Progress } from "@/components/ui/progress";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Badge } from '@/components/ui/badge';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Progress } from "@/components/ui/progress";
 
 // --- CONSTANTES OPERATIVAS ---
 const MAX_DAILY_BLOCKS = 36; 
@@ -59,7 +58,7 @@ const formatNum = (val: any, decimals: number = 0): string => {
 
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
-  const { addNotification } = useAppContext();
+  const { addNotification, constraints } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
@@ -71,8 +70,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
 
-  // Estados para Tiempos de Curado
+  // Estados para Tiempos de Curado (Basado en estructura real)
   const [curadoRows, setCuradoRows] = useState<any[]>([]);
+  const [totalCurado, setTotalCurado] = useState(0);
   const [isLoadingCurado, setIsLoadingCurado] = useState(false);
 
   useEffect(() => { 
@@ -80,57 +80,33 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setViewDate(new Date());
   }, []);
 
-  const fetchGruposRelevantes = async () => {
+  const fetchData = async () => {
+    setIsLoading(true);
     try {
-      const res = await grupoService.getAll();
-      const filtered = (res.data || []).filter(g => {
+      const groupsRes = await grupoService.getAll();
+      const filteredGroups = (groupsRes.data || []).filter(g => {
         const name = (g.nombre_grupo || '').toLowerCase();
-        return (name.includes('espuma') || name.includes('corte y laminado')) && !name.includes('formulación');
+        return name.includes('espuma') || name.includes('corte y laminado');
       });
-      setGrupos(filtered);
-      return filtered;
-    } catch (error) {
-      return [];
-    }
-  };
+      setGrupos(filteredGroups);
+      const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
-  const fetchRestricciones = async (gruposIds: number[]) => {
-    try {
-      const res = await restriccionService.getAll();
-      const filtered = (res.data || []).filter(r => gruposIds.includes(r.codigo_grupo));
-      setRestricciones(filtered);
-      return filtered;
-    } catch (error) {
-      return [];
-    }
-  };
+      const [restrsRes, provsRes, timesRes] = await Promise.all([
+        restriccionService.getAll(),
+        serviciosService.OrdenesProvisionalesPaginados(1, 20000),
+        serviciosService.getTiemposEnsamblado(1, 15000)
+      ]);
 
-  const fetchOrdenes = async () => {
-    try {
-      const resProv = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
-      const data = resProv.data?.data || resProv.data || [];
-      setOrders(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error cargando órdenes:', error);
-    }
-  };
+      setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
+      setOrders(provsRes.data?.data || provsRes.data || []);
+      setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
+      
+      await fetchCurado();
 
-  const fetchTiemposEnsamblado = async (filteredGroups: Grupo[]) => {
-    try {
-      const allTiempos: any[] = [];
-      for (const g of filteredGroups) {
-        if (!g.centro) continue;
-        try {
-          const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
-          const actualData = res.data?.data || res.data || [];
-          if (Array.isArray(actualData)) allTiempos.push(...actualData);
-        } catch (e) {
-          console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`);
-        }
-      }
-      setTiemposEnsamblado(allTiempos);
     } catch (error) {
-      console.error('Error cargando tiempos:', error);
+      console.error('Error init TacticalPlanFormulacion:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -138,8 +114,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setIsLoadingCurado(true);
     try {
       const res = await serviciosService.getTiemposCuradoBloqueFormulado(1, 5000);
-      const data = res.data?.data || res.data || [];
+      const data = res.data || [];
       setCuradoRows(Array.isArray(data) ? data : []);
+      setTotalCurado(res.totalRegistros || data.length || 0);
       inspector.captureVariable('curadoData', data);
     } catch (error) {
       console.error('Error cargando tiempos de curado:', error);
@@ -149,20 +126,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!mounted) return;
-    const initData = async () => {
-      setIsLoading(true);
-      const filteredGroups = await fetchGruposRelevantes();
-      const groupsIds = filteredGroups.map(g => g.codigo_grupo);
-      await Promise.all([
-        fetchRestricciones(groupsIds),
-        fetchOrdenes(),
-        fetchTiemposEnsamblado(filteredGroups),
-        fetchCurado()
-      ]);
-      setIsLoading(false);
-    };
-    initData();
+    if (mounted) fetchData();
   }, [mounted]);
 
   const datesWithOrders = useMemo(() => {
@@ -170,10 +134,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null' && d !== 'undefined') {
-        const normalized = d.includes('T') ? d.split('T')[0] : d;
-        dates.add(normalized);
-      }
+      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
     });
     return dates;
   }, [ordenes, mounted]);
@@ -197,7 +158,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
-    
     const techPattern = catStr.match(/D(\d+)([a-zA-Z]+)/i);
     if (techPattern) {
       dimensions.dens = techPattern[1]; 
@@ -342,7 +302,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Parámetros', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'curado', l: 'Curado', i: History },
+            { v: 'curado', l: 'Tiempos Curado', i: History },
             { v: 'tiempos', l: 'Catálogo Tiempos', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
@@ -585,47 +545,58 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="curado" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex items-center gap-3 bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-            <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
-            <div>
-              <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Tiempos de Curado y Maduración</h3>
-              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Control de estabilidad post-formulación por densidad</p>
+          <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
+              <div>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Trazabilidad de Curado de Bloques</h3>
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Estado de maduración y pesaje por bloque formulado</p>
+              </div>
             </div>
+            <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">{totalCurado} Registros Totales</Badge>
           </div>
 
           <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
-              <table className="w-full border-collapse text-center font-sans">
-                <thead className="bg-[#bde0fe] sticky top-0 z-10 text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
+              <table className="w-full border-collapse text-center font-sans text-[10px]">
+                <thead className="bg-[#bde0fe] sticky top-0 z-10 text-slate-800 uppercase font-black tracking-tight border-b border-gray-100">
                   <tr>
-                    <th className="px-6 py-4 border-r border-gray-100 text-left">Material</th>
-                    <th className="px-6 py-4 border-r border-gray-100 text-left">Descripción técnica</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Planta</th>
-                    <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Densidad</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Horas Curado</th>
+                    <th className="px-4 py-4 border-r border-gray-100">ID Bloque</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Orden</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Material</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
+                    <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Dens.</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Proceso</th>
+                    <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Operador</th>
+                    <th className="px-4 py-4 border-r border-gray-100">Máquina</th>
                     <th className="px-4 py-4">Estado</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
+                <tbody className="divide-y divide-gray-100 font-bold">
                   {isLoadingCurado ? (
-                    <tr><td colSpan={6} className="py-20 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-600" /></td></tr>
+                    <tr><td colSpan={12} className="py-20 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-600" /></td></tr>
                   ) : curadoRows.length === 0 ? (
-                    <tr><td colSpan={6} className="py-20 text-gray-300 font-black uppercase tracking-widest text-center">No hay registros de curado disponibles</td></tr>
+                    <tr><td colSpan={12} className="py-20 text-gray-300 font-black uppercase tracking-widest text-center">No hay registros de curado disponibles</td></tr>
                   ) : (
-                    curadoRows.map((row, i) => {
-                      const mat = String(row.CodMaterial || row.Material || '—').slice(-8);
-                      const desc = String(row.Descripcion || row.Material || '—').toUpperCase();
-                      return (
-                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-6 py-3 font-mono text-indigo-600 border-r border-gray-50 text-left">{mat}</td>
-                          <td className="px-6 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{desc}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 text-gray-400">{row.Centro || '—'}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 bg-blue-50/5 font-black text-blue-800">{row.Densidad || '—'}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 bg-orange-50/5 font-mono font-black text-orange-700">{formatNum(row.HorasCurado || 0, 1)}h</td>
-                          <td className="px-4 py-3"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">Estable</Badge></td>
-                        </tr>
-                      );
-                    })
+                    curadoRows.map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 text-gray-500">{String(row.fecha)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 text-[9px] text-gray-400">{String(row.corridaproceso)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
+                        <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 uppercase">{String(row.Maquina)}</td>
+                        <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
