@@ -183,21 +183,34 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     if (filteredOrders.length === 0) return priority;
     
     const allKeys = Object.keys(filteredOrders[0]);
-    const matchedDataKeys = new Set<string>();
-    const orderedPriorityCols: string[] = [];
+    const usedKeysUpper = new Set<string>();
+    const finalColumns: string[] = [];
 
+    // 1. Agregar columnas prioritarias evitando duplicados (case-insensitive)
     priority.forEach(pCol => {
-      const match = allKeys.find(k => k.toUpperCase().trim() === pCol.toUpperCase().trim());
+      const pColUpper = pCol.toUpperCase().trim();
+      if (usedKeysUpper.has(pColUpper)) return;
+
+      const match = allKeys.find(k => k.toUpperCase().trim() === pColUpper);
       if (match) {
-        orderedPriorityCols.push(match);
-        matchedDataKeys.add(match);
-      } else if (pCol.toUpperCase() === 'MAQUINA') {
-        orderedPriorityCols.push('Maquina');
+        finalColumns.push(match);
+        usedKeysUpper.add(pColUpper);
+      } else if (pColUpper === 'MAQUINA') {
+        finalColumns.push('Maquina');
+        usedKeysUpper.add('MAQUINA');
       }
     });
 
-    const otherCols = allKeys.filter(k => !matchedDataKeys.has(k.toUpperCase().trim()));
-    return [...orderedPriorityCols, ...otherCols];
+    // 2. Agregar el resto de columnas que no están en prioridad
+    allKeys.forEach(key => {
+      const keyUpper = key.toUpperCase().trim();
+      if (!usedKeysUpper.has(keyUpper)) {
+        finalColumns.push(key);
+        usedKeysUpper.add(keyUpper);
+      }
+    });
+
+    return finalColumns;
   }, [filteredOrders]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pagination.rows_per_page));
@@ -217,18 +230,18 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
           <table className="min-w-full divide-y divide-gray-200 border-collapse">
             <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
               <tr>
-                {columns.map((col) => (
-                  <th key={col} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600">
+                {columns.map((col, idx) => (
+                  <th key={`${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600">
                     {col}
                   </th>
                 ))}
               </tr>
               <tr className="bg-gray-50/50">
-                {columns.map((col) => {
+                {columns.map((col, idx) => {
                   const upperCol = col.toUpperCase().trim();
                   const isFilterable = ['MATERIAL', 'CATEGORIA', 'FECHAINICIO', 'RESPCONTROLPROD', 'MAQUINA', 'CODMATERIAL'].includes(upperCol);
                   return (
-                    <th key={`filter-${col}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
+                    <th key={`filter-${col}-${idx}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
                       {isFilterable ? (
                         <div className="relative">
                           <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />

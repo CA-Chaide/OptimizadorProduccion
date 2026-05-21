@@ -370,11 +370,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (tiemposProduccion.length === 0) return priority;
     const allKeys = Object.keys(tiemposProduccion[0]);
     const toExclude = ['StockActual', 'GrupoCompras'];
+    const usedKeysUpper = new Set<string>();
+    const finalColumns: string[] = [];
+
+    // 1. Columnas de prioridad
+    priority.forEach(pCol => {
+      const pColUpper = pCol.toUpperCase().trim();
+      const match = allKeys.find(k => k.toUpperCase().trim() === pColUpper);
+      if (match && !usedKeysUpper.has(pColUpper)) {
+        finalColumns.push(match);
+        usedKeysUpper.add(pColUpper);
+      }
+    });
+
+    // 2. Otras columnas
+    allKeys.forEach(k => {
+      const kUpper = k.toUpperCase().trim();
+      if (!usedKeysUpper.has(kUpper) && !toExclude.map(e => e.toUpperCase()).includes(kUpper)) {
+        finalColumns.push(k);
+        usedKeysUpper.add(kUpper);
+      }
+    });
     
-    const matchedPriority = priority.filter(k => allKeys.includes(k));
-    const otherCols = allKeys.filter(k => !priority.includes(k) && !toExclude.includes(k));
-    
-    return [...matchedPriority, ...otherCols];
+    return finalColumns;
   }, [tiemposProduccion]);
 
   const filteredTiempos = useMemo(() => {
@@ -401,17 +419,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   // Diario
   const dailyColumns = useMemo(() => {
-    if (dailyOrders.length === 0) return ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
-    const allKeys = Object.keys(dailyOrders[0]);
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
-    const cols = [...priority];
+    if (dailyOrders.length === 0) return priority;
+    
+    const allKeys = Object.keys(dailyOrders[0]);
+    const usedKeysUpper = new Set(priority.map(p => p.toUpperCase().trim()));
+    const finalColumns = [...priority];
+
     allKeys.forEach(k => {
-      const uk = k.toUpperCase().trim();
-      if (!priority.includes(uk) && uk !== 'CATEGORIA' && uk !== 'MAQUINA' && uk !== 'PUESTOTRABAJO') {
-        cols.push(k);
+      const kUpper = k.toUpperCase().trim();
+      if (!usedKeysUpper.has(kUpper) && kUpper !== 'CATEGORIA' && kUpper !== 'MAQUINA' && kUpper !== 'PUESTOTRABAJO') {
+        finalColumns.push(k);
+        usedKeysUpper.add(kUpper);
       }
     });
-    return cols;
+
+    return finalColumns;
   }, [dailyOrders]);
 
   const paginatedDailyData = useMemo(() => {
@@ -559,15 +582,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                       <tr>
-                        {tiemposColumns.map(col => (
-                          <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">
+                        {tiemposColumns.map((col, idx) => (
+                          <th key={`${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">
                             {col}
                           </th>
                         ))}
                       </tr>
                       <tr className="bg-gray-50/50">
-                        {tiemposColumns.map(col => (
-                          <th key={`filter-t-${col}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
+                        {tiemposColumns.map((col, idx) => (
+                          <th key={`filter-t-${col}-${idx}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
                             <div className="relative">
                               <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
                               <input
@@ -663,9 +686,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                       <tr>
-                        {dailyColumns.map((col) => (
+                        {dailyColumns.map((col, idx) => (
                           <th 
-                            key={col} 
+                            key={`${col}-${idx}`} 
                             className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600"
                           >
                             {col}
@@ -772,7 +795,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
                   <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                     <p className="text-[10px] leading-relaxed text-amber-800 italic">
-                      * Las horas se calculan sumando las jornadas y restando el 16% de factor de eficiencia operativa.
+                      * Las horas se calculan sumando las jornadas y restando el 16% de ineficiencia operativa.
                     </p>
                   </div>
                 </div>
