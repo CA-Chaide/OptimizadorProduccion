@@ -75,10 +75,10 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       return String(value);
     }
     
-    // Formatear Números/Tiempos
-    if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS') || upperCol === 'CANTIDAD') {
-      const num = parseFloat(value);
-      if (!isNaN(num)) return num.toFixed(2);
+    // Formatear Números/Tiempos con 2 decimales
+    const num = parseFloat(value);
+    if (!isNaN(num) && (upperCol.includes('TIEMPO') || upperCol === 'CANTIDAD' || upperCol === 'TAMLOTEMIN' || upperCol === 'TAMLOTEMAX')) {
+      return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     return String(value);
@@ -138,9 +138,15 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       return Object.entries(columnFilters).every(([filterKey, filterValue]) => {
         if (!filterValue) return true;
         const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === filterKey);
-        if (!orderKey) return true;
-        const orderValue = formatValueForDisplay(orderKey, order[orderKey]).toLowerCase();
-        return orderValue.includes(filterValue.toLowerCase());
+        
+        let displayVal = '';
+        if (orderKey) {
+          displayVal = formatValueForDisplay(orderKey, order[orderKey]);
+        } else if (filterKey === 'MAQUINA' && resolveValue) {
+          displayVal = resolveValue('MAQUINA', order);
+        }
+
+        return displayVal.toLowerCase().includes(filterValue.toLowerCase());
       });
     });
 
@@ -162,15 +168,15 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       'FECHAINICIO', 
       'FECHAFIN', 
       'CATEGORIA', 
-      'CODMATERIAL', 
+      'CodMaterial', 
       'NOMBRE', 
-      'MAQUINA', 
+      'Maquina', 
       'CANTIDAD', 
       'UNIDAD', 
       'RESPCONTROLPROD', 
-      'CENTRO', 
-      'ALMACEN', 
-      'CLASEORDEN', 
+      'Centro', 
+      'Almacen', 
+      'ClaseOrden', 
       'MATERIAL'
     ];
 
@@ -181,16 +187,16 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     const orderedPriorityCols: string[] = [];
 
     priority.forEach(pCol => {
-      const match = allKeys.find(k => k.toUpperCase().trim() === pCol);
+      const match = allKeys.find(k => k.toUpperCase().trim() === pCol.toUpperCase().trim());
       if (match) {
         orderedPriorityCols.push(match);
         matchedDataKeys.add(match);
-      } else if (pCol === 'MAQUINA') {
-        orderedPriorityCols.push('MAQUINA');
+      } else if (pCol.toUpperCase() === 'MAQUINA') {
+        orderedPriorityCols.push('Maquina');
       }
     });
 
-    const otherCols = allKeys.filter(k => !matchedDataKeys.has(k));
+    const otherCols = allKeys.filter(k => !matchedDataKeys.has(k.toUpperCase().trim()));
     return [...orderedPriorityCols, ...otherCols];
   }, [filteredOrders]);
 
@@ -220,7 +226,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
               <tr className="bg-gray-50/50">
                 {columns.map((col) => {
                   const upperCol = col.toUpperCase().trim();
-                  const isFilterable = ['MATERIAL', 'CATEGORIA', 'FECHAINICIO', 'RESPCONTROLPROD', 'MAQUINA'].includes(upperCol);
+                  const isFilterable = ['MATERIAL', 'CATEGORIA', 'FECHAINICIO', 'RESPCONTROLPROD', 'MAQUINA', 'CODMATERIAL'].includes(upperCol);
                   return (
                     <th key={`filter-${col}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
                       {isFilterable ? (

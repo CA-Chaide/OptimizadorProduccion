@@ -110,9 +110,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
     
     // Formatear Tiempos (2 decimales)
-    if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS')) {
-      const num = parseFloat(value);
-      if (!isNaN(num)) return num.toFixed(2);
+    const num = parseFloat(value);
+    if (!isNaN(num) && (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS'))) {
+      return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     return String(value);
@@ -143,7 +143,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
       const name = (g.nombre_grupo || '').toUpperCase();
-      return name.includes('FORRO');
+      return name.includes('FORRO') || name.includes('CHN') || name.includes('BASE') || name.includes('BANDA');
     });
   }, [grupos]);
 
@@ -267,7 +267,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   /**
-   * Resuelve la máquina priorizando identificadores que inicien con "HR"
+   * Resuelve la máquina priorizando identificadores que inicien con "HR" escaneando todos los campos técnicos
    */
   const getResolvedMachine = useCallback((order: any) => {
     const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
@@ -287,21 +287,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
 
     if (matches.length > 0) {
+      // Escaneo total de campos en busca de identificador HR
       for (const m of matches) {
         const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
         const hrValue = values.find(v => v.startsWith('HR'));
         if (hrValue) return hrValue;
       }
+      // Fallback: primer puesto con tiempo
       const first = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
       return String(first.PuestoTrabajo || first.Maquina || first.nombre_estacion || '').trim().toUpperCase();
     }
     
-    const fallback = order['MAQUINA'] || order['Maquina'] || order['PuestoTrabajo'] || '';
-    return String(fallback).trim().toUpperCase() || '';
+    return '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
   /**
-   * Calcula el tiempo total de producción con 2 decimales
+   * Calcula el tiempo total de producción buscando coincidencia estricta de material y máquina
    */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0.00';
@@ -310,6 +311,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     if (!resolvedMachine) return '0.00';
     
+    // Buscar coincidencia exacta de material y máquina en cualquier campo técnico
     const match = tiemposProduccion.find(t => {
       if (normalizeMaterialCode(t.CodMaterial || t.Material || '') !== normMaterial) return false;
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
@@ -326,8 +328,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (upperCol === 'MAQUINA') {
       const val = getResolvedMachine(order);
       return val ? (
-        <span className="font-semibold text-blue-700">{val}</span>
-      ) : '—';
+        <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+          {val}
+        </span>
+      ) : (
+        <span className="text-gray-400 italic">—</span>
+      );
     }
     return undefined;
   }, [getResolvedMachine]);
@@ -340,11 +346,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(order[column] ?? '');
   }, [getResolvedMachine]);
 
-  // Columnas y Filtrado de Tiempos
+  // Columnas y Filtrado de Tiempos Maestros
   const tiemposColumns = useMemo(() => {
-    if (tiemposProduccion.length === 0) return [];
-    const allKeys = Object.keys(tiemposProduccion[0]);
-    
     const priority = [
       'CodMaterial', 
       'HojaRuta', 
@@ -364,7 +367,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
       'ClaseAprovisionam'
     ];
 
+    if (tiemposProduccion.length === 0) return priority;
+    const allKeys = Object.keys(tiemposProduccion[0]);
     const toExclude = ['StockActual', 'GrupoCompras'];
+    
     const matchedPriority = priority.filter(k => allKeys.includes(k));
     const otherCols = allKeys.filter(k => !priority.includes(k) && !toExclude.includes(k));
     
@@ -418,12 +424,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const plannedCapacity = useMemo(() => {
     const diurno = parseFloat(horarioDiurno) || 0;
     const nocturno = parseFloat(horarioNocturno) || 0;
-    return (diurno + nocturno) * 0.84;
+    return (diurno + nocturno) * 0.84; // 16% inefficiency
   }, [horarioDiurno, horarioNocturno]);
 
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
+    // Identificar todas las máquinas conocidas en el maestro
     const allKnownMachines = [...new Set(tiemposProduccion.map(t => {
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
       return values.find(v => v.startsWith('HR')) || String(t.PuestoTrabajo || '').trim().toUpperCase();
@@ -433,6 +440,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 });
     });
 
+    // Acumular órdenes
     dailyOrders.forEach(order => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
@@ -489,7 +497,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="grupos">
           <Card>
-            <CardHeader><CardTitle>Grupos de Forros</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Grupos del Área</CardTitle></CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-hidden">
                 <div className="overflow-x-auto">
@@ -516,7 +524,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="restricciones">
           <Card>
-            <CardHeader><CardTitle>Restricciones de Forros</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Restricciones Técnicas</CardTitle></CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-hidden">
                 <div className="overflow-x-auto">
@@ -543,7 +551,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="tiempos">
           <Card>
             <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex-1"><CardTitle>Tiempos de Producción (Ecuador Continental)</CardTitle></div>
+              <div className="flex-1"><CardTitle>Tiempos de Producción (Maestros Técnicos)</CardTitle></div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-md border bg-white overflow-hidden">
@@ -717,13 +725,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <CardHeader className="bg-indigo-50/50 border-b border-indigo-100">
                 <CardTitle className="text-sm font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-2">
                   <Clock className="w-4 h-4" />
-                  Capacidad de Forros
+                  Capacidad Planificada
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6 space-y-6">
                 <div className="space-y-6">
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Capacidad Total Planificada</p>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Capacidad Neta (84% Eficiencia)</p>
                     <div className="flex items-baseline gap-2">
                       <p className="text-3xl font-extrabold text-indigo-700">
                         {plannedCapacity.toFixed(2)}
@@ -775,10 +783,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <BarChart3 className="w-5 h-5 text-primary" />
-                  Resumen de Carga de Producción (Detalle por Máquina)
+                  Carga por Máquina / Puesto Técnico
                 </CardTitle>
                 <CardDescription>
-                  Consolidado único de unidades y tiempos de carga por puesto de trabajo técnico.
+                  Consolidado único de unidades y tiempos de carga.
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-6">

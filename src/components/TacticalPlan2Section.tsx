@@ -21,7 +21,7 @@ export const TacticalPlan2Section: React.FC = () => {
   }, []);
 
   /**
-   * Normaliza códigos de material eliminando ceros a la izquierda
+   * Normaliza códigos de material eliminando todos los ceros a la izquierda
    */
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
@@ -74,11 +74,10 @@ export const TacticalPlan2Section: React.FC = () => {
   }, [isMounted, colchonesGruposList, fetchTiemposProduccion]);
 
   /**
-   * Resuelve la máquina priorizando identificadores que comiencen con "HR"
+   * Resuelve la máquina priorizando identificadores que inicien con "HR" escaneando todos los campos técnicos
    */
   const getResolvedMachine = useCallback((order: any) => {
-    // Escanear orden
-    const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo'];
+    const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
     for (const k of orderFields) {
       const val = order[k];
       if (val && String(val).trim() !== '' && String(val).toLowerCase() !== 'null') {
@@ -87,8 +86,7 @@ export const TacticalPlan2Section: React.FC = () => {
       }
     }
     
-    const materialRaw = order['MATERIAL'] || order['CodMaterial'] || '';
-    const material = normalizeMaterialCode(materialRaw);
+    const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     if (!material) return '';
 
     const matches = tiemposProduccion.filter(t => 
@@ -96,14 +94,14 @@ export const TacticalPlan2Section: React.FC = () => {
     );
 
     if (matches.length > 0) {
-      // Escaneo total de campos en el maestro buscando identificador HR
+      // Escaneo total de campos técnicos en busca de identificador HR
       for (const m of matches) {
         const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
         const hrValue = values.find(v => v.startsWith('HR'));
         if (hrValue) return hrValue;
       }
       
-      const best = matches.find(m => Number(m.Tiempo) > 0) || matches[0];
+      const best = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
       return String(best.PuestoTrabajo || best.Maquina || best.nombre_estacion || '').trim().toUpperCase();
     }
 
@@ -119,7 +117,7 @@ export const TacticalPlan2Section: React.FC = () => {
           {val}
         </span>
       ) : (
-        <span className="text-gray-400 italic">No definida</span>
+        <span className="text-gray-400 italic">—</span>
       );
     }
     return undefined;
