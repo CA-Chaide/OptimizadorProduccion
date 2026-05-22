@@ -212,6 +212,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filters;
   }, [forrosRestricciones]);
 
+  // Filtros específicos para la pestaña de CHN & Bases: HR-FBASE y HR-FORRO
+  const forrosChnBasesFilters = useMemo(() => {
+    return {
+      ...externalFilters,
+      MAQUINA: ['HR-FBASE', 'HR-FORRO']
+    };
+  }, [externalFilters]);
+
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
     setIsLoadingTiempos(true);
@@ -668,7 +676,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <CardHeader><CardTitle>Forros CHN & Bases (Ecuador Continental)</CardTitle></CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection 
-                externalFilters={externalFilters} 
+                externalFilters={forrosChnBasesFilters} 
                 renderCell={renderResolvedProvisionalCell}
                 groupBy="MAQUINA"
                 resolveValue={resolveLogicValue}

@@ -126,9 +126,20 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
         return Object.entries(externalFilters).every(([filterKey, allowedValues]) => {
           if (!allowedValues || allowedValues.length === 0) return true;
           const normFilterKey = filterKey.toUpperCase().trim();
+          
+          let orderValue = '';
           const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === normFilterKey);
-          if (!orderKey) return true;
-          const orderValue = String(order[orderKey] ?? '').trim().toUpperCase();
+          
+          if (orderKey) {
+            orderValue = String(order[orderKey] ?? '').trim().toUpperCase();
+          } else if (resolveValue) {
+            // Intentar resolver el valor dinámicamente si no existe en la fila original (ej. MAQUINA)
+            orderValue = String(resolveValue(normFilterKey, order) ?? '').trim().toUpperCase();
+          } else {
+            return true;
+          }
+
+          if (!orderValue || orderValue === '—') return false;
           return allowedValues.some(val => val.trim().toUpperCase() === orderValue);
         });
       });
@@ -186,7 +197,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     const usedKeysUpper = new Set<string>();
     const finalColumns: string[] = [];
 
-    // 1. Agregar columnas prioritarias evitando duplicados (case-insensitive)
     priority.forEach(pCol => {
       const pColUpper = pCol.toUpperCase().trim();
       if (usedKeysUpper.has(pColUpper)) return;
@@ -201,7 +211,6 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       }
     });
 
-    // 2. Agregar el resto de columnas que no están en prioridad
     allKeys.forEach(key => {
       const keyUpper = key.toUpperCase().trim();
       if (!usedKeysUpper.has(keyUpper)) {
