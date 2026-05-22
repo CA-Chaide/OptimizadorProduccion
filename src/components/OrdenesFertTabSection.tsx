@@ -18,6 +18,7 @@ interface OrdenFert {
   CENTRO: string;
   ORDEN: string;
   MATERIAL: string;
+  ETIQUETA?: string;
   SECTORDESC: string;
   CATEGORIA: string;
   NOMBRE: string;
@@ -266,12 +267,13 @@ export const OrdenesFertTabSection: React.FC = () => {
     return {
       CENTRO: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.CENTRO || '').trim()))].sort(),
       MAQUINA: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.MAQUINA || '').trim()))].sort(),
+      ETIQUETA: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.ETIQUETA || '').trim()))].sort(),
       MATERIAL: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.MATERIAL || '').trim()))].sort(),
       FECHA: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.FECHA || '').trim()))].sort((a, b) => new Date(a).getTime() - new Date(b).getTime()),
     };
   }, [baseOrdersForSelectedCenter]);
 
-  // Totales de la vista filtrada (Solo columnas solicitadas)
+  // Totales de la vista filtrada
   const totals = useMemo(() => {
     return currentViewOrders.reduce((acc, o) => {
       acc.prog += Number(o.CANTPROGRAMADA || 0);
@@ -380,6 +382,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <tr className="border-b border-gray-200">
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Centro</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Máquina</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Etiqueta</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Orden</th>
@@ -398,25 +401,31 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <tr className="bg-gray-100/50">
                       <th className="px-2 py-2">
                         <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.CENTRO || "ALL"} onChange={e => handleColFilterChange('CENTRO', e.target.value)}>
-                          <option value="ALL">TODOS</option>
+                          <option value="ALL">CENTRO</option>
                           {colFilterOptions.CENTRO.map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th className="px-2 py-2">
                         <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.MAQUINA || "ALL"} onChange={e => handleColFilterChange('MAQUINA', e.target.value)}>
-                          <option value="ALL">TODOS</option>
+                          <option value="ALL">MÁQUINA</option>
                           {colFilterOptions.MAQUINA.map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th className="px-2 py-2">
+                        <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.ETIQUETA || "ALL"} onChange={e => handleColFilterChange('ETIQUETA', e.target.value)}>
+                          <option value="ALL">ETIQUETA</option>
+                          {colFilterOptions.ETIQUETA.map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </th>
+                      <th className="px-2 py-2">
                         <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.MATERIAL || "ALL"} onChange={e => handleColFilterChange('MATERIAL', e.target.value)}>
-                          <option value="ALL">TODOS</option>
+                          <option value="ALL">MATERIAL</option>
                           {colFilterOptions.MATERIAL.map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th className="px-2 py-2">
                         <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.FECHA || "ALL"} onChange={e => handleColFilterChange('FECHA', e.target.value)}>
-                          <option value="ALL">TODOS</option>
+                          <option value="ALL">FECHA</option>
                           {colFilterOptions.FECHA.map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
@@ -428,6 +437,13 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
                         <td className="px-3 py-4 text-[10px] font-bold text-gray-500">{order.CENTRO}</td>
                         <td className="px-3 py-4 text-[10px] text-gray-600 font-mono">{order.MAQUINA || '-'}</td>
+                        <td className="px-3 py-4 text-[10px]">
+                          {order.ETIQUETA ? (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[9px] font-bold">
+                              {order.ETIQUETA}
+                            </Badge>
+                          ) : '-'}
+                        </td>
                         <td className="px-3 py-4 text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
                         <td className="px-3 py-4 text-[10px] text-gray-500">{order.FECHA}</td>
                         <td className="px-3 py-4 text-xs font-mono font-bold text-indigo-600">{order.ORDEN}</td>
@@ -458,7 +474,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={15} className="px-6 py-12 text-center text-gray-400 italic">
+                        <td colSpan={16} className="px-6 py-12 text-center text-gray-400 italic">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <AlertCircle className="w-8 h-8 text-gray-300" />
                             <span>No se encontraron órdenes para los criterios seleccionados.</span>
@@ -469,7 +485,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                   </tbody>
                   <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.1)]">
                     <tr>
-                      <td colSpan={6} className="px-4 py-3 text-right uppercase tracking-wider border-r border-gray-700">TOTALES FILTRADOS:</td>
+                      <td colSpan={7} className="px-4 py-3 text-right uppercase tracking-wider border-r border-gray-700">TOTALES FILTRADOS:</td>
                       <td className="px-3 py-3 text-right text-gray-300 font-mono">{totals.prog.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-green-300 font-mono">{totals.entreg.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-blue-300 font-mono border-r border-gray-700">{totals.noti.toLocaleString()}</td>
