@@ -7,10 +7,11 @@ import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import { dataStore } from '@/services/DataStore';
-import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, UserCheck, AlertCircle } from 'lucide-react';
+import { operationTracker } from '@/services/OperationTracker';
+import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
@@ -52,13 +53,6 @@ interface OrdenFert {
   [key: string]: any;
 }
 
-interface TiempoTecnico {
-  CodMaterial: string;
-  Centro: string;
-  PuestoTrabajo: string;
-  Tiempo_Min: number;
-}
-
 export const OrdenesFertTabSection: React.FC = () => {
   const inspector = useRuntimeInspector('OrdenesFertTab');
   const { addNotification } = useAppContext();
@@ -77,8 +71,6 @@ export const OrdenesFertTabSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSector, setSelectedSector] = useState<string>("ALL");
-  
-  // Filtros por columna
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
 
   // Paginación
@@ -90,68 +82,66 @@ export const OrdenesFertTabSection: React.FC = () => {
   };
 
   const loadData = useCallback(async () => {
+    const opId = operationTracker.startOperation('FertOrders', 'data_load', 'Cargando Órdenes FERT y cruce con Inventarios');
     setIsLoading(true);
+    
     try {
-      // 1. Obtener total y cargar órdenes
-      const exploratoryRes = await serviciosService.getOrdenesFert(1, 1);
-      const total = exploratoryRes.totalRegistros || 0;
+      // 1. Cargar Grupos y Centros (Esencial para las pestañas)
+      const groupsRes = await grupoService.getAll();
+      const groupsData = Array.isArray(groupsRes?.data) ? groupsRes.data : [];
+      setGroups(groupsData);
       
-      let allOrders: OrdenFert[] = [];
-      if (total > 0) {
-        const BATCH_SIZE = 10000;
-        const totalPages = Math.ceil(total / BATCH_SIZE);
-        for (let i = 1; i <= totalPages; i++) {
-          const res = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
-          if (res?.data) {
-            const pageData = Array.isArray(res.data) ? res.data : [res.data];
-            allOrders = [...allOrders, ...pageData];
-          }
-        }
-      }
+      const centersFromGroups = [...new Set(groupsData.map((g: any) => String(g.centro).trim()))].sort();
+      setAvailableCenters(centersFromGroups);
+      if (centersFromGroups.length > 0) setSelectedCenter(centersFromGroups[0]);
 
-      // 2. Cargar Tiempos Técnicos para cruce
+      // 2. Cargar Órdenes Fert - Lógica Robusta
+      operationTracker.updateOperation(opId, 'running', 'Consultando órdenes al servidor...');
+      const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
+      let orders: OrdenFert[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
+      
+      // Si hay más páginas, cargarlas (opcional para MVP, aquí cargamos las primeras 10k)
+      setAllRawOrders(orders);
+      operationTracker.updateOperation(opId, 'running', `Cargadas ${orders.length} órdenes.`);
+
+      // 3. Cargar Tiempos Técnicos para cruce (Estaciones)
+      operationTracker.updateOperation(opId, 'running', 'Cruzando con Tiempos de Ensamblado...');
       const tiemposRes = await serviciosService.getTiemposEnsamblado(1, 10000);
-      const tiemposData: TiempoTecnico[] = Array.isArray(tiemposRes?.data) ? tiemposRes.data : [];
       const lookup = new Map<string, Record<string, number>>();
-      tiemposData.forEach(t => {
-        const materialKey = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
-        const stationName = String(t.PuestoTrabajo || '').trim().toUpperCase();
-        const time = Number(t.Tiempo_Min) || 0;
-        if (!lookup.has(materialKey)) lookup.set(materialKey, {});
-        lookup.get(materialKey)![stationName] = time;
-      });
+      if (Array.isArray(tiemposRes?.data)) {
+        tiemposRes.data.forEach((t: any) => {
+          const key = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
+          if (!lookup.has(key)) lookup.set(key, {});
+          lookup.get(key)![String(t.PuestoTrabajo || '').trim().toUpperCase()] = Number(t.Tiempo_Min) || 0;
+        });
+      }
       setTiemposLookup(lookup);
 
-      // 3. Cargar Cubo de Inventarios para Etiquetas
+      // 4. Cargar Etiquetas del Cubo de Inventarios
+      operationTracker.updateOperation(opId, 'running', 'Recuperando etiquetas del Cubo de Inventarios...');
       const cuboRes = await serviciosService.getCuboInventarios();
-      const cuboData = Array.isArray(cuboRes?.data) ? cuboRes.data : [];
       const labelsMap = new Map<string, string>();
-      cuboData.forEach((item: any) => {
-        const code = normalizeMaterialCode(item.Material);
-        // Priorizar etiquetas del centro 1000 o la primera que encontremos
-        if (item.Etiqueta && (!labelsMap.has(code) || String(item.Centro).trim() === '1000')) {
-          labelsMap.set(code, String(item.Etiqueta).trim());
-        }
-      });
+      if (Array.isArray(cuboRes?.data)) {
+        cuboRes.data.forEach((item: any) => {
+          const code = normalizeMaterialCode(item.Material);
+          if (item.Etiqueta && (!labelsMap.has(code) || String(item.Centro).trim() === '1000')) {
+            labelsMap.set(code, String(item.Etiqueta).trim());
+          }
+        });
+      }
       setLabelsLookup(labelsMap);
 
-      // 4. Cargar Grupos y Restricciones
-      const [groupsRes, restRes] = await Promise.all([
-        grupoService.getAll(),
-        restriccionService.getAll()
-      ]);
-
-      setAllRawOrders(allOrders);
-      setGroups(groupsRes?.data || []);
+      // 5. Cargar Restricciones
+      const restRes = await restriccionService.getAll();
       setRestrictions(restRes?.data || []);
 
-      const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
-      setAvailableCenters(centersFromGroups);
-      
-      inspector.captureVariable('fert_raw_count', allOrders.length);
-      inspector.captureVariable('labels_lookup_count', labelsMap.size);
+      operationTracker.completeOperation(opId, `Carga finalizada con ${orders.length} registros enriquecidos.`);
+      inspector.captureVariable('fert_total_loaded', orders.length);
+
     } catch (err) {
-      addNotification('error', `Error al cargar y cruzar datos: ${(err as Error).message}`);
+      const msg = (err as Error).message;
+      operationTracker.failOperation(opId, msg);
+      addNotification('error', `Error en carga de órdenes: ${msg}`);
     } finally {
       setIsLoading(false);
     }
@@ -164,54 +154,46 @@ export const OrdenesFertTabSection: React.FC = () => {
     }
   }, [loadData]);
 
-  const parseResponsables = (value: string): string[] => {
-    if (!value) return [];
-    return value.split(/[,&]/).map(v => v.trim()).filter(Boolean);
-  };
-
   const getResponsablesPorCentro = (centerId: string) => {
-    const groupForCenter = groups.find(g => String(g.centro).trim() === centerId);
-    if (!groupForCenter) return [];
-    const restriction = restrictions.find(r => 
-      r.codigo_grupo === groupForCenter.codigo_grupo && 
-      r.nombre_restriccion === 'RespCtrlProd'
-    );
-    return parseResponsables(restriction?.valor_restriccion || '');
+    const group = groups.find(g => String(g.centro).trim() === centerId);
+    if (!group) return [];
+    const rest = restrictions.find(r => r.codigo_grupo === group.codigo_grupo && r.nombre_restriccion === 'RespCtrlProd');
+    if (!rest) return [];
+    return rest.valor_restriccion.split(/[,&]/).map((v: string) => v.trim()).filter(Boolean);
   };
 
+  // Enriquecimiento y Agrupación por Centro
   const filteredDataByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     
     availableCenters.forEach(centerId => {
-      let centerOrders = allRawOrders.filter(order => String(order.CENTRO || '').trim() === centerId);
+      // Filtrar órdenes que pertenecen a este centro
+      let centerOrders = allRawOrders.filter(o => String(o.CENTRO || '').trim() === centerId);
 
+      // Filtrar por responsables permitidos si aplica
       const allowedResps = getResponsablesPorCentro(centerId);
       if (allowedResps.length > 0) {
-        centerOrders = centerOrders.filter(order => 
-          allowedResps.includes(String(order.RESPCTRLPROD).trim())
-        );
+        centerOrders = centerOrders.filter(o => allowedResps.includes(String(o.RESPCTRLPROD).trim()));
       }
 
-      const enrichedOrders = centerOrders.map(order => {
+      // Enriquecer con Etiquetas y Tiempos
+      grouped[centerId] = centerOrders.map(order => {
         const matCode = normalizeMaterialCode(order.MATERIAL);
         const materialKey = `${centerId}|${matCode}`;
-        
-        // Recuperar etiqueta del Cubo de Inventarios
-        const etiquetaFromCubo = labelsLookup.get(matCode) || order.ETIQUETA || 'SIN ETIQUETA';
-        
-        const stations = tiemposLookup.get(materialKey) || {};
+        const etiqueta = labelsLookup.get(matCode) || order.ETIQUETA || 'N/A';
+        const times = tiemposLookup.get(materialKey) || {};
         const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
         const pend = Number(order.CANTPENDIENTE || 0);
 
-        const tArmado = stations['ARMADO'] || 0;
-        const tCerradoL1 = catSuffix === 'L1' ? (stations['CERRADO L1'] || 0) : 0;
-        const tCerrado1L2 = catSuffix === 'L2' ? (stations['CERRADO1 L2'] || 0) : 0;
-        const tCerrado2L2 = catSuffix === 'L2' ? (stations['CERRADO2 L2'] || 0) : 0;
-        const tCerradoL3 = catSuffix === 'L3' ? (stations['CERRADO L3'] || 0) : 0;
+        const tArmado = times['ARMADO'] || 0;
+        const tCerradoL1 = catSuffix === 'L1' ? (times['CERRADO L1'] || 0) : 0;
+        const tCerrado1L2 = catSuffix === 'L2' ? (times['CERRADO1 L2'] || 0) : 0;
+        const tCerrado2L2 = catSuffix === 'L2' ? (times['CERRADO2 L2'] || 0) : 0;
+        const tCerradoL3 = catSuffix === 'L3' ? (times['CERRADO L3'] || 0) : 0;
 
         return {
           ...order,
-          ETIQUETA: etiquetaFromCubo,
+          ETIQUETA: etiqueta,
           T_ARMADO: tArmado,
           T_CERRADO_L1: tCerradoL1,
           T_CERRADO1_L2: tCerrado1L2,
@@ -224,71 +206,52 @@ export const OrdenesFertTabSection: React.FC = () => {
           ttCerradoL3: tCerradoL3 * pend,
         };
       });
-
-      grouped[centerId] = enrichedOrders;
     });
 
     return grouped;
   }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup, labelsLookup]);
 
+  // Publicar al DataStore global para que la IA lo vea
   useEffect(() => {
-    if (filteredDataByCenter) {
-      const allProcessed = Object.values(filteredDataByCenter).flat();
-      if (allProcessed.length > 0) {
-        dataStore.setData('ordenesFert', allProcessed, 'OrdenesFertTab', {
-          count: allProcessed.length,
-          lastProcessed: new Date()
-        });
-      }
+    const all = Object.values(filteredDataByCenter).flat();
+    if (all.length > 0) {
+      dataStore.setData('ordenesFert', all, 'OrdenesFertTab');
     }
   }, [filteredDataByCenter]);
 
-  const baseOrdersForSelectedCenter = useMemo(() => {
-    return selectedTab === "raw_view" 
-      ? allRawOrders 
-      : (filteredDataByCenter[selectedTab] || []);
-  }, [allRawOrders, filteredDataByCenter, selectedTab]);
-
-  const availableSectors = useMemo(() => {
-    return [...new Set(baseOrdersForSelectedCenter.map(o => String(o.SECTORDESC || 'SIN SECTOR').trim().toUpperCase()))].sort();
-  }, [baseOrdersForSelectedCenter]);
-
+  // Filtros aplicados a la vista actual
   const currentViewOrders = useMemo(() => {
+    const base = selectedTab === "raw_view" ? allRawOrders : (filteredDataByCenter[selectedTab] || []);
     const term = searchTerm.toLowerCase().trim();
     
-    return baseOrdersForSelectedCenter.filter(o => {
-      if (selectedSector !== "ALL") {
-        if (String(o.SECTORDESC || 'SIN SECTOR').trim().toUpperCase() !== selectedSector) return false;
-      }
+    return base.filter(o => {
+      if (selectedSector !== "ALL" && String(o.SECTORDESC || '').toUpperCase() !== selectedSector) return false;
+      
       if (term) {
-        const matchTerm = (
-          String(o.ORDEN || '').toLowerCase().includes(term) ||
-          String(o.MATERIAL || '').toLowerCase().includes(term) ||
-          String(o.NOMBRE || '').toLowerCase().includes(term) ||
-          String(o.PEDIDO || '').toLowerCase().includes(term)
-        );
-        if (!matchTerm) return false;
+        const matches = [o.ORDEN, o.MATERIAL, o.NOMBRE, o.PEDIDO].some(v => String(v || '').toLowerCase().includes(term));
+        if (!matches) return false;
       }
 
       for (const [key, value] of Object.entries(colFilters)) {
         if (!value || value === "ALL") continue;
-        const valStr = String(o[key] || '').trim();
-        if (valStr !== value) return false;
+        if (String(o[key] || '').trim() !== value) return false;
       }
 
       return true;
     });
-  }, [baseOrdersForSelectedCenter, searchTerm, selectedSector, colFilters]);
+  }, [allRawOrders, filteredDataByCenter, selectedTab, searchTerm, selectedSector, colFilters]);
 
-  const colFilterOptions = useMemo(() => {
+  const colOptions = useMemo(() => {
+    const base = selectedTab === "raw_view" ? allRawOrders : (filteredDataByCenter[selectedTab] || []);
+    const getUnique = (key: string) => [...new Set(base.map(o => String(o[key] || '').trim()))].sort();
     return {
-      CENTRO: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.CENTRO || '').trim()))].sort(),
-      MAQUINA: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.MAQUINA || '').trim()))].sort(),
-      ETIQUETA: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.ETIQUETA || '').trim()))].sort(),
-      MATERIAL: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.MATERIAL || '').trim()))].sort(),
-      FECHA: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.FECHA || '').trim()))].sort((a, b) => new Date(a).getTime() - new Date(b).getTime()),
+      CENTRO: getUnique('CENTRO'),
+      MAQUINA: getUnique('MAQUINA'),
+      ETIQUETA: getUnique('ETIQUETA'),
+      MATERIAL: getUnique('MATERIAL'),
+      FECHA: getUnique('FECHA').sort((a, b) => new Date(a).getTime() - new Date(b).getTime()),
     };
-  }, [baseOrdersForSelectedCenter]);
+  }, [allRawOrders, filteredDataByCenter, selectedTab]);
 
   const totals = useMemo(() => {
     return currentViewOrders.reduce((acc, o) => {
@@ -301,21 +264,16 @@ export const OrdenesFertTabSection: React.FC = () => {
       acc.tt2L2 += Number(o.ttCerrado2L2 || 0);
       acc.ttL3 += Number(o.ttCerradoL3 || 0);
       return acc;
-    }, {
-      prog: 0, entreg: 0, noti: 0,
-      ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0
-    });
+    }, { prog: 0, entreg: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0 });
   }, [currentViewOrders]);
 
-  const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const endIndex = startIndex + rowsPerPage;
-  const displayedOrders = currentViewOrders.slice(startIndex, endIndex);
+  const displayedOrders = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return currentViewOrders.slice(start, start + rowsPerPage);
+  }, [currentViewOrders, currentPage, rowsPerPage]);
 
-  const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
-
-  const handleColFilterChange = (key: string, value: string) => {
-    setColFilters(prev => ({ ...prev, [key]: value }));
+  const handleFilter = (key: string, val: string) => {
+    setColFilters(prev => ({ ...prev, [key]: val }));
     setCurrentPage(1);
   };
 
@@ -331,61 +289,36 @@ export const OrdenesFertTabSection: React.FC = () => {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          <div className="w-56">
-            <Select value={selectedSector} onValueChange={(val) => { setSelectedSector(val); setCurrentPage(1); }}>
-              <SelectTrigger className="h-9 bg-white">
-                <LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" />
-                <SelectValue placeholder="Sector" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos los Sectores</SelectItem>
-                {availableSectors.map(s => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Select value={selectedSector} onValueChange={setSelectedSector}>
+            <SelectTrigger className="h-9 w-56 bg-white"><LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" /><SelectValue placeholder="Sector" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos los Sectores</SelectItem>
+              {[...new Set(allRawOrders.map(o => String(o.SECTORDESC || 'N/A').trim().toUpperCase()))].sort().map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
 
           <div className="relative w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-            <Input
-              type="search"
-              placeholder="Orden, material, pedido..."
-              className="pl-9 h-9 text-xs"
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-            />
+            <Input type="search" placeholder="Orden, material, pedido..." className="pl-9 h-9 text-xs" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
           </div>
-          <Button variant="outline" size="sm" onClick={() => { hasStarted.current = false; loadData(); }}>
-            Actualizar
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => { hasStarted.current = false; loadData(); }}>Actualizar</Button>
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading && allRawOrders.length === 0 ? (
         <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
           <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-          <span className="mt-4 text-gray-600 font-medium">Cargando datos y etiquetas...</span>
+          <span className="mt-4 text-gray-600 font-medium">Cargando datos...</span>
         </div>
       ) : (
-        <Tabs value={selectedTab} onValueChange={(val) => { setSelectedTab(val); setCurrentPage(1); setSelectedSector("ALL"); setColFilters({}); }} className="w-full">
+        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
           <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
-            <TabsTrigger 
-              value="raw_view"
-              className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 px-4 py-2 text-xs font-bold uppercase tracking-wider border-r border-gray-200"
-            >
-              <Database className="w-3 h-3 mr-2" />
-              Vista Bruta ({allRawOrders.length})
+            <TabsTrigger value="raw_view" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 px-4 py-2 text-xs font-bold uppercase tracking-wider border-r border-gray-200">
+              <Database className="w-3 h-3 mr-2" /> VISTA BRUTA ({allRawOrders.length})
             </TabsTrigger>
-            
             {availableCenters.map(center => (
-              <TabsTrigger 
-                key={center} 
-                value={center}
-                className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-4 py-2 text-xs font-bold uppercase tracking-wider"
-              >
-                <Home className="w-3 h-3 mr-2" />
-                Centro {center} ({filteredDataByCenter[center]?.length || 0})
+              <TabsTrigger key={center} value={center} className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 px-6 py-2 text-xs font-bold uppercase tracking-wider">
+                <Home className="w-3 h-3 mr-2" /> Centro {center} ({filteredDataByCenter[center]?.length || 0})
               </TabsTrigger>
             ))}
           </TabsList>
@@ -401,116 +334,59 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Etiqueta</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Orden</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[200px]">Nombre</th>
+                      <th colSpan={2} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden / Nombre</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-700 uppercase bg-gray-100/50 min-w-[60px]">PROG</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-green-700 uppercase bg-green-50/30 min-w-[60px]">ENTREG</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase bg-blue-50/30 min-w-[60px]">NOTI</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50 min-w-[90px]">TT ARMADO</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50 min-w-[90px]">TT CERRADO L1</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50 min-w-[90px]">TTCERRADO1 L2</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50 min-w-[90px]">TTCERRADO2 L2</th>
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50 min-w-[90px]">TTCERRADO L3</th>
-                      <th className="px-3 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Sector</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TT ARMADO</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TT CERRADO L1</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO1 L2</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO2 L2</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO L3</th>
                     </tr>
-                    {/* Fila de Filtros Desplegables */}
                     <tr className="bg-gray-100/50">
-                      <th className="px-2 py-2">
-                        <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.CENTRO || "ALL"} onChange={e => handleColFilterChange('CENTRO', e.target.value)}>
-                          <option value="ALL">CENTRO</option>
-                          {colFilterOptions.CENTRO.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </th>
-                      <th className="px-2 py-2">
-                        <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.MAQUINA || "ALL"} onChange={e => handleColFilterChange('MAQUINA', e.target.value)}>
-                          <option value="ALL">MÁQUINA</option>
-                          {colFilterOptions.MAQUINA.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </th>
-                      <th className="px-2 py-2">
-                        <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.ETIQUETA || "ALL"} onChange={e => handleColFilterChange('ETIQUETA', e.target.value)}>
-                          <option value="ALL">ETIQUETA</option>
-                          {colFilterOptions.ETIQUETA.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </th>
-                      <th className="px-2 py-2">
-                        <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.MATERIAL || "ALL"} onChange={e => handleColFilterChange('MATERIAL', e.target.value)}>
-                          <option value="ALL">MATERIAL</option>
-                          {colFilterOptions.MATERIAL.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </th>
-                      <th className="px-2 py-2">
-                        <select className="w-full text-[10px] border rounded h-7 p-0 px-1" value={colFilters.FECHA || "ALL"} onChange={e => handleColFilterChange('FECHA', e.target.value)}>
-                          <option value="ALL">FECHA</option>
-                          {colFilterOptions.FECHA.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </th>
-                      <th colSpan={11}></th>
+                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.CENTRO || "ALL"} onChange={e => handleFilter('CENTRO', e.target.value)}><option value="ALL">CENTRO</option>{colOptions.CENTRO.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
+                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.MAQUINA || "ALL"} onChange={e => handleFilter('MAQUINA', e.target.value)}><option value="ALL">MÁQUINA</option>{colOptions.MAQUINA.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
+                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.ETIQUETA || "ALL"} onChange={e => handleFilter('ETIQUETA', e.target.value)}><option value="ALL">ETIQUETA</option>{colOptions.ETIQUETA.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
+                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.MATERIAL || "ALL"} onChange={e => handleFilter('MATERIAL', e.target.value)}><option value="ALL">MATERIAL</option>{colOptions.MATERIAL.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
+                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.FECHA || "ALL"} onChange={e => handleFilter('FECHA', e.target.value)}><option value="ALL">FECHA</option>{colOptions.FECHA.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
+                      <th colSpan={10}></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => (
-                      <tr key={`${order.ORDEN}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-3 py-4 text-[10px] font-bold text-gray-500">{order.CENTRO}</td>
-                        <td className="px-3 py-4 text-[10px] text-gray-600 font-mono">{order.MAQUINA || '-'}</td>
-                        <td className="px-3 py-4 text-[10px]">
-                          {order.ETIQUETA ? (
-                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[9px] font-bold">
-                              {order.ETIQUETA}
-                            </Badge>
-                          ) : '-'}
-                        </td>
-                        <td className="px-3 py-4 text-xs font-mono text-gray-600">{formatMaterial(order.MATERIAL)}</td>
-                        <td className="px-3 py-4 text-[10px] text-gray-500">{order.FECHA}</td>
-                        <td className="px-3 py-4 text-xs font-mono font-bold text-indigo-600">{order.ORDEN}</td>
-                        <td className="px-3 py-4 text-xs text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
-                        <td className="px-3 py-4 text-xs font-bold text-right text-gray-900">{order.CANTPROGRAMADA}</td>
-                        <td className="px-3 py-4 text-xs font-bold text-right text-green-600 bg-green-50/10">{order.CANTENTREGADA}</td>
-                        <td className="px-3 py-4 text-xs font-bold text-right text-blue-600 bg-blue-50/10">{order.CANTNOTIFICADA}</td>
-                        <td className="px-4 py-4 text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {order.ttArmado ? order.ttArmado.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {order.ttCerradoL1 ? order.ttCerradoL1.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {order.ttCerrado1L2 ? order.ttCerrado1L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {order.ttCerrado2L2 ? order.ttCerrado2L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 text-xs font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {order.ttCerradoL3 ? order.ttCerradoL3.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-3 py-4 text-center">
-                          <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100 text-[10px] font-bold uppercase">
-                            {order.SECTORDESC || 'SIN SECTOR'}
-                          </span>
-                        </td>
+                    {displayedOrders.length > 0 ? displayedOrders.map((o, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50 text-[10px]">
+                        <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
+                        <td className="px-3 py-2 font-mono">{o.MAQUINA || '-'}</td>
+                        <td className="px-3 py-2"><Badge variant="outline" className="bg-amber-50 text-amber-700 text-[9px] font-bold">{o.ETIQUETA}</Badge></td>
+                        <td className="px-3 py-2 font-mono">{o.MATERIAL}</td>
+                        <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
+                        <td className="px-3 py-2 font-bold text-indigo-600">{o.ORDEN}</td>
+                        <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]">{o.NOMBRE}</td>
+                        <td className="px-3 py-2 text-right font-bold">{o.CANTPROGRAMADA}</td>
+                        <td className="px-3 py-2 text-right font-bold text-green-600">{o.CANTENTREGADA}</td>
+                        <td className="px-3 py-2 text-right font-bold text-blue-600">{o.CANTNOTIFICADA}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttArmado?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerradoL1?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerrado1L2?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerrado2L2?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerradoL3?.toFixed(1)}</td>
                       </tr>
                     )) : (
-                      <tr>
-                        <td colSpan={16} className="px-6 py-12 text-center text-gray-400 italic">
-                          <div className="flex flex-col items-center justify-center gap-2">
-                            <AlertCircle className="w-8 h-8 text-gray-300" />
-                            <span>No se encontraron órdenes para los criterios seleccionados.</span>
-                          </div>
-                        </td>
-                      </tr>
+                      <tr><td colSpan={15} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
                     )}
                   </tbody>
-                  <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.1)]">
+                  <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                     <tr>
-                      <td colSpan={7} className="px-4 py-3 text-right uppercase tracking-wider border-r border-gray-700">TOTALES FILTRADOS:</td>
-                      <td className="px-3 py-3 text-right text-gray-300 font-mono">{totals.prog.toLocaleString()}</td>
-                      <td className="px-3 py-3 text-right text-green-300 font-mono">{totals.entreg.toLocaleString()}</td>
-                      <td className="px-3 py-3 text-right text-blue-300 font-mono border-r border-gray-700">{totals.noti.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right text-emerald-300 font-mono">{totals.ttArm.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                      <td className="px-4 py-3 text-right text-emerald-300 font-mono">{totals.ttL1.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                      <td className="px-4 py-3 text-right text-emerald-300 font-mono">{totals.tt1L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                      <td className="px-4 py-3 text-right text-emerald-300 font-mono">{totals.tt2L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                      <td className="px-4 py-3 text-right text-emerald-300 font-mono">{totals.ttL3.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                      <td></td>
+                      <td colSpan={7} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
+                      <td className="px-3 py-3 text-right">{totals.prog.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right text-blue-300 border-r border-gray-700">{totals.noti.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-emerald-300">{totals.ttArm.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                      <td className="px-4 py-3 text-right text-emerald-300">{totals.ttL1.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                      <td className="px-4 py-3 text-right text-emerald-300">{totals.tt1L2.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                      <td className="px-4 py-3 text-right text-emerald-300">{totals.tt2L2.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                      <td className="px-4 py-3 text-right text-emerald-300">{totals.ttL3.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -519,21 +395,12 @@ export const OrdenesFertTabSection: React.FC = () => {
 
             <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4 text-xs">
-                <span className="font-medium text-gray-500 uppercase">Mostrar:</span>
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                  className="border rounded p-1 bg-white"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
+                <span className="font-medium text-gray-500">Mostrar:</span>
+                <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="border rounded p-1 bg-white">
+                  <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option>
                 </select>
-                <span className="text-gray-400">
-                  {startIndex + 1} - {Math.min(endIndex, currentViewOrders.length)} de {currentViewOrders.length}
-                </span>
+                <span className="text-gray-400">{startIndex + 1} - {Math.min(endIndex, currentViewOrders.length)} de {currentViewOrders.length}</span>
               </div>
-
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Ant.</Button>
                 <div className="px-4 py-1 bg-white border rounded text-xs font-bold text-indigo-600 min-w-[80px] text-center">{currentPage} / {totalPagesLocal}</div>
