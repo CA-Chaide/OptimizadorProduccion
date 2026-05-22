@@ -163,14 +163,23 @@ export const MaterialesBrutosTab: React.FC = () => {
                             ))}
                         </TableRow>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-100">
                         {displayedData.length > 0 ? displayedData.map((row, idx) => (
                             <TableRow key={idx} className="hover:bg-gray-50">
-                                {columns.map((col, cIdx) => (
-                                    <TableCell key={`${idx}-${cIdx}`} className="px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0">
-                                        {String(row[col] ?? '-')}
-                                    </TableCell>
-                                ))}
+                                {columns.map((col, cIdx) => {
+                                    let displayValue = String(row[col] ?? '-');
+                                    
+                                    // Eliminar los primeros 8 ceros de las columnas solicitadas
+                                    if (['FERT_PRINCIPAL', 'MATERIAL_PADRE', 'COMPONENTE'].includes(col)) {
+                                        displayValue = displayValue.replace(/^0{8}/, '');
+                                    }
+
+                                    return (
+                                        <TableCell key={`${idx}-${cIdx}`} className="px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0">
+                                            {displayValue}
+                                        </TableCell>
+                                    );
+                                })}
                             </TableRow>
                         )) : (
                             <TableRow>
