@@ -169,9 +169,9 @@ export const MaterialesBrutosTab: React.FC = () => {
                                 {columns.map((col, cIdx) => {
                                     let displayValue = String(row[col] ?? '-');
                                     
-                                    // Eliminar los primeros 2 ceros de las columnas solicitadas
+                                    // Eliminar los primeros 8 ceros de las columnas solicitadas
                                     if (['FERT_PRINCIPAL', 'MATERIAL_PADRE', 'COMPONENTE'].includes(col)) {
-                                        displayValue = displayValue.replace(/^0{2}/, '');
+                                        displayValue = displayValue.replace(/^0{8}/, '');
                                     }
 
                                     return (
