@@ -67,6 +67,7 @@ export const OrdenesFertTabSection: React.FC = () => {
   // Estados de Datos
   const [allRawOrders, setAllRawOrders] = useState<OrdenFert[]>([]);
   const [tiemposLookup, setTiemposLookup] = useState<Map<string, Record<string, number>>>(new Map());
+  const [labelsLookup, setLabelsLookup] = useState<Map<string, string>>(new Map());
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [restrictions, setRestrictions] = useState<any[]>([]);
@@ -91,15 +92,14 @@ export const OrdenesFertTabSection: React.FC = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
+      // 1. Obtener total y cargar órdenes
       const exploratoryRes = await serviciosService.getOrdenesFert(1, 1);
       const total = exploratoryRes.totalRegistros || 0;
       
       let allOrders: OrdenFert[] = [];
-      
       if (total > 0) {
         const BATCH_SIZE = 10000;
         const totalPages = Math.ceil(total / BATCH_SIZE);
-        
         for (let i = 1; i <= totalPages; i++) {
           const res = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
           if (res?.data) {
@@ -109,22 +109,33 @@ export const OrdenesFertTabSection: React.FC = () => {
         }
       }
 
+      // 2. Cargar Tiempos Técnicos para cruce
       const tiemposRes = await serviciosService.getTiemposEnsamblado(1, 10000);
       const tiemposData: TiempoTecnico[] = Array.isArray(tiemposRes?.data) ? tiemposRes.data : [];
-      
       const lookup = new Map<string, Record<string, number>>();
       tiemposData.forEach(t => {
         const materialKey = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
         const stationName = String(t.PuestoTrabajo || '').trim().toUpperCase();
         const time = Number(t.Tiempo_Min) || 0;
-        
-        if (!lookup.has(materialKey)) {
-          lookup.set(materialKey, {});
-        }
+        if (!lookup.has(materialKey)) lookup.set(materialKey, {});
         lookup.get(materialKey)![stationName] = time;
       });
       setTiemposLookup(lookup);
 
+      // 3. Cargar Cubo de Inventarios para Etiquetas
+      const cuboRes = await serviciosService.getCuboInventarios();
+      const cuboData = Array.isArray(cuboRes?.data) ? cuboRes.data : [];
+      const labelsMap = new Map<string, string>();
+      cuboData.forEach((item: any) => {
+        const code = normalizeMaterialCode(item.Material);
+        // Priorizar etiquetas del centro 1000 o la primera que encontremos
+        if (item.Etiqueta && (!labelsMap.has(code) || String(item.Centro).trim() === '1000')) {
+          labelsMap.set(code, String(item.Etiqueta).trim());
+        }
+      });
+      setLabelsLookup(labelsMap);
+
+      // 4. Cargar Grupos y Restricciones
       const [groupsRes, restRes] = await Promise.all([
         grupoService.getAll(),
         restriccionService.getAll()
@@ -138,6 +149,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       setAvailableCenters(centersFromGroups);
       
       inspector.captureVariable('fert_raw_count', allOrders.length);
+      inspector.captureVariable('labels_lookup_count', labelsMap.size);
     } catch (err) {
       addNotification('error', `Error al cargar y cruzar datos: ${(err as Error).message}`);
     } finally {
@@ -181,7 +193,12 @@ export const OrdenesFertTabSection: React.FC = () => {
       }
 
       const enrichedOrders = centerOrders.map(order => {
-        const materialKey = `${centerId}|${normalizeMaterialCode(order.MATERIAL)}`;
+        const matCode = normalizeMaterialCode(order.MATERIAL);
+        const materialKey = `${centerId}|${matCode}`;
+        
+        // Recuperar etiqueta del Cubo de Inventarios
+        const etiquetaFromCubo = labelsLookup.get(matCode) || order.ETIQUETA || 'SIN ETIQUETA';
+        
         const stations = tiemposLookup.get(materialKey) || {};
         const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
         const pend = Number(order.CANTPENDIENTE || 0);
@@ -194,6 +211,7 @@ export const OrdenesFertTabSection: React.FC = () => {
 
         return {
           ...order,
+          ETIQUETA: etiquetaFromCubo,
           T_ARMADO: tArmado,
           T_CERRADO_L1: tCerradoL1,
           T_CERRADO1_L2: tCerrado1L2,
@@ -211,7 +229,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     });
 
     return grouped;
-  }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup]);
+  }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup, labelsLookup]);
 
   useEffect(() => {
     if (filteredDataByCenter) {
@@ -262,7 +280,6 @@ export const OrdenesFertTabSection: React.FC = () => {
     });
   }, [baseOrdersForSelectedCenter, searchTerm, selectedSector, colFilters]);
 
-  // Opciones únicas para los filtros desplegables
   const colFilterOptions = useMemo(() => {
     return {
       CENTRO: [...new Set(baseOrdersForSelectedCenter.map(o => String(o.CENTRO || '').trim()))].sort(),
@@ -273,7 +290,6 @@ export const OrdenesFertTabSection: React.FC = () => {
     };
   }, [baseOrdersForSelectedCenter]);
 
-  // Totales de la vista filtrada
   const totals = useMemo(() => {
     return currentViewOrders.reduce((acc, o) => {
       acc.prog += Number(o.CANTPROGRAMADA || 0);
@@ -310,7 +326,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT</h3>
-            <p className="text-xs text-gray-500 mt-1">Gestión de órdenes con tiempos técnicos cruzados</p>
+            <p className="text-xs text-gray-500 mt-1">Gestión de órdenes con etiquetas del Cubo de Inventarios</p>
           </div>
         </div>
         
@@ -349,7 +365,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       {isLoading ? (
         <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
           <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-          <span className="mt-4 text-gray-600 font-medium">Cargando datos...</span>
+          <span className="mt-4 text-gray-600 font-medium">Cargando datos y etiquetas...</span>
         </div>
       ) : (
         <Tabs value={selectedTab} onValueChange={(val) => { setSelectedTab(val); setCurrentPage(1); setSelectedSector("ALL"); setColFilters({}); }} className="w-full">
