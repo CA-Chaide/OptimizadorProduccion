@@ -108,7 +108,7 @@ export const TacticalPlan2Section: React.FC = () => {
           </TabsTrigger>
           <TabsTrigger value="presupuesto_semanal" className="flex items-center gap-2">
             <CalendarRange className="w-4 h-4" />
-            Presupuesto prod semanal
+            Presupuesto
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
@@ -291,7 +291,7 @@ export const TacticalPlan2Section: React.FC = () => {
             <CardContent>
               <ProgDiariaTabSection groups={grupos} restrictions={restricciones} />
             </CardContent>
-          </Card>
+          </TabsContent>
         </TabsContent>
       </Tabs>
     </div>
