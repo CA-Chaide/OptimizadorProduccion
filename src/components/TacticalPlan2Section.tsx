@@ -1,7 +1,21 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2, ClipboardList, UserCheck, Clock, ListChecks, CalendarDays, CalendarRange } from 'lucide-react';
+import { 
+  CalendarClock, 
+  Users, 
+  Lock, 
+  Package, 
+  MountainSnow, 
+  TreePalm, 
+  Loader2, 
+  ClipboardList, 
+  UserCheck, 
+  Clock, 
+  ListChecks, 
+  CalendarDays, 
+  CalendarRange 
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -138,37 +152,33 @@ export const TacticalPlan2Section: React.FC = () => {
                 <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
               ) : (
                 <div className="rounded-md border overflow-hidden">
-                  <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
-                    <div style={{ transform: 'rotateX(180deg)' }}>
-                      <Table>
-                        <TableHeader className="bg-gray-50">
-                          <TableRow>
-                            <TableHead className="w-24">Código</TableHead>
-                            <TableHead>Centro</TableHead>
-                            <TableHead>Nombre del Grupo</TableHead>
-                            <TableHead className="text-center">Estado</TableHead>
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="w-24">Código</TableHead>
+                        <TableHead>Centro</TableHead>
+                        <TableHead>Nombre del Grupo</TableHead>
+                        <TableHead className="text-center">Estado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {gruposFiltrados.map((g) => {
+                        const centro = resolveCentro(g.centro);
+                        return (
+                          <TableRow key={g.codigo_grupo}>
+                            <TableCell className="font-mono font-bold text-indigo-600">{g.codigo_grupo}</TableCell>
+                            <TableCell>{centro?.nombre || '-'}</TableCell>
+                            <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant={g.estado === 'A' ? 'default' : 'destructive'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
+                                {g.estado === 'A' ? 'Activo' : 'Inactivo'}
+                              </Badge>
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {gruposFiltrados.map((g) => {
-                            const centro = resolveCentro(g.centro);
-                            return (
-                              <TableRow key={g.codigo_grupo}>
-                                <TableCell className="font-mono font-bold text-indigo-600">{g.codigo_grupo}</TableCell>
-                                <TableCell>{centro?.nombre || '-'}</TableCell>
-                                <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
-                                <TableCell className="text-center">
-                                  <Badge variant={g.estado === 'A' ? 'default' : 'destructive'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
-                                    {g.estado === 'A' ? 'Activo' : 'Inactivo'}
-                                  </Badge>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>
@@ -185,37 +195,33 @@ export const TacticalPlan2Section: React.FC = () => {
                 <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
               ) : (
                 <div className="rounded-md border overflow-hidden">
-                  <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
-                    <div style={{ transform: 'rotateX(180deg)' }}>
-                      <Table>
-                        <TableHeader className="bg-gray-50">
-                          <TableRow>
-                            <TableHead>Nombre Restricción</TableHead>
-                            <TableHead className="text-center">Valor</TableHead>
-                            <TableHead>Grupo Asociado</TableHead>
-                            <TableHead className="text-center">Estado</TableHead>
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead>Nombre Restricción</TableHead>
+                        <TableHead className="text-center">Valor</TableHead>
+                        <TableHead>Grupo Asociado</TableHead>
+                        <TableHead className="text-center">Estado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {restriccionesFiltradas.map((r) => {
+                        const grupo = grupos.find(g => g.codigo_grupo === r.codigo_grupo);
+                        return (
+                          <TableRow key={r.codigo_restriccion}>
+                            <TableCell className="font-semibold text-gray-700">{r.nombre_restriccion}</TableCell>
+                            <TableCell className="text-center font-mono bg-blue-50/50">{r.valor_restriccion}</TableCell>
+                            <TableCell>{grupo?.nombre_grupo} ({grupo?.centro})</TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant={r.estado === 'A' ? 'default' : 'destructive'} className={r.estado === 'A' ? 'bg-green-600' : ''}>
+                                {r.estado === 'A' ? 'Activo' : 'Inactivo'}
+                              </Badge>
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {restriccionesFiltradas.map((r) => {
-                            const grupo = grupos.find(g => g.codigo_grupo === r.codigo_grupo);
-                            return (
-                              <TableRow key={r.codigo_restriccion}>
-                                <TableCell className="font-semibold text-gray-700">{r.nombre_restriccion}</TableCell>
-                                <TableCell className="text-center font-mono bg-blue-50/50">{r.valor_restriccion}</TableCell>
-                                <TableCell>{grupo?.nombre_grupo} ({grupo?.centro})</TableCell>
-                                <TableCell className="text-center">
-                                  <Badge variant={r.estado === 'A' ? 'default' : 'destructive'} className={r.estado === 'A' ? 'bg-green-600' : ''}>
-                                    {r.estado === 'A' ? 'Activo' : 'Inactivo'}
-                                  </Badge>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>
@@ -247,7 +253,7 @@ export const TacticalPlan2Section: React.FC = () => {
         <TabsContent value="presupuesto_semanal">
           <Card>
             <CardHeader>
-              <CardTitle>Presupuesto de Producción Semanal</CardTitle>
+              <CardTitle>Presupuesto</CardTitle>
               <CardDescription>Visualización de la demanda agrupada por semanas.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -291,7 +297,7 @@ export const TacticalPlan2Section: React.FC = () => {
             <CardContent>
               <ProgDiariaTabSection groups={grupos} restrictions={restricciones} />
             </CardContent>
-          </TabsContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
