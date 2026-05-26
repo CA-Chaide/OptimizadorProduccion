@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2, ClipboardList, UserCheck, Clock, ListChecks, CalendarDays } from 'lucide-react';
+import { CalendarClock, Users, Lock, Package, MountainSnow, TreePalm, Loader2, ClipboardList, UserCheck, Clock, ListChecks, CalendarDays, CalendarRange } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -11,6 +11,7 @@ import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
 import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { ProgDiariaTabSection } from './ProgDiariaTabSection';
+import { PresupuestoProdSemanalTabSection } from './PresupuestoProdSemanalTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -88,7 +89,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-8 mb-8">
+        <TabsList className="grid w-full grid-cols-9 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -104,6 +105,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="tiempos" className="flex items-center gap-2">
             <Clock className="w-4 h-4" />
             Tiempos
+          </TabsTrigger>
+          <TabsTrigger value="presupuesto_semanal" className="flex items-center gap-2">
+            <CalendarRange className="w-4 h-4" />
+            Presupuesto prod semanal
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
@@ -235,6 +240,18 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <TiemposEnsambladoTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="presupuesto_semanal">
+          <Card>
+            <CardHeader>
+              <CardTitle>Presupuesto de Producción Semanal</CardTitle>
+              <CardDescription>Visualización de la demanda agrupada por semanas.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PresupuestoProdSemanalTabSection />
             </CardContent>
           </Card>
         </TabsContent>
