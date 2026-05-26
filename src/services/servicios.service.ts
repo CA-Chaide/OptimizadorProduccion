@@ -371,6 +371,7 @@ export const serviciosService = {
     try {
       const response = await fetch(API_URL + "/TiempoAprovisionamientoMateriasPrimas", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           page: page, 
           rowsPerPage: rowsPerPage,
@@ -391,6 +392,7 @@ export const serviciosService = {
     try {
       const response = await fetch(API_URL + "/produccionEstimadaPorAnioMesSemana", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           anio: anio, 
           mes: mes,
@@ -398,8 +400,8 @@ export const serviciosService = {
         }),
       });
       if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
-        throw new Error(errorBody.message || "Error al consultar el Maestro de Materiales.");
+        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar la producción estimada." }));
+        throw new Error(errorBody.message || "Error al consultar la producción estimada.");
       }
       return response.json();
     } catch (e) {
