@@ -6,12 +6,11 @@ import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { dataStore } from '@/services/DataStore';
 import { operationTracker } from '@/services/OperationTracker';
 import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
@@ -93,14 +92,12 @@ export const OrdenesFertTabSection: React.FC = () => {
       
       const centersFromGroups = [...new Set(groupsData.map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
-      if (centersFromGroups.length > 0) setSelectedCenter(centersFromGroups[0]);
 
       // 2. Cargar Órdenes Fert - Lógica Robusta
       operationTracker.updateOperation(opId, 'running', 'Consultando órdenes al servidor...');
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
       let orders: OrdenFert[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
       
-      // Si hay más páginas, cargarlas (opcional para MVP, aquí cargamos las primeras 10k)
       setAllRawOrders(orders);
       operationTracker.updateOperation(opId, 'running', `Cargadas ${orders.length} órdenes.`);
 
@@ -211,14 +208,6 @@ export const OrdenesFertTabSection: React.FC = () => {
     return grouped;
   }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup, labelsLookup]);
 
-  // Publicar al DataStore global para que la IA lo vea
-  useEffect(() => {
-    const all = Object.values(filteredDataByCenter).flat();
-    if (all.length > 0) {
-      dataStore.setData('ordenesFert', all, 'OrdenesFertTab');
-    }
-  }, [filteredDataByCenter]);
-
   // Filtros aplicados a la vista actual
   const currentViewOrders = useMemo(() => {
     const base = selectedTab === "raw_view" ? allRawOrders : (filteredDataByCenter[selectedTab] || []);
@@ -267,10 +256,11 @@ export const OrdenesFertTabSection: React.FC = () => {
     }, { prog: 0, entreg: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0 });
   }, [currentViewOrders]);
 
-  const displayedOrders = useMemo(() => {
-    const start = (currentPage - 1) * rowsPerPage;
-    return currentViewOrders.slice(start, start + rowsPerPage);
-  }, [currentViewOrders, currentPage, rowsPerPage]);
+  // Paginación calculada en el cuerpo del componente
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
+  const displayedOrders = currentViewOrders.slice(startIndex, endIndex);
 
   const handleFilter = (key: string, val: string) => {
     setColFilters(prev => ({ ...prev, [key]: val }));
@@ -336,8 +326,8 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
                       <th colSpan={2} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden / Nombre</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-700 uppercase bg-gray-100/50 min-w-[60px]">PROG</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-green-700 uppercase bg-green-50/30 min-w-[60px]">ENTREG</th>
-                      <th className="px-3 py-3 text-right text-[10px] font-bold text-blue-600 uppercase bg-blue-50/30 min-w-[60px]">NOTI</th>
+                      <th className="px-3 py-3 text-right text-green-700 uppercase bg-green-50/30 min-w-[60px]">ENTREG</th>
+                      <th className="px-3 py-3 text-right text-blue-600 uppercase bg-blue-50/30 min-w-[60px]">NOTI</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TT ARMADO</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TT CERRADO L1</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO1 L2</th>
@@ -395,7 +385,7 @@ export const OrdenesFertTabSection: React.FC = () => {
 
             <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4 text-xs">
-                <span className="font-medium text-gray-500">Mostrar:</span>
+                <span className="font-medium text-gray-500 uppercase">Mostrar:</span>
                 <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="border rounded p-1 bg-white">
                   <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option>
                 </select>
