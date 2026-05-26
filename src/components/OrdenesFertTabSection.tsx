@@ -18,7 +18,6 @@ interface OrdenFert {
   CENTRO: string;
   ORDEN: string;
   MATERIAL: string;
-  ETIQUETA?: string;
   SECTORDESC: string;
   CATEGORIA: string;
   NOMBRE: string;
@@ -60,7 +59,6 @@ export const OrdenesFertTabSection: React.FC = () => {
   // Estados de Datos
   const [allRawOrders, setAllRawOrders] = useState<OrdenFert[]>([]);
   const [tiemposLookup, setTiemposLookup] = useState<Map<string, Record<string, number>>>(new Map());
-  const [labelsLookup, setLabelsLookup] = useState<Map<string, string>>(new Map());
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [restrictions, setRestrictions] = useState<any[]>([]);
@@ -81,11 +79,11 @@ export const OrdenesFertTabSection: React.FC = () => {
   };
 
   const loadData = useCallback(async () => {
-    const opId = operationTracker.startOperation('FertOrders', 'data_load', 'Cargando Órdenes FERT y cruce con Inventarios');
+    const opId = operationTracker.startOperation('FertOrders', 'data_load', 'Cargando Órdenes FERT');
     setIsLoading(true);
     
     try {
-      // 1. Cargar Grupos y Centros (Esencial para las pestañas)
+      // 1. Cargar Grupos y Centros
       const groupsRes = await grupoService.getAll();
       const groupsData = Array.isArray(groupsRes?.data) ? groupsRes.data : [];
       setGroups(groupsData);
@@ -93,7 +91,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       const centersFromGroups = [...new Set(groupsData.map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
-      // 2. Cargar Órdenes Fert - Lógica Robusta
+      // 2. Cargar Órdenes Fert
       operationTracker.updateOperation(opId, 'running', 'Consultando órdenes al servidor...');
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
       let orders: OrdenFert[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
@@ -101,7 +99,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       setAllRawOrders(orders);
       operationTracker.updateOperation(opId, 'running', `Cargadas ${orders.length} órdenes.`);
 
-      // 3. Cargar Tiempos Técnicos para cruce (Estaciones)
+      // 3. Cargar Tiempos Técnicos para cruce
       operationTracker.updateOperation(opId, 'running', 'Cruzando con Tiempos de Ensamblado...');
       const tiemposRes = await serviciosService.getTiemposEnsamblado(1, 10000);
       const lookup = new Map<string, Record<string, number>>();
@@ -114,21 +112,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       }
       setTiemposLookup(lookup);
 
-      // 4. Cargar Etiquetas del Cubo de Inventarios
-      operationTracker.updateOperation(opId, 'running', 'Recuperando etiquetas del Cubo de Inventarios...');
-      const cuboRes = await serviciosService.getCuboInventarios();
-      const labelsMap = new Map<string, string>();
-      if (Array.isArray(cuboRes?.data)) {
-        cuboRes.data.forEach((item: any) => {
-          const code = normalizeMaterialCode(item.Material);
-          if (item.Etiqueta && (!labelsMap.has(code) || String(item.Centro).trim() === '1000')) {
-            labelsMap.set(code, String(item.Etiqueta).trim());
-          }
-        });
-      }
-      setLabelsLookup(labelsMap);
-
-      // 5. Cargar Restricciones
+      // 4. Cargar Restricciones
       const restRes = await restriccionService.getAll();
       setRestrictions(restRes?.data || []);
 
@@ -164,20 +148,16 @@ export const OrdenesFertTabSection: React.FC = () => {
     const grouped: Record<string, OrdenFert[]> = {};
     
     availableCenters.forEach(centerId => {
-      // Filtrar órdenes que pertenecen a este centro
       let centerOrders = allRawOrders.filter(o => String(o.CENTRO || '').trim() === centerId);
 
-      // Filtrar por responsables permitidos si aplica
       const allowedResps = getResponsablesPorCentro(centerId);
       if (allowedResps.length > 0) {
         centerOrders = centerOrders.filter(o => allowedResps.includes(String(o.RESPCTRLPROD).trim()));
       }
 
-      // Enriquecer con Etiquetas y Tiempos
       grouped[centerId] = centerOrders.map(order => {
         const matCode = normalizeMaterialCode(order.MATERIAL);
         const materialKey = `${centerId}|${matCode}`;
-        const etiqueta = labelsLookup.get(matCode) || order.ETIQUETA || 'N/A';
         const times = tiemposLookup.get(materialKey) || {};
         const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
         const pend = Number(order.CANTPENDIENTE || 0);
@@ -190,7 +170,6 @@ export const OrdenesFertTabSection: React.FC = () => {
 
         return {
           ...order,
-          ETIQUETA: etiqueta,
           T_ARMADO: tArmado,
           T_CERRADO_L1: tCerradoL1,
           T_CERRADO1_L2: tCerrado1L2,
@@ -206,7 +185,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     });
 
     return grouped;
-  }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup, labelsLookup]);
+  }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup]);
 
   // Filtros aplicados a la vista actual
   const currentViewOrders = useMemo(() => {
@@ -236,7 +215,6 @@ export const OrdenesFertTabSection: React.FC = () => {
     return {
       CENTRO: getUnique('CENTRO'),
       MAQUINA: getUnique('MAQUINA'),
-      ETIQUETA: getUnique('ETIQUETA'),
       MATERIAL: getUnique('MATERIAL'),
       FECHA: getUnique('FECHA').sort((a, b) => new Date(a).getTime() - new Date(b).getTime()),
     };
@@ -256,7 +234,6 @@ export const OrdenesFertTabSection: React.FC = () => {
     }, { prog: 0, entreg: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0 });
   }, [currentViewOrders]);
 
-  // Paginación calculada en el cuerpo del componente
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
@@ -274,7 +251,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT</h3>
-            <p className="text-xs text-gray-500 mt-1">Gestión de órdenes con etiquetas del Cubo de Inventarios</p>
+            <p className="text-xs text-gray-500 mt-1">Gestión de órdenes con tiempos técnicos por estación</p>
           </div>
         </div>
         
@@ -321,7 +298,6 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <tr className="border-b border-gray-200">
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Centro</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Máquina</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Etiqueta</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
                       <th colSpan={2} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden / Nombre</th>
@@ -337,7 +313,6 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <tr className="bg-gray-100/50">
                       <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.CENTRO || "ALL"} onChange={e => handleFilter('CENTRO', e.target.value)}><option value="ALL">CENTRO</option>{colOptions.CENTRO.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
                       <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.MAQUINA || "ALL"} onChange={e => handleFilter('MAQUINA', e.target.value)}><option value="ALL">MÁQUINA</option>{colOptions.MAQUINA.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
-                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.ETIQUETA || "ALL"} onChange={e => handleFilter('ETIQUETA', e.target.value)}><option value="ALL">ETIQUETA</option>{colOptions.ETIQUETA.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
                       <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.MATERIAL || "ALL"} onChange={e => handleFilter('MATERIAL', e.target.value)}><option value="ALL">MATERIAL</option>{colOptions.MATERIAL.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
                       <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.FECHA || "ALL"} onChange={e => handleFilter('FECHA', e.target.value)}><option value="ALL">FECHA</option>{colOptions.FECHA.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
                       <th colSpan={10}></th>
@@ -348,7 +323,6 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <tr key={idx} className="hover:bg-gray-50 text-[10px]">
                         <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
                         <td className="px-3 py-2 font-mono">{o.MAQUINA || '-'}</td>
-                        <td className="px-3 py-2"><Badge variant="outline" className="bg-amber-50 text-amber-700 text-[9px] font-bold">{o.ETIQUETA}</Badge></td>
                         <td className="px-3 py-2 font-mono">{o.MATERIAL}</td>
                         <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
                         <td className="px-3 py-2 font-bold text-indigo-600">{o.ORDEN}</td>
@@ -363,12 +337,12 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerradoL3?.toFixed(1)}</td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={15} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
+                      <tr><td colSpan={14} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
                     )}
                   </tbody>
                   <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                     <tr>
-                      <td colSpan={7} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
+                      <td colSpan={6} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
                       <td className="px-3 py-3 text-right">{totals.prog.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-blue-300 border-r border-gray-700">{totals.noti.toLocaleString()}</td>
@@ -387,7 +361,9 @@ export const OrdenesFertTabSection: React.FC = () => {
               <div className="flex items-center gap-4 text-xs">
                 <span className="font-medium text-gray-500 uppercase">Mostrar:</span>
                 <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="border rounded p-1 bg-white">
-                  <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
                 </select>
                 <span className="text-gray-400">{startIndex + 1} - {Math.min(endIndex, currentViewOrders.length)} de {currentViewOrders.length}</span>
               </div>
