@@ -387,4 +387,25 @@ export const serviciosService = {
   },
 
 
+  async getProduccionEstimadaPorIntervalo(anio: string, mes: string, semana: string): Promise<BodyResponse<any>> {
+    try {
+      const response = await fetch(API_URL + "/produccionEstimadaPorAnioMesSemana", {
+        method: "POST",
+        body: JSON.stringify({ 
+          anio: anio, 
+          mes: mes,
+          semana: semana
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
+        throw new Error(errorBody.message || "Error al consultar el Maestro de Materiales.");
+      }
+      return response.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+
 };

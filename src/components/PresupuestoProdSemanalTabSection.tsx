@@ -1,11 +1,26 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CalendarRange, Search, Download, Loader2, Home, AlertCircle, Calendar, Filter, Hash } from 'lucide-react';
+import { 
+  CalendarRange, 
+  Search, 
+  Download, 
+  Loader2, 
+  Home, 
+  AlertCircle, 
+  Calendar, 
+  Filter, 
+  Hash,
+  PlayCircle,
+  Database
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { MONTH_NAMES } from '@/constants/constants';
+import { serviciosService } from '@/services/servicios.service';
+import { useAppContext } from '@/context/AppProvider';
 
 // Helper para obtener el número de semana del año (ISO-8601)
 function getISOWeek(date: Date) {
@@ -29,20 +44,22 @@ function getWeeksInMonth(year: number, month: number) {
 }
 
 export const PresupuestoProdSemanalTabSection: React.FC = () => {
+  const { addNotification } = useAppContext();
   const [mounted, setMounted] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState<string>("1000");
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth() + 1).toString());
-  const [selectedWeek, setSelectedWeek] = useState<string>("ALL");
+  const [selectedWeek, setSelectedWeek] = useState<string>("");
+
+  const [presupuestoData, setPresupuestoData] = useState<any[]>([]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const centers = ["1000", "2000"];
   const years = ["2024", "2025", "2026"];
 
   // Calcular semanas disponibles para el mes y año seleccionados
@@ -51,12 +68,67 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
     return getWeeksInMonth(Number(selectedYear), Number(selectedMonth));
   }, [selectedYear, selectedMonth, mounted]);
 
-  // Si la semana seleccionada ya no está en el mes al cambiar de mes, resetear a ALL
+  // Inicializar semana seleccionada si está vacía
   useEffect(() => {
-    if (selectedWeek !== "ALL" && !availableWeeks.includes(Number(selectedWeek))) {
-      setSelectedWeek("ALL");
+    if (mounted && selectedWeek === "" && availableWeeks.length > 0) {
+      setSelectedWeek(String(availableWeeks[0]));
     }
-  }, [availableWeeks, selectedWeek]);
+  }, [availableWeeks, selectedWeek, mounted]);
+
+  const handleFetchPresupuesto = async () => {
+    if (!selectedWeek) {
+      addNotification('warning', 'Por favor selecciona una semana específica.');
+      return;
+    }
+
+    setIsLoading(true);
+    setPresupuestoData([]);
+    
+    try {
+      const response = await serviciosService.getProduccionEstimadaPorIntervalo(
+        selectedYear,
+        selectedMonth,
+        selectedWeek
+      );
+
+      const data = Array.isArray(response?.data) ? response.data : [];
+      setPresupuestoData(data);
+      
+      if (data.length > 0) {
+        addNotification('success', `Se recuperaron ${data.length} registros de presupuesto.`);
+      } else {
+        addNotification('info', 'No se encontraron datos para los criterios seleccionados.');
+      }
+    } catch (error) {
+      console.error('Error fetching presupuesto:', error);
+      addNotification('error', 'Error al consultar el presupuesto de producción.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredData = useMemo(() => {
+    return presupuestoData.filter(item => {
+      // Filtrar por centro (si la API devuelve el campo centro)
+      if (selectedCenter !== "ALL" && String(item.centro || '').trim() !== selectedCenter) {
+        return false;
+      }
+
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        String(item.codigo_material || '').toLowerCase().includes(term) ||
+        String(item.linea_produccion || '').toLowerCase().includes(term)
+      );
+    });
+  }, [presupuestoData, selectedCenter, searchTerm]);
+
+  const totals = useMemo(() => {
+    return filteredData.reduce((acc, item) => ({
+      proyectada: acc.proyectada + (Number(item.cantidad_proyectada) || 0),
+      producir: acc.producir + (Number(item.cantidad_producir) || 0)
+    }), { proyectada: 0, producir: 0 });
+  }, [filteredData]);
 
   if (!mounted) return null;
 
@@ -67,7 +139,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
           <CalendarRange className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Presupuesto de Producción Semanal</h3>
-            <p className="text-xs text-gray-500 mt-1">Demanda proyectada por número de semana del año</p>
+            <p className="text-xs text-gray-500 mt-1">Cálculo de producción estimada por intervalo técnico</p>
           </div>
         </div>
         
@@ -76,7 +148,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input
               type="search"
-              placeholder="Buscar material..."
+              placeholder="Filtrar por material o línea..."
               className="pl-9 h-9 text-xs"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -90,7 +162,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
       </div>
 
       {/* Barra de Filtros Superiores */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm">
         <div className="space-y-1.5">
           <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
             <Calendar className="w-3 h-3" /> Año
@@ -126,78 +198,145 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
           <select 
             value={selectedWeek}
             onChange={(e) => setSelectedWeek(e.target.value)}
-            className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
+            className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-indigo-700"
           >
-            <option value="ALL">Todas las semanas de este mes</option>
+            <option value="" disabled>Seleccione semana...</option>
             {availableWeeks.map(w => (
               <option key={w} value={String(w)}>Semana {w}</option>
             ))}
           </select>
         </div>
 
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
+            <Home className="w-3 h-3" /> Centro
+          </label>
+          <select 
+            value={selectedCenter}
+            onChange={(e) => setSelectedCenter(e.target.value)}
+            className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+          >
+            <option value="ALL">Todos los Centros</option>
+            <option value="1000">Centro 1000 (Quito)</option>
+            <option value="2000">Centro 2000 (Guayaquil)</option>
+          </select>
+        </div>
+
         <div className="flex items-end">
-          <div className="flex h-9 bg-gray-200/50 p-1 rounded-lg w-full">
-            {centers.map(center => (
-              <button
-                key={center}
-                onClick={() => setSelectedCenter(center)}
-                className={`flex-1 flex items-center justify-center text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${
-                  selectedCenter === center 
-                    ? "bg-white text-indigo-700 shadow-sm" 
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <Home className="w-3 h-3 mr-1.5" />
-                Centro {center}
-              </button>
-            ))}
-          </div>
+          <Button 
+            onClick={handleFetchPresupuesto} 
+            disabled={isLoading || !selectedWeek}
+            className="w-full h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <><PlayCircle className="w-4 h-4 mr-2" /> Consultar</>
+            )}
+          </Button>
         </div>
       </div>
 
-      <Card className="border-none shadow-sm overflow-hidden">
+      {/* Resumen de Totales Rápidos */}
+      {filteredData.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="bg-white border-l-4 border-l-blue-500">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-gray-500 uppercase">Materiales Planificados</p>
+                <p className="text-2xl font-mono font-bold text-blue-700">{filteredData.length}</p>
+              </div>
+              <Database className="w-8 h-8 text-blue-100" />
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-l-4 border-l-indigo-500">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-gray-500 uppercase">Total Proyectado</p>
+                <p className="text-2xl font-mono font-bold text-indigo-700">{totals.proyectada.toLocaleString()}</p>
+              </div>
+              <CalendarRange className="w-8 h-8 text-indigo-100" />
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-l-4 border-l-emerald-500">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-gray-500 uppercase">Total a Producir</p>
+                <p className="text-2xl font-mono font-bold text-emerald-700">{totals.producir.toLocaleString()}</p>
+              </div>
+              <PlayCircle className="w-8 h-8 text-emerald-100" />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Card className="border shadow-sm overflow-hidden bg-white">
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[600px]">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50 text-center">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th rowSpan={2} className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-gray-100 border-r">Material</th>
-                  <th rowSpan={2} className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-gray-100 border-r">Descripción</th>
-                  <th colSpan={availableWeeks.length} className="px-4 py-2 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider border-b border-r">Demanda por Semana del Año</th>
-                  <th rowSpan={2} className="px-6 py-3 text-right text-[10px] font-bold text-gray-700 uppercase tracking-wider bg-gray-100/50">Total Mes</th>
-                </tr>
-                <tr>
-                  {availableWeeks.map(weekNum => {
-                    const isSelected = selectedWeek === "ALL" || selectedWeek === String(weekNum);
-                    return (
-                      <th 
-                        key={weekNum} 
-                        className={`px-4 py-2 text-right text-[10px] font-bold text-indigo-600 uppercase tracking-wider border-r ${!isSelected ? 'opacity-30 bg-gray-50' : 'bg-indigo-50/30'}`}
-                      >
-                        Sem {weekNum}
-                      </th>
-                    );
-                  })}
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider border-r">Material</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider border-r">Descripción</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider border-r">Centro</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider border-r">Línea Prod.</th>
+                  <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/30">Cant. Proyectada</th>
+                  <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">Cant. a Producir</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={availableWeeks.length + 3} className="px-6 py-12 text-center">
-                      <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mx-auto" />
+                    <td colSpan={6} className="px-6 py-12 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                        <span className="text-sm font-medium text-gray-500">Consultando presupuesto...</span>
+                      </div>
                     </td>
                   </tr>
+                ) : filteredData.length > 0 ? (
+                  filteredData.map((item, idx) => (
+                    <tr key={`${item.codigo_material}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-3 whitespace-nowrap text-xs font-mono font-bold text-gray-900">{String(item.codigo_material || '').replace(/^0+/, '')}</td>
+                      <td className="px-6 py-3 text-xs text-gray-600 max-w-xs truncate" title={item.nombre}>{item.nombre || '-'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <Badge variant="outline" className="font-mono text-[10px] bg-gray-50">{item.centro}</Badge>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs font-medium text-gray-700">
+                        {item.linea_produccion || <span className="text-gray-400 italic">No asignada</span>}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right font-mono font-bold text-indigo-600 bg-indigo-50/10">
+                        {Number(item.cantidad_proyectada || 0).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right font-mono font-bold text-emerald-600 bg-emerald-50/10">
+                        {Number(item.cantidad_producir || 0).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
                 ) : (
                   <tr>
-                    <td colSpan={availableWeeks.length + 3} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <AlertCircle className="w-8 h-8 text-gray-300" />
-                        <span>No hay datos de presupuesto para las semanas {availableWeeks.join(', ')} de {MONTH_NAMES[Number(selectedMonth)-1]} {selectedYear} en el Centro {selectedCenter}.</span>
+                        <span>
+                          {presupuestoData.length === 0 
+                            ? "Haz clic en 'Consultar' para cargar los datos del presupuesto semanal." 
+                            : "No hay datos que coincidan con los filtros aplicados."}
+                        </span>
                       </div>
                     </td>
                   </tr>
                 )}
               </tbody>
+              {filteredData.length > 0 && (
+                <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
+                  <tr>
+                    <td colSpan={4} className="px-6 py-3 text-right uppercase border-r border-gray-700">Totales Página:</td>
+                    <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">{totals.proyectada.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono text-emerald-300">{totals.producir.toLocaleString()}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </CardContent>
