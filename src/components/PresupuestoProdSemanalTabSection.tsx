@@ -200,9 +200,9 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
             onChange={(e) => setSelectedWeek(e.target.value)}
             className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-indigo-700"
           >
-            <option value="" disabled>Seleccione semana...</option>
+            <option value="" disabled>Seleccione...</option>
             {availableWeeks.map(w => (
-              <option key={w} value={String(w)}>Semana {w}</option>
+              <option key={w} value={String(w)}>{w}</option>
             ))}
           </select>
         </div>
