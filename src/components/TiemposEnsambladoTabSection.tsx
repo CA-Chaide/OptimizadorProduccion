@@ -5,11 +5,12 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Clock, Loader2, Search, Home, Database, AlertCircle } from 'lucide-react';
+import { Clock, Loader2, Search, Home, Database, AlertCircle, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface TiempoEnsamblado {
   CodMaterial: string;
@@ -38,6 +39,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedResponsable, setSelectedResponsable] = useState<string>("ALL");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   
   // Paginación
@@ -51,7 +53,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
       const groupsRes = await grupoService.getAll();
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
-      if (centersFromGroups.length > 0) setSelectedCenter(centersFromGroups[0]);
+      if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
       // 2. Cargar datos de tiempos (Paginado a 10k para cubrir la mayoría de registros técnicos)
       const response = await serviciosService.getTiemposEnsamblado(1, 10000);
@@ -64,7 +66,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, inspector]);
+  }, [addNotification, inspector, selectedCenter]);
 
   useEffect(() => {
     if (!hasStarted.current) {
@@ -73,9 +75,23 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
     }
   }, [loadData]);
 
-  // Filtrado por Centro y Búsqueda
+  // Lista de responsables únicos para el centro seleccionado
+  const responsablesDisponibles = useMemo(() => {
+    const centerData = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
+    const unique = [...new Set(centerData.map(row => String(row.NombRespControlProd || '').trim()))]
+      .filter(Boolean)
+      .sort();
+    return unique;
+  }, [allData, selectedCenter]);
+
+  // Filtrado por Centro, Responsable y Búsqueda
   const currentViewData = useMemo(() => {
     let base = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
+
+    // Filtro de Responsable
+    if (selectedResponsable !== "ALL") {
+      base = base.filter(row => String(row.NombRespControlProd || '').trim() === selectedResponsable);
+    }
 
     const term = searchTerm.toLowerCase().trim();
     if (!term) return base;
@@ -86,11 +102,12 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
       String(row.PuestoTrabajo || '').toLowerCase().includes(term) ||
       String(row.NombRespControlProd || '').toLowerCase().includes(term)
     );
-  }, [allData, selectedCenter, searchTerm]);
+  }, [allData, selectedCenter, selectedResponsable, searchTerm]);
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewData.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const displayedData = currentViewData.slice(startIndex, startIndex + rowsPerPage);
+  const endIndex = startIndex + rowsPerPage;
+  const displayedData = currentViewData.slice(startIndex, endIndex);
 
   const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
@@ -114,7 +131,21 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Filtro Responsable */}
+          <Select value={selectedResponsable} onValueChange={(val) => { setSelectedResponsable(val); setCurrentPage(1); }}>
+            <SelectTrigger className="h-9 w-64 bg-white">
+              <UserCircle className="w-3.5 h-3.5 mr-2 text-gray-400" />
+              <SelectValue placeholder="Filtrar por Responsable" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos los Responsables</SelectItem>
+              {responsablesDisponibles.map(resp => (
+                <SelectItem key={resp} value={resp}>{resp}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <div className="relative w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input
@@ -131,7 +162,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
         </div>
       </div>
 
-      <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); }} className="w-full">
+      <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); setSelectedResponsable("ALL"); }} className="w-full">
         <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
             <TabsTrigger 
@@ -189,7 +220,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
                       <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <AlertCircle className="w-8 h-8 text-gray-300" />
-                          <span>No se encontraron registros de tiempos para el centro {selectedCenter}.</span>
+                          <span>No se encontraron registros de tiempos para los criterios seleccionados.</span>
                         </div>
                       </td>
                     </tr>
@@ -211,9 +242,10 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
                 <option value={10}>10</option>
                 <option value={20}>20</option>
                 <option value={50}>50</option>
+                <option value={100}>100</option>
               </select>
               <span className="text-gray-400">
-                {startIndex + 1} - {Math.min(startIndex + rowsPerPage, currentViewData.length)} de {currentViewData.length}
+                {startIndex + 1} - {Math.min(endIndex, currentViewData.length)} de {currentViewData.length}
               </span>
             </div>
 
