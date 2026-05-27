@@ -218,8 +218,8 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
             className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
           >
             <option value="ALL">Todos</option>
-            <option value="1000">1000 (Quito)</option>
-            <option value="2000">2000 (Guayaquil)</option>
+            <option value="1000">1000</option>
+            <option value="2000">2000</option>
           </select>
         </div>
 
@@ -285,7 +285,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">Cant. a Producir</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200">
                 {isLoading ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center">
