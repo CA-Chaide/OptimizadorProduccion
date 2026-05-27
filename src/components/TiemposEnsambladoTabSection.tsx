@@ -5,12 +5,24 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Clock, Loader2, Search, Home, Database, AlertCircle, UserCircle } from 'lucide-react';
+import { Clock, Loader2, Search, Home, Database, AlertCircle, UserCircle, Check, ChevronsUpDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
+import { cn } from '@/lib/utils';
 
 interface TiempoEnsamblado {
   CodMaterial: string;
@@ -39,8 +51,9 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedResponsable, setSelectedResponsable] = useState<string>("ALL");
+  const [selectedResponsables, setSelectedResponsables] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -84,13 +97,13 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
     return unique;
   }, [allData, selectedCenter]);
 
-  // Filtrado por Centro, Responsable y Búsqueda
+  // Filtrado por Centro, Responsables y Búsqueda
   const currentViewData = useMemo(() => {
     let base = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
 
-    // Filtro de Responsable
-    if (selectedResponsable !== "ALL") {
-      base = base.filter(row => String(row.NombRespControlProd || '').trim() === selectedResponsable);
+    // Filtro de Responsables (Múltiple)
+    if (selectedResponsables.length > 0) {
+      base = base.filter(row => selectedResponsables.includes(String(row.NombRespControlProd || '').trim()));
     }
 
     const term = searchTerm.toLowerCase().trim();
@@ -102,7 +115,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
       String(row.PuestoTrabajo || '').toLowerCase().includes(term) ||
       String(row.NombRespControlProd || '').toLowerCase().includes(term)
     );
-  }, [allData, selectedCenter, selectedResponsable, searchTerm]);
+  }, [allData, selectedCenter, selectedResponsables, searchTerm]);
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewData.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -110,6 +123,20 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
   const displayedData = currentViewData.slice(startIndex, endIndex);
 
   const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
+
+  const toggleResponsable = (resp: string) => {
+    setSelectedResponsables(prev => 
+      prev.includes(resp) 
+        ? prev.filter(r => r !== resp) 
+        : [...prev, resp]
+    );
+    setCurrentPage(1);
+  };
+
+  const clearResponsables = () => {
+    setSelectedResponsables([]);
+    setCurrentPage(1);
+  };
 
   if (isLoading && allData.length === 0) {
     return (
@@ -132,19 +159,65 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Filtro Responsable */}
-          <Select value={selectedResponsable} onValueChange={(val) => { setSelectedResponsable(val); setCurrentPage(1); }}>
-            <SelectTrigger className="h-9 w-64 bg-white">
-              <UserCircle className="w-3.5 h-3.5 mr-2 text-gray-400" />
-              <SelectValue placeholder="Filtrar por Responsable" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos los Responsables</SelectItem>
-              {responsablesDisponibles.map(resp => (
-                <SelectItem key={resp} value={resp}>{resp}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Filtro Responsable (Multi-selección) */}
+          <div className="flex flex-col gap-1">
+            <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={isFilterOpen}
+                  className="h-9 w-72 justify-between bg-white font-normal text-xs"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <UserCircle className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="truncate">
+                      {selectedResponsables.length === 0 
+                        ? "Todos los Responsables" 
+                        : `${selectedResponsables.length} seleccionado(s)`}
+                    </span>
+                  </div>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-0" align="end">
+                <Command>
+                  <CommandInput placeholder="Buscar responsable..." className="h-8 text-xs" />
+                  <CommandEmpty>No se encontraron responsables.</CommandEmpty>
+                  <CommandGroup className="max-h-64 overflow-y-auto">
+                    {responsablesDisponibles.map((resp) => (
+                      <CommandItem
+                        key={resp}
+                        value={resp}
+                        onSelect={() => toggleResponsable(resp)}
+                        className="text-xs"
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-3.5 w-3.5",
+                            selectedResponsables.includes(resp) ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {resp}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                  {selectedResponsables.length > 0 && (
+                    <div className="p-1 border-t border-gray-100">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="w-full h-7 text-[10px] text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
+                        onClick={clearResponsables}
+                      >
+                        Limpiar Selección
+                      </Button>
+                    </div>
+                  )}
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
 
           <div className="relative w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
@@ -162,7 +235,28 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
         </div>
       </div>
 
-      <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); setSelectedResponsable("ALL"); }} className="w-full">
+      {/* Visualización de responsables seleccionados (Badge chips) */}
+      {selectedResponsables.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-1">
+          {selectedResponsables.map(resp => (
+            <Badge key={resp} variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] border-indigo-100 py-0 px-2 flex items-center gap-1">
+              {resp}
+              <X 
+                className="w-3 h-3 cursor-pointer hover:text-indigo-900" 
+                onClick={() => toggleResponsable(resp)}
+              />
+            </Badge>
+          ))}
+          <button 
+            onClick={clearResponsables}
+            className="text-[10px] text-gray-400 hover:text-gray-600 underline"
+          >
+            Limpiar todos
+          </button>
+        </div>
+      )}
+
+      <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); setSelectedResponsables([]); }} className="w-full">
         <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
             <TabsTrigger 
