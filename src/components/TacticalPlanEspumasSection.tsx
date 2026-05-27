@@ -49,17 +49,18 @@ const SECONDS_CART_SWAP = 60;
 
 const MATERIALES_EXCLUIDOS = ["30009844", "30007116"];
 
-// Definición de Recursos Operativos por Planta (Basado en ejemplo suministrado)
+// Definición de Recursos Operativos por Planta (Actualizado según ejemplo Guayaquil)
 const OPERATIVE_RESOURCES = {
   '1000': [
-    { code: 'CR04', name: 'Carrusel 4 FECKEN', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0 },
-    { code: 'CR03', name: 'Carrusel 3 SCHMUZIGER C-700', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0 },
-    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 4, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0 },
-    { code: 'CNC01', name: 'Cortadora CNC GIOTTO X #1', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0 },
+    { code: 'CR04', name: 'Carrusel 4 FECKEN', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.90 },
+    { code: 'CR03', name: 'Carrusel 3 SCHMUZIGER C-700', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.90 },
+    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 4, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.90 },
+    { code: 'CNC01', name: 'Cortadora CNC GIOTTO X #1', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.90 },
   ],
   '2000': [
-    { code: 'CR02', name: 'Carrusel 2 FECKEN', t1: 9, t2: 0, p1: 1.27, p2: 0, mtto: 0 },
-    { code: 'MAQ03', name: 'Máquina 3 Gye', t1: 9, t2: 0, p1: 1.27, p2: 0, mtto: 0 },
+    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.70 },
+    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.70 },
+    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.70 },
   ]
 };
 
@@ -78,7 +79,7 @@ const formatNum = (val: any, decimals: number = 0): string => {
 
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
-  const { addNotification, constraints } = useAppContext();
+  const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
@@ -291,90 +292,92 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       plannedTimeByResource.set(maquina, (plannedTimeByResource.get(maquina) || 0) + hours);
     });
 
-    const RENDIMIENTO = 0.90; // 90%
+    const RENDIMIENTO = centerId === '1000' ? 0.90 : 0.70;
     let totalAvailCombined = 0;
     let totalPlannedCombined = 0;
 
     return (
       <div className="space-y-4">
-        <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter border-l-4 border-red-600 pl-3">{title}</h3>
-        <Card className="rounded-2xl border border-gray-200 shadow-sm overflow-hidden bg-white">
+        <div className="bg-[#1e40af] text-white px-4 py-2 text-center uppercase font-black text-sm tracking-widest shadow-md">
+          {centerId === '1000' ? 'QUITO' : 'GUAYAQUIL'}
+        </div>
+        <Card className="rounded-none border-2 border-gray-200 shadow-sm overflow-hidden bg-white">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[11px] font-sans">
-              <thead className="bg-[#1e293b] text-white">
+              <thead className="bg-[#4472c4] text-white border-b-2 border-blue-800">
                 <tr>
-                  <th className="px-4 py-4 text-left border-r border-white/10 w-48 font-black uppercase tracking-widest text-slate-400">recurso operativo</th>
+                  <th className="px-4 py-4 text-left border-r border-white/20 w-48 font-black uppercase tracking-tight">Recurso Operativo</th>
                   {resources.map(r => (
-                    <th key={r.code} className="px-4 py-4 text-center border-r border-white/10 min-w-[120px]">
-                      <div className="text-white font-black uppercase tracking-tight">{r.code}</div>
-                      <div className="text-[9px] text-slate-400 font-bold mt-0.5">{r.name}</div>
+                    <th key={r.code} className="px-4 py-4 text-center border-r border-white/20 min-w-[120px]">
+                      <div className="text-white font-black uppercase text-xs">{r.code}</div>
+                      <div className="text-[10px] text-blue-100 font-bold mt-1">{r.name}</div>
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 font-bold">
+              <tbody className="divide-y divide-gray-200 font-bold">
                 {/* Turno 1 */}
                 <tr className="hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-slate-600 border-r border-gray-100 uppercase font-black">Turno 1 [H]</td>
+                  <td className="px-4 py-3 text-slate-700 border-r border-gray-200 uppercase font-black">Turno 1 [H]</td>
                   {resources.map(r => (
-                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono">{r.t1.toFixed(1)}</td>
+                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono text-sm">{r.t1}</td>
                   ))}
                 </tr>
                 {/* Turno 2 */}
                 <tr className="hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-slate-600 border-r border-gray-100 uppercase font-black">Turno 2 [H]</td>
+                  <td className="px-4 py-3 text-slate-700 border-r border-gray-200 uppercase font-black">Turno 2 [H]</td>
                   {resources.map(r => (
-                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono">{r.t2.toFixed(1)}</td>
+                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono text-sm">{r.t2}</td>
                   ))}
                 </tr>
                 {/* Paros Turno 1 */}
                 <tr className="hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-slate-600 border-r border-gray-100 uppercase font-black">Paro Prog. Turno 1</td>
+                  <td className="px-4 py-3 text-slate-700 border-r border-gray-200 uppercase font-black font-medium">Paro Prog. Turno 1</td>
                   {resources.map(r => (
-                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono text-red-500">{r.p1.toFixed(2)}</td>
+                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono">{r.p1.toFixed(2)}</td>
                   ))}
                 </tr>
                 {/* Paros Turno 2 */}
                 <tr className="hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-slate-600 border-r border-gray-100 uppercase font-black">Paro Prog. Turno 2</td>
+                  <td className="px-4 py-3 text-slate-700 border-r border-gray-200 uppercase font-black font-medium">Paro Prog. Turno 2</td>
                   {resources.map(r => (
-                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono text-red-500">{r.p2.toFixed(2)}</td>
+                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono">{r.p2.toFixed(2)}</td>
                   ))}
                 </tr>
                 {/* MTTO */}
                 <tr className="hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-slate-600 border-r border-gray-100 uppercase font-black">MTTO</td>
+                  <td className="px-4 py-3 text-slate-700 border-r border-gray-200 uppercase font-black">MTTO</td>
                   {resources.map(r => (
-                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono">{r.mtto.toFixed(2)}</td>
+                    <td key={r.code} className="px-4 py-3 text-center border-r border-gray-100 font-mono">{r.mtto === 0 ? '' : r.mtto.toFixed(2)}</td>
                   ))}
                 </tr>
                 {/* Tiempo Total Per Resource */}
-                <tr className="bg-slate-50 border-y-2 border-gray-100">
-                  <td className="px-4 py-3 text-slate-800 border-r border-gray-200 uppercase font-black">Tiempo total</td>
+                <tr className="bg-slate-50 border-y-2 border-gray-300">
+                  <td className="px-4 py-3 text-slate-900 border-r border-gray-200 uppercase font-black">Tiempo total</td>
                   {resources.map(r => {
                     const total = (r.t1 + r.t2) - (r.p1 + r.p2) - r.mtto;
                     totalAvailCombined += total;
                     return (
-                      <td key={r.code} className="px-4 py-3 text-center border-r border-gray-200 font-mono text-blue-700 font-black">{total.toFixed(2)}</td>
+                      <td key={r.code} className="px-4 py-3 text-center border-r border-gray-200 font-mono text-sm font-black">{total.toFixed(2)}</td>
                     );
                   })}
                 </tr>
-                {/* Rendimiento (Merged row concept) */}
+                {/* Rendimiento */}
                 <tr className="bg-white">
-                  <td className="px-4 py-3 text-slate-800 border-r border-gray-200 uppercase font-black">Rendimiento</td>
-                  <td colSpan={resources.length} className="px-4 py-3 text-center border-r border-gray-200 font-black text-indigo-600">{(RENDIMIENTO * 100).toFixed(0)}%</td>
+                  <td className="px-4 py-3 text-slate-900 border-r border-gray-200 uppercase font-black">Rendimiento</td>
+                  <td colSpan={resources.length} className="px-4 py-3 text-center border-r border-gray-200 font-black text-xs text-indigo-700">{(RENDIMIENTO * 100).toFixed(0)}%</td>
                 </tr>
                 {/* Tiempo total disponible */}
-                <tr className="bg-yellow-400/20">
-                  <td className="px-4 py-3 text-slate-800 border-r border-gray-200 uppercase font-black">Tiempo total disponible</td>
-                  <td colSpan={resources.length} className="px-4 py-3 text-center border-r border-gray-200 font-mono font-black text-slate-900">
+                <tr className="bg-[#ffff00]/30 border-t-2 border-gray-400">
+                  <td className="px-4 py-4 text-slate-900 border-r border-gray-200 uppercase font-black text-sm">Tiempo total disponible</td>
+                  <td colSpan={resources.length} className="px-4 py-4 text-center border-r border-gray-200 font-mono font-black text-lg bg-[#ffff00]/60">
                     {(totalAvailCombined * RENDIMIENTO).toFixed(1)}
                   </td>
                 </tr>
                 {/* Tiempo planificado */}
-                <tr className="bg-slate-100/50">
-                  <td className="px-4 py-3 text-slate-800 border-r border-gray-200 uppercase font-black">Tiempo planificado</td>
-                  <td colSpan={resources.length} className="px-4 py-3 text-center border-r border-gray-200 font-mono font-black text-slate-900">
+                <tr className="bg-slate-100">
+                  <td className="px-4 py-3 text-slate-900 border-r border-gray-200 uppercase font-black">Tiempo planificado</td>
+                  <td colSpan={resources.length} className="px-4 py-3 text-center border-r border-gray-200 font-mono font-black text-lg">
                     {(() => {
                         const totalPlanned = resources.reduce((sum, res) => {
                             const match = plannedTimeByResource.get(res.code.toUpperCase()) || 0;
@@ -386,9 +389,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </td>
                 </tr>
                 {/* % Planificado */}
-                <tr className="bg-emerald-100/50">
-                  <td className="px-4 py-3 text-slate-800 border-r border-gray-200 uppercase font-black">% Planificado</td>
-                  <td colSpan={resources.length} className="px-4 py-3 text-center border-r border-gray-200 font-mono font-black text-emerald-700">
+                <tr className="bg-[#c6efce]">
+                  <td className="px-4 py-3 text-slate-900 border-r border-gray-200 uppercase font-black">% Planificado</td>
+                  <td colSpan={resources.length} className="px-4 py-3 text-center border-r border-gray-200 font-mono font-black text-lg text-[#006100] bg-[#c6efce]">
                     {(() => {
                         const totalAvail = totalAvailCombined * RENDIMIENTO;
                         const pct = totalAvail > 0 ? (totalPlannedCombined / totalAvail) * 100 : 0;
