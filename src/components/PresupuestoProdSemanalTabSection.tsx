@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -216,9 +217,9 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
             onChange={(e) => setSelectedCenter(e.target.value)}
             className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
           >
-            <option value="ALL">Todos los Centros</option>
-            <option value="1000">Centro 1000 (Quito)</option>
-            <option value="2000">Centro 2000 (Guayaquil)</option>
+            <option value="ALL">Todos</option>
+            <option value="1000">1000 (Quito)</option>
+            <option value="2000">2000 (Guayaquil)</option>
           </select>
         </div>
 
@@ -273,7 +274,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
       <Card className="border shadow-sm overflow-hidden bg-white">
         <CardContent className="p-0">
           <div className="overflow-x-auto max-h-[600px]">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-full text-xs divide-y divide-gray-200">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider border-r">Material</th>
