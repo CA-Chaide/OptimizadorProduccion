@@ -13,7 +13,8 @@ import {
   Filter, 
   Hash,
   PlayCircle,
-  Database
+  Database,
+  X
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { MONTH_NAMES } from '@/constants/constants';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
+import * as XLSX from 'xlsx';
 
 // Helper para obtener el número de semana del año (ISO-8601)
 function getISOWeek(date: Date) {
@@ -35,11 +37,14 @@ function getISOWeek(date: Date) {
 // Obtener las semanas del año que pertenecen a un mes específico
 function getWeeksInMonth(year: number, month: number) {
   const weeks = new Set<number>();
+  // JS Months are 0-indexed, so month-1
   const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
   
-  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-    weeks.add(getISOWeek(new Date(d)));
+  const current = new Date(firstDay);
+  while (current <= lastDay) {
+    weeks.add(getISOWeek(new Date(current)));
+    current.setDate(current.getDate() + 1);
   }
   return Array.from(weeks).sort((a, b) => a - b);
 }
@@ -69,10 +74,12 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
     return getWeeksInMonth(Number(selectedYear), Number(selectedMonth));
   }, [selectedYear, selectedMonth, mounted]);
 
-  // Inicializar semana seleccionada si está vacía
+  // Sincronizar semana seleccionada cuando cambia el mes o año
   useEffect(() => {
-    if (mounted && selectedWeek === "" && availableWeeks.length > 0) {
-      setSelectedWeek(String(availableWeeks[0]));
+    if (mounted && availableWeeks.length > 0) {
+      if (!selectedWeek || !availableWeeks.includes(Number(selectedWeek))) {
+        setSelectedWeek(String(availableWeeks[0]));
+      }
     }
   }, [availableWeeks, selectedWeek, mounted]);
 
@@ -110,7 +117,6 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
 
   const filteredData = useMemo(() => {
     return presupuestoData.filter(item => {
-      // Filtrar por centro (si la API devuelve el campo centro)
       if (selectedCenter !== "ALL" && String(item.centro || '').trim() !== selectedCenter) {
         return false;
       }
@@ -119,7 +125,8 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
       const term = searchTerm.toLowerCase();
       return (
         String(item.codigo_material || '').toLowerCase().includes(term) ||
-        String(item.linea_produccion || '').toLowerCase().includes(term)
+        String(item.linea_produccion || '').toLowerCase().includes(term) ||
+        String(item.nombre || '').toLowerCase().includes(term)
       );
     });
   }, [presupuestoData, selectedCenter, searchTerm]);
@@ -130,6 +137,24 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
       producir: acc.producir + (Number(item.cantidad_producir) || 0)
     }), { proyectada: 0, producir: 0 });
   }, [filteredData]);
+
+  const handleExport = () => {
+    if (filteredData.length === 0) return;
+    
+    const exportData = filteredData.map(item => ({
+      'Material': String(item.codigo_material || '').replace(/^0+/, ''),
+      'Descripción': item.nombre || '',
+      'Centro': item.centro || '',
+      'Línea': item.linea_produccion || '',
+      'Cant. Proyectada': item.cantidad_proyectada || 0,
+      'Cant. a Producir': item.cantidad_producir || 0
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Presupuesto");
+    XLSX.writeFile(wb, `Presupuesto_Semana_${selectedWeek}_${selectedYear}.xlsx`);
+  };
 
   if (!mounted) return null;
 
@@ -154,15 +179,22 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={filteredData.length === 0}>
             <Download className="w-4 h-4 mr-2" />
             Exportar
           </Button>
         </div>
       </div>
 
-      {/* Barra de Filtros Superiores */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm">
         <div className="space-y-1.5">
           <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
@@ -238,7 +270,6 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Resumen de Totales Rápidos */}
       {filteredData.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="bg-white border-l-4 border-l-blue-500">
