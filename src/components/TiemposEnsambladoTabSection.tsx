@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Clock, Loader2, Search, Home, Database, AlertCircle, UserCircle, Check, ChevronsUpDown, X } from 'lucide-react';
+import { Clock, Loader2, Search, Home, Database, AlertCircle, UserCircle, Check, ChevronsUpDown, X, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -52,8 +52,11 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
   const [selectedCenter, setSelectedCenter] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedResponsables, setSelectedResponsables] = useState<string[]>([]);
+  const [selectedLineas, setSelectedLineas] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  
+  const [isRespFilterOpen, setIsRespFilterOpen] = useState(false);
+  const [isLineaFilterOpen, setIsLineFilterOpen] = useState(false);
   
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -68,7 +71,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
       setAvailableCenters(centersFromGroups);
       if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
-      // 2. Cargar datos de tiempos (Paginado a 10k para cubrir la mayoría de registros técnicos)
+      // 2. Cargar datos de tiempos
       const response = await serviciosService.getTiemposEnsamblado(1, 10000);
       const rawData = Array.isArray(response?.data) ? response.data : [];
       setAllData(rawData);
@@ -97,13 +100,27 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
     return unique;
   }, [allData, selectedCenter]);
 
-  // Filtrado por Centro, Responsables y Búsqueda
+  // Lista de líneas únicas para el centro seleccionado
+  const lineasDisponibles = useMemo(() => {
+    const centerData = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
+    const unique = [...new Set(centerData.map(row => String(row.Linea || '').trim()))]
+      .filter(Boolean)
+      .sort();
+    return unique;
+  }, [allData, selectedCenter]);
+
+  // Filtrado por Centro, Responsables, Líneas y Búsqueda
   const currentViewData = useMemo(() => {
     let base = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
 
     // Filtro de Responsables (Múltiple)
     if (selectedResponsables.length > 0) {
       base = base.filter(row => selectedResponsables.includes(String(row.NombRespControlProd || '').trim()));
+    }
+
+    // Filtro de Líneas (Múltiple)
+    if (selectedLineas.length > 0) {
+      base = base.filter(row => selectedLineas.includes(String(row.Linea || '').trim()));
     }
 
     const term = searchTerm.toLowerCase().trim();
@@ -115,7 +132,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
       String(row.PuestoTrabajo || '').toLowerCase().includes(term) ||
       String(row.NombRespControlProd || '').toLowerCase().includes(term)
     );
-  }, [allData, selectedCenter, selectedResponsables, searchTerm]);
+  }, [allData, selectedCenter, selectedResponsables, selectedLineas, searchTerm]);
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewData.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -133,8 +150,19 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const clearResponsables = () => {
+  const toggleLinea = (linea: string) => {
+    setSelectedLineas(prev => 
+      prev.includes(linea) 
+        ? prev.filter(l => l !== linea) 
+        : [...prev, linea]
+    );
+    setCurrentPage(1);
+  };
+
+  const clearFilters = () => {
     setSelectedResponsables([]);
+    setSelectedLineas([]);
+    setSearchTerm('');
     setCurrentPage(1);
   };
 
@@ -159,71 +187,69 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Filtro Responsable (Multi-selección) */}
-          <div className="flex flex-col gap-1">
-            <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={isFilterOpen}
-                  className="h-9 w-72 justify-between bg-white font-normal text-xs"
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <UserCircle className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="truncate">
-                      {selectedResponsables.length === 0 
-                        ? "Todos los Responsables" 
-                        : `${selectedResponsables.length} seleccionado(s)`}
-                    </span>
-                  </div>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-0" align="end">
-                <Command>
-                  <CommandInput placeholder="Buscar responsable..." className="h-8 text-xs" />
-                  <CommandEmpty>No se encontraron responsables.</CommandEmpty>
-                  <CommandGroup className="max-h-64 overflow-y-auto">
-                    {responsablesDisponibles.map((resp) => (
-                      <CommandItem
-                        key={resp}
-                        value={resp}
-                        onSelect={() => toggleResponsable(resp)}
-                        className="text-xs"
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-3.5 w-3.5",
-                            selectedResponsables.includes(resp) ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        {resp}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                  {selectedResponsables.length > 0 && (
-                    <div className="p-1 border-t border-gray-100">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="w-full h-7 text-[10px] text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
-                        onClick={clearResponsables}
-                      >
-                        Limpiar Selección
-                      </Button>
-                    </div>
-                  )}
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
+          {/* Filtro Responsable */}
+          <Popover open={isRespFilterOpen} onOpenChange={setIsRespFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 w-56 justify-between bg-white font-normal text-xs">
+                <div className="flex items-center gap-2 truncate">
+                  <UserCircle className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="truncate">
+                    {selectedResponsables.length === 0 ? "Responsables" : `${selectedResponsables.length} responsables`}
+                  </span>
+                </div>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-0" align="end">
+              <Command>
+                <CommandInput placeholder="Buscar responsable..." className="h-8 text-xs" />
+                <CommandEmpty>No encontrado.</CommandEmpty>
+                <CommandGroup className="max-h-64 overflow-y-auto">
+                  {responsablesDisponibles.map((resp) => (
+                    <CommandItem key={resp} value={resp} onSelect={() => toggleResponsable(resp)} className="text-xs">
+                      <Check className={cn("mr-2 h-3.5 w-3.5", selectedResponsables.includes(resp) ? "opacity-100" : "opacity-0")} />
+                      {resp}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
+          {/* Filtro Línea */}
+          <Popover open={isLineaFilterOpen} onOpenChange={setIsLineFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 w-48 justify-between bg-white font-normal text-xs">
+                <div className="flex items-center gap-2 truncate">
+                  <LayoutGrid className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="truncate">
+                    {selectedLineas.length === 0 ? "Líneas" : `${selectedLineas.length} líneas`}
+                  </span>
+                </div>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-0" align="end">
+              <Command>
+                <CommandInput placeholder="Buscar línea..." className="h-8 text-xs" />
+                <CommandEmpty>No encontrada.</CommandEmpty>
+                <CommandGroup className="max-h-64 overflow-y-auto">
+                  {lineasDisponibles.map((linea) => (
+                    <CommandItem key={linea} value={linea} onSelect={() => toggleLinea(linea)} className="text-xs">
+                      <Check className={cn("mr-2 h-3.5 w-3.5", selectedLineas.includes(linea) ? "opacity-100" : "opacity-0")} />
+                      {linea}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </Command>
+            </PopoverContent>
+          </Popover>
 
           <div className="relative w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input
               type="search"
-              placeholder="Material, línea, puesto..."
+              placeholder="Material, puesto..."
               className="pl-9 h-9 text-xs"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
@@ -235,34 +261,35 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Visualización de responsables seleccionados (Badge chips) */}
-      {selectedResponsables.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-1">
+      {/* Chips de Filtros Activos */}
+      {(selectedResponsables.length > 0 || selectedLineas.length > 0 || searchTerm) && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] font-bold text-gray-400 uppercase mr-2">Filtros:</span>
           {selectedResponsables.map(resp => (
-            <Badge key={resp} variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] border-indigo-100 py-0 px-2 flex items-center gap-1">
-              {resp}
-              <X 
-                className="w-3 h-3 cursor-pointer hover:text-indigo-900" 
-                onClick={() => toggleResponsable(resp)}
-              />
+            <Badge key={`chip-resp-${resp}`} variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] py-0 px-2 flex items-center gap-1">
+              Resp: {resp}
+              <X className="w-3 h-3 cursor-pointer" onClick={() => toggleResponsable(resp)} />
             </Badge>
           ))}
-          <button 
-            onClick={clearResponsables}
-            className="text-[10px] text-gray-400 hover:text-gray-600 underline"
-          >
-            Limpiar todos
-          </button>
+          {selectedLineas.map(linea => (
+            <Badge key={`chip-linea-${linea}`} variant="secondary" className="bg-emerald-50 text-emerald-700 text-[10px] py-0 px-2 flex items-center gap-1">
+              Línea: {linea}
+              <X className="w-3 h-3 cursor-pointer" onClick={() => toggleLinea(linea)} />
+            </Badge>
+          ))}
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] text-gray-500 underline" onClick={clearFilters}>
+            Limpiar todo
+          </Button>
         </div>
       )}
 
-      <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); setSelectedResponsables([]); }} className="w-full">
+      <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); setSelectedResponsables([]); setSelectedLineas([]); }} className="w-full">
         <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
             <TabsTrigger 
               key={center} 
               value={center}
-              className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-4 py-2 text-xs font-bold uppercase tracking-wider"
+              className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-6 py-2 text-xs font-bold uppercase tracking-wider"
             >
               <Home className="w-3 h-3 mr-2" />
               Centro {center} ({allData.filter(d => String(d.Centro || '').trim() === center).length})
@@ -271,7 +298,6 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
         </TabsList>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-          {/* Scroll Horizontal Superior */}
           <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
             <div style={{ transform: 'rotateX(180deg)' }}>
               <table className="min-w-full divide-y divide-gray-200">
@@ -306,7 +332,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
                       <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMin}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMax || '-'}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-600 truncate max-w-[150px]" title={row.NombRespControlProd}>
-                        {row.NombRespControlProd} <span className="text-gray-400 font-mono">({row.RespCtrlProd})</span>
+                        {row.NombRespControlProd}
                       </td>
                     </tr>
                   )) : (
@@ -314,7 +340,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
                       <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <AlertCircle className="w-8 h-8 text-gray-300" />
-                          <span>No se encontraron registros de tiempos para los criterios seleccionados.</span>
+                          <span>No se encontraron registros de tiempos.</span>
                         </div>
                       </td>
                     </tr>
@@ -324,7 +350,6 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
             </div>
           </div>
 
-          {/* Footer / Paginación */}
           <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4 text-xs">
               <span className="font-medium text-gray-500 uppercase">Ver:</span>
@@ -336,7 +361,6 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
                 <option value={10}>10</option>
                 <option value={20}>20</option>
                 <option value={50}>50</option>
-                <option value={100}>100</option>
               </select>
               <span className="text-gray-400">
                 {startIndex + 1} - {Math.min(endIndex, currentViewData.length)} de {currentViewData.length}
