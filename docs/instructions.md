@@ -13,7 +13,10 @@
 - **Gestión de Capacidad:** 
     - Si una máquina "HR" excede su tiempo disponible, proteger siempre la producción de GYE.
     - Mover el excedente de Quito (Fecha 2) al día posterior.
-- **Vínculo Técnico:** Todas las máquinas y puestos de trabajo se resuelven mediante el prefijo **"HR-"** en los maestros técnicos.
+
+### 2.2. Vínculo Técnico y Sincronización
+- **Prefijo HR:** Todas las máquinas se resuelven mediante el prefijo **"HR-"**.
+- **Sincronización de Tapas:** Las máquinas de Tapas (`HR-PEFXX`) y Acolchado (`HR-ACHXX`) deben compartir el mismo número de máquina `XX` (**02, 06, 08, 09, 10**).
 
 ## 3. Protocolo de Datos
 - **Códigos de Material:** Siempre normalizar eliminando ceros a la izquierda para comparaciones.

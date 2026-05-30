@@ -29,15 +29,21 @@ Esta lógica rige la generación automática de la "Programación Componentes":
     - **Fecha 2 (Lejana):** Destino **Quito**. Se planifica con la capacidad remanente.
 2.  **Explosión de Materiales (BOM)**:
     - La demanda de un Forro genera necesidades automáticas de componentes (Tapas acolchadas, Bandas, Interiores).
-    - Cada componente debe validar la existencia de sus procesos dependientes (ej: Acolchado para Tapas).
+    - Cada componente debe validar la existencia de sus procesos dependientes.
 3.  **Lead Time de Componentes**:
     - Se maneja un desfase de 1 día. Los componentes se planifican para estar listos el mismo día o un día antes de la necesidad del forro.
 4.  **Gestión de Capacidad Finita (Saturación)**:
-    - Si una máquina "HR" se satura (excede el tiempo disponible de la jornada):
+    - Si una máquina "HR" se satura:
         - Se asegura primero el 100% de los componentes para la **Fecha 1 (GYE)**.
         - Se asigna el resto a la **Fecha 2 (Quito)** hasta agotar el tiempo.
-        - El sobrante de la Fecha 2 se **desplaza automáticamente al día siguiente**, aprovechando que su fecha de entrega es más lejana.
+        - El sobrante de la Fecha 2 se **desplaza automáticamente al día siguiente**.
 
-### 2.3. Cálculo de Tiempos
+### 2.3. Sincronización de Procesos (Tapas y Acolchado)
+Existe una dependencia técnica estricta entre las máquinas de confección de tapas y las de acolchado:
+- **Regla de Sufijo:** La máquina de la Tapa (`HR-PEFXX`) debe coincidir con la del Acolchado (`HR-ACHXX`).
+- **Identificadores Válidos:** Los números de máquina (XX) son: **02, 06, 08, 09 y 10**.
+- **Ejemplo:** Si un material requiere la máquina `HR-PEF08`, su orden de acolchado dependiente debe asignarse forzosamente a la `HR-ACH08`.
+
+### 2.4. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
 - Todos los tiempos deben mostrarse con **dos decimales**.
