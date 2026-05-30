@@ -48,6 +48,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     FECHAINICIO: '',
     RESPCONTROLPROD: '',
     MAQUINA: '',
+    CODMATERIAL: '',
   });
 
   useEffect(() => {
@@ -68,17 +69,17 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     if (value === null || value === undefined || value === '') return '';
     const upperCol = col.toUpperCase().trim();
     
-    // Formatear Fechas
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
       if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
       return String(value);
     }
     
-    // Formatear Números/Tiempos con 2 decimales
     const num = parseFloat(value);
-    if (!isNaN(num) && (upperCol.includes('TIEMPO') || upperCol === 'CANTIDAD' || upperCol === 'TAMLOTEMIN' || upperCol === 'TAMLOTEMAX')) {
-      return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (!isNaN(num)) {
+      if (upperCol.includes('TIEMPO') || upperCol === 'CANTIDAD' || upperCol === 'TAMLOTEMIN' || upperCol === 'TAMLOTEMAX') {
+        return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
     }
 
     return String(value);
@@ -101,11 +102,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
           totalRegistros: response.totalRegistros || response.data.length,
           currentPage: 1
         }));
-        runtimeInspector.captureVariable('ProvisionalOrdersTab', 'component', 'loadedOrdersCount', response.data.length);
       }
     } catch (err) {
-      const errorMessage = (err as Error).message;
-      addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
+      addNotification('error', `Error al cargar órdenes: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }
@@ -133,10 +132,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
           if (orderKey) {
             orderValue = String(order[orderKey] ?? '').trim().toUpperCase();
           } else if (resolveValue) {
-            // Intentar resolver el valor dinámicamente si no existe en la fila original (ej. MAQUINA)
             orderValue = String(resolveValue(normFilterKey, order) ?? '').trim().toUpperCase();
-          } else {
-            return true;
           }
 
           if (!orderValue || orderValue === '—') return false;
@@ -153,8 +149,8 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
         let displayVal = '';
         if (orderKey) {
           displayVal = formatValueForDisplay(orderKey, order[orderKey]);
-        } else if (filterKey === 'MAQUINA' && resolveValue) {
-          displayVal = resolveValue('MAQUINA', order);
+        } else if (resolveValue) {
+          displayVal = resolveValue(filterKey, order);
         }
 
         return displayVal.toLowerCase().includes(filterValue.toLowerCase());
@@ -191,9 +187,9 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
       'MATERIAL'
     ];
 
-    if (filteredOrders.length === 0) return priority;
+    if (orders.length === 0) return priority;
     
-    const allKeys = Object.keys(filteredOrders[0]);
+    const allKeys = Object.keys(orders[0]);
     const usedKeysUpper = new Set<string>();
     const finalColumns: string[] = [];
 
@@ -220,7 +216,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     });
 
     return finalColumns;
-  }, [filteredOrders]);
+  }, [orders]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pagination.rows_per_page));
   const displayedOrders = useMemo(() => {
@@ -240,7 +236,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
             <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
               <tr>
                 {columns.map((col, idx) => (
-                  <th key={`${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600">
+                  <th key={`head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600">
                     {col}
                   </th>
                 ))}
@@ -271,7 +267,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
             <tbody className="divide-y divide-gray-200 bg-white">
               {isLoading && orders.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length || 1} className="py-24 text-center">
+                  <td colSpan={columns.length} className="py-24 text-center">
                     <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-2" />
                     <span className="text-gray-500 font-medium">Consultando servidor...</span>
                   </td>
@@ -299,22 +295,22 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
                   const row = (
                     <tr key={`order-row-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                      {columns.map((col) => {
+                      {columns.map((col, cIdx) => {
                         if (renderCell) {
                           const rendered = renderCell(col, order);
                           if (rendered !== undefined) {
-                            return <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{rendered}</td>;
+                            return <td key={`cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{rendered}</td>;
                           }
                         }
-                        return <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
+                        return <td key={`cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
                       })}
                     </tr>
                   );
 
                   return groupHeader ? [groupHeader, row] : row;
-                })
+                }).flat()
               ) : (
-                <tr><td colSpan={columns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No se encontraron registros.</td></tr>
+                <tr><td colSpan={columns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No se encontraron registros.</td></tr>
               )}
             </tbody>
           </table>
@@ -344,7 +340,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
             <Button variant="outline" size="icon" onClick={() => setPagination(prev => ({ ...prev, currentPage: prev.currentPage + 1 }))} disabled={pagination.currentPage === totalPages} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
             <Button variant="outline" size="icon" onClick={() => setPagination(prev => ({ ...prev, currentPage: totalPages }))} disabled={pagination.currentPage === totalPages} className="h-8 w-8"><ChevronsRight className="h-4 w-4" /></Button>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading} className="h-8 px-4 bg-white" title="Actualizar datos"><RefreshCw className={cn("h-3 w-3 mr-2", isLoading && "animate-spin")} /> Actualizar</Button>
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoading && "animate-spin")} /> Actualizar</Button>
         </div>
       </div>
     </div>

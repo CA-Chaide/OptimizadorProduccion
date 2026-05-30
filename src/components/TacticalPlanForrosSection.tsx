@@ -102,14 +102,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (value === null || value === undefined || value === '') return '—';
     const upperCol = col.toUpperCase().trim();
     
-    // Formatear Fechas
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
       if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
       return String(value);
     }
     
-    // Formatear Tiempos (2 decimales)
     const num = parseFloat(value);
     if (!isNaN(num) && (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS'))) {
       return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -212,7 +210,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filters;
   }, [forrosRestricciones]);
 
-  // Filtros específicos para la pestaña de CHN & Bases: HR-FBASE y HR-FORRO
   const forrosChnBasesFilters = useMemo(() => {
     return {
       ...externalFilters,
@@ -261,11 +258,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching daily orders:', error);
-      addNotification('error', 'Error al cargar órdenes diarias.');
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, targetDate, todayDate, addNotification, normalizeDateForFilter]);
+  }, [externalFilters, targetDate, todayDate, normalizeDateForFilter]);
 
   useEffect(() => {
     if (isMounted && forrosGruposList.length > 0) {
@@ -274,9 +270,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
-  /**
-   * Resuelve la máquina priorizando identificadores que inicien con "HR" escaneando todos los campos técnicos
-   */
   const getResolvedMachine = useCallback((order: any) => {
     const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
     for (const k of orderFields) {
@@ -295,13 +288,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
 
     if (matches.length > 0) {
-      // Escaneo total de campos en busca de identificador HR
       for (const m of matches) {
         const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
         const hrValue = values.find(v => v.startsWith('HR'));
         if (hrValue) return hrValue;
       }
-      // Fallback: primer puesto con tiempo
       const first = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
       return String(first.PuestoTrabajo || first.Maquina || first.nombre_estacion || '').trim().toUpperCase();
     }
@@ -309,9 +300,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
-  /**
-   * Calcula el tiempo total de producción buscando coincidencia estricta de material y máquina
-   */
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0.00';
     const normMaterial = normalizeMaterialCode(material);
@@ -319,7 +307,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     if (!resolvedMachine) return '0.00';
     
-    // Buscar coincidencia exacta de material y máquina en cualquier campo técnico
     const match = tiemposProduccion.find(t => {
       if (normalizeMaterialCode(t.CodMaterial || t.Material || '') !== normMaterial) return false;
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
@@ -354,7 +341,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(order[column] ?? '');
   }, [getResolvedMachine]);
 
-  // Columnas y Filtrado de Tiempos Maestros
   const tiemposColumns = useMemo(() => {
     const priority = [
       'CodMaterial', 
@@ -377,11 +363,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     if (tiemposProduccion.length === 0) return priority;
     const allKeys = Object.keys(tiemposProduccion[0]);
-    const toExclude = ['StockActual', 'GrupoCompras'];
+    const toExclude = ['STOCKACTUAL', 'GRUPOSCOMPRAS', 'GRUPOCOMPRAS'];
     const usedKeysUpper = new Set<string>();
     const finalColumns: string[] = [];
 
-    // 1. Columnas de prioridad
     priority.forEach(pCol => {
       const pColUpper = pCol.toUpperCase().trim();
       const match = allKeys.find(k => k.toUpperCase().trim() === pColUpper);
@@ -391,10 +376,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
     });
 
-    // 2. Otras columnas
     allKeys.forEach(k => {
       const kUpper = k.toUpperCase().trim();
-      if (!usedKeysUpper.has(kUpper) && !toExclude.map(e => e.toUpperCase()).includes(kUpper)) {
+      if (!usedKeysUpper.has(kUpper) && !toExclude.includes(kUpper)) {
         finalColumns.push(k);
         usedKeysUpper.add(kUpper);
       }
@@ -425,7 +409,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setTiemposPage(1);
   };
 
-  // Diario
   const dailyColumns = useMemo(() => {
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
     if (dailyOrders.length === 0) return priority;
@@ -455,13 +438,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const plannedCapacity = useMemo(() => {
     const diurno = parseFloat(horarioDiurno) || 0;
     const nocturno = parseFloat(horarioNocturno) || 0;
-    return (diurno + nocturno) * 0.84; // 16% inefficiency
+    return (diurno + nocturno) * 0.84; 
   }, [horarioDiurno, horarioNocturno]);
 
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
-    // Identificar todas las máquinas conocidas en el maestro
     const allKnownMachines = [...new Set(tiemposProduccion.map(t => {
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
       return values.find(v => v.startsWith('HR')) || String(t.PuestoTrabajo || '').trim().toUpperCase();
@@ -471,7 +453,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 });
     });
 
-    // Acumular órdenes
     dailyOrders.forEach(order => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
@@ -591,7 +572,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                       <tr>
                         {tiemposColumns.map((col, idx) => (
-                          <th key={`${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">
+                          <th key={`head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">
                             {col}
                           </th>
                         ))}
@@ -616,22 +597,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {isLoadingTiempos && tiemposProduccion.length === 0 ? (
                         <tr>
-                          <td colSpan={tiemposColumns.length || 1} className="py-24 text-center">
+                          <td colSpan={tiemposColumns.length} className="py-24 text-center">
                             <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
                           </td>
                         </tr>
                       ) : paginatedTiemposData.length > 0 ? paginatedTiemposData.map((t, idx) => (
                         <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                          {tiemposColumns.map(col => (
-                            <td key={`cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
+                          {tiemposColumns.map((col, cIdx) => (
+                            <td key={`cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
                               {formatValueForDisplay(col, t[col])}
                             </td>
                           ))}
                         </tr>
                       )) : (
                         <tr>
-                          <td colSpan={tiemposColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
-                            {tiemposProduccion.length === 0 ? 'No hay datos disponibles.' : 'No se encontraron resultados para los filtros.'}
+                          <td colSpan={tiemposColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
+                            No se encontraron resultados.
                           </td>
                         </tr>
                       )}
@@ -696,7 +677,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <tr>
                         {dailyColumns.map((col, idx) => (
                           <th 
-                            key={`${col}-${idx}`} 
+                            key={`daily-head-${col}-${idx}`} 
                             className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600"
                           >
                             {col}
@@ -705,14 +686,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
-                      {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length || 1} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : dailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
+                      {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : dailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
                         <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                          {dailyColumns.map((col) => {
+                          {dailyColumns.map((col, cIdx) => {
                             const upperCol = col.toUpperCase().trim();
                             
                             return (
                               <td 
-                                key={`cell-${idx}-${col}`} 
+                                key={`daily-cell-${idx}-${col}-${cIdx}`} 
                                 className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"
                               >
                                 {col === 'TIEMPOS DE PRODUCCIÓN' ? (
@@ -730,7 +711,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             );
                           })}
                         </tr>
-                      )) : (<tr><td colSpan={dailyColumns.length || 1} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada.</td></tr>)}
+                      )) : (<tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada.</td></tr>)}
                     </tbody>
                   </table>
                 </div>
@@ -871,39 +852,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         ) : (
                           <tr>
                             <td colSpan={5} className="py-12 text-center text-gray-400 italic">
-                              No hay datos en la programación diaria para resumir.
+                              No hay datos para resumir.
                             </td>
                           </tr>
                         )}
                       </tbody>
-                      {productionSummary.length > 0 && (
-                        <tfoot className="bg-gray-50 font-bold border-t-2">
-                          <tr>
-                            <td className="px-6 py-3 text-right text-xs text-gray-600 uppercase">Totales Generales:</td>
-                            <td className="px-6 py-3 text-right font-mono text-sm">
-                              {productionSummary.reduce((acc, curr) => acc + curr.count, 0)}
-                            </td>
-                            <td className="px-6 py-3 text-right font-mono text-sm text-blue-800">
-                              {productionSummary.reduce((acc, curr) => acc + curr.quantity, 0).toLocaleString()}
-                            </td>
-                            <td className="px-6 py-3 text-right font-mono text-sm text-emerald-800">
-                              {productionSummary.reduce((acc, curr) => acc + curr.totalTime, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-6 py-3 text-right">
-                              {(() => {
-                                const totalTimeAll = productionSummary.reduce((acc, curr) => acc + curr.totalTime, 0);
-                                const totalCapacityAll = plannedCapacity * 60 * productionSummary.length;
-                                const avgUtilization = totalCapacityAll > 0 ? (totalTimeAll / totalCapacityAll) * 100 : 0;
-                                return (
-                                  <span className="text-xs text-gray-500 italic">
-                                    Promedio: {avgUtilization.toFixed(1)}%
-                                  </span>
-                                );
-                              })()}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      )}
                     </table>
                   </div>
                 </div>

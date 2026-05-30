@@ -20,15 +20,11 @@ export const TacticalPlan2Section: React.FC = () => {
     setIsMounted(true);
   }, []);
 
-  /**
-   * Normaliza códigos de material eliminando todos los ceros a la izquierda
-   */
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
     return String(code).trim().replace(/^0+/, '');
   }, []);
 
-  // 1. Cargar grupos y filtrar los de Colchones
   const fetchGrupos = useCallback(async () => {
     try {
       const gRes = await grupoService.getAll();
@@ -49,7 +45,6 @@ export const TacticalPlan2Section: React.FC = () => {
     });
   }, [grupos]);
 
-  // 2. Cargar tiempos de producción
   const fetchTiemposProduccion = useCallback(async () => {
     if (colchonesGruposList.length === 0) return;
     setIsLoadingTiempos(true);
@@ -61,7 +56,7 @@ export const TacticalPlan2Section: React.FC = () => {
       const allData = responses.flatMap(res => res.data || []);
       setTiemposProduccion(allData);
     } catch (error) {
-      console.error('Error al cargar tiempos de producción para colchones:', error);
+      console.error('Error al cargar tiempos de producción:', error);
     } finally {
       setIsLoadingTiempos(false);
     }
@@ -73,9 +68,6 @@ export const TacticalPlan2Section: React.FC = () => {
     }
   }, [isMounted, colchonesGruposList, fetchTiemposProduccion]);
 
-  /**
-   * Resuelve la máquina priorizando identificadores que inicien con "HR" escaneando todos los campos técnicos
-   */
   const getResolvedMachine = useCallback((order: any) => {
     const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
     for (const k of orderFields) {
@@ -94,13 +86,11 @@ export const TacticalPlan2Section: React.FC = () => {
     );
 
     if (matches.length > 0) {
-      // Escaneo total de campos técnicos en busca de identificador HR
       for (const m of matches) {
         const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
         const hrValue = values.find(v => v.startsWith('HR'));
         if (hrValue) return hrValue;
       }
-      
       const best = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
       return String(best.PuestoTrabajo || best.Maquina || best.nombre_estacion || '').trim().toUpperCase();
     }
@@ -137,7 +127,7 @@ export const TacticalPlan2Section: React.FC = () => {
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-center space-x-3">
         <CalendarClock className="w-6 h-6 text-gray-700" />
-        <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica colchones</h2>
+        <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica Colchones</h2>
       </div>
       
       <Card className="border-indigo-100 shadow-sm">
