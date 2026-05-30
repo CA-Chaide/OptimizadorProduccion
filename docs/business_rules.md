@@ -57,6 +57,11 @@ Las bandas siguen un flujo de producción específico por lotes:
 6.  **Proceso Final (en unidades):**
     - Referencias específicas requieren el puesto **HR-RMTBm** como paso final del componente.
 
-### 2.5. Cálculo de Tiempos
+### 2.5. Proceso de Interiores
+Los interiores tienen un flujo de pegado inicial que depende de la disponibilidad de bandas:
+1.  **Puestos Iniciales:** Se procesan en `HR-INTPR` o `HR-INTPT`.
+2.  **Dependencia Transversal:** Estos procesos generan automáticamente demanda de bandas acolchadas en las máquinas **HR-ACH11** y **HR-ACH12**.
+
+### 2.6. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
 - Todos los tiempos deben mostrarse con **dos decimales**.
