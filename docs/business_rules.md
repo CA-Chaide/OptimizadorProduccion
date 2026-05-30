@@ -25,7 +25,7 @@ Este documento detalla la lógica de negocio y las fuentes de datos utilizadas p
 Esta lógica rige la generación automática de la "Programación Componentes":
 
 1.  **Prioridad por Destino y Fecha**:
-    - **Fecha 1 (Cercana):** Destino **GYE**. Tiene prioridad absoluta sobre los recursos.
+    - **Fecha 1 (Cercana):** Destino **GYE**. Tiene prioridad absoluta sobre los recursos (tiempos de máquina).
     - **Fecha 2 (Lejana):** Destino **Quito**. Se planifica con la capacidad remanente.
 2.  **Explosión de Materiales (BOM)**:
     - La demanda de un Forro genera necesidades automáticas de componentes (Tapas acolchadas, Bandas, Interiores).
@@ -33,10 +33,11 @@ Esta lógica rige la generación automática de la "Programación Componentes":
 3.  **Lead Time de Componentes**:
     - Se maneja un desfase de 1 día. Los componentes se planifican para estar listos el mismo día o un día antes de la necesidad del forro.
 4.  **Gestión de Capacidad Finita (Saturación)**:
-    - Si una máquina "HR" se satura:
+    - Si una máquina "HR" se satura (excede el tiempo disponible de la jornada):
         - Se asegura primero el 100% de los componentes para la **Fecha 1 (GYE)**.
-        - Se asigna el resto a la **Fecha 2 (Quito)**.
-        - El sobrante de la Fecha 2 se **desplaza al día siguiente**, aprovechando que su fecha de entrega es más lejana.
+        - Se asigna el resto a la **Fecha 2 (Quito)** hasta agotar el tiempo.
+        - El sobrante de la Fecha 2 se **desplaza automáticamente al día siguiente**, aprovechando que su fecha de entrega es más lejana.
 
 ### 2.3. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
+- Todos los tiempos deben mostrarse con **dos decimales**.
