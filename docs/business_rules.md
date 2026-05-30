@@ -63,6 +63,11 @@ Los interiores siguen un flujo de pegado e integración final:
 2.  **Proceso Final:** El paso siguiente que integra todas las referencias de los puestos iniciales es el puesto **HR-INTPf** (Interior Final).
 3.  **Dependencia Transversal:** Los procesos iniciales generan automáticamente demanda de bandas acolchadas en las máquinas **HR-ACH11** y **HR-ACH12**.
 
-### 2.6. Cálculo de Tiempos
+### 2.6. Proceso de Bases
+Orientado a cubrir las necesidades de forros de base (**HR-FBASE**):
+1.  **Tapa Superior (HR-MTBS1):** Proceso de cosido de banda a tela no tejida o antideslizante. Genera demanda de bandas acolchadas en **HR-ACH11** y **HR-ACH12**.
+2.  **Tapa con Cierre (HR-MTBS):** Fabricación de tapa con cierre. Genera demanda de telas.
+
+### 2.7. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
 - Todos los tiempos deben mostrarse con **dos decimales**.

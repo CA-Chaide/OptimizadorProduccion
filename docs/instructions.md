@@ -22,6 +22,9 @@
     - El rematado (**HR-RMTBx**) y el proceso final (**HR-RMTBm**) se calculan en **unidades**.
     - Los procesos adicionales de cocido (**HR-COS3D**) y encintado (**HR-ENCBD**) se calculan en **metros**.
 - **Proceso de Interiores:** Flujo iniciado en `HR-INTPR` o `HR-INTPT` (según referencia) y consolidado en el puesto final **HR-INTPf**. Requiere vinculación automática con la demanda de acolchado en `HR-ACH11`/`12`.
+- **Proceso de Bases (HR-FBASE):** 
+    - **Tapa Superior (HR-MTBS1):** Cosido de banda a tela. Requiere vinculación con demanda de acolchado en **HR-ACH11/12**.
+    - **Tapa con Cierre (HR-MTBS):** Genera demanda de materias primas (telas).
 - **Cobertura de Inventario:** La producción de componentes de banda debe satisfacer la demanda de forros y reponer el **Stock de Seguridad**.
 - **Punto de Ajuste:** La capacidad se mide y ajusta según las máquinas críticas de acolchado, ya que los procesos de confección suelen tener recursos excedentes.
 
