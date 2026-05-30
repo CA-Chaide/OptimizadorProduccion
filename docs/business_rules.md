@@ -51,7 +51,9 @@ Las bandas siguen un flujo de producción específico por lotes:
 2.  **Unidad de Medida:** La producción en acolchado se mide en **metros**.
 3.  **Lógica de Necesidad:** La cantidad a producir debe cubrir la **Necesidad Neta** (Órdenes de Forros) + el **Stock de Seguridad**.
 4.  **Rematado:** Proceso subsiguiente en máquinas **HR-RMTBx**.
-5.  **Proceso Adicional:** Referencias específicas requieren el puesto **HR-RMTBm** como paso final del componente.
+5.  **Procesos Adicionales:** 
+    - Referencias que salen de `HR-ACH11/12` pueden requerir cocido de banda en **HR-COS3D**.
+    - Referencias específicas requieren el puesto **HR-RMTBm** como paso final del componente.
 
 ### 2.5. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
