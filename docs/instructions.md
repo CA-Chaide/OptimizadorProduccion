@@ -19,12 +19,12 @@
     - **ACH08, 09:** Líneas Superiores (Continental, etc.).
     - **ACH09 (Exclusivo):** Referencias Top (Grand Palace, Escape, Resiflex).
 
-### 2.3. Flujos de Componentes
-- **Bandas:** Inicio en `ACH11/12/BO01` (Metros) -> `RMTBx` (Unidades). Procesos extras `COS3D/ENCBD` en metros.
+### 2.3. Flujos de Componentes y Unidades
+- **Bandas:** Inicio en `ACH11/12/BO01` (Metros/Lotes) -> `RMTBx` (Unidades). Procesos extras `COS3D/ENCBD` en metros. Final en `RMTBm` (Unidades).
 - **Interiores:** `INTPR/T` -> `INTPf`. Requiere bandas de `ACH11/12`.
 - **Bases:** `MTBS1` (Tapa superior, requiere `ACH11/12`) y `MTBS` (Tapa cierre).
-- **Corte de Telas:** Capacidad limitada a una sola jornada para todos los puestos `HR-CT`.
-- **Telas y Fundas:** Capacidad de una sola persona. Flexibilidad `TTCF` -> `INTPf`.
+- **Corte de Telas:** Una sola máquina y **una sola persona** para todos los puestos `HR-CT`. El tiempo total sumado se ajusta a una jornada.
+- **Telas y Fundas:** Capacidad de una sola persona. Flexibilidad `TTCF` -> `INTPf` en caso de saturación.
 
 ### 2.4. Flexibilidad de Personal
 - Se permite planificación de puestos al **50% de capacidad** para compartir un operario entre dos tareas.
@@ -36,4 +36,5 @@
 
 ## 4. Estilo de Interacción
 - Validar la sincronización de máquinas `XX` en cada movimiento de carga.
+- El Corte de Telas es el embudo principal: vigilar la suma de tiempos de todos los puestos `CT`.
 - Mantener la documentación actualizada con cada regla de balanceo aprendida.
